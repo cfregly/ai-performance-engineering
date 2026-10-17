@@ -91,3 +91,4 @@ python -m cli.aisp bench run --targets ch03 --profile minimal
 ## Notes
 - `cpu_gpu_numa_optimizations.sh` is safe to rerun after every reboot; it re-applies irqbalance pinning and governor settings.
 - Kubernetes manifests document the necessary annotations for NVLink/NVSwitch affinity without pointing to external repos.
+- `rack_prep` accepts `--reserve N`, `--nic NAME` (repeatable) and `--apply` (root only), for example `--target-extra-arg ch03:rack_prep="--reserve 4 --nic eth0"`. The baseline records them and stays topology-unaware. A missing `--nic`, or `--apply` without root, fails the target.

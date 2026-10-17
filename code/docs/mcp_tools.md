@@ -165,7 +165,7 @@ Generated from `mcp.mcp_server.TOOLS`. Run `python -m scripts.generate_mcp_docs`
 - `profile_torch`: Run PyTorch torch.profiler to capture CPU/GPU activity with Chrome trace output
 
 ### Analyze (10)
-- `analyze_bottlenecks`: Identify performance bottlenecks: memory-bound, compute-bound, communication-bound, host-bound
+- `analyze_bottlenecks`: Find rule-based bottlenecks in the newest Chrome trace under artifacts/runs/*/profiles, with an optional LLM explanation
 - `analyze_comm_overlap`: Communication/compute overlap analysis for distributed training
 - `analyze_dataloader`: Read-only DataLoader recommendation and CPU/GPU locality snapshot
 - `analyze_energy`: Energy efficiency analysis: power consumption, efficiency metrics, green recommendations

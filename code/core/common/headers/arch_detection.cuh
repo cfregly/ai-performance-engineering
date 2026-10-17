@@ -170,7 +170,9 @@ inline const ArchitectureLimits& get_architecture_limits() {
             cached.tensor_tile_k = 64;
         } else if (props.major == 9) {
             cached.supports_clusters = true;
-            cached.max_cluster_size = 4;
+            // 8 is the portable cluster limit. Larger Hopper clusters need
+            // cudaFuncAttributeNonPortableClusterSizeAllowed.
+            cached.max_cluster_size = 8;
             cached.tensor_core_gen = ArchitectureLimits::TensorCoreGeneration::Hopper;
             cached.tensor_tile_m = 128;
             cached.tensor_tile_n = 128;

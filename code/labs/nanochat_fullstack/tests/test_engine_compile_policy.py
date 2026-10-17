@@ -22,8 +22,7 @@ def _small_model(*, device: torch.device | str = "cpu", **config_overrides) -> G
         n_kv_head=2,
         n_embd=16,
         use_flash_sdp=False,
-        use_flash3=False,
-        use_cta_clustering=False,
+        use_flash_attn_varlen=False,
     )
     config_kwargs.update(config_overrides)
     config = GPTConfig(**config_kwargs)

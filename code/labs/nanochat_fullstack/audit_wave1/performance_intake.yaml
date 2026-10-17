@@ -9,7 +9,7 @@ benchmark:
   variable_under_test: decode_execution_path
 workload:
   type: inference
-  model: Nanochat GPT; deterministic nonzero weights, tiny regression model and separate
+  model: Nanochat GPT. Deterministic nonzero weights, tiny regression model and separate
     representative checkpoint gate
   prompt_or_seq_len:
     test_values:
@@ -31,7 +31,10 @@ workload:
   - same weights and input sequence across arms
   - dense one-token decode only for CUDA graphs
   - per-step logits and every valid KV entry must match eager
-  - graph attention uses fixed-capacity masked SDPA; no FA3 execution claim
+  - graph attention uses fixed-capacity masked SDPA
+  - eager FA2 varlen requires backend metadata equal to flash_attn_2_cuda
+  - cache alignment rounds one contiguous allocation and does not create a page table
+  - persistent decode means a joined side stream with reusable buffers
 slos:
   latency_ms:
     p50: null
@@ -42,7 +45,7 @@ slos:
 environment:
   hardware:
     gpu: []
-    cpu: local macOS CPU; CUDA unavailable
+    cpu: local macOS CPU. CUDA unavailable.
     ram_gb: null
     storage: workspace local filesystem
     interconnect: []
@@ -60,7 +63,7 @@ environment:
     nccl: null
     container_orchestrator: null
   data_pipeline:
-  - seed 718 synthetic token IDs; no model download
+  - seed 718 synthetic token IDs. No model download.
 current_baseline:
   time_to_train_hours: null
   mfu_pct: null
@@ -83,20 +86,20 @@ hot_path_model:
   invocations_per_primary_unit: 1
   estimated_costs:
     bytes_read: 'graph K/V attention: about 2*layers*batch*kv_heads*capacity*head_dim*element_bytes
-      (plus weights); eager uses current prefix length'
+      (plus weights). Eager uses current prefix length.'
     bytes_written: 'KV update: 2*layers*batch*kv_heads*head_dim*element_bytes per
       token'
-    host_device_bytes: 8*batch input token IDs; 8*batch sampled token IDs when host
+    host_device_bytes: 8*batch input token IDs. 8*batch sampled token IDs when host
       feedback is used
-    allocations_or_materializations: capture owns functional rotary intermediates;
+    allocations_or_materializations: capture owns functional rotary intermediates.
       fixed cache/mask/position buffers
-    kernel_launches: graph replay vs eager submission; no counts measured
-    synchronizations_or_locks: side stream producer/consumer waits; blocking D2H before
-      host reads; synchronized wall measurement boundaries
+    kernel_launches: graph replay vs eager submission. No counts measured.
+    synchronizations_or_locks: side stream producer/consumer waits. Blocking D2H before
+      host reads. Synchronized wall measurement boundaries.
     api_process_or_rpc_crossings: 0
     storage_or_network_operations: 0
   operation_cost_source: source-derived cost model, not a GPU profile
-  expected_dominant_cost: unmeasured; fixed-capacity attention may offset launch savings
+  expected_dominant_cost: unmeasured. Fixed-capacity attention may offset launch savings.
   best_case_primary_kpi_improvement_pct: null
 evidence:
   baseline_artifact: none for GPU performance

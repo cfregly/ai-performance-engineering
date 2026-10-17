@@ -11,7 +11,7 @@ from core.benchmark.verification import simple_signature
 
 
 class OptimizedMicroTilingMatmulBenchmark(CudaBinaryBenchmark):
-    """Wraps the optimized micro-tiling matmul kernel."""
+    """Wraps the shared-memory matmul in which each thread accumulates a register micro-tile."""
 
     def __init__(self) -> None:
         chapter_dir = Path(__file__).parent

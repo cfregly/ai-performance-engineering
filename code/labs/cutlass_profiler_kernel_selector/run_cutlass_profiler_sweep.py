@@ -9,9 +9,10 @@ import json
 import os
 import subprocess
 import sys
+from collections import Counter
 from itertools import chain
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional
+from typing import Dict, List, Optional
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
@@ -37,46 +38,101 @@ def profiler_binary(explicit: Optional[str] = None) -> Path:
 
     env_candidate = os.environ.get("CUTLASS_PROFILER_BIN")
     if env_candidate:
-        candidate = Path(env_candidate)
+        candidate = Path(env_candidate).expanduser()
         if candidate.is_file():
             return candidate
+        raise FileNotFoundError(f"CUTLASS_PROFILER_BIN does not name a file: {candidate}")
 
     default = REPO_ROOT / "third_party" / "cutlass" / "build_profiler" / "tools" / "profiler" / "cutlass_profiler"
     if default.is_file():
         return default
 
     raise FileNotFoundError(
-        "cutlass_profiler binary not found. Run ./setup.sh to build it or pass --profiler-bin explicitly."
+        f"cutlass_profiler binary not found at {default}. setup.sh clones CUTLASS into "
+        "third_party/cutlass but does not build the profiler. Build the cutlass_profiler "
+        "CMake target in third_party/cutlass/build_profiler, or point CUTLASS_PROFILER_BIN "
+        "or --profiler-bin at an existing binary."
     )
 
 
-def _to_float(value: str) -> float:
-    raw = value.strip()
-    for token in (",",):
-        raw = raw.replace(token, "")
+# Exact column names from CUTLASS tools/profiler/src/performance_report.cpp.
+# The same header also has "Flops", the total FLOP count of one launch. That
+# value is identical for every kernel of a problem and is not a throughput.
+PROVIDER_COLUMN = "Provider"
+# performance_report.cpp writes to_string(result.provider, true), and
+# tools/library/src/util.cu maps Provider::kCUTLASS to "CUTLASS". The GEMM
+# profiler gives every row this provider. It uses cuBLAS only as a reference
+# check, so a row from any other provider is not a CUTLASS kernel and is skipped.
+CUTLASS_PROVIDER = "CUTLASS"
+KERNEL_COLUMN = "Operation"
+STATUS_COLUMN = "Status"
+DISPOSITION_COLUMN = "Disposition"
+RUNTIME_MS_COLUMN = "Runtime"
+GFLOPS_COLUMN = "GFLOPs"
+# With --enable-best-kernel-for-fixed-shape, gemm_operation_profiler.cu times
+# each kernel across raster orders, swizzle sizes and, for kernels built with a
+# dynamic cluster shape, cluster shapes. It reports only the fastest
+# combination, so the kernel name alone cannot reproduce the reported runtime.
+RUNTIME_PARAM_COLUMNS = (
+    "raster_order",
+    "swizzle_size",
+    "cluster_m",
+    "cluster_n",
+    "cluster_k",
+    "cluster_m_fallback",
+    "cluster_n_fallback",
+    "cluster_k_fallback",
+)
+REQUIRED_COLUMNS = (
+    PROVIDER_COLUMN,
+    KERNEL_COLUMN,
+    STATUS_COLUMN,
+    DISPOSITION_COLUMN,
+    RUNTIME_MS_COLUMN,
+    GFLOPS_COLUMN,
+    *RUNTIME_PARAM_COLUMNS,
+)
+# cutlass_profiler still times a kernel after its reference check reports
+# "incorrect" or "failed", so only the dispositions below may win the selection.
+SELECTABLE_DISPOSITIONS = ("passed", "not_verified")
+# cutlass_profiler checks each kernel against the reference only once, before
+# the best-kernel search. That check uses the problem's runtime parameters,
+# which default to heuristic raster order, swizzle size 1 and the kernel's
+# default cluster shape unless --extra-profiler-flags sets them.
+# operation_profiler.cu calls verify_cutlass before profile, and in
+# gemm_operation_profiler.cu every timed combination starts as a copy of that
+# verified result. The recorded "disposition" therefore describes the default
+# configuration, not the "runtime_params" recorded next to it.
+
+
+def _positive_measurement(row: Dict[str, str], column: str, csv_path: Path) -> float:
+    text = row[column].strip()
     try:
-        return float(raw)
-    except ValueError:
-        return float("nan")
+        value = float(text)
+    except ValueError as exc:
+        raise ValueError(
+            f"{csv_path}: {column}={text!r} for kernel {row[KERNEL_COLUMN]!r} is not a number"
+        ) from exc
+    if not math.isfinite(value) or value <= 0.0:
+        raise ValueError(
+            f"{csv_path}: {column}={text!r} for kernel {row[KERNEL_COLUMN]!r} "
+            "is not a positive finite value"
+        )
+    return value
 
 
-def _select_field(fields: Iterable[str], candidates: Iterable[str]) -> Optional[str]:
-    lowered = {f.lower(): f for f in fields}
-    # Prefer an exact header before substring matching. CUTLASS emits both
-    # ``OperationKind`` and ``Operation``; the latter is the winning kernel name.
-    for want in candidates:
-        exact = lowered.get(want)
-        if exact is not None:
-            return exact
-    for want in candidates:
-        for key, original in lowered.items():
-            if want in key:
-                return original
-    return None
+def _runtime_params(row: Dict[str, str], csv_path: Path) -> Dict[str, str]:
+    params = {column: row[column].strip() for column in RUNTIME_PARAM_COLUMNS}
+    blank = [column for column, value in params.items() if not value]
+    if blank:
+        raise ValueError(
+            f"{csv_path}: kernel {row[KERNEL_COLUMN]!r} has blank runtime parameter columns {blank}"
+        )
+    return params
 
 
 def parse_best_result(csv_path: Path) -> Dict[str, object]:
-    """Parse the CSV emitted by cutlass_profiler and return the best row by FLOP/s."""
+    """Return the timed, non-failing CUTLASS kernel with the highest GFLOP/s in a cutlass_profiler CSV."""
 
     with csv_path.open("r", newline="") as f:
         reader = csv.DictReader(f)
@@ -84,43 +140,53 @@ def parse_best_result(csv_path: Path) -> Dict[str, object]:
         if first_row is None:
             raise ValueError(f"No rows found in profiler output {csv_path}")
 
-        gflops_field = _select_field(reader.fieldnames or [], ("gflop", "tflop", "flops"))
-        runtime_field = _select_field(reader.fieldnames or [], ("runtime", "time"))
-        kernel_field = _select_field(reader.fieldnames or [], ("kernel", "operation", "name"))
+        fieldnames = reader.fieldnames or []
+        missing = [column for column in REQUIRED_COLUMNS if column not in fieldnames]
+        if missing:
+            raise ValueError(
+                f"{csv_path} is not a cutlass_profiler CSV report: missing columns {missing} "
+                f"(fields: {fieldnames})"
+            )
 
-        if gflops_field is None or runtime_field is None:
-            raise ValueError(f"Missing gflops/time fields in {csv_path} (fields: {reader.fieldnames})")
-
-        best_row = None
-        best_score = -float("inf")
+        best_row: Optional[Dict[str, object]] = None
+        rejected: Counter = Counter()
         for row in chain((first_row,), reader):
-            gflops_raw = _to_float(row[gflops_field])
-            if "tflop" in gflops_field.lower():
-                tflops = gflops_raw
-                gflops = gflops_raw * 1000.0
-            else:
-                gflops = gflops_raw
-                tflops = gflops_raw / 1000.0
+            if any(row[column] is None for column in REQUIRED_COLUMNS):
+                raise ValueError(f"{csv_path}:{reader.line_num}: row is missing required columns")
+            provider = row[PROVIDER_COLUMN].strip()
+            status = row[STATUS_COLUMN].strip()
+            disposition = row[DISPOSITION_COLUMN].strip()
+            # cutlass_profiler leaves GFLOPs blank for a kernel it did not time.
+            timed = bool(row[GFLOPS_COLUMN].strip())
+            if (
+                provider != CUTLASS_PROVIDER
+                or status != "success"
+                or disposition not in SELECTABLE_DISPOSITIONS
+                or not timed
+            ):
+                rejected[
+                    f"provider={provider} status={status} disposition={disposition} timed={timed}"
+                ] += 1
+                continue
 
-            if gflops > best_score:
-                best_score = gflops
-                runtime_ms = _to_float(row[runtime_field])
-                # If runtime was missing/NaN, derive it from FLOP/s if possible.
-                if math.isnan(runtime_ms) or runtime_ms <= 0:
-                    try:
-                        flops = _to_float(row.get("Flops", "")) * 1.0  # reported as raw FLOPs
-                        runtime_ms = (flops / (gflops * 1e9)) * 1e3 if gflops > 0 else float("nan")
-                    except Exception:
-                        runtime_ms = float("nan")
-
+            gflops = _positive_measurement(row, GFLOPS_COLUMN, csv_path)
+            runtime_ms = _positive_measurement(row, RUNTIME_MS_COLUMN, csv_path)
+            if best_row is None or gflops > best_row["gflops"]:
                 best_row = {
-                    "kernel": row.get(kernel_field, "") if kernel_field else "",
+                    "kernel": row[KERNEL_COLUMN].strip(),
+                    "disposition": disposition,
                     "gflops": gflops,
-                    "tflops": tflops,
+                    "tflops": gflops / 1000.0,
                     "runtime_ms": runtime_ms,
+                    "runtime_params": _runtime_params(row, csv_path),
                 }
 
-    assert best_row is not None
+    if best_row is None:
+        raise ValueError(
+            f"No selectable kernel in {csv_path}: no row has Provider={CUTLASS_PROVIDER}, "
+            f"Status=success, a Disposition in {SELECTABLE_DISPOSITIONS}, and a GFLOPs value. "
+            f"Rejected rows: {dict(rejected)}"
+        )
     return best_row
 
 
@@ -163,7 +229,9 @@ def run_profiler_for_shape(binary: Path, shape: GemmShape, output_dir: Path, ext
         process = subprocess.run(cmd, stdout=log_file, stderr=subprocess.STDOUT, check=False)
 
     if process.returncode != 0:
-        raise RuntimeError(f"{binary.name} failed for {shape.name}; see {log_path}")
+        raise RuntimeError(
+            f"{binary.name} exited with code {process.returncode} for {shape.name}. See {log_path}"
+        )
 
     def was_emitted_by_this_run(path: Path) -> bool:
         current = (path.stat().st_mtime_ns, path.stat().st_size)
@@ -176,8 +244,8 @@ def run_profiler_for_shape(binary: Path, shape: GemmShape, output_dir: Path, ext
     )
     if csv_file is None:
         raise FileNotFoundError(
-            f"Profiler did not emit a fresh CSV for {shape.name}; "
-            f"expected something like {csv_path}*.csv; log: {log_path}"
+            f"Profiler did not emit a fresh CSV for {shape.name}. "
+            f"Expected a new or changed file matching {csv_path}*.csv. Log: {log_path}"
         )
 
     best_row = parse_best_result(csv_file)
@@ -239,7 +307,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             print(f"→ Profiling {shape.name} (m={shape.m}, n={shape.n}, k={shape.k})...")
             best = run_profiler_for_shape(binary, shape, output_dir, args.extra_profiler_flags)
             print(
-                f"   best kernel={best['kernel']} runtime={best['runtime_ms']:.3f} ms "
+                f"   best kernel={best['kernel']} ({best['disposition']}) runtime={best['runtime_ms']:.3f} ms "
                 f"throughput={best['tflops']:.2f} TFLOP/s"
             )
             results.append(best)

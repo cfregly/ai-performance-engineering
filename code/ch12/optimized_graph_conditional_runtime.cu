@@ -3,7 +3,7 @@
 // Optimized: Runtime conditional execution WITH CUDA graph conditional nodes.
 // Uses cudaGraphConditionalHandle for device-side branching within a single graph.
 //
-// Key innovations (CUDA 12.4+):
+// Key innovations (CUDA 12.8+):
 // - NO host synchronization needed
 // - Branching happens entirely on device
 // - Single graph with embedded conditions
@@ -16,7 +16,8 @@
 // - KV cache hit/miss handling
 //
 // Architecture requirements:
-// - CUDA 12.4+ for conditional graph nodes
+// - CUDA 12.8+ toolkit and driver. Conditional IF nodes date from CUDA 12.3,
+//   but an IF node with an ELSE body (conditional.size = 2) needs CUDA 12.8.
 // - SM 9.0+ (Hopper/Blackwell) for best performance
 
 #include <cuda.h>  // For CUDA_VERSION
@@ -38,6 +39,10 @@
 
 constexpr int N = 1 << 16;  // 64K elements
 constexpr int THREADS = 256;
+
+constexpr int SKIPPED_EXIT_CODE = 3;
+
+#if CUDA_VERSION >= 12080
 
 // Expensive computation kernel
 __global__ void expensive_kernel(float* data, int n, float scale) {
@@ -93,36 +98,32 @@ __global__ void set_condition_from_value_kernel(
     }
 }
 
-#if CUDA_VERSION >= 12040
-
 int main() {
     NVTX_RANGE("main");
     cudaDeviceProp prop;
     CUDA_CHECK(cudaGetDeviceProperties(&prop, 0));
-    
+    int driver_version = 0;
+    CUDA_CHECK(cudaDriverGetVersion(&driver_version));
+
     printf("======================================================================\n");
     printf("Optimized: Graph Conditional Runtime (Device-Side Branching)\n");
     printf("======================================================================\n");
     printf("GPU: %s (SM %d.%d)\n", prop.name, prop.major, prop.minor);
-    printf("CUDA Version: %d\n", CUDA_VERSION);
+    printf("CUDA Version: %d (driver %d)\n", CUDA_VERSION, driver_version);
     printf("\n");
-    
-    // Check requirements
-    bool supports_conditional = (CUDA_VERSION >= 12040);
+
     bool supports_graphs = (prop.major >= 7 && prop.minor >= 5) || prop.major >= 8;
-    
     if (!supports_graphs) {
-        printf("CUDA Graphs require compute capability 7.5+\n");
-        printf("TIME_MS: 0.0\n");
-        return 0;
+        printf("SKIPPED: CUDA Graphs require compute capability 7.5+\n");
+        return SKIPPED_EXIT_CODE;
     }
-    
-    if (!supports_conditional) {
-        printf("Conditional graph nodes require CUDA 12.4+\n");
-        printf("TIME_MS: 0.0\n");
-        return 0;
+
+    if (driver_version < 12080) {
+        printf("SKIPPED: IF conditional nodes with an ELSE body require a CUDA 12.8+ driver (found %d)\n",
+               driver_version);
+        return SKIPPED_EXIT_CODE;
     }
-    
+
     // Allocate memory
     size_t bytes = N * sizeof(float);
     float *d_data = nullptr;
@@ -304,25 +305,13 @@ int main() {
     return 0;
 }
 
-#else  // CUDA_VERSION < 12040
+#else  // CUDA_VERSION < 12080
 
-// Fallback for older CUDA versions
 int main() {
-    printf("======================================================================\n");
-    printf("Optimized: Graph Conditional Runtime (Device-Side Branching)\n");
-    printf("======================================================================\n");
-    printf("CUDA Version: %d (requires 12040+)\n", CUDA_VERSION);
-    printf("\n");
-    printf("This feature requires CUDA 12.4 or newer.\n");
-    printf("Conditional graph nodes (cudaGraphConditionalHandle) are not available.\n");
-    printf("\n");
-    printf("To use this optimization:\n");
-    printf("  1. Upgrade to CUDA Toolkit 12.4+\n");
-    printf("  2. Use Hopper (H100) or Blackwell (B200) GPU\n");
-    printf("  3. Recompile with -DCUDA_VERSION=12040\n");
-    printf("\n");
-    printf("TIME_MS: 0.0\n");
-    return 0;
+    printf("SKIPPED: IF conditional nodes with an ELSE body require a CUDA 12.8+ toolkit "
+           "(built with CUDA_VERSION %d). Rebuild with CUDA 12.8 or newer.\n",
+           CUDA_VERSION);
+    return SKIPPED_EXIT_CODE;
 }
 
-#endif  // CUDA_VERSION
+#endif  // CUDA_VERSION >= 12080

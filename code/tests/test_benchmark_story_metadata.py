@@ -279,7 +279,7 @@ def test_ch15_disagg_multigpu_wrappers_expose_baseline_owned_shared_harness_meta
         assert story["chapter_alignment"] == "native"
         assert story["chapter_native_exemplar"] is True
         assert story["timed_launch_mode"] == "torchrun_multi_gpu"
-        assert story["verification_mode"] == "local_multi_device_surrogate"
+        assert story["verification_mode"] == "timed_torchrun_rank_outputs"
         assert story["shared_harness_layout"] == "baseline_owned_shared_base"
         assert story["shared_harness_owner"] == "ch15/baseline_disaggregated_inference_multigpu.py"
 

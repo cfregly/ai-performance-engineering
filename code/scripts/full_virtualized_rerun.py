@@ -115,6 +115,11 @@ EXPECTED_UNSUPPORTED_RUNTIME_TOKENS = (
     "requires a native cublaslt heuristic for this exact benchmark",
 )
 
+DEFAULT_PROFILE = "none"
+DEFAULT_SUITE_TIMEOUT_SECONDS = 0
+DEFAULT_GPU_SM_CLOCK_MHZ = 1965
+DEFAULT_GPU_MEM_CLOCK_MHZ = 3996
+
 def _utc_now() -> datetime:
     return datetime.now(timezone.utc)
 
@@ -731,8 +736,8 @@ def _build_entry(
     throughput_baseline = bench.get("baseline_throughput")
     throughput_optimized = best_opt.get("throughput")
     return ExpectationEntry(
-        example=str(bench.get("example") or "unknown"),
-        type=str(bench.get("type") or "python"),
+        example=str(bench["example"]),
+        type=str(bench["type"]),
         optimization_goal=str(bench.get("optimization_goal") or "speed"),
         baseline_time_ms=float(bench.get("baseline_time_ms") or 0.0),
         best_optimized_time_ms=float(best_opt.get("time_ms") or 0.0),
@@ -751,6 +756,12 @@ def _build_entry(
         best_optimized_memory_mb=best_opt.get("memory_mb"),
         baseline_p75_ms=bench.get("baseline_p75_ms"),
         best_optimized_p75_ms=best_opt.get("p75_ms"),
+        baseline_p90_ms=bench.get("baseline_p90_ms"),
+        best_optimized_p90_ms=best_opt.get("p90_ms"),
+        # The outlier gate compares each mean with its p75, or with its median
+        # when the run recorded no p75.
+        baseline_median_ms=bench.get("baseline_median_ms"),
+        best_optimized_median_ms=best_opt.get("median_ms"),
         baseline_throughput=throughput_baseline if isinstance(throughput_baseline, dict) else None,
         best_optimized_throughput=throughput_optimized if isinstance(throughput_optimized, dict) else None,
         custom_metrics=bench.get("baseline_custom_metrics"),
@@ -768,9 +779,20 @@ def _score(entry: ExpectationEntry) -> float:
     return float(entry.best_speedup)
 
 
+def _missing_benchmark_identity_fields(bench: Dict[str, Any]) -> List[str]:
+    return [field for field in ("example", "type") if not str(bench.get(field) or "").strip()]
+
+
 def _expectation_example_key(bench: Dict[str, Any]) -> str:
-    example_name = str(bench.get("example") or "unknown").strip() or "unknown"
-    bench_type = str(bench.get("type") or "python").strip().lower() or "python"
+    # The harness writes both fields on every result entry. Guessing a missing
+    # type would pick the wrong key for CUDA examples.
+    missing_fields = _missing_benchmark_identity_fields(bench)
+    if missing_fields:
+        raise ValueError(
+            f"Benchmark result is missing {', '.join(missing_fields)}. Cannot derive an expectation key."
+        )
+    example_name = str(bench["example"]).strip()
+    bench_type = str(bench["type"]).strip().lower()
     if bench_type == "python":
         return example_name
     suffix = f"_{bench_type}"
@@ -921,38 +943,62 @@ def _parse_problem_targets(problem_path: Path, reasons: List[str]) -> List[str]:
     return targets
 
 
-def _spawn_worker(repo_root: Path, queue_root: Path, run_root: Path, worker_log: Path) -> subprocess.Popen:
-    cmd = [
+def _worker_command(queue_root: Path) -> List[str]:
+    # No --run-root here. The worker reads the run root from state.json, which
+    # `start` saves before it spawns the worker. A run root passed on this
+    # command line would overwrite a newer `start --run-root` or
+    # `enqueue --run-root` that lands before the worker takes the queue lock.
+    return [
         sys.executable,
         str(Path(__file__).resolve()),
         "run-worker",
         "--queue-root",
         str(queue_root),
-        "--run-root",
-        str(run_root),
     ]
+
+
+def _spawn_worker(repo_root: Path, queue_root: Path, worker_log: Path) -> subprocess.Popen:
     worker_log.parent.mkdir(parents=True, exist_ok=True)
-    handle = worker_log.open("a", encoding="utf-8")
-    return subprocess.Popen(
-        cmd,
-        cwd=str(repo_root),
-        stdout=handle,
-        stderr=subprocess.STDOUT,
-        start_new_session=True,
-    )
+    # The child gets its own copy of the log descriptor, so the parent closes its copy.
+    with worker_log.open("a", encoding="utf-8") as handle:
+        return subprocess.Popen(
+            _worker_command(queue_root),
+            cwd=str(repo_root),
+            stdout=handle,
+            stderr=subprocess.STDOUT,
+            start_new_session=True,
+        )
 
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    def _add_queue_args(subparser: argparse.ArgumentParser) -> None:
-        subparser.add_argument("--run-root", type=Path, default=None, help="Base directory for per-target run artifacts.")
+    def _add_queue_root_arg(subparser: argparse.ArgumentParser) -> None:
         subparser.add_argument("--queue-root", type=Path, default=None, help="Directory for queue state/log files.")
+
+    def _add_run_root_arg(subparser: argparse.ArgumentParser) -> None:
+        subparser.add_argument(
+            "--run-root",
+            type=Path,
+            default=None,
+            help=(
+                "Base directory for per-target run artifacts. New queues default to "
+                "code/artifacts/runs/<UTC YYYYMMDD>_full_virtualized_repo_rerun. "
+                "Existing queues keep their saved value when omitted."
+            ),
+        )
+
+    def _add_expectation_write_arg(subparser: argparse.ArgumentParser) -> None:
         subparser.add_argument(
             "--allow-portable-expectations-update",
-            action="store_true",
-            help="Allow this portable rerun queue to write expectation files when eligible.",
+            action=argparse.BooleanOptionalAction,
+            default=None,
+            help=(
+                "Allow this portable rerun queue to write expectation files when eligible. "
+                "New queues do not write expectations unless this flag is given. "
+                "Existing queues keep their saved setting unless this flag or its --no- form is given."
+            ),
         )
 
     def _add_target_args(subparser: argparse.ArgumentParser) -> None:
@@ -972,38 +1018,72 @@ def _parse_args() -> argparse.Namespace:
         subparser.add_argument("--max-targets", type=int, default=None, help="Optional cap for discovered targets.")
 
     start_parser = subparsers.add_parser("start", help="Initialize/enqueue targets and launch the background worker.")
-    _add_queue_args(start_parser)
+    _add_queue_root_arg(start_parser)
+    _add_run_root_arg(start_parser)
+    _add_expectation_write_arg(start_parser)
     _add_target_args(start_parser)
     start_parser.add_argument(
         "--profile",
         default=None,
         choices=["none", "minimal", "deep_dive", "roofline"],
-        help="Profiling preset for each target run. Existing queues retain their saved preset when omitted.",
+        help=(
+            f"Profiling preset for each target run. New queues default to {DEFAULT_PROFILE}. "
+            "Existing queues keep their saved preset when omitted."
+        ),
     )
-    start_parser.add_argument("--suite-timeout", type=int, default=0, help="Suite timeout per target in seconds. Use 0 to disable.")
-    start_parser.add_argument("--gpu-sm-clock-mhz", type=int, default=1965, help="SM application clock in MHz.")
-    start_parser.add_argument("--gpu-mem-clock-mhz", type=int, default=3996, help="Memory application clock in MHz.")
+    start_parser.add_argument(
+        "--suite-timeout",
+        type=int,
+        default=None,
+        help=(
+            "Suite timeout per target in seconds. Use 0 to disable. "
+            f"New queues default to {DEFAULT_SUITE_TIMEOUT_SECONDS}. Existing queues keep their saved value when omitted."
+        ),
+    )
+    start_parser.add_argument(
+        "--gpu-sm-clock-mhz",
+        type=int,
+        default=None,
+        help=(
+            f"SM application clock in MHz. New queues default to {DEFAULT_GPU_SM_CLOCK_MHZ}. "
+            "Existing queues keep their saved value when omitted."
+        ),
+    )
+    start_parser.add_argument(
+        "--gpu-mem-clock-mhz",
+        type=int,
+        default=None,
+        help=(
+            f"Memory application clock in MHz. New queues default to {DEFAULT_GPU_MEM_CLOCK_MHZ}. "
+            "Existing queues keep their saved value when omitted."
+        ),
+    )
     start_parser.add_argument("--force-rerun", action="store_true", help="Requeue targets even if they have already completed.")
     start_parser.add_argument("--newly-discovered", action="store_true", help="Queue targets that exist in the repo but are not yet tracked in the current state.")
 
     worker_parser = subparsers.add_parser("run-worker", help="Internal worker entrypoint.")
-    _add_queue_args(worker_parser)
+    _add_queue_root_arg(worker_parser)
+    _add_run_root_arg(worker_parser)
 
     enqueue_parser = subparsers.add_parser("enqueue", help="Add targets to the pending queue without starting a worker.")
-    _add_queue_args(enqueue_parser)
+    _add_queue_root_arg(enqueue_parser)
+    _add_run_root_arg(enqueue_parser)
+    _add_expectation_write_arg(enqueue_parser)
     _add_target_args(enqueue_parser)
     enqueue_parser.add_argument("--force-rerun", action="store_true", help="Requeue targets even if they have already completed.")
     enqueue_parser.add_argument("--newly-discovered", action="store_true", help="Queue targets that exist in the repo but are not yet tracked in the current state.")
 
     retry_parser = subparsers.add_parser("retry-problems", help="Requeue targets from the problem ledger.")
-    _add_queue_args(retry_parser)
+    _add_queue_root_arg(retry_parser)
+    _add_run_root_arg(retry_parser)
+    _add_expectation_write_arg(retry_parser)
     retry_parser.add_argument("--reason", action="append", default=[], help="Queue only problems containing the given reason (repeatable).")
 
     status_parser = subparsers.add_parser("status", help="Show queue/worker status.")
-    _add_queue_args(status_parser)
+    _add_queue_root_arg(status_parser)
 
     stop_parser = subparsers.add_parser("stop", help="Request a graceful stop after the current target finishes.")
-    _add_queue_args(stop_parser)
+    _add_queue_root_arg(stop_parser)
 
     return parser.parse_args()
 
@@ -1057,21 +1137,21 @@ def _run_target(
         "--targets",
         target,
         "--profile",
-        str(state.get("profile") or "none"),
+        str(state.get("profile") or DEFAULT_PROFILE),
         "--format",
         "json",
         "--validity-profile",
         "portable",
         "--suite-timeout",
-        str(int(state.get("suite_timeout") or 0)),
+        str(int(state.get("suite_timeout") or DEFAULT_SUITE_TIMEOUT_SECONDS)),
         "--artifacts-dir",
         str(run_root),
         "--run-id",
         run_id,
         "--gpu-sm-clock-mhz",
-        str(int(state.get("gpu_sm_clock_mhz") or 1965)),
+        str(int(state.get("gpu_sm_clock_mhz") or DEFAULT_GPU_SM_CLOCK_MHZ)),
         "--gpu-mem-clock-mhz",
-        str(int(state.get("gpu_mem_clock_mhz") or 3996)),
+        str(int(state.get("gpu_mem_clock_mhz") or DEFAULT_GPU_MEM_CLOCK_MHZ)),
         "--log-level",
         "INFO",
     ]
@@ -1173,6 +1253,10 @@ def _run_target(
 
         if bench.get("status") != "succeeded":
             bench_reasons.append(str(bench.get("status") or "failed"))
+        missing_identity_fields = _missing_benchmark_identity_fields(bench)
+        if missing_identity_fields:
+            bench_reasons.append("missing_benchmark_identity")
+            bench_extra["missing_identity_fields"] = missing_identity_fields
         best_opt = _best_optimization(bench)
         if best_opt is None:
             bench_reasons.append("missing_successful_optimization")
@@ -1192,7 +1276,7 @@ def _run_target(
                 bench=bench,
                 best_opt=best_opt,
                 hardware_key=hardware_key,
-                profile_name=str(state.get("profile") or "none"),
+                profile_name=str(state.get("profile") or DEFAULT_PROFILE),
                 git_commit=git_value,
                 execution_environment=execution_environment,
                 dmi_product_name=dmi_product_name,
@@ -1266,41 +1350,70 @@ def _run_target(
     return target_record
 
 
+def _resolve_queue_setting(saved_value: Any, requested_value: Any, default_value: Any) -> Any:
+    """Use an explicit CLI value, otherwise the saved queue value, otherwise the default."""
+
+    if requested_value is not None:
+        return requested_value
+    if saved_value is not None:
+        return saved_value
+    return default_value
+
+
 def _resolve_start_profile(saved_profile: Optional[str], requested_profile: Optional[str]) -> str:
     """Use an explicit profile override, otherwise preserve the queue setting."""
 
-    return requested_profile or saved_profile or "none"
+    return str(_resolve_queue_setting(saved_profile, requested_profile, DEFAULT_PROFILE))
+
+
+def _resolve_expectation_write_opt_in(saved_state: Dict[str, Any], requested: Optional[bool]) -> bool:
+    return bool(_resolve_queue_setting(saved_state.get("allow_portable_expectations_update"), requested, False))
+
+
+def _resolve_run_root(repo_root: Path, saved_state: Dict[str, Any], requested: Optional[Path]) -> Path:
+    """Use an explicit --run-root, otherwise the queue's saved run root, otherwise the dated default."""
+
+    return Path(_resolve_queue_setting(saved_state.get("run_root"), requested, _default_run_root(repo_root))).resolve()
+
+
+def _resolve_start_settings(saved_state: Dict[str, Any], args: argparse.Namespace) -> Dict[str, Any]:
+    """Resolve the bench settings for `start`. A restart changes only the settings it names."""
+
+    return {
+        "profile": _resolve_start_profile(saved_state.get("profile"), args.profile),
+        "suite_timeout": int(
+            _resolve_queue_setting(saved_state.get("suite_timeout"), args.suite_timeout, DEFAULT_SUITE_TIMEOUT_SECONDS)
+        ),
+        "gpu_sm_clock_mhz": int(
+            _resolve_queue_setting(saved_state.get("gpu_sm_clock_mhz"), args.gpu_sm_clock_mhz, DEFAULT_GPU_SM_CLOCK_MHZ)
+        ),
+        "gpu_mem_clock_mhz": int(
+            _resolve_queue_setting(saved_state.get("gpu_mem_clock_mhz"), args.gpu_mem_clock_mhz, DEFAULT_GPU_MEM_CLOCK_MHZ)
+        ),
+        "allow_portable_expectations_update": _resolve_expectation_write_opt_in(
+            saved_state, args.allow_portable_expectations_update
+        ),
+    }
 
 
 def _command_start(args: argparse.Namespace) -> int:
     repo_root = Path(__file__).resolve().parents[1]
-    run_root = (args.run_root or _default_run_root(repo_root)).resolve()
     queue_root = (args.queue_root or _default_queue_root(repo_root)).resolve()
-    run_root.mkdir(parents=True, exist_ok=True)
     queue_root.mkdir(parents=True, exist_ok=True)
     paths = _queue_paths(queue_root)
 
     lock_handle = _lock_queue(queue_root)
     try:
         state = _load_state(paths["state"])
+        run_root = _resolve_run_root(repo_root, state, args.run_root)
+        run_root.mkdir(parents=True, exist_ok=True)
+        settings = _resolve_start_settings(state, args)
         if not state:
-            state = _initialize_state(
-                run_root=run_root,
-                queue_root=queue_root,
-                profile=_resolve_start_profile(None, args.profile),
-                suite_timeout=args.suite_timeout,
-                gpu_sm_clock_mhz=args.gpu_sm_clock_mhz,
-                gpu_mem_clock_mhz=args.gpu_mem_clock_mhz,
-                allow_portable_expectations_update=args.allow_portable_expectations_update,
-            )
+            state = _initialize_state(run_root=run_root, queue_root=queue_root, **settings)
         else:
             state["run_root"] = str(run_root)
             state["queue_root"] = str(queue_root)
-            state["profile"] = _resolve_start_profile(state.get("profile"), args.profile)
-            state["suite_timeout"] = args.suite_timeout
-            state["gpu_sm_clock_mhz"] = args.gpu_sm_clock_mhz
-            state["gpu_mem_clock_mhz"] = args.gpu_mem_clock_mhz
-        state["allow_portable_expectations_update"] = bool(args.allow_portable_expectations_update)
+            state.update(settings)
 
         added = _queue_from_args(repo_root, state, args)
         state["stop_requested"] = False
@@ -1313,57 +1426,56 @@ def _command_start(args: argparse.Namespace) -> int:
             worker_started_pid = worker_pid
             worker_already_running = True
         else:
-            proc = _spawn_worker(repo_root, queue_root, run_root, paths["worker_log"])
+            proc = _spawn_worker(repo_root, queue_root, paths["worker_log"])
             worker_started_pid = int(proc.pid)
             worker_already_running = False
             state["worker_pid"] = worker_started_pid
             state["worker_started_at"] = _utc_now_iso()
-            state["worker_command"] = [
-                sys.executable,
-                str(Path(__file__).resolve()),
-                "run-worker",
-                "--queue-root",
-                str(queue_root),
-                "--run-root",
-                str(run_root),
-            ]
+            state["worker_command"] = _worker_command(queue_root)
             _persist_state(paths, state)
     finally:
         _unlock_queue(lock_handle)
 
     if worker_already_running:
-        _log_message(paths["queue_log"], f"worker already running pid={worker_started_pid} pending={pending_count}")
-        print(f"worker already running: pid={worker_started_pid}")
+        # The running worker reads state.json before each target, so the saved
+        # settings, including run_root, apply from the next target it starts.
+        _log_message(
+            paths["queue_log"],
+            f"worker already running pid={worker_started_pid} pending={pending_count} run_root={run_root}",
+        )
+        print(f"worker already running: pid={worker_started_pid} run_root={run_root}")
         return 0
 
     _log_message(
         paths["queue_log"],
-        f"worker started pid={worker_started_pid} added_targets={added} pending={pending_count}",
+        f"worker started pid={worker_started_pid} added_targets={added} pending={pending_count} run_root={run_root}",
     )
-    print(f"worker_started pid={worker_started_pid} queue_root={queue_root}")
+    print(f"worker_started pid={worker_started_pid} queue_root={queue_root} run_root={run_root}")
     return 0
 
 
 def _command_enqueue(args: argparse.Namespace) -> int:
     repo_root = Path(__file__).resolve().parents[1]
-    run_root = (args.run_root or _default_run_root(repo_root)).resolve()
     queue_root = (args.queue_root or _default_queue_root(repo_root)).resolve()
     queue_root.mkdir(parents=True, exist_ok=True)
     paths = _queue_paths(queue_root)
     lock_handle = _lock_queue(queue_root)
     try:
         state = _load_state(paths["state"])
+        run_root = _resolve_run_root(repo_root, state, args.run_root)
+        allow_expectation_writes = _resolve_expectation_write_opt_in(state, args.allow_portable_expectations_update)
         if not state:
             state = _initialize_state(
                 run_root=run_root,
                 queue_root=queue_root,
-                profile="none",
-                suite_timeout=0,
-                gpu_sm_clock_mhz=1965,
-                gpu_mem_clock_mhz=3996,
-                allow_portable_expectations_update=args.allow_portable_expectations_update,
+                profile=DEFAULT_PROFILE,
+                suite_timeout=DEFAULT_SUITE_TIMEOUT_SECONDS,
+                gpu_sm_clock_mhz=DEFAULT_GPU_SM_CLOCK_MHZ,
+                gpu_mem_clock_mhz=DEFAULT_GPU_MEM_CLOCK_MHZ,
+                allow_portable_expectations_update=allow_expectation_writes,
             )
-        state["allow_portable_expectations_update"] = bool(args.allow_portable_expectations_update)
+        state["run_root"] = str(run_root)
+        state["allow_portable_expectations_update"] = allow_expectation_writes
         added = _queue_from_args(repo_root, state, args)
         _persist_state(paths, state)
         paths["targets"].write_text("".join(f"{target}\n" for target in state.get("discovered_targets", [])), encoding="utf-8")
@@ -1377,7 +1489,6 @@ def _command_enqueue(args: argparse.Namespace) -> int:
 
 def _command_retry_problems(args: argparse.Namespace) -> int:
     repo_root = Path(__file__).resolve().parents[1]
-    run_root = (args.run_root or _default_run_root(repo_root)).resolve()
     queue_root = (args.queue_root or _default_queue_root(repo_root)).resolve()
     queue_root.mkdir(parents=True, exist_ok=True)
     paths = _queue_paths(queue_root)
@@ -1385,17 +1496,20 @@ def _command_retry_problems(args: argparse.Namespace) -> int:
     lock_handle = _lock_queue(queue_root)
     try:
         state = _load_state(paths["state"])
+        run_root = _resolve_run_root(repo_root, state, args.run_root)
+        allow_expectation_writes = _resolve_expectation_write_opt_in(state, args.allow_portable_expectations_update)
         if not state:
             state = _initialize_state(
                 run_root=run_root,
                 queue_root=queue_root,
-                profile="none",
-                suite_timeout=0,
-                gpu_sm_clock_mhz=1965,
-                gpu_mem_clock_mhz=3996,
-                allow_portable_expectations_update=args.allow_portable_expectations_update,
+                profile=DEFAULT_PROFILE,
+                suite_timeout=DEFAULT_SUITE_TIMEOUT_SECONDS,
+                gpu_sm_clock_mhz=DEFAULT_GPU_SM_CLOCK_MHZ,
+                gpu_mem_clock_mhz=DEFAULT_GPU_MEM_CLOCK_MHZ,
+                allow_portable_expectations_update=allow_expectation_writes,
             )
-        state["allow_portable_expectations_update"] = bool(args.allow_portable_expectations_update)
+        state["run_root"] = str(run_root)
+        state["allow_portable_expectations_update"] = allow_expectation_writes
         added = _enqueue_targets(state, targets, force_rerun=True)
         _persist_state(paths, state)
         pending_count = len(state.get("pending_targets", []))
@@ -1420,6 +1534,7 @@ def _command_status(args: argparse.Namespace) -> int:
         worker_pid = int(state.get("worker_pid") or 0)
         payload = {
             "queue_root": str(queue_root),
+            "run_root": state.get("run_root"),
             "worker_pid": worker_pid or None,
             "worker_running": _is_pid_running(worker_pid),
             "stop_requested": bool(state.get("stop_requested")),
@@ -1431,6 +1546,8 @@ def _command_status(args: argparse.Namespace) -> int:
             "expected_unsupported_total": state.get("expected_unsupported_total", 0),
             "profile": state.get("profile"),
             "suite_timeout": state.get("suite_timeout"),
+            "gpu_sm_clock_mhz": state.get("gpu_sm_clock_mhz"),
+            "gpu_mem_clock_mhz": state.get("gpu_mem_clock_mhz"),
             "hardware_key": state.get("hardware_key"),
             "allow_portable_expectations_update": bool(state.get("allow_portable_expectations_update", False)),
             "updated_at": state.get("updated_at"),
@@ -1462,21 +1579,23 @@ def _command_stop(args: argparse.Namespace) -> int:
 
 def _command_run_worker(args: argparse.Namespace) -> int:
     repo_root = Path(__file__).resolve().parents[1]
-    run_root = (args.run_root or _default_run_root(repo_root)).resolve()
     queue_root = (args.queue_root or _default_queue_root(repo_root)).resolve()
     queue_root.mkdir(parents=True, exist_ok=True)
     paths = _queue_paths(queue_root)
     lock_handle = _lock_queue(queue_root)
     try:
         state = _load_state(paths["state"])
+        # The worker that `start` spawns passes no --run-root, so this keeps the
+        # value saved in state.json. Only a manual `run-worker --run-root` changes it.
+        run_root = _resolve_run_root(repo_root, state, args.run_root)
         if not state:
             state = _initialize_state(
                 run_root=run_root,
                 queue_root=queue_root,
-                profile="none",
-                suite_timeout=0,
-                gpu_sm_clock_mhz=1965,
-                gpu_mem_clock_mhz=3996,
+                profile=DEFAULT_PROFILE,
+                suite_timeout=DEFAULT_SUITE_TIMEOUT_SECONDS,
+                gpu_sm_clock_mhz=DEFAULT_GPU_SM_CLOCK_MHZ,
+                gpu_mem_clock_mhz=DEFAULT_GPU_MEM_CLOCK_MHZ,
                 allow_portable_expectations_update=False,
             )
         state["run_root"] = str(run_root)
@@ -1486,7 +1605,7 @@ def _command_run_worker(args: argparse.Namespace) -> int:
         _persist_state(paths, state)
     finally:
         _unlock_queue(lock_handle)
-    _log_message(paths["queue_log"], f"worker loop entered pid={os.getpid()}")
+    _log_message(paths["queue_log"], f"worker loop entered pid={os.getpid()} run_root={run_root}")
 
     env_info = detect_execution_environment()
     execution_environment = env_info.kind
@@ -1530,10 +1649,12 @@ def _command_run_worker(args: argparse.Namespace) -> int:
             _log_message(paths["queue_log"], "worker exiting; queue is empty")
             return 0
 
+        # Read per target, like the bench settings, so a `start` or `enqueue`
+        # that changes the run root while this worker runs takes effect here.
         target_record = _run_target(
             repo_root=repo_root,
             queue_root=queue_root,
-            run_root=run_root,
+            run_root=Path(state["run_root"]),
             target=target,
             state=state,
             execution_environment=execution_environment,

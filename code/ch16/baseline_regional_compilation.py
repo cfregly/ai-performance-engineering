@@ -29,6 +29,17 @@ MODEL_CANDIDATES: List[Dict[str, Any]] = [
 ]
 REGIONAL_COMPILATION_CHOICE_LABEL = "3B (16x3072)"
 
+# Both sides run the same bf16 operations on the same seeded weights and input.
+# The optimized side calls each layer through nested_compile_region, which runs the
+# layer unchanged outside torch.compile, and replays the forward as one CUDA graph.
+# At this config on the CPU the two forwards match bit for bit. The output has a
+# standard deviation near 1.3 and a peak near 6.3. Sixteen bf16 residual layers
+# move the output up to 0.095 from an FP64 forward, which uses about half of this
+# bound. The bound rejects an all-zero output, one scaled by 0.9 and one that
+# skips the last layer. The optimized file imports this bound because the harness
+# rejects an optimized tolerance that is looser than the baseline's.
+REGIONAL_COMPILATION_OUTPUT_TOLERANCE = (3e-2, 1e-1)
+
 
 def select_regional_compilation_choice(
     label: str = REGIONAL_COMPILATION_CHOICE_LABEL,
@@ -96,7 +107,9 @@ class BaselineRegionalCompilationBenchmark(VerificationPayloadMixin, BaseBenchma
             device=self.device,
             dtype=torch.bfloat16,
         )
-        self._verify_input = self.inputs.detach().clone()
+        # benchmark_fn reads self.inputs. The jitter check perturbs the declared input
+        # in place, so the payload must declare this tensor, not a copy of it.
+        self._verify_input = self.inputs
         self._verify_output_buffer = torch.empty_like(self._verify_input, dtype=torch.float32)
         warn_benchmark_scaling(
             scaling_type="Model size",
@@ -144,7 +157,7 @@ class BaselineRegionalCompilationBenchmark(VerificationPayloadMixin, BaseBenchma
                 "fp8": False,
                 "tf32": torch.backends.cuda.matmul.allow_tf32,
             },
-            output_tolerance=(0.1, 1.0),
+            output_tolerance=REGIONAL_COMPILATION_OUTPUT_TOLERANCE,
         )
 
     def teardown(self) -> None:

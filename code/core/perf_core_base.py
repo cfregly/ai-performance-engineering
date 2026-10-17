@@ -1458,13 +1458,19 @@ class PerformanceCoreBase:
             result["cutlass"]["path"] = str(cutlass_path)
             try:
                 content = version_h.read_text()
-                components = dict(re.findall(
-                    r"^\s*#\s*define\s+CUTLASS_VERSION_(MAJOR|MINOR|PATCH)\s+(\d+)\b",
+                # Upstream version.h defines CUTLASS_MAJOR, CUTLASS_MINOR and
+                # CUTLASS_PATCH. CUTLASS_VERSION is an expression built from them.
+                definitions = re.findall(
+                    r"^\s*#\s*define\s+CUTLASS_(MAJOR|MINOR|PATCH)\s+(\d+)\b",
                     content,
                     flags=re.MULTILINE,
-                ))
-                if set(components) != {"MAJOR", "MINOR", "PATCH"}:
-                    raise ValueError("missing or invalid CUTLASS version macro definitions")
+                )
+                components = dict(definitions)
+                if len(definitions) != 3 or set(components) != {"MAJOR", "MINOR", "PATCH"}:
+                    raise ValueError(
+                        "expected one numeric #define each for CUTLASS_MAJOR, "
+                        "CUTLASS_MINOR and CUTLASS_PATCH"
+                    )
                 result["cutlass"]["version"] = ".".join(
                     str(int(components[part])) for part in ("MAJOR", "MINOR", "PATCH")
                 )

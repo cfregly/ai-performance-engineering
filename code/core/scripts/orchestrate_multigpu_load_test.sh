@@ -55,14 +55,13 @@ fi
 echo ""
 echo "NCCL Configuration:"
 echo "  NCCL_NVLS_ENABLE: ${NCCL_NVLS_ENABLE:-not set}"
-echo "  NCCL_NVLINK_TCE_ENABLE: ${NCCL_NVLINK_TCE_ENABLE:-not set}"
 echo "  NCCL_P2P_LEVEL: ${NCCL_P2P_LEVEL:-not set}"
 
 # Set optimal NCCL settings if not already set
+# NCCL finds NVLink and NVLink-C2C through topology discovery. It has no
+# environment switch that turns either link on.
 export NCCL_PROTO="${NCCL_PROTO:-Simple}"
 export NCCL_ALGO="${NCCL_ALGO:-Tree,Ring,NVLS}"
-export NCCL_NVLINK_C2C_ENABLE="${NCCL_NVLINK_C2C_ENABLE:-1}"
-export NCCL_NVLINK_TCE_ENABLE="${NCCL_NVLINK_TCE_ENABLE:-1}"
 export NCCL_NVLS_ENABLE="${NCCL_NVLS_ENABLE:-1}"
 export NCCL_P2P_LEVEL="${NCCL_P2P_LEVEL:-NVL}"
 

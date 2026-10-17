@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -61,12 +62,43 @@ class DataLoadingAnalysisProviderTests(unittest.TestCase):
             "hardware : fallback platform\n"
         )
 
-        with mock.patch.object(data_loading, "Path", return_value=cpuinfo_path):
+        with (
+            mock.patch.object(data_loading, "Path", return_value=cpuinfo_path),
+            mock.patch.object(data_loading, "host_grace_soc_id", return_value=None),
+        ):
             observation = data_loading.observe_cpu()
 
         self.assertEqual(observation.model, "NVIDIA Grace CPU Superchip")
-        self.assertTrue(observation.is_grace)
-        self.assertEqual(observation.grace_status, "observed")
+        # Model text is not evidence of Grace. Only an NVIDIA SoC ID is.
+        self.assertIsNone(observation.is_grace)
+        self.assertEqual(observation.grace_status, "not_observed")
+
+    def test_nvidia_soc_id_establishes_grace_and_cpuinfo_text_does_not(self) -> None:
+        from core.common import grace_platform
+
+        cpuinfo_path = mock.Mock()
+        with tempfile.TemporaryDirectory() as soc_bus:
+            soc0 = Path(soc_bus) / "soc0"
+            soc0.mkdir()
+            with (
+                mock.patch.object(data_loading, "Path", return_value=cpuinfo_path),
+                mock.patch.object(grace_platform, "_SOC_BUS_DIR", Path(soc_bus)),
+                mock.patch.object(grace_platform.platform, "machine", return_value="aarch64"),
+            ):
+                # Real Grace kernels print only Arm part numbers in /proc/cpuinfo.
+                cpuinfo_path.read_text.return_value = "CPU implementer : 0x41\nCPU part : 0xd4f\n"
+                (soc0 / "soc_id").write_text("jep106:036b:0241\n", encoding="utf-8")
+                grace = data_loading.observe_cpu()
+
+                cpuinfo_path.read_text.return_value = "model name : NVIDIA Grace CPU Superchip\n"
+                (soc0 / "soc_id").write_text("jep106:0426:8241\n", encoding="utf-8")
+                other_vendor = data_loading.observe_cpu()
+
+        self.assertTrue(grace.is_grace)
+        self.assertEqual(grace.grace_status, "observed")
+        self.assertIn("jep106:036b:0241", grace.provenance)
+        self.assertIsNone(other_vendor.is_grace)
+        self.assertEqual(other_vendor.grace_status, "not_observed")
 
     def test_generic_arm_or_nvidia_text_does_not_invent_grace(self) -> None:
         cpuinfo_path = mock.Mock()
@@ -76,6 +108,7 @@ class DataLoadingAnalysisProviderTests(unittest.TestCase):
 
         with (
             mock.patch.object(data_loading, "Path", return_value=cpuinfo_path),
+            mock.patch.object(data_loading, "host_grace_soc_id", return_value=None),
             mock.patch.object(data_loading.platform, "machine", return_value="aarch64"),
             mock.patch.object(data_loading.os, "cpu_count", return_value=144),
         ):

@@ -591,7 +591,7 @@ def _run_cuda_reduced_group_block_scores(
     use_cutlass: bool = False,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     # The grouped Top-K score reduces query heads before selection, so the
-    # backward benchmark can score the reduced Q tile directly instead of
+    # CUDA path scores the reduced Q tile directly in both modes instead of
     # materializing all GQA rows and summing them after GEMM.
     q_sum = _group_q(q, workload).sum(dim=3, dtype=torch.float32).contiguous()
     block_k = _build_block_k_reduced(k, workload)
@@ -672,7 +672,7 @@ def _triton_group_backward(
     )
 
 
-def _cutlass_group_backward(
+def _cuda_reduced_group_backward(
     q_sum_saved: torch.Tensor,
     block_k_saved: torch.Tensor,
     probs: torch.Tensor,
@@ -758,7 +758,7 @@ class CudaTopKSelectionFunction(torch.autograd.Function):
     def backward(ctx, grad_probs: torch.Tensor, grad_indices: Optional[torch.Tensor]):
         del grad_indices
         q_sum_saved, block_k_saved, probs, topk_indices = ctx.saved_tensors
-        grad_q, grad_k = _cutlass_group_backward(
+        grad_q, grad_k = _cuda_reduced_group_backward(
             q_sum_saved=q_sum_saved,
             block_k_saved=block_k_saved,
             probs=probs,
@@ -863,10 +863,9 @@ class TopKKernelBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
         if self.backend == "cuda":
             _validate_cuda_backend_workload(self.workload)
-            if self.workload.mode == "forward":
-                from labs.top_k_kernel.top_k_kernel_extension import load_top_k_kernel_extension
+            from labs.top_k_kernel.top_k_kernel_extension import load_top_k_kernel_extension
 
-                load_top_k_kernel_extension()
+            load_top_k_kernel_extension()
 
         if self.backend in {"triton", "cuda"}:
             if self.workload.mode == "forward":

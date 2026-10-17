@@ -12,7 +12,7 @@ except Exception:  # pragma: no cover - optional per-environment tweak
 
 
 import time
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 import GPUtil
 import psutil
@@ -20,10 +20,15 @@ import torch
 import torch.cuda.nvtx as nvtx
 from core.profiling.nvtx_helper import standardize_nvtx_label
 
-from core.harness.hardware_capabilities import detect_capabilities
+from core.harness.hardware_capabilities import HardwareCapabilities, detect_capabilities
 
 
 _DATACENTER_BLACKWELL_SM_VERSIONS = frozenset({"sm_100", "sm_103"})
+# Capability-probe labels for Blackwell GPUs other than GB10. "blackwell" is
+# SM 10.x below 10.3 and SM 11.x, "blackwell_ultra" is SM 10.3 (B300, GB300), and
+# "blackwell_consumer" is SM 12.0 (GeForce RTX 50 and RTX PRO). The probe labels
+# the SM 12.1 GB10 superchip "grace_blackwell", which has its own branch.
+_BLACKWELL_GPU_ARCHITECTURES = frozenset({"blackwell", "blackwell_ultra", "blackwell_consumer"})
 
 
 def _is_b200_or_b300(gpu_info: Dict[str, Any]) -> bool:
@@ -36,11 +41,144 @@ def _effective_copy_bandwidth_gbps(
     iterations: int,
     elapsed_ms: float,
 ) -> float:
-    """Compute aggregate HBM read+write traffic for a device-to-device copy."""
+    """Compute aggregate device-memory read+write traffic for a device-to-device copy."""
     if size_bytes <= 0 or iterations <= 0 or elapsed_ms <= 0:
         raise ValueError("copy size, iteration count, and elapsed time must be positive")
     traffic_bytes = 2 * size_bytes * iterations
     return traffic_bytes / (elapsed_ms / 1000.0) / 1e9
+
+
+def _measure_copy_bandwidth_gbps(
+    src: torch.Tensor,
+    dst: torch.Tensor,
+    *,
+    iterations: int,
+    warmup_iterations: int,
+) -> float:
+    """Time device-to-device copies on the current stream after untimed warmup copies."""
+    if iterations <= 0 or warmup_iterations <= 0:
+        raise ValueError("timed and warmup copy counts must be positive")
+    if src.device.type != "cuda" or dst.device != src.device:
+        raise ValueError("copy bandwidth needs source and destination on the same CUDA device")
+    if src.shape != dst.shape or src.dtype != dst.dtype:
+        raise ValueError("copy bandwidth needs source and destination with the same shape and dtype")
+
+    with torch.cuda.device(src.device):
+        # The first copy pays one-time costs such as lazy kernel loading.
+        for _ in range(warmup_iterations):
+            dst.copy_(src)
+        torch.cuda.synchronize()
+
+        start = torch.cuda.Event(enable_timing=True)
+        end = torch.cuda.Event(enable_timing=True)
+        start.record()
+        for _ in range(iterations):
+            dst.copy_(src)
+        end.record()
+        end.synchronize()
+
+    return _effective_copy_bandwidth_gbps(
+        src.numel() * src.element_size(),
+        iterations,
+        start.elapsed_time(end),
+    )
+
+
+def _memory_specification_lines(gpu_info: Dict[str, Any]) -> List[str]:
+    """Format detected memory sizes. Unified memory appears only when the probe reports it."""
+    l2_cache = gpu_info.get("l2_cache_size") or 0
+    lines = [
+        f"• Shared Memory per Block: {gpu_info['max_shared_memory_per_block'] / 1024:.1f} KB",
+        f"• Shared Memory per SM: {gpu_info['max_shared_memory_per_sm'] / 1024:.1f} KB",
+        f"• L2 Cache Size: {l2_cache / 1024:.1f} KB",
+        f"• Global Memory: {gpu_info['total_memory_gb']:.1f} GB",
+    ]
+    if gpu_info.get("hbm3e_memory"):
+        bandwidth_tbps = gpu_info.get("memory_bandwidth_tbps")
+        bandwidth = f"{bandwidth_tbps} TB/s" if bandwidth_tbps else "Unknown"
+        lines.append(f"• HBM3e Bandwidth: {bandwidth}")
+    max_unified_memory_tb = gpu_info.get("max_unified_memory_tb")
+    if max_unified_memory_tb is not None:
+        lines.append(f"• Unified Memory Budget: {max_unified_memory_tb} TB")
+    return lines
+
+
+def _memory_hierarchy_lines(gpu_info: Dict[str, Any]) -> List[str]:
+    """List memory levels from fastest to slowest. HBM3e is named only when the probe reports it."""
+    device_memory = "HBM3e Memory" if gpu_info.get("hbm3e_memory") else "Device Memory"
+    return [
+        "1. Registers (per-thread)",
+        "2. Shared Memory (per-block)",
+        "3. L1 Cache (per-SM)",
+        "4. L2 Cache (global)",
+        f"5. {device_memory} (global)",
+        "6. CPU Memory (via unified memory)",
+    ]
+
+
+def _tma_hardware_present(cap: HardwareCapabilities) -> bool:
+    """Return whether the GPU has TMA hardware, which every GPU from compute capability 9.0 on has."""
+    major, dot, minor = cap.compute_capability.partition(".")
+    if not (dot and major.isdigit() and minor.isdigit()):
+        raise ValueError(
+            f"compute capability must look like '10.0', got {cap.compute_capability!r} for {cap.sm_version}"
+        )
+    return int(major) >= 9
+
+
+def _tma_feature_lines(cap: HardwareCapabilities) -> List[str]:
+    """Report TMA support, or warn when the hardware exists but the toolkit cannot use it.
+
+    The capability probe sets tma_supported to False whenever its ptxas check
+    fails. So tma_supported cannot show that the hardware exists, and the
+    hardware check uses the compute capability instead, as the probe does.
+    """
+    if cap.tma_ready:
+        return [" TMA (Tensor Memory Accelerator)"]
+    if cap.tma_compiler_supported or not _tma_hardware_present(cap):
+        return []
+    lines = [
+        " ⚠  TMA hardware present but compiler support is disabled. "
+        "The capability probe could not assemble a tensormap instruction with ptxas."
+    ]
+    lines.extend(
+        f"    {note.splitlines()[0]}" for note in cap.notes if note.startswith("TMA probe:")
+    )
+    return lines
+
+
+def _blackwell_feature_lines(cap: HardwareCapabilities) -> List[str]:
+    """Describe the Blackwell features that the capability probe reports for this GPU."""
+    lines: List[str] = []
+    if cap.architecture in _BLACKWELL_GPU_ARCHITECTURES:
+        lines.append(f" This is a {cap.name} GPU")
+        lines.append(f" Compute Capability: {cap.compute_capability} ({cap.sm_version})")
+        lines.append(f" Memory: {cap.total_memory_gb:.1f} GB")
+        if cap.memory_bandwidth_tbps:
+            lines.append(f" Memory Bandwidth: {cap.memory_bandwidth_tbps:.2f} TB/s")
+        lines.append(f" Tensor Cores: {cap.tensor_cores}")
+        lines.extend(_tma_feature_lines(cap))
+        if cap.nvlink_c2c:
+            lines.append(" NVLink-C2C (Grace CPU ↔ Blackwell GPU coherent link)")
+        if cap.max_unified_memory_tb:
+            lines.append(f" Unified Memory Budget: {cap.max_unified_memory_tb} TB")
+    elif cap.architecture == "grace_blackwell":
+        lines.append(f" This is a Grace-Blackwell GPU ({cap.name})")
+        lines.append(f" Compute Capability: {cap.compute_capability} ({cap.sm_version})")
+        lines.append(f" Memory: {cap.total_memory_gb:.1f} GB")
+        bandwidth = cap.memory_bandwidth_tbps * 1000 if cap.memory_bandwidth_tbps else None
+        bandwidth_str = f"{bandwidth:.1f} GB/s" if bandwidth else "Unknown"
+        lines.append(f" Memory Bandwidth: {bandwidth_str}")
+        lines.append(f" Tensor Cores: {cap.tensor_cores}")
+        if cap.nvlink_c2c:
+            lines.append(" NVLink-C2C fabric available")
+        lines.append(" Stream-ordered memory APIs supported")
+        lines.extend(_tma_feature_lines(cap))
+    else:
+        lines.append("This is not a Blackwell/Grace-Blackwell GPU")
+        lines.append(f" GPU: {cap.device_name}")
+        lines.append(f" Compute Capability: {cap.compute_capability}")
+    return lines
 
 
 def _gemm_throughput_tflops(size: int, elapsed_seconds: float) -> float:
@@ -162,39 +300,12 @@ def demonstrate_blackwell_features() -> None:
         print("CUDA not available, skipping Blackwell features")
         return
 
-    if cap.architecture in {"blackwell", "blackwell_ultra"}:
-        print(f" This is a {cap.name} GPU")
-        print(f" Compute Capability: {cap.compute_capability} ({cap.sm_version})")
-        print(f" Memory: {cap.total_memory_gb:.1f} GB")
-        if cap.memory_bandwidth_tbps:
-            print(f" Memory Bandwidth: {cap.memory_bandwidth_tbps:.2f} TB/s")
-        print(f" Tensor Cores: {cap.tensor_cores}")
-        print(" TMA (Tensor Memory Accelerator)")
-        if cap.nvlink_c2c:
-            print(" NVLink-C2C (Grace CPU ↔ Blackwell GPU coherent link)")
-        if cap.max_unified_memory_tb:
-            print(f" Unified Memory Budget: {cap.max_unified_memory_tb} TB")
-    elif cap.architecture == "grace_blackwell":
-        print(f" This is a Grace-Blackwell GPU ({cap.name})")
-        print(f" Compute Capability: {cap.compute_capability} ({cap.sm_version})")
-        print(f" Memory: {cap.total_memory_gb:.1f} GB")
-        bandwidth = cap.memory_bandwidth_tbps * 1000 if cap.memory_bandwidth_tbps else None
-        bandwidth_str = f"{bandwidth:.1f} GB/s" if bandwidth else "Unknown"
-        print(f" Memory Bandwidth: {bandwidth_str}")
-        print(f" Tensor Cores: {cap.tensor_cores}")
-        if cap.nvlink_c2c:
-            print(" NVLink-C2C fabric available")
-        print(" Stream-ordered memory APIs supported")
-        if not cap.tma_compiler_supported:
-            print(" ⚠  TMA hardware present but compiler support is disabled (see README.md caveats).")
-    else:
-        print("This is not a Blackwell/Grace-Blackwell GPU")
-        print(f" GPU: {cap.device_name}")
-        print(f" Compute Capability: {cap.compute_capability}")
+    for line in _blackwell_feature_lines(cap):
+        print(line)
 
 
 def benchmark_memory_bandwidth() -> None:
-    """Benchmark memory bandwidth to demonstrate HBM3e performance."""
+    """Measure device-memory copy bandwidth and dense GEMM throughput."""
     if not torch.cuda.is_available():
         print("CUDA not available, skipping memory benchmark")
         return
@@ -207,27 +318,15 @@ def benchmark_memory_bandwidth() -> None:
         num_elements = size_bytes // 2  # float16
         src = torch.empty(num_elements, device="cuda", dtype=torch.float16)
         dst = torch.empty_like(src)
-        torch.cuda.synchronize()
-
-        start = torch.cuda.Event(enable_timing=True)
-        end = torch.cuda.Event(enable_timing=True)
-        iterations = 10
-
-        start.record()
-        for _ in range(iterations):
-            dst.copy_(src)
-        end.record()
-        end.synchronize()
-
-        elapsed_ms = start.elapsed_time(end)
-        bandwidth_gbps = _effective_copy_bandwidth_gbps(
-            size_bytes,
-            iterations,
-            elapsed_ms,
+        bandwidth_gbps = _measure_copy_bandwidth_gbps(
+            src,
+            dst,
+            iterations=10,
+            warmup_iterations=2,
         )
         print(
             f"Copy {size_gb:2d} GiB: {bandwidth_gbps / 1000:.2f} TB/s "
-            "(aggregate HBM read + write)"
+            "(aggregate device-memory read + write)"
         )
 
     sizes = [1024, 2048, 4096]
@@ -322,23 +421,12 @@ def demonstrate_memory_hierarchy() -> None:
     gpu_info = get_gpu_info()
 
     print("Memory Hierarchy (from fastest to slowest):")
-    print("1. Registers (per-thread)")
-    print("2. Shared Memory (per-block)")
-    print("3. L1 Cache (per-SM)")
-    print("4. L2 Cache (global)")
-    print("5. HBM3e Memory (global)")
-    print("6. CPU Memory (via unified memory)")
+    for line in _memory_hierarchy_lines(gpu_info):
+        print(line)
 
     print("\nMemory Specifications:")
-    print(f"• Shared Memory per Block: {gpu_info['max_shared_memory_per_block'] / 1024:.1f} KB")
-    print(f"• Shared Memory per SM: {gpu_info['max_shared_memory_per_sm'] / 1024:.1f} KB")
-    l2_cache = gpu_info.get("l2_cache_size") or 0
-    print(f"• L2 Cache Size: {l2_cache / 1024:.1f} KB")
-    print(f"• Global Memory: {gpu_info['total_memory_gb']:.1f} GB")
-
-    if gpu_info.get("hbm3e_memory"):
-        print(f"• HBM3e Bandwidth: {gpu_info['memory_bandwidth_tbps']} TB/s")
-        print("• Unified Memory: 30 TB total")
+    for line in _memory_specification_lines(gpu_info):
+        print(line)
 
 
 def demonstrate_profiling_capabilities() -> None:

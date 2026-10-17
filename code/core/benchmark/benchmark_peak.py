@@ -114,6 +114,12 @@ def _low_precision_autocast(recipe):
     return te.fp8_autocast(enabled=True, fp8_recipe=recipe)
 
 
+def _require_positive_iterations(iterations: int) -> None:
+    # Zero timed calls would report 0 TFLOPS or leave no measured output to describe.
+    if isinstance(iterations, bool) or not isinstance(iterations, int) or iterations <= 0:
+        raise ValueError("iterations must be a positive integer")
+
+
 def maybe_force_triton_arch() -> None:
     """Compatibility entrypoint: never retarget a device or rewrite generated PTX.
 
@@ -212,6 +218,7 @@ def measure_hbm_bandwidth(device: torch.device = None, size_gb: float = 4.0, ite
 
 def measure_fp16_compute(device: torch.device = None, matrix_size: int = 8192, iterations: int = 20) -> dict:
     """Measure FP16 compute TFLOPS."""
+    _require_positive_iterations(iterations)
     if device is None:
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
@@ -263,6 +270,7 @@ def measure_fp16_compute(device: torch.device = None, matrix_size: int = 8192, i
 
 def measure_bf16_compute(device: torch.device = None, matrix_size: int = 8192, iterations: int = 20) -> dict:
     """Measure BF16 compute TFLOPS."""
+    _require_positive_iterations(iterations)
     if device is None:
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
@@ -315,6 +323,7 @@ def measure_bf16_compute(device: torch.device = None, matrix_size: int = 8192, i
 
 def measure_fp4_compute(device: torch.device = None, matrix_size: int = 8192, iterations: int = 20) -> dict:
     """Measure forward inference TFLOPS using Transformer Engine NVFP4."""
+    _require_positive_iterations(iterations)
     if device is None:
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
@@ -403,6 +412,7 @@ def measure_fp4_compute(device: torch.device = None, matrix_size: int = 8192, it
 
 def measure_fp6_compute(device: torch.device = None, matrix_size: int = 8192, iterations: int = 20) -> dict:
     """Measure FP6 compute TFLOPS using Transformer Engine NVFP6 (if available)."""
+    _require_positive_iterations(iterations)
     if device is None:
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
@@ -469,6 +479,7 @@ def measure_fp6_compute(device: torch.device = None, matrix_size: int = 8192, it
 
 def measure_fp8_compute(device: torch.device = None, matrix_size: int = 8192, iterations: int = 20) -> dict:
     """Measure FP8 compute TFLOPS using Transformer Engine (if available)."""
+    _require_positive_iterations(iterations)
     if device is None:
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     

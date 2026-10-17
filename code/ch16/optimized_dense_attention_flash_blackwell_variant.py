@@ -54,7 +54,6 @@ class DenseAttentionFlashBlackwellVariantBenchmark(VerificationPayloadMixin, Bas
         self.num_heads = 16
         self.head_dim = self.hidden_dim // self.num_heads
         self.dtype = torch.float16
-        self._verify_input: Optional[torch.Tensor] = None
         self._verify_output_buffer: Optional[torch.Tensor] = None
         self._enable_nvtx = False
         self._payload_parameter_count = 0
@@ -96,7 +95,6 @@ class DenseAttentionFlashBlackwellVariantBenchmark(VerificationPayloadMixin, Bas
             device=device,
             dtype=self.dtype,
         )
-        self._verify_input = self.inputs.detach().clone()
         self._qkv_buffer = torch.empty(
             self.batch_size,
             self.seq_length,
@@ -171,17 +169,17 @@ class DenseAttentionFlashBlackwellVariantBenchmark(VerificationPayloadMixin, Bas
         with nvtx_range("optimized_dense_attention_flash_blackwell_variant", enable=self._enable_nvtx):
             with torch.inference_mode():
                 self.output = self._forward_flash()
-        if self._verify_input is None:
-            raise RuntimeError("Verification input missing")
 
     def capture_verification_payload(self) -> None:
-        if self.output is None or self._verify_input is None or self._verify_output_buffer is None:
+        if self.output is None or self.inputs is None or self._verify_output_buffer is None:
             raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
         self._verify_output_buffer.copy_(self.output)
+        # Declare the tensor that benchmark_fn reads. The jitter check perturbs the
+        # declared input, so a separate copy would leave the output unchanged.
         self._set_verification_payload(
-            inputs={"input": self._verify_input},
+            inputs={"input": self.inputs},
             output=self._verify_output_buffer,
-            batch_size=self._verify_input.shape[0],
+            batch_size=self.inputs.shape[0],
             parameter_count=self._payload_parameter_count,
             precision_flags={
                 "fp16": True,

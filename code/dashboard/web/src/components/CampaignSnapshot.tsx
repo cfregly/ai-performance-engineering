@@ -130,7 +130,7 @@ export function CampaignSnapshot({ data }: { data: CampaignDashboardResult }) {
               <p className="text-sm text-white/50">No active candidates.</p>
             ) : (
               data.active_beam.map((experiment) => (
-                <div key={experiment.experiment_id} className="rounded-lg border border-white/5 bg-white/[0.02] p-4">
+                <div key={experiment.experiment_id} className="rounded-lg border border-white/5 bg-white/2 p-4">
                   <ExperimentBadge experiment={experiment} />
                   <p className="mt-2 text-sm text-white/70">{experiment.hypothesis}</p>
                   <p className="mt-2 text-xs text-white/40">
@@ -155,7 +155,7 @@ export function CampaignSnapshot({ data }: { data: CampaignDashboardResult }) {
               <p className="text-sm text-white/50">No candidate has passed every gate.</p>
             ) : (
               data.frontier.map((experiment) => (
-                <div key={experiment.experiment_id} className="flex items-start justify-between gap-4 rounded-lg border border-white/5 bg-white/[0.02] p-4">
+                <div key={experiment.experiment_id} className="flex items-start justify-between gap-4 rounded-lg border border-white/5 bg-white/2 p-4">
                   <div>
                     <ExperimentBadge experiment={experiment} />
                     <p className="mt-2 text-xs text-white/50">{experiment.hypothesis}</p>
@@ -216,8 +216,8 @@ export function CampaignSnapshot({ data }: { data: CampaignDashboardResult }) {
                       <td className="px-5 py-3">
                         <div className="flex items-center gap-2 text-white">
                           <span>{row.case_id}</span>
-                          {row.primary && <span className="rounded bg-accent-primary/20 px-1.5 py-0.5 text-[10px] text-accent-primary">Primary</span>}
-                          {row.frozen && <span className={`rounded px-1.5 py-0.5 text-[10px] ${row.frozen_case_violation ? 'bg-accent-danger/20 text-accent-danger' : 'bg-white/10 text-white/50'}`}>Frozen</span>}
+                          {row.primary && <span className="rounded-sm bg-accent-primary/20 px-1.5 py-0.5 text-[10px] text-accent-primary">Primary</span>}
+                          {row.frozen && <span className={`rounded-sm px-1.5 py-0.5 text-[10px] ${row.frozen_case_violation ? 'bg-accent-danger/20 text-accent-danger' : 'bg-white/10 text-white/50'}`}>Frozen</span>}
                         </div>
                       </td>
                       <td className="px-5 py-3 text-right font-mono text-white/70">{row.control_median.toPrecision(5)}</td>

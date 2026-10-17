@@ -4,7 +4,7 @@ run_metadata:
   use_case: engineering_debug
   owner: nanochat audit remediation
   ticket_or_epic: W1-003/034/035/036/085/121
-  status: CPU validated; CUDA qualification HOLD
+  status: CPU validated. CUDA qualification HOLD
 comparison_axis:
   variable_under_test: decode_execution_path
   control: eager dynamic-prefix KV cache
@@ -18,9 +18,13 @@ comparison_axis:
   - cache capacity
   - warmup
   - random seed
-  declared_difference: CUDA graphs use fixed-capacity masked SDPA; eager may use FA3
-    or SDPA. Record actual backend rather than attributing all delta solely to launch
-    overhead.
+  declared_difference: >-
+    CUDA graphs use fixed-capacity masked SDPA. Eager may use PyTorch SDPA or the
+    FA2 varlen callable only when backend metadata is exactly flash_attn_2_cuda.
+    Cache alignment rounds one contiguous allocation and does not create a page
+    table. The persistent mode adds a joined side stream and reusable buffers.
+    Record the actual backend and execution mode rather than attributing all delta
+    solely to launch overhead.
 workload:
   type: inference
   name: nanochat dense single-token decode
@@ -30,8 +34,8 @@ workload:
     precision:
     - fp32
     - bf16
-    weights_source: torch seed718 constructor weights; nonzero output head asserted;
-      representative checkpoint requires immutable hash
+    weights_source: torch seed718 constructor weights. Nonzero output head asserted.
+      Representative checkpoint requires immutable hash.
   input_distribution:
     prompt_tokens:
     - 1
@@ -72,7 +76,7 @@ workload:
     - 4
     model_checkpoint: pending immutable checkpoint hash
 execution:
-  image: local CPU environment; pinned CUDA image pending
+  image: local CPU environment. Pinned CUDA image pending.
   runtime_versions:
     driver: null
     cuda: null
@@ -120,9 +124,9 @@ measurement_policy:
     topology_recorded: true
     background_load_recorded: true
     status: 'required but not performed: no CUDA target'
-  trial_order: alternate matched A/B arms; retain every raw sample
-  timing_boundary: synchronized wall time including host submission/all CUDA streams;
-    capture setup separately, outside steady-state replay
+  trial_order: alternate matched A/B arms. Retain every raw sample.
+  timing_boundary: synchronized wall time including host submission and all CUDA streams.
+    Capture setup separately, outside steady-state replay.
 metrics:
   primary: per-step logits and KV state parity
   secondary:
@@ -150,7 +154,7 @@ artifacts:
   require_sha256: true
   provenance_signing:
     required: true
-    status: source hashes recorded; no signing or GPU artifact available
+    status: source hashes recorded. No signing or GPU artifact available.
   publication_packet:
     include_methodology_writeup: true
     include_comparison_report: true

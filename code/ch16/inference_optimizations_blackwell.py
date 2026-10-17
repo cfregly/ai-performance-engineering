@@ -3,9 +3,9 @@ Inference Optimization Suite for Blackwell B200/B300
 ====================================================
 
 This module provides comprehensive inference optimizations leveraging:
-- PyTorch 2.10 FlexAttention
+- PyTorch FlexAttention
 - FP8 quantization for Blackwell
-- Dynamic batching with conditional CUDA graphs
+- Dynamic batching with dynamic-shape compilation
 - KV cache optimization for long context
 - Speculative decoding
 
@@ -17,7 +17,7 @@ Performance Targets (B200):
 - <10ms latency per token
 
 Requirements:
-- PyTorch 2.10+
+- PyTorch
 - Blackwell B200/B300
 - CUDA 13.0+
 
@@ -57,13 +57,25 @@ else:
     _flex_attention_wrapper = None
 
 
-if _flex_attention_wrapper is not None:
-    _FLEX_ATTENTION_FN = compile_callable(
-        _flex_attention_wrapper,
-        mode="reduce-overhead",
+def _compile_dynamic_flex_attention(fn):
+    # Decode changes the K/V length on every step. On the pinned PyTorch 2.9
+    # stack, CUDA Graph Trees tried to copy a length-7 input into a captured
+    # length-6 buffer before attention ran. Keep full-graph Inductor compilation
+    # and disable capture only for this dynamic region. Retire this policy only
+    # after test_cuda_flex_attention_cached_decode_matches_full_recompute passes
+    # 12 increasing K/V lengths with graph capture enabled.
+    return compile_callable(
+        fn,
+        mode=None,
         fullgraph=True,
         dynamic=True,
+        backend="inductor",
+        options={"triton.cudagraphs": False},
     )
+
+
+if _flex_attention_wrapper is not None:
+    _FLEX_ATTENTION_FN = _compile_dynamic_flex_attention(_flex_attention_wrapper)
 else:
     _FLEX_ATTENTION_FN = None
 
@@ -85,8 +97,8 @@ def _sliding_window_causal_mask(
     q_idx,
     kv_idx,
     *,
-    query_start: int,
-    window_size: int,
+    query_start: int | torch.Tensor,
+    window_size: int | torch.Tensor,
 ):
     """Return whether an absolute KV position is visible to a query."""
     query_position = q_idx + query_start
@@ -124,8 +136,11 @@ class DynamicQuantizedKVCache:
     Performance on B200:
     - 2x longer context (32K vs 16K)
     - Minimal accuracy loss (<0.5%)
+
+    update() returns keys and values in ``dtype``, which should match the
+    model's attention dtype. Storage uses FP8 when this PyTorch build has it.
     """
-    
+
     def __init__(
         self,
         num_layers: int,
@@ -142,7 +157,8 @@ class DynamicQuantizedKVCache:
         self.num_heads = num_heads
         self.head_dim = head_dim
         self.device = device
-        
+        self.compute_dtype = dtype
+
         # Use FP8 if available, otherwise FP16
         self.cache_dtype = FP8_E4M3 if FP8_AVAILABLE else dtype
         
@@ -166,7 +182,9 @@ class DynamicQuantizedKVCache:
         else:
             self.scales = None
         
-        # Current sequence length per batch
+        # One model forward appends the same tokens once per layer, so each
+        # layer keeps its own write offset per batch row. seq_lens and
+        # _seq_lens_host report the furthest offset any layer has reached.
         self.seq_lens = torch.zeros(max_batch_size, dtype=torch.long, device=device)
         self._batch_index_cache = torch.arange(max_batch_size, dtype=torch.long, device=device)
         self._batch_index_host = torch.empty(
@@ -176,6 +194,7 @@ class DynamicQuantizedKVCache:
             pin_memory=torch.device(device).type == "cuda",
         )
         self._seq_lens_host = [0] * max_batch_size
+        self._layer_seq_lens_host = [[0] * max_batch_size for _ in range(num_layers)]
         self._batch_index_list = [0] * max_batch_size
         self._batch_index_seen = [0] * max_batch_size
         self._batch_index_seen_token = 0
@@ -219,14 +238,17 @@ class DynamicQuantizedKVCache:
         for local_idx in range(batch_count):
             batch_index_list[local_idx] = int(batch_index_host[local_idx])
 
-    def _batch_rows_unique_and_same_length(self, batch_count: int) -> Tuple[bool, bool, int]:
+    def _batch_rows_unique_and_same_length(
+        self,
+        layer_lengths: list,
+        batch_count: int,
+    ) -> Tuple[bool, bool, int]:
         self._batch_index_seen_token += 1
         seen_token = self._batch_index_seen_token
         seen = self._batch_index_seen
         batch_index_list = self._batch_index_list
-        seq_lens_host = self._seq_lens_host
 
-        first_length = seq_lens_host[batch_index_list[0]]
+        first_length = layer_lengths[batch_index_list[0]]
         unique_rows = True
         same_length = True
         for local_idx in range(batch_count):
@@ -234,7 +256,7 @@ class DynamicQuantizedKVCache:
             if seen[cache_idx] == seen_token:
                 unique_rows = False
             seen[cache_idx] = seen_token
-            if seq_lens_host[cache_idx] != first_length:
+            if layer_lengths[cache_idx] != first_length:
                 same_length = False
         return unique_rows, same_length, first_length
     
@@ -247,17 +269,33 @@ class DynamicQuantizedKVCache:
         batch_indices: Optional[torch.Tensor] = None,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """
-        Update KV cache for a layer
-        
+        Append new keys and values for one layer and return that layer's history.
+
+        Each layer has its own write offset, so a model must call this once per
+        layer per forward with that layer's index.
+
         Args:
             layer_idx: Layer index
             key: New key tensor [batch, num_heads, new_seq_len, head_dim]
             value: New value tensor [batch, num_heads, new_seq_len, head_dim]
             batch_idx: Batch index
-            
+
         Returns:
-            Updated (key, value) tensors from cache
+            This layer's cached (key, value) for the requested rows. When rows
+            have different lengths, shorter rows are zero-padded to the longest
+            row, and the caller must mask each row's padded positions.
         """
+        if not 0 <= layer_idx < self.num_layers:
+            raise IndexError(
+                f"layer_idx {layer_idx} is outside the cache's {self.num_layers} layers"
+            )
+        if torch.is_grad_enabled() and (key.requires_grad or value.requires_grad):
+            raise RuntimeError(
+                "DynamicQuantizedKVCache.update received tensors that require grad. "
+                "Cache writes would chain every step into one autograd graph. "
+                "Run the forward under torch.inference_mode() or torch.no_grad()."
+            )
+        layer_lengths = self._layer_seq_lens_host[layer_idx]
         if batch_indices is None:
             cache_idx = int(batch_idx)
             batch_index_list = self._batch_index_list
@@ -315,7 +353,10 @@ class DynamicQuantizedKVCache:
             f"Batch size mismatch: key batch={key.shape[0]}, "
             f"indices={batch_count}"
         )
-        unique_rows, same_length, current_len = self._batch_rows_unique_and_same_length(batch_count)
+        unique_rows, same_length, current_len = self._batch_rows_unique_and_same_length(
+            layer_lengths,
+            batch_count,
+        )
         if unique_rows and same_length:
             new_seq_len = key.shape[2]
             end_pos = current_len + new_seq_len
@@ -326,8 +367,10 @@ class DynamicQuantizedKVCache:
                 )
 
             if FP8_AVAILABLE and key.dtype != FP8_E4M3:
-                k_scale = key.abs().amax(dim=(1, 3))
-                v_scale = value.abs().amax(dim=(1, 3))
+                # Scales stay float32 so fp16 and bf16 models can index-put
+                # them into the float32 scale table.
+                k_scale = key.abs().amax(dim=(1, 3)).to(torch.float32)
+                v_scale = value.abs().amax(dim=(1, 3)).to(torch.float32)
                 k_scale.masked_fill_(k_scale == 0, 1.0)
                 v_scale.masked_fill_(v_scale == 0, 1.0)
                 self.scales[
@@ -348,9 +391,18 @@ class DynamicQuantizedKVCache:
 
             self.cache[layer_idx, 0, batch_indices, :, current_len:end_pos, :] = k_store
             self.cache[layer_idx, 1, batch_indices, :, current_len:end_pos, :] = v_store
-            self.seq_lens[batch_indices] = end_pos
+            row_lengths = self._seq_lens_host
+            row_lengths_advanced = False
             for local_idx in range(batch_count):
-                self._seq_lens_host[batch_index_list[local_idx]] = end_pos
+                cache_idx = batch_index_list[local_idx]
+                layer_lengths[cache_idx] = end_pos
+                if end_pos > row_lengths[cache_idx]:
+                    row_lengths[cache_idx] = end_pos
+                    row_lengths_advanced = True
+            if row_lengths_advanced:
+                # A row that another layer already advanced past end_pos keeps
+                # its longer length.
+                self.seq_lens[batch_indices] = self.seq_lens[batch_indices].clamp_min(end_pos)
 
             cached_key = self.cache[layer_idx, 0, batch_indices, :, :end_pos, :]
             cached_value = self.cache[layer_idx, 1, batch_indices, :, :end_pos, :]
@@ -361,8 +413,8 @@ class DynamicQuantizedKVCache:
                 v_scale = self.scales[
                     layer_idx, 1, batch_indices, :end_pos
                 ].view(-1, 1, end_pos, 1)
-                cached_key = cached_key.to(torch.float32) * k_scale
-                cached_value = cached_value.to(torch.float32) * v_scale
+                cached_key = (cached_key.to(torch.float32) * k_scale).to(self.compute_dtype)
+                cached_value = (cached_value.to(torch.float32) * v_scale).to(self.compute_dtype)
             return cached_key, cached_value
         
         new_seq_len = key.shape[2]
@@ -378,7 +430,7 @@ class DynamicQuantizedKVCache:
             cache_idx_int = batch_index_list[local_idx]
             if next_length_seen[cache_idx_int] != seen_token:
                 next_length_seen[cache_idx_int] = seen_token
-                next_lengths[cache_idx_int] = self._seq_lens_host[cache_idx_int]
+                next_lengths[cache_idx_int] = layer_lengths[cache_idx_int]
             current_len = next_lengths[cache_idx_int]
             end_pos = current_len + new_seq_len
             if end_pos > self.max_seq_len:
@@ -392,7 +444,7 @@ class DynamicQuantizedKVCache:
             next_lengths[cache_idx_int] = end_pos
             max_end_pos = max(max_end_pos, end_pos)
 
-        return_dtype = torch.float32 if FP8_AVAILABLE else self.cache.dtype
+        return_dtype = self.compute_dtype
         return_shape = (batch_count, self.num_heads, max_end_pos, self.head_dim)
         if (
             self._updated_key_buffer is None
@@ -417,8 +469,8 @@ class DynamicQuantizedKVCache:
             v_slice = value[local_idx]
             
             if FP8_AVAILABLE and k_slice.dtype != FP8_E4M3:
-                k_scale = k_slice.abs().amax(dim=(0, 2))
-                v_scale = v_slice.abs().amax(dim=(0, 2))
+                k_scale = k_slice.abs().amax(dim=(0, 2)).to(torch.float32)
+                v_scale = v_slice.abs().amax(dim=(0, 2)).to(torch.float32)
                 k_scale.masked_fill_(k_scale == 0, 1.0)
                 v_scale.masked_fill_(v_scale == 0, 1.0)
                 self.scales[
@@ -439,9 +491,11 @@ class DynamicQuantizedKVCache:
             
             self.cache[layer_idx, 0, cache_idx_int, :, current_len:end_pos, :] = k_store
             self.cache[layer_idx, 1, cache_idx_int, :, current_len:end_pos, :] = v_store
-            self.seq_lens[cache_idx_int] = end_pos
-            self._seq_lens_host[cache_idx_int] = end_pos
-            
+            layer_lengths[cache_idx_int] = end_pos
+            if end_pos > self._seq_lens_host[cache_idx_int]:
+                self._seq_lens_host[cache_idx_int] = end_pos
+                self.seq_lens[cache_idx_int] = end_pos
+
             cached_key = self.cache[layer_idx, 0, cache_idx_int, :, :end_pos, :]
             cached_value = self.cache[layer_idx, 1, cache_idx_int, :, :end_pos, :]
             
@@ -469,9 +523,13 @@ class DynamicQuantizedKVCache:
             self.seq_lens.zero_()
             for cache_idx in range(self.max_batch_size):
                 self._seq_lens_host[cache_idx] = 0
+                for layer_lengths in self._layer_seq_lens_host:
+                    layer_lengths[cache_idx] = 0
         else:
             self.seq_lens[batch_idx] = 0
             self._seq_lens_host[batch_idx] = 0
+            for layer_lengths in self._layer_seq_lens_host:
+                layer_lengths[batch_idx] = 0
 
     def get_memory_usage(self, batch_idx: Optional[int] = None) -> int:
         """Return memory footprint in bytes."""
@@ -601,14 +659,23 @@ class OptimizedDecoderLayer(nn.Module):
         cache_key = (int(batch_size), int(self.num_heads), int(seq_len), int(total_len), device)
         block_mask = self._block_mask_cache.get(cache_key)
         if block_mask is None:
-            query_start = total_len - seq_len
+            query_start = torch.scalar_tensor(
+                total_len - seq_len,
+                dtype=torch.int64,
+                device=device,
+            )
+            window_size = torch.scalar_tensor(
+                self.window_size,
+                dtype=torch.int64,
+                device=device,
+            )
 
             def sliding_window_with_cache(b, h, q_idx, kv_idx):
                 return _sliding_window_causal_mask(
                     q_idx,
                     kv_idx,
                     query_start=query_start,
-                    window_size=self.window_size,
+                    window_size=window_size,
                 )
 
             block_mask = create_block_mask(
@@ -644,19 +711,23 @@ class OptimizedDecoderLayer(nn.Module):
         self,
         hidden_states: torch.Tensor,
         kv_cache: Optional[DynamicQuantizedKVCache] = None,
-        layer_idx: int = 0,
+        layer_idx: Optional[int] = None,
     ) -> torch.Tensor:
         """
         Forward pass with FlexAttention
-        
+
         Args:
             hidden_states: Input tensor [batch, seq_len, d_model]
             kv_cache: Optional KV cache
-            layer_idx: Layer index for cache
-            
+            layer_idx: This layer's slot in kv_cache. Required with kv_cache.
+
         Returns:
             Output tensor [batch, seq_len, d_model]
         """
+        if kv_cache is not None and layer_idx is None:
+            # A default slot would send every layer of a stack to the same
+            # cache history.
+            raise ValueError("OptimizedDecoderLayer needs an explicit layer_idx when kv_cache is given")
         batch_size, seq_len, _ = hidden_states.shape
         
         # Project to Q, K, V
@@ -738,16 +809,24 @@ class BlackwellInferencePipeline:
     Features:
     - FlexAttention with sliding window
     - FP8 quantized KV cache
-    - torch.compile with CUDA graphs
+    - torch.compile with dynamic shapes
     - Dynamic batching
-    
+
+    Model contract:
+    - The model exposes num_layers, d_model and num_heads, which size the cache.
+      num_layers counts the layers that call kv_cache.update.
+    - model.forward accepts kv_cache and calls kv_cache.update once per
+      attention layer with that layer's index. generate() and benchmark()
+      raise if any layer's cache length does not advance by exactly the
+      tokens of each forward.
+
     Performance Targets (B200):
     - >2000 tokens/second
     - 16K context support
     - <10ms latency per token
     - 50% memory reduction
     """
-    
+
     def __init__(
         self,
         model: nn.Module,
@@ -758,7 +837,8 @@ class BlackwellInferencePipeline:
         self.model = model
         self.max_batch_size = max_batch_size
         self.max_seq_len = max_seq_len
-        self.device = next(model.parameters()).device
+        first_parameter = next(model.parameters())
+        self.device = first_parameter.device
 
         forward_parameters = inspect.signature(model.forward).parameters.values()
         if not any(
@@ -771,13 +851,25 @@ class BlackwellInferencePipeline:
                 "so decode can consume the transferred cache"
             )
         
-        # Initialize KV cache
-        # Assume model has num_layers and d_model attributes
-        num_layers = getattr(model, 'num_layers', 32)
-        d_model = getattr(model, 'd_model', 4096)
-        num_heads = getattr(model, 'num_heads', 32)
+        missing_geometry = [
+            name for name in ("num_layers", "d_model", "num_heads") if not hasattr(model, name)
+        ]
+        if missing_geometry:
+            raise ValueError(
+                "BlackwellInferencePipeline sizes its KV cache from the model's "
+                "num_layers, d_model and num_heads attributes. Missing: "
+                + ", ".join(missing_geometry)
+            )
+        num_layers = int(model.num_layers)
+        d_model = int(model.d_model)
+        num_heads = int(model.num_heads)
+        if num_layers <= 0 or num_heads <= 0 or d_model <= 0 or d_model % num_heads != 0:
+            raise ValueError(
+                f"Invalid model geometry: num_layers={num_layers}, d_model={d_model}, "
+                f"num_heads={num_heads}. d_model must be a positive multiple of num_heads."
+            )
         head_dim = d_model // num_heads
-        
+
         self.kv_cache = DynamicQuantizedKVCache(
             num_layers=num_layers,
             max_batch_size=max_batch_size,
@@ -785,25 +877,25 @@ class BlackwellInferencePipeline:
             num_heads=num_heads,
             head_dim=head_dim,
             device=str(self.device),
+            dtype=first_parameter.dtype,
         )
         
         self._next_token_buffer: Optional[torch.Tensor] = None
         self._next_token_values: Optional[torch.Tensor] = None
         self._generated_token_buffer: Optional[torch.Tensor] = None
-        # Compile model with torch.compile (PyTorch 2.10)
+        # Compile the model with torch.compile. The KV length changes
+        # on every decode step, so the pipeline uses max autotuning without CUDA
+        # Graph Trees. Retire this policy only after the compile=True case in
+        # test_cuda_fp8_cache_serves_a_bf16_model_through_the_pipeline passes
+        # with graph capture enabled.
         if compile:
             print("Compiling model with torch.compile...")
             self.model = compile_model(
                 self.model,
-                mode="max-autotune",
+                mode="max-autotune-no-cudagraphs",
                 fullgraph=False,
                 dynamic=True,
                 backend="inductor",
-                options={
-                    "triton.cudagraphs": True,
-                    "triton.cudagraph_trees": True,
-                    "max_autotune_gemm_backends": "TRITON,CUTLASS,ATen",
-                },
             )
             print(" Model compiled")
         
@@ -817,6 +909,35 @@ class BlackwellInferencePipeline:
                 "Cache-aware model forward must return [batch, sequence, vocabulary] logits"
             )
         return logits
+
+    def _require_cache_positions(
+        self,
+        batch_size: int,
+        expected_len: int,
+        phase: str,
+        step: Optional[int] = None,
+    ) -> None:
+        """Raise unless every cache layer holds expected_len positions for each active row."""
+        all_layer_lengths = self.kv_cache._layer_seq_lens_host
+        if all(
+            layer_lengths[row] == expected_len
+            for layer_lengths in all_layer_lengths
+            for row in range(batch_size)
+        ):
+            return
+        wrong_layers = {
+            layer_idx: layer_lengths[:batch_size]
+            for layer_idx, layer_lengths in enumerate(all_layer_lengths)
+            if layer_lengths[:batch_size] != [expected_len] * batch_size
+        }
+        if step is not None:
+            phase = f"{phase} {step}"
+        raise RuntimeError(
+            f"After {phase}, every KV cache layer should hold {expected_len} positions "
+            f"for rows 0..{batch_size - 1}, but these layers hold other lengths "
+            f"(layer: lengths per row): {wrong_layers}. model.forward must call "
+            "kv_cache.update exactly once per attention layer with that layer's index."
+        )
 
     def _next_token_from_logits(self, logits_last: torch.Tensor) -> torch.Tensor:
         batch_size = logits_last.size(0)
@@ -836,7 +957,11 @@ class BlackwellInferencePipeline:
             or self._next_token_values.dtype != logits_last.dtype
             or self._next_token_values.size(0) < batch_size
         ):
-            self._next_token_values = torch.empty_like(logits_last[:, :1])
+            self._next_token_values = torch.empty(
+                self._next_token_buffer.shape,
+                dtype=logits_last.dtype,
+                device=logits_last.device,
+            )
         values = self._next_token_values[:batch_size]
         tokens = self._next_token_buffer[:batch_size]
         torch.max(logits_last, dim=-1, keepdim=True, out=(values, tokens))
@@ -880,28 +1005,36 @@ class BlackwellInferencePipeline:
         Returns:
             Generated token IDs [batch, seq_len + max_new_tokens]
         """
-        _, seq_len = input_ids.shape
-        
+        batch_size, seq_len = input_ids.shape
+        if batch_size > self.max_batch_size:
+            raise ValueError(
+                f"generate got {batch_size} rows, but the KV cache was built for "
+                f"max_batch_size={self.max_batch_size}"
+            )
+
         # Clear KV cache
         self.kv_cache.clear()
         if max_new_tokens <= 0:
             return input_ids
         output_ids = self._generated_output_buffer(input_ids, seq_len + max_new_tokens)
         output_ids[:, :seq_len].copy_(input_ids)
-        
+
         # Prefill phase (process all input tokens)
         logits = self._forward_with_kv_cache(input_ids)
+        self._require_cache_positions(batch_size, seq_len, "prefill")
         next_token = self._next_token_from_logits(logits[:, -1, :])
         output_ids[:, seq_len : seq_len + 1].copy_(next_token)
-        
+
         # Decode phase (autoregressive generation)
         for step in range(1, max_new_tokens):
             logits = self._forward_with_kv_cache(next_token)
+            self._require_cache_positions(batch_size, seq_len + step, "decode step", step)
             next_token = self._next_token_from_logits(logits[:, -1, :])
             output_ids[:, seq_len + step : seq_len + step + 1].copy_(next_token)
         
         return output_ids
     
+    @torch.inference_mode()
     def benchmark(self, seq_len: int = 1024, num_iterations: int = 100):
         """Benchmark inference performance"""
         print(f"\n=== Inference Benchmark (Blackwell B200) ===")
@@ -919,20 +1052,23 @@ class BlackwellInferencePipeline:
         for _ in range(10):
             self.kv_cache.clear()
             _ = self._forward_with_kv_cache(input_ids)
+            self._require_cache_positions(1, seq_len, "warmup prefill")
         torch.cuda.synchronize()
-        
+
         # Benchmark using CUDA Events for accurate GPU timing
         start_event = torch.cuda.Event(enable_timing=True)
         end_event = torch.cuda.Event(enable_timing=True)
         current_stream = torch.cuda.current_stream(self.device)
-        
+
         start_event.record(current_stream)
         for _ in range(num_iterations):
             self.kv_cache.clear()
             _ = self._forward_with_kv_cache(input_ids)
         end_event.record(current_stream)
         end_event.synchronize()
-        
+        # Checked once after the timed loop so the check adds no timed work.
+        self._require_cache_positions(1, seq_len, "timed prefill")
+
         total_time = start_event.elapsed_time(end_event) / 1000  # Convert ms to seconds
         avg_time = total_time / num_iterations * 1000  # ms per iteration
         tokens_per_sec = seq_len * num_iterations / total_time
@@ -945,10 +1081,10 @@ class BlackwellInferencePipeline:
         if FP8_AVAILABLE:
             print(f"\n FP8 KV cache enabled (50% memory savings)")
         
-        print(f" FlexAttention (2x faster than baseline)")
+        print(f" FlexAttention enabled")
         
         if self.compiled:
-            print(f" torch.compile with CUDA graphs")
+            print(f" torch.compile with dynamic shapes")
 
 
 # ============================================================================
@@ -987,42 +1123,57 @@ def compare_inference_methods():
     hidden_states = torch.randn(
         batch_size, seq_len, d_model,
         device=device,
-        dtype=torch.float16
+        dtype=layer.q_proj.weight.dtype,
     )
-    
-    # 1. Baseline (no optimizations)
-    print("\n1. Baseline (no cache, no FlexAttention)")
-    baseline_time = _benchmark_cuda_latency_ms(lambda: layer(hidden_states), 10)
-    print(f"   Time: {baseline_time:.2f} ms")
-    
-    # 2. With KV cache
-    print("\n2. With FP8 KV Cache")
-    kv_cache = DynamicQuantizedKVCache(
-        num_layers=1,
-        max_batch_size=batch_size,
-        max_seq_len=seq_len * 2,
-        num_heads=num_heads,
-        head_dim=d_model // num_heads,
-        device=device,
-    )
-    cache_time = _benchmark_cuda_latency_ms(
-        lambda: layer(hidden_states, kv_cache=kv_cache, layer_idx=0),
-        10,
-    )
-    print(f"   Time: {cache_time:.2f} ms")
-    print(f"   Speedup: {baseline_time / cache_time:.2f}x")
-    
-    # 3. Compiled
-    print("\n3. With torch.compile")
-    compiled_layer = compile_model(layer, mode="reduce-overhead")
-    # Warmup
-    for _ in range(5):
-        _ = compiled_layer(hidden_states)
-    torch.cuda.synchronize()
-    
-    compiled_time = _benchmark_cuda_latency_ms(lambda: compiled_layer(hidden_states), 10)
-    print(f"   Time: {compiled_time:.2f} ms")
-    print(f"   Speedup: {baseline_time / compiled_time:.2f}x")
+
+    # The KV cache rejects tensors that carry autograd history.
+    with torch.inference_mode():
+        # 1. Baseline (no KV cache)
+        print("\n1. Baseline (no cache)")
+        # Warmup
+        for _ in range(5):
+            _ = layer(hidden_states)
+        torch.cuda.synchronize()
+        baseline_time = _benchmark_cuda_latency_ms(lambda: layer(hidden_states), 10)
+        print(f"   Time: {baseline_time:.2f} ms")
+
+        # 2. With KV cache
+        print("\n2. With FP8 KV Cache")
+        kv_cache = DynamicQuantizedKVCache(
+            num_layers=1,
+            max_batch_size=batch_size,
+            max_seq_len=seq_len * 2,
+            num_heads=num_heads,
+            head_dim=d_model // num_heads,
+            device=device,
+            dtype=hidden_states.dtype,
+        )
+
+        def prefill_with_cache():
+            # Each call is a fresh prefill. Without the clear, every call
+            # appends seq_len more tokens and overflows the cache.
+            kv_cache.clear()
+            return layer(hidden_states, kv_cache=kv_cache, layer_idx=0)
+
+        # Warmup
+        for _ in range(5):
+            _ = prefill_with_cache()
+        torch.cuda.synchronize()
+        cache_time = _benchmark_cuda_latency_ms(prefill_with_cache, 10)
+        print(f"   Time: {cache_time:.2f} ms")
+        print(f"   Speedup: {baseline_time / cache_time:.2f}x")
+
+        # 3. Compiled
+        print("\n3. With torch.compile")
+        compiled_layer = compile_model(layer, mode="reduce-overhead")
+        # Warmup
+        for _ in range(5):
+            _ = compiled_layer(hidden_states)
+        torch.cuda.synchronize()
+
+        compiled_time = _benchmark_cuda_latency_ms(lambda: compiled_layer(hidden_states), 10)
+        print(f"   Time: {compiled_time:.2f} ms")
+        print(f"   Speedup: {baseline_time / compiled_time:.2f}x")
     
     print("\n=== Summary ===")
     print("Optimization strategies for Blackwell:")
@@ -1170,11 +1321,18 @@ class TensorParallelMultiGPU:
     def forward(self, input_ids, kv_cache=None):
         """
         Forward pass with tensor parallelism.
+
+        This path does not read or write a KV cache, so it rejects one instead
+        of silently recomputing without it.
         """
+        if kv_cache is not None:
+            raise ValueError(
+                "TensorParallelMultiGPU.forward does not consume a KV cache. "
+                "Pass kv_cache=None or use a cache-aware model."
+            )
         if input_ids.device != self.device:
             input_ids = input_ids.to(self.device, non_blocking=True)
-        
-        # Demo model does not consume the sharded KV cache in this simplified path.
+
         outputs = self.model(input_ids)
         
         # All-gather outputs across GPUs
@@ -1187,111 +1345,129 @@ class TensorParallelMultiGPU:
         
         return final_output
 
-def benchmark_multigpu_tensor_parallel():
-    """
-    Benchmark multi-GPU tensor parallel inference.
-    """
+def _tensor_parallel_launch() -> Tuple[int, int, torch.device, bool]:
+    """Join the torchrun process group and return (rank, world_size, device, owns_group)."""
     if not torch.cuda.is_available():
-        print("Multi-GPU tensor parallel requires CUDA")
-        return
-
-    if torch.cuda.device_count() < 2:
-        print("Multi-GPU tensor parallel requires >=2 GPUs")
-        return
-    
-    import torch.distributed as dist
-    if not dist.is_initialized():
-        print("Distributed not initialized. Use: torchrun --nproc_per_node=<num_gpus>")
-        return
-    
-    rank = dist.get_rank()
-    world_size = dist.get_world_size()
+        raise RuntimeError("SKIPPED: the multi-GPU tensor-parallel benchmark requires CUDA")
+    if os.environ.get("WORLD_SIZE") in (None, ""):
+        raise RuntimeError(
+            "Launch the multi-GPU benchmark with torchrun --nproc_per_node=<num_gpus> "
+            "-m ch16.inference_optimizations_blackwell --multi-gpu"
+        )
+    world_size = int(os.environ["WORLD_SIZE"])
+    if world_size < 2:
+        raise RuntimeError(
+            f"SKIPPED: the multi-GPU tensor-parallel benchmark needs at least 2 ranks, got WORLD_SIZE={world_size}"
+        )
     local_rank = resolve_local_rank()
-    device = torch.device(f"cuda:{local_rank}")
+    visible_gpus = torch.cuda.device_count()
+    if local_rank >= visible_gpus:
+        raise RuntimeError(f"LOCAL_RANK={local_rank} has no GPU. {visible_gpus} GPUs are visible.")
+    device = torch.device("cuda", local_rank)
+    torch.cuda.set_device(device)
+    owns_group = not dist.is_initialized()
+    if owns_group:
+        dist.init_process_group(backend="nccl", device_id=device)
+    return dist.get_rank(), dist.get_world_size(), device, owns_group
 
-    props = torch.cuda.get_device_properties(0)
-    mem_per_gpu_gb = props.total_memory / (1024**3)
-    total_mem_gb = mem_per_gpu_gb * world_size
-    is_b200 = detect_b200_multigpu(min_gpus=2)
-    
-    if rank == 0:
-        print("\n" + "=" * 80)
-        print("Multi-GPU Tensor Parallel Inference Benchmark")
-        print("=" * 80)
-        print(f"Total GPUs: {world_size}")
-        print(f"Total memory: {total_mem_gb:.0f} GB")
-        if is_b200:
-            print("Detected: B200-class GPUs")
-    
-    # Configuration
-    batch_size = 1
-    seq_len = 8192  # Long context
-    heads_per_gpu = 8
-    num_heads = heads_per_gpu * world_size
-    head_dim = 128
-    d_model = num_heads * head_dim
-    
-    # Create model shard for this GPU
-    layer = OptimizedDecoderLayer(
-        d_model=d_model,
-        num_heads=num_heads // world_size,  # Split heads
-        device=device,
-    )
-    
-    # Create KV cache (sharded)
-    kv_cache = DynamicQuantizedKVCache(
-        num_layers=1,
-        max_batch_size=batch_size,
-        max_seq_len=seq_len * 2,
-        num_heads=num_heads // world_size,
-        head_dim=head_dim,
-        device=device,
-    )
-    
-    # Test input
-    hidden_states = torch.randn(
-        batch_size, seq_len, d_model,
-        device=device,
-        dtype=torch.float16
-    )
-    
-    # Warmup
-    for _ in range(5):
-        _ = layer(hidden_states, kv_cache=kv_cache, layer_idx=0)
-    torch.cuda.synchronize()
-    
-    # Benchmark
-    start_event = torch.cuda.Event(enable_timing=True)
-    end_event = torch.cuda.Event(enable_timing=True)
-    current_stream = torch.cuda.current_stream(device)
-    
-    num_iterations = 100
-    start_event.record(current_stream)
-    for _ in range(num_iterations):
-        _ = layer(hidden_states, kv_cache=kv_cache, layer_idx=0)
-    end_event.record(current_stream)
-    end_event.synchronize()
-    
-    time_ms = start_event.elapsed_time(end_event) / num_iterations
-    tokens_per_sec = seq_len * num_iterations * 1000 / start_event.elapsed_time(end_event)
-    
-    if rank == 0:
-        print(f"\nResults (per GPU):")
-        print(f"  Latency: {time_ms:.2f} ms/iteration")
-        print(f"  Throughput: {tokens_per_sec:.0f} tokens/sec")
-        print(f"  Per-token latency: {time_ms / seq_len:.3f} ms")
-        
-        print(f"\nAggregate ({world_size} GPUs):")
-        print(f"  Total throughput: {tokens_per_sec * world_size:.0f} tokens/sec")
-        print(f"  Memory per GPU: ~{mem_per_gpu_gb:.1f} GB")
-        print(f"  KV cache per GPU: ~{kv_cache.cache.numel() * kv_cache.cache.element_size() / 1e9:.2f} GB")
-        
-        print("\nMulti-GPU Performance Tips:")
-        print("  - Use TP=world_size for models that exceed single-GPU memory")
-        print("  - Split attention heads evenly across GPUs")
-        print("  - Monitor NVLink bandwidth with nvidia-smi dmon -s u")
-        print("  - Target 85-95% scaling efficiency")
-        print("=" * 80)
+
+def benchmark_multigpu_tensor_parallel(
+    seq_len: int = 8192,
+    num_iterations: int = 100,
+    warmup_iterations: int = 5,
+) -> None:
+    """
+    Time each rank's attention-head shard of a tensor-parallel layer.
+
+    Launch with torchrun --nproc_per_node=<num_gpus>. Every rank prefills the
+    same seq_len tokens through a decoder layer over its own heads_per_gpu
+    heads, with its own KV cache shard. The timing covers that per-rank
+    attention work only. It leaves out the projections over the full model
+    width and the all-reduce that joins the shards, so it is not a complete
+    tensor-parallel layer. All ranks work on the same tokens, so the slowest
+    rank sets the group's token throughput, which does not grow with the GPU
+    count.
+    """
+    rank, world_size, device, owns_group = _tensor_parallel_launch()
+    try:
+        heads_per_gpu = 8
+        head_dim = 128
+        shard_width = heads_per_gpu * head_dim
+
+        layer = OptimizedDecoderLayer(
+            d_model=shard_width,
+            num_heads=heads_per_gpu,
+            device=device,
+        )
+        compute_dtype = layer.q_proj.weight.dtype
+        kv_cache = DynamicQuantizedKVCache(
+            num_layers=1,
+            max_batch_size=1,
+            max_seq_len=seq_len,
+            num_heads=heads_per_gpu,
+            head_dim=head_dim,
+            device=str(device),
+            dtype=compute_dtype,
+        )
+        hidden_states = torch.randn(1, seq_len, shard_width, device=device, dtype=compute_dtype)
+
+        if rank == 0:
+            print("\n" + "=" * 80)
+            print("Multi-GPU Tensor-Parallel Attention Shard Benchmark")
+            print("=" * 80)
+            print(f"Ranks: {world_size}")
+            print(
+                f"Heads: {heads_per_gpu * world_size} total, {heads_per_gpu} per rank, "
+                f"head_dim {head_dim}"
+            )
+            print(f"Prefill tokens per iteration: {seq_len}")
+            print("Each rank times its own heads only. Full-width projections and the all-reduce are not timed.")
+
+        def prefill() -> torch.Tensor:
+            # Each iteration is a fresh prefill. Without the clear, every call
+            # appends seq_len more tokens and overflows the cache.
+            kv_cache.clear()
+            return layer(hidden_states, kv_cache=kv_cache, layer_idx=0)
+
+        # The KV cache rejects tensors that carry autograd history.
+        with torch.inference_mode():
+            for _ in range(warmup_iterations):
+                prefill()
+            torch.cuda.synchronize(device)
+
+            start_event = torch.cuda.Event(enable_timing=True)
+            end_event = torch.cuda.Event(enable_timing=True)
+            current_stream = torch.cuda.current_stream(device)
+            start_event.record(current_stream)
+            for _ in range(num_iterations):
+                prefill()
+            end_event.record(current_stream)
+            end_event.synchronize()
+
+        rank_ms = start_event.elapsed_time(end_event) / num_iterations
+        slowest = torch.tensor([rank_ms], dtype=torch.float64, device=device)
+        dist.all_reduce(slowest, op=dist.ReduceOp.MAX)
+        slowest_ms = float(slowest.item())
+
+        if rank == 0:
+            print("\nResults:")
+            print(f"  Rank 0 shard: {rank_ms:.2f} ms/iteration, {seq_len * 1000 / rank_ms:.0f} tokens/sec")
+            print(f"  Slowest rank: {slowest_ms:.2f} ms/iteration")
+            print(
+                f"  Group throughput: {seq_len * 1000 / slowest_ms:.0f} tokens/sec "
+                "(every rank processes the same tokens, so the slowest rank sets it)"
+            )
+            print(f"  KV cache shard per GPU: ~{kv_cache.get_memory_usage() / 1e9:.3f} GB")
+
+            print("\nMulti-GPU Performance Tips:")
+            print("  - Use TP=world_size for models that exceed single-GPU memory")
+            print("  - Split attention heads evenly across GPUs")
+            print("  - Monitor NVLink bandwidth with nvidia-smi dmon -s u")
+            print("  - Target 85-95% scaling efficiency")
+            print("=" * 80)
+    finally:
+        if owns_group:
+            dist.destroy_process_group()
 
 # ============================================================================
 # 6. GB200/GB300 CPU Offloading
@@ -1429,7 +1605,7 @@ if __name__ == "__main__":
     
     parser = argparse.ArgumentParser(description="Blackwell Inference Optimizations")
     parser.add_argument("--multi-gpu", action="store_true", dest="multi_gpu",
-                        help="Run multi-GPU tensor parallel benchmark")
+                        help="Time per-rank tensor-parallel attention shards. Launch with torchrun.")
     parser.add_argument("--gb200", action="store_true",
                         help="Demo GB200/GB300 CPU offloading")
     
@@ -1482,9 +1658,12 @@ if __name__ == "__main__":
             num_gpus = torch.cuda.device_count()
             print("\n=== Multi-GPU Features ===")
             print("Tensor parallel for 100B+ models")
-            print(f"{num_gpus}x throughput vs single GPU (scaling dependent)")
+            print(f"Attention heads split across {num_gpus} GPUs")
             print("Total memory capacity scales with GPU count")
-            print("Run with --multi-gpu for tensor parallel benchmark")
+            print(
+                "Run torchrun --nproc_per_node=<num_gpus> -m ch16.inference_optimizations_blackwell "
+                "--multi-gpu for the per-rank attention shard benchmark"
+            )
         
         if is_gb200_gb300:
             print("\n=== GB200/GB300 Features ===")

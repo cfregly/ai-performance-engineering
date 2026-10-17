@@ -1,4 +1,4 @@
-"""optimized_compute_bound.py - Optimized compute-bound kernel.
+"""optimized_compute_bound.py - CUDA-graph replay of the compute_bound vector MLP chain.
 
 Optimization strategy: capture the repeated MLP chain with CUDA graphs to
 eliminate Python dispatch and per-op launch overhead while keeping the math,
@@ -65,7 +65,7 @@ class BufferedVectorMlp(nn.Module):
 
 
 class OptimizedComputeBoundBenchmark(VerificationPayloadMixin, BaseBenchmark):
-    """Compute-bound kernel - uses CUDA graphs to cut launch overhead."""
+    """Vector MLP chain at about 1 FLOP/byte, below the ridge point, replayed from a CUDA graph to cut launch overhead."""
     
     def __init__(self):
         super().__init__()
@@ -93,7 +93,7 @@ class OptimizedComputeBoundBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._payload_parameter_count = sum(p.numel() for p in self.model.parameters())
 
         if not torch.cuda.is_available():
-            raise RuntimeError("CUDA required for compute-bound CUDA graph capture")
+            raise RuntimeError("CUDA required for the compute_bound CUDA graph capture")
 
         # Warm up to initialize cuBLAS handles and any lazy kernels.
         with torch.inference_mode():
@@ -167,7 +167,7 @@ class OptimizedComputeBoundBenchmark(VerificationPayloadMixin, BaseBenchmark):
         return self._workload
     
     def get_custom_metrics(self) -> Optional[dict]:
-        """Return compute-bound analysis metrics using the centralized helper."""
+        """Return roofline metrics using the centralized helper."""
         from core.benchmark.metrics import compute_roofline_metrics
         # Same vector-GEMV FLOP and conservative byte estimates as the baseline.
         layer1_flops = 2 * self.N * (self.N * 2)

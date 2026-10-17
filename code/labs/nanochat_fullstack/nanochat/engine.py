@@ -106,7 +106,7 @@ class KVCache:
         self.graph_attention_mask = None
 
     def _round_seq_len(self, seq_len):
-        """Round sequence length to block/page boundaries to align with TMA paging."""
+        """Round contiguous cache capacity to the configured alignment boundaries."""
         rounded = seq_len
         if self.block_size is not None and self.block_size > 0:
             rounded = ((rounded + self.block_size - 1) // self.block_size) * self.block_size
@@ -220,7 +220,7 @@ class KVCache:
         )
 
     def get_blocked_kv(self, layer_idx):
-        """Return block-major view for TMA/TMEM kernels."""
+        """Return a block-major view of the contiguous cache allocation."""
         if self.block_size is None or self.kv_cache is None:
             return None
         total_tokens = self.get_pos()
@@ -403,11 +403,12 @@ class Engine:
     _COMPILE_FULLGRAPH = True
     _COMPILE_DYNAMIC = True
 
-    def __init__(self, model, tokenizer, reuse_ids_buffer=True, enable_batch_decode=False):
+    def __init__(self, model, tokenizer, reuse_ids_buffer=True, enable_batch_decode=False, *, allow_compile=True):
         self.model = model
         self.tokenizer = tokenizer # needed for tool use
         self.reuse_ids_buffer = reuse_ids_buffer
         self.enable_batch_decode = enable_batch_decode
+        self.allow_compile = bool(allow_compile)
         self.enable_persistent_decode = bool(getattr(self.model.config, "enable_persistent_decode", False))
         self.use_cuda_graphs = bool(getattr(self.model.config, "use_cuda_graphs", False))
         self._decode_graph_disabled = False
@@ -483,13 +484,23 @@ class Engine:
         self._maybe_compile_model()
 
     def _maybe_compile_model(self):
-        """Use torch.compile by default on Blackwell/GB200 for steadier decode overhead."""
+        """Use torch.compile by default on Blackwell/GB200 for steadier decode overhead.
+
+        Pass allow_compile=False to keep the model eager, for example in a
+        flag sweep where compilation would change rows that do not request it.
+        """
         # Manual graph capture owns replay/state; nested compiler-managed graphs
         # have a separate lifetime contract and are not supported in this mode.
         if self.use_cuda_graphs:
             self._set_compile_status(
                 "manual_graphs",
                 "manual CUDA graph capture owns replay and state",
+            )
+            return
+        if not self.allow_compile:
+            self._set_compile_status(
+                "disabled",
+                "Engine(allow_compile=False)",
             )
             return
         if os.getenv("NANOCHAT_DISABLE_COMPILE", "0") == "1":
@@ -666,10 +677,12 @@ class Engine:
             logits.record_stream(caller)
             if kv_cache.kv_cache is not None:
                 kv_cache.kv_cache.record_stream(caller)
-            self.decode_execution_mode = "side_stream"
+            self.decode_execution_mode = (
+                "side_stream_torch_compile" if self._compile_active else "side_stream"
+            )
             return logits
         else:
-            self.decode_execution_mode = "eager"
+            self.decode_execution_mode = "torch_compile" if self._compile_active else "eager"
             return self._model_forward(
                 ids,
                 kv_cache=kv_cache,

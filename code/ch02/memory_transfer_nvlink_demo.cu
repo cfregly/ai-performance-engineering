@@ -31,8 +31,12 @@
 #include <cuda_runtime.h>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <chrono>
 #include <vector>
+#ifdef __linux__
+#include <glob.h>
+#endif
 #include "../core/common/nvtx_utils.cuh"
 
 #define CUDA_CHECK(call)                                                     \
@@ -60,39 +64,36 @@ struct SystemInfo {
     bool has_nvswitch;
 };
 
-// Detect if running on Grace CPU (ARM architecture)
-bool detect_grace_cpu() {
+// Return true when Linux names NVIDIA as the Arm SoC vendor, and copy that
+// SoC ID into soc_id. Arm SMCCC SOC_ID publishes a JEP106 vendor code under
+// /sys/bus/soc/devices/soc*/soc_id, and Linux prints NVIDIA as "jep106:036b:".
+// /proc/cpuinfo cannot identify Grace. It lists Arm core part numbers, and
+// other vendors ship the same Neoverse cores.
+bool detect_grace_cpu(char* soc_id, size_t soc_id_size) {
+    soc_id[0] = '\0';
     #ifdef __linux__
-    // Check for ARM architecture
-    FILE* f = popen("uname -m", "r");
-    if (f) {
-        char arch[64];
-        bool is_arm = false;
-        if (fgets(arch, sizeof(arch), f)) {
-            if (strstr(arch, "aarch64") || strstr(arch, "arm64")) {
-                is_arm = true;
+    glob_t matches{};
+    bool found = false;
+    if (glob("/sys/bus/soc/devices/soc*/soc_id", 0, nullptr, &matches) == 0) {
+        for (size_t i = 0; i < matches.gl_pathc && !found; ++i) {
+            FILE* f = fopen(matches.gl_pathv[i], "r");
+            if (!f) {
+                continue;
             }
-        }
-        pclose(f);
-        if (is_arm) {
-            // Further verify it's Grace Neoverse
-            FILE* cpuinfo = fopen("/proc/cpuinfo", "r");
-            if (cpuinfo) {
-                char line[256];
-                while (fgets(line, sizeof(line), cpuinfo)) {
-                    NVTX_RANGE("verify");
-                    if (strstr(line, "Neoverse") || strstr(line, "0xd40")) {
-                        fclose(cpuinfo);
-                        return true;
-                    }
-                }
-                fclose(cpuinfo);
+            char line[64] = {0};
+            if (fgets(line, sizeof(line), f) && strncmp(line, "jep106:036b:", 12) == 0) {
+                line[strcspn(line, "\r\n")] = '\0';
+                snprintf(soc_id, soc_id_size, "%s", line);
+                found = true;
             }
-            return true;  // At least ARM
+            fclose(f);
         }
     }
-    #endif
+    globfree(&matches);
+    return found;
+    #else
     return false;
+    #endif
 }
 
 SystemInfo detect_system_capabilities() {
@@ -151,42 +152,32 @@ SystemInfo detect_system_capabilities() {
     if (is_datacenter_blackwell) {
         printf("✓ Datacenter Blackwell GPU detected (GB200/GB300 GPU class)\n");
         
-        // Detect Grace CPU
-        bool has_grace_cpu = detect_grace_cpu();
-        
+        // Grace identity comes from the SoC ID. NVLink-C2C comes from the
+        // driver, which reports native host atomics for an NVLink-C2C host
+        // link and not for PCIe, including PCIe GPUs in a Grace server.
+        char grace_soc_id[64];
+        bool has_grace_cpu = detect_grace_cpu(grace_soc_id, sizeof(grace_soc_id));
+        int host_native_atomics = 0;
+        CUDA_CHECK(cudaDeviceGetAttribute(&host_native_atomics,
+                                          cudaDevAttrHostNativeAtomicSupported, 0));
+        info.has_nvlink_c2c = (host_native_atomics == 1);
         if (has_grace_cpu) {
-            info.has_nvlink_c2c = true;
+            printf("✓ NVIDIA Grace CPU detected (SoC ID %s)\n", grace_soc_id);
+        }
+
+        if (has_grace_cpu && info.has_nvlink_c2c) {
             info.is_grace_blackwell = true;
-            printf("✓ Grace CPU detected (ARM Neoverse)\n");
             printf("✓ GB200/GB300 Grace-Blackwell Superchip\n");
-            printf("  NVLink-C2C: 900 GB/s coherent CPU ↔ GPU bandwidth\n");
+            printf("  NVLink-C2C: 900 GB/s bidirectional spec peak, coherent CPU ↔ GPU\n");
             printf("  Unified memory address space\n");
             printf("  Grace: 72 ARM cores, 480GB-1TB LPDDR5X\n");
+        } else if (info.has_nvlink_c2c) {
+            printf("✓ NVLink-C2C host link reported by the CUDA driver\n");
+            printf("  NVLink-C2C spec peak: 900 GB/s bidirectional (CPU ↔ GPU)\n");
         } else {
-            // Check for NVLink-C2C via NVIDIA driver
-            #ifdef __linux__
-            FILE* f = fopen("/proc/driver/nvidia/gpus/0000:01:00.0/information", "r");
-            if (f) {
-                char line[256];
-                while (fgets(line, sizeof(line), f)) {
-                    NVTX_RANGE("iteration");
-                    if (strstr(line, "NVLink-C2C")) {
-                        info.has_nvlink_c2c = true;
-                        break;
-                    }
-                }
-                fclose(f);
-            }
-            #endif
-            
-            if (info.has_nvlink_c2c) {
-                printf("✓ NVLink-C2C detected\n");
-                printf("  Expected bandwidth: ~900 GB/s (CPU ↔ GPU)\n");
-            } else {
-                printf("⚠ PCIe connection (no NVLink-C2C)\n");
-                printf("  Expected bandwidth: ~128 GB/s (PCIe 5.0)\n");
-                info.has_pcie_5 = true;
-            }
+            printf("⚠ PCIe connection (no NVLink-C2C)\n");
+            printf("  PCIe 5.0 x16 spec peak: 64 GB/s per direction, 128 GB/s both directions\n");
+            info.has_pcie_5 = true;
         }
         
         // Check for NVSwitch on multi-GPU systems.

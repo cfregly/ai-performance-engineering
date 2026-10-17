@@ -33,7 +33,6 @@ from core.harness.hardware_capabilities import detect_capabilities
 try:  # Optional but strongly recommended for fast variants
     import transformer_engine.pytorch as te
     import transformer_engine.pytorch.constants as te_constants
-    from transformer_engine.common.recipe import DelayedScaling
     from transformer_engine.pytorch import LayerNormMLP as TELayerNormMLP
     from transformer_engine.pytorch import Linear as TELinear
     from transformer_engine.pytorch import quantized_model_init
@@ -44,7 +43,6 @@ except Exception:  # pragma: no cover - safe fallback
     TELinear = None  # type: ignore
     TELayerNormMLP = None  # type: ignore
     quantized_model_init = None  # type: ignore
-    DelayedScaling = None  # type: ignore
     te_constants = None  # type: ignore
     TE_AVAILABLE = False
 
@@ -84,8 +82,8 @@ def _te_version_at_least(major: int, minor: int = 0) -> bool:
 def _is_blackwell_family() -> bool:
     cap = detect_capabilities()
     if cap is not None:
-        # Treat Blackwell (SM100/SM103) and Grace-Blackwell (SM12x) as Blackwell-class for defaults.
-        return cap.architecture in {"blackwell", "blackwell_ultra", "grace_blackwell"}
+        # Treat SM 10.x, SM 12.0 (RTX 50 / RTX PRO) and SM 12.1 (GB10) as Blackwell-class for defaults.
+        return cap.architecture in {"blackwell", "blackwell_ultra", "blackwell_consumer", "grace_blackwell"}
     if not torch.cuda.is_available():
         raise RuntimeError(
             "Cannot determine architecture: capability probe unavailable and CUDA not available."
@@ -235,7 +233,9 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 raise RuntimeError(
                     "SKIPPED: FP4 decode requires NVFP4BlockScaling support"
                 ) from exc
-            self.fp8_recipe = DelayedScaling(float8_block_scaling=NVFP4BlockScaling())
+            # TE recipes silently drop unknown keyword arguments. Wrapping this
+            # recipe in DelayedScaling would run FP8 under the FP4 label.
+            self.fp8_recipe = NVFP4BlockScaling()
             self._fp4_enabled = True
         elif self.cfg.use_fp8:
             if not TE_AVAILABLE:

@@ -441,7 +441,7 @@ def _flame_html(data: Dict[str, Any]) -> str:
         '<style>body{font-family:system-ui;margin:24px}svg{width:100%;height:auto}text{font-size:11px;pointer-events:none}</style>'
         '</head><body><h1>Trace duration flame graph</h1>'
         '<p>Widths show summed complete-event durations, grouped by trace category. '
-        'Overlapping CPU/GPU events may double-count elapsed time; this is not a wall-time timeline or reconstructed call stack. '
+        'Overlapping CPU/GPU events may double-count elapsed time. This is not a wall-time timeline or reconstructed call stack. '
         'Hover a rectangle for its full name and duration.</p>'
         f'<svg xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Trace duration flame graph" '
         f'viewBox="0 0 1200 {(max_depth + 1) * 28}">' + ''.join(rectangles) + '</svg></body></html>'
@@ -456,12 +456,12 @@ def flame(args) -> int:
     try:
         filename = getattr(args, 'file', None)
         if not filename:
-            raise ValueError("A Chrome trace JSON file is required; export one with torch.profiler")
+            raise ValueError("A Chrome trace JSON file is required. Export one with torch.profiler")
         source = Path(filename)
         if not source.is_file():
             raise ValueError(f"Profile file not found: {source}")
         if source.suffix.lower() != '.json':
-            raise ValueError("Only Chrome trace JSON is supported; export binary Nsight reports to JSON first")
+            raise ValueError("Only Chrome trace JSON is supported. Export binary Nsight reports to JSON first")
         output = Path(getattr(args, 'output', None) or 'flame.html')
         if output.suffix.lower() not in ('.html', '.json'):
             raise ValueError("Flame graph output must end in .html or .json")
@@ -497,15 +497,15 @@ def flame(args) -> int:
 
 
 def memory(args) -> int:
-    """Memory timeline analysis."""
+    """Report that memory timeline conversion is not implemented. Returns exit code 1."""
     from rich.console import Console
     console = Console()
-    console.print("Memory timeline conversion is not implemented by this command; no output was written. Use the dashboard for existing memory timeline artifacts.", style='red')
+    console.print("Memory timeline conversion is not implemented by this command. No output was written. Use the dashboard for existing memory timeline artifacts.", style='red')
     return 1
 
 
 def kernels(args) -> int:
-    """Kernel breakdown analysis."""
+    """Report that standalone kernel breakdown is not implemented. Returns exit code 1."""
     from rich.console import Console
     console = Console()
     console.print("Standalone kernel breakdown is not implemented by this command. Use 'aisp profile compare' with collected baseline/optimized profiles.", style='red')

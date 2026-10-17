@@ -73,6 +73,6 @@ python -m cli.aisp bench run --targets labs/occupancy_tuning --profile minimal
 - `python -m cli.aisp bench run --targets labs/occupancy_tuning:proton_matmul --profile minimal` runs the harness's baseline-versus-optimized output verification on CUDA.
 
 ## Notes
-- Add new schedules to `triton_matmul_schedules.py` and regenerate the harness targets by rerunning the sweep script.
+- Add new schedules to `triton_matmul_schedules.py`. The sweep script only measures schedules and writes a CSV. To make a schedule a harness target, add an `optimized_proton_matmul_<schedule>.py` wrapper that binds it, as the existing optimized files do.
 - `proton_matmul_bm64_bn64_bk32_nw2` is a supplementary local-contract schedule benchmark and supplementary comparison schedule benchmark; use the larger winning schedules when you want the lab's canonical speed claims.
 - `expectations_{hardware_key}.json` records FLOP/s per schedule so improvements show up in CI.

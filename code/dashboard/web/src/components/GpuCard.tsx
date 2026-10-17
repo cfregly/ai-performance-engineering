@@ -32,7 +32,7 @@ export function GpuCard({ gpu, lastUpdated }: GpuCardProps) {
     <div className="card">
           <div className="card-header">
             <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-gradient-to-br from-accent-secondary to-accent-tertiary">
+              <div className="p-2 rounded-lg bg-linear-to-br from-accent-secondary to-accent-tertiary">
                 <Cpu className="w-5 h-5 text-white" />
               </div>
               <div>
@@ -63,7 +63,7 @@ export function GpuCard({ gpu, lastUpdated }: GpuCardProps) {
           </div>
           <div className="h-2 bg-white/10 rounded-full overflow-hidden">
             <div
-              className="h-full bg-gradient-to-r from-accent-primary to-accent-secondary rounded-full transition-all duration-500"
+              className="h-full bg-linear-to-r from-accent-primary to-accent-secondary rounded-full transition-all duration-500"
               style={{ width: `${memoryPercent}%` }}
             />
           </div>
@@ -80,7 +80,7 @@ export function GpuCard({ gpu, lastUpdated }: GpuCardProps) {
           </div>
           <div className="h-2 bg-white/10 rounded-full overflow-hidden">
             <div
-              className="h-full bg-gradient-to-r from-accent-success to-accent-primary rounded-full transition-all duration-500"
+              className="h-full bg-linear-to-r from-accent-success to-accent-primary rounded-full transition-all duration-500"
               style={{ width: `${utilization}%` }}
             />
           </div>

@@ -6,7 +6,7 @@ Demonstrates NUMA-aware tensor placement and CPU-GPU affinity for
 various CPU-GPU architectures including:
 - GB200/B200 (Grace + Blackwell sm_100)
 - GB300/B300 (Grace + Blackwell Ultra sm_103)
-- GB10 (Grace + Blackwell Ultra sm_121)
+- GB10 (Grace + Blackwell sm_121)
 - Any x86_64/ARM + NVIDIA GPU combinations
 
 CPU Architectures Supported:
@@ -17,7 +17,8 @@ CPU Architectures Supported:
 GPU Architectures Supported:
 - Blackwell (sm_100): B200
 - Blackwell Ultra (sm_103): B300/GB300
-- Grace-Blackwell Ultra (sm_121): GB10
+- Blackwell (sm_120): GeForce RTX 50 and RTX PRO
+- Blackwell (sm_121): GB10
 - Hopper (sm_90): H100/H200
 - Ada Lovelace (sm_89): RTX 40-series
 - Ampere (sm_80, sm_86): A100, RTX 30-series
@@ -43,13 +44,18 @@ from typing import Any, Dict, List, Optional, Tuple
 import psutil
 import torch
 
+from core.common.grace_platform import gpu_c2c_links, nvidia_grace_soc_id, read_soc_ids
+
 
 # GPU Architecture mappings
 GPU_ARCH_INFO = {
     # Blackwell family
     (10, 0): {"name": "Blackwell", "family": "Blackwell", "sm": "sm_100"},
     (10, 3): {"name": "Blackwell Ultra", "family": "Blackwell", "sm": "sm_103"},
-    (12, 1): {"name": "Grace-Blackwell Ultra", "family": "Blackwell", "sm": "sm_121"},
+    # SM 12.0 is the discrete GeForce RTX 50 and RTX PRO family. SM 12.1 is the
+    # GB10 superchip GPU. Neither is Blackwell Ultra, which is SM 10.3.
+    (12, 0): {"name": "Blackwell (GeForce RTX 50 / RTX PRO)", "family": "Blackwell", "sm": "sm_120"},
+    (12, 1): {"name": "Blackwell (GB10)", "family": "Blackwell", "sm": "sm_121"},
     
     # Hopper family
     (9, 0): {"name": "Hopper", "family": "Hopper", "sm": "sm_90"},
@@ -136,8 +142,9 @@ def detect_cpu_info() -> Dict[str, Any]:
         "cpu_memory_gb": psutil.virtual_memory().total / (1024**3),
         "cpu_type": "generic",
         "is_grace": False,
+        "soc_id": None,
     }
-    
+
     # Detect specific CPU types
     if info["architecture"] in ["aarch64", "arm64"]:
         info["cpu_type"] = "ARM"
@@ -150,13 +157,11 @@ def detect_cpu_info() -> Dict[str, Any]:
             cpuinfo = ""
         if re.search(r"\bNeoverse\b", cpuinfo, flags=re.IGNORECASE):
             info["cpu_type"] = "ARM Neoverse"
-        if re.search(
-            r"\bNVIDIA\s+Grace\b|\bGrace\s+(?:CPU|Processor)\b",
-            cpuinfo,
-            flags=re.IGNORECASE,
-        ):
+        grace_soc_id = nvidia_grace_soc_id(read_soc_ids())
+        if grace_soc_id is not None:
             info["cpu_type"] = "NVIDIA Grace"
             info["is_grace"] = True
+            info["soc_id"] = grace_soc_id
     elif info["architecture"] in ["x86_64", "AMD64"]:
         info["cpu_type"] = "x86_64"
         with open('/proc/cpuinfo', 'r') as f:
@@ -193,14 +198,20 @@ def detect_interconnect_type(cpu_info: Dict[str, Any], gpu_info: Dict[str, Any])
     """
     Detect the CPU-GPU interconnect type.
     
+    NVLink-C2C is reported only for a Grace CPU whose GPU record carries
+    driver-reported C2C links in ``c2c_links_gbps``.
+
     Returns:
         Interconnect type string. Bandwidth is labeled as unmeasured unless the
         platform query exposes a negotiated PCIe link speed.
     """
-    # NVLink-C2C: Grace CPU + Blackwell/Hopper GPUs
-    if cpu_info["is_grace"] and gpu_info["family"] in ["Blackwell", "Hopper"]:
-        return "NVLink-C2C (detected; bandwidth unmeasured)"
-    
+    if cpu_info["is_grace"]:
+        c2c_links = gpu_info["c2c_links_gbps"]
+        if c2c_links is None:
+            return "CPU-GPU link unknown (nvidia-smi c2c -s failed)"
+        if c2c_links:
+            return f"NVLink-C2C ({len(c2c_links)} links up, bandwidth unmeasured)"
+
     # NVSwitch: Multi-GPU with NVLink
     if gpu_info.get("nvlink_capable", False):
         return "NVLink (detected; bandwidth unmeasured)"
@@ -219,6 +230,28 @@ def detect_interconnect_type(cpu_info: Dict[str, Any], gpu_info: Dict[str, Any])
         pass  # lspci not installed
     
     return "PCIe (~16-128 GB/s)"
+
+
+def summarize_system_interconnect(cpu_info: Dict[str, Any], gpus: List[Dict[str, Any]]) -> str:
+    """
+    Return one CPU-GPU interconnect label for the whole system.
+
+    NVLink-C2C is named only when every GPU reports C2C links, the same rule
+    that sets ``has_nvlink_c2c``. When GPUs disagree, the label says the
+    system is mixed and lists which GPUs have links, none or an unknown state.
+    """
+    up = [gpu["id"] for gpu in gpus if gpu["c2c_links_gbps"]]
+    down = [gpu["id"] for gpu in gpus if gpu["c2c_links_gbps"] == {}]
+    unknown = [gpu["id"] for gpu in gpus if gpu["c2c_links_gbps"] is None]
+    if len(down) == len(gpus) or len(unknown) == len(gpus):
+        return detect_interconnect_type(cpu_info, gpus[0])
+    if len(up) == len(gpus):
+        link_counts = sorted({len(gpu["c2c_links_gbps"]) for gpu in gpus})
+        if len(link_counts) == 1:
+            return detect_interconnect_type(cpu_info, gpus[0])
+        return f"NVLink-C2C ({link_counts[0]}-{link_counts[-1]} links up per GPU, bandwidth unmeasured)"
+    groups = (("C2C links up", up), ("no C2C link", down), ("C2C status unknown", unknown))
+    return "Mixed per GPU (" + ", ".join(f"{label} on GPUs {ids}" for label, ids in groups if ids) + ")"
 
 
 def detect_system_topology() -> Dict[str, Any]:
@@ -240,14 +273,19 @@ def detect_system_topology() -> Dict[str, Any]:
         "gpus": [],
         "numa_gpu_mapping": {},
         "interconnect": "None",
+        "has_nvlink_c2c": False,
         "system_type": "CPU-only",
     }
-    
+
     if not torch.cuda.is_available():
         return topology
-    
+
     topology["num_gpus"] = torch.cuda.device_count()
-    
+
+    # NVLink-C2C attaches a GPU only to a Grace CPU, so other hosts skip the driver
+    # and nvidia-smi queries. gpu_c2c_links raises when the two disagree.
+    probe_c2c = cpu_info["is_grace"]
+
     # Collect GPU information
     gpu_families = set()
     for i in range(topology["num_gpus"]):
@@ -264,21 +302,26 @@ def detect_system_topology() -> Dict[str, Any]:
             "arch_family": arch_info["family"],
             "arch_name": arch_info["name"],
             "sm_arch": arch_info["sm"],
+            "c2c_links_gbps": gpu_c2c_links(props, i) if probe_c2c else {},
         })
-        
+
         if i == 0:
             topology["gpu_memory_per_device_gb"] = props.total_memory / (1024**3)
-    
+
+    topology["has_nvlink_c2c"] = bool(topology["gpus"]) and all(
+        gpu["c2c_links_gbps"] for gpu in topology["gpus"]
+    )
+
     # Determine system type
     if len(gpu_families) == 1:
         gpu_family = list(gpu_families)[0]
-        if cpu_info["is_grace"] and gpu_family == "Blackwell":
-            # Check if it's GB10 (Blackwell Ultra) or GB200/GB300 (standard Blackwell)
+        if topology["has_nvlink_c2c"] and gpu_family == "Blackwell":
+            # GB10 has an SM 12.1 GPU. GB200 and GB300 have SM 10.0 and 10.3 GPUs.
             if any(g["sm_arch"] == "sm_121" for g in topology["gpus"]):
-                topology["system_type"] = "GB10 (Grace + Blackwell Ultra)"
+                topology["system_type"] = "GB10 (Grace + Blackwell)"
             else:
                 topology["system_type"] = "GB200/GB300 (Grace + Blackwell)"
-        elif cpu_info["is_grace"] and gpu_family == "Hopper":
+        elif topology["has_nvlink_c2c"] and gpu_family == "Hopper":
             topology["system_type"] = "GH200 (Grace + Hopper)"
         else:
             topology["system_type"] = f"{cpu_info['cpu_type']} + {gpu_family}"
@@ -293,7 +336,7 @@ def detect_system_topology() -> Dict[str, Any]:
     
     # Detect interconnect
     if topology["gpus"]:
-        topology["interconnect"] = detect_interconnect_type(cpu_info, topology["gpus"][0])
+        topology["interconnect"] = summarize_system_interconnect(cpu_info, topology["gpus"])
     
     # Detect NUMA-GPU affinity
     if _has_known_numa_nodes(cpu_info):
@@ -315,6 +358,8 @@ def print_topology_info(topology: Dict[str, Any]) -> None:
     print(f"\nCPU Configuration:")
     print(f"  Architecture: {cpu['architecture']}")
     print(f"  CPU Type: {cpu['cpu_type']}")
+    if cpu["soc_id"] is not None:
+        print(f"  SoC ID: {cpu['soc_id']}")
     print(f"  Physical Cores: {cpu['num_cores']}")
     print(f"  Logical Threads: {cpu['num_threads']}")
     numa_nodes = cpu["numa_nodes"]
@@ -328,7 +373,12 @@ def print_topology_info(topology: Dict[str, Any]) -> None:
         print(f"    Architecture: {gpu['arch_name']} ({gpu['sm_arch']})")
         print(f"    Compute Capability: {gpu['compute_capability']}")
         print(f"    Memory: {gpu['memory_gb']:.1f} GB")
-    
+        c2c_links = gpu["c2c_links_gbps"]
+        if c2c_links is None:
+            print("    NVLink-C2C: status unavailable from nvidia-smi c2c -s")
+        elif c2c_links:
+            print(f"    NVLink-C2C: {len(c2c_links)} links up (nvidia-smi c2c -s)")
+
     print(f"\nSystem Type: {topology['system_type']}")
     print(f"Interconnect: {topology['interconnect']}")
     
@@ -477,7 +527,7 @@ def demonstrate_hybrid_placement(topology: Dict[str, Any]) -> None:
     print("\n=== Hybrid CPU-GPU Tensor Placement ===\n")
     
     # Check if hybrid placement is beneficial
-    has_fast_interconnect = "NVLink-C2C" in topology["interconnect"]
+    has_fast_interconnect = topology["has_nvlink_c2c"]
     
     if has_fast_interconnect:
         print(f"Fast interconnect detected: {topology['interconnect']}")
@@ -633,7 +683,7 @@ def main():
     # Best practices
     print("\n=== Best Practices for CPU-GPU Systems ===\n")
     
-    if "NVLink-C2C" in topology["interconnect"]:
+    if topology["has_nvlink_c2c"]:
         print("For Grace-Hopper/Blackwell superchips:")
         print("  1. Place frequently-accessed data on GPU memory")
         print("  2. Place optimizer states and KV cache on CPU memory")

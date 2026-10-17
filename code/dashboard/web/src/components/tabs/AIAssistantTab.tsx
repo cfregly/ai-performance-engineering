@@ -384,10 +384,10 @@ export function AIAssistantTab() {
     return (
       <div className="card">
         <div className="card-body space-y-4 animate-pulse">
-          <div className="h-4 w-40 bg-white/10 rounded" />
-          <div className="h-10 bg-white/5 rounded" />
-          <div className="h-10 bg-white/5 rounded" />
-          <div className="h-10 bg-white/5 rounded" />
+          <div className="h-4 w-40 bg-white/10 rounded-sm" />
+          <div className="h-10 bg-white/5 rounded-sm" />
+          <div className="h-10 bg-white/5 rounded-sm" />
+          <div className="h-10 bg-white/5 rounded-sm" />
         </div>
       </div>
     );
@@ -451,7 +451,7 @@ export function AIAssistantTab() {
               placeholder="Search tools..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 bg-white/5 border border-white/10 rounded-lg text-white placeholder:text-white/30 focus:outline-none focus:border-accent-primary/50"
+              className="w-full pl-10 pr-4 py-2 bg-white/5 border border-white/10 rounded-lg text-white placeholder:text-white/30 focus:outline-hidden focus:border-accent-primary/50"
             />
           </div>
         </div>
@@ -532,7 +532,7 @@ export function AIAssistantTab() {
                     <h3 className="font-mono text-accent-primary">{selectedTool.name}</h3>
                     <p className="text-sm text-white/60 mt-1">{selectedTool.description}</p>
                   </div>
-                  <span className={cn('px-2 py-1 rounded text-xs capitalize', categoryColors[selectedTool.category])}>
+                  <span className={cn('px-2 py-1 rounded-sm text-xs capitalize', categoryColors[selectedTool.category])}>
                     {selectedTool.category}
                   </span>
                 </div>
@@ -571,7 +571,7 @@ export function AIAssistantTab() {
                               value={toolParams[key] as number || ''}
                               onChange={(e) => setToolParams({ ...toolParams, [key]: Number(e.target.value) })}
                               placeholder={prop.default?.toString() || ''}
-                              className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-white placeholder:text-white/30 focus:outline-none focus:border-accent-primary/50"
+                              className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-white placeholder:text-white/30 focus:outline-hidden focus:border-accent-primary/50"
                             />
                           ) : (
                             <input
@@ -579,7 +579,7 @@ export function AIAssistantTab() {
                               value={toolParams[key] as string || ''}
                               onChange={(e) => setToolParams({ ...toolParams, [key]: e.target.value })}
                               placeholder={prop.default?.toString() || prop.description || ''}
-                              className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-white placeholder:text-white/30 focus:outline-none focus:border-accent-primary/50"
+                              className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-white placeholder:text-white/30 focus:outline-hidden focus:border-accent-primary/50"
                             />
                           )}
                         </div>
@@ -593,7 +593,7 @@ export function AIAssistantTab() {
                   <button
                     onClick={handleExecuteTool}
                     disabled={executing}
-                    className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-gradient-to-r from-accent-primary to-accent-secondary text-black rounded-lg font-medium disabled:opacity-50 hover:opacity-90 transition-opacity"
+                    className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-linear-to-r from-accent-primary to-accent-secondary text-black rounded-lg font-medium disabled:opacity-50 hover:opacity-90 transition-opacity"
                   >
                     {executing ? (
                       <>
@@ -636,7 +636,7 @@ export function AIAssistantTab() {
                           </div>
                           <button
                             onClick={() => copyResult(index, result.result || result.error)}
-                            className="p-1.5 hover:bg-white/5 rounded text-white/40 hover:text-white"
+                            className="p-1.5 hover:bg-white/5 rounded-sm text-white/40 hover:text-white"
                           >
                             {copiedResult === index ? (
                               <Check className="w-4 h-4 text-accent-success" />
@@ -690,7 +690,7 @@ export function AIAssistantTab() {
                     'p-4 rounded-lg border transition-all text-left',
                     tool
                       ? 'bg-white/5 border-white/10 hover:border-accent-primary/30'
-                      : 'bg-white/[0.02] border-white/5 opacity-50 cursor-not-allowed'
+                      : 'bg-white/2 border-white/5 opacity-50 cursor-not-allowed'
                   )}
                 >
                   <Icon className={cn('w-6 h-6 mb-2', `text-${action.color}`)} />

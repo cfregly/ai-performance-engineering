@@ -20,7 +20,8 @@ def test_disaggregated_decode_consumes_and_verifies_transferred_context() -> Non
 
     cache = torch.arange(24, dtype=torch.float32).view(1, 3, 8)
     kv_context, context_fp32 = _transferred_kv_context(cache, context_window=2)
-    expected_context = cache[:, :2].mean(dim=1, keepdim=True)
+    # Position weights 1 and 2 over a two-token window give 1/3 and 2/3.
+    expected_context = ((cache[:, 0] + 2.0 * cache[:, 1]) / 3.0).unsqueeze(1)
     torch.testing.assert_close(kv_context, expected_context)
     torch.testing.assert_close(context_fp32, expected_context)
 

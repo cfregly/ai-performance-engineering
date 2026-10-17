@@ -6,8 +6,11 @@ import sys
 import textwrap
 from typing import Optional
 
+import pytest
 import torch
 
+from core.benchmark.target_overrides import parse_target_extra_args
+from core.harness import run_benchmarks as run_benchmarks_module
 from core.harness.benchmark_harness import (
     BaseBenchmark,
     BenchmarkConfig,
@@ -15,6 +18,54 @@ from core.harness.benchmark_harness import (
     BenchmarkMode,
     _lookup_target_extra_args,
 )
+
+
+@pytest.mark.parametrize(
+    "entries",
+    [
+        ["missing-separator"],
+        ["=--flag value"],
+        ["ch01:gemm="],
+        ['ch01:gemm="unterminated'],
+        ["ch01:gemm=--one", "ch01:gemm=--two"],
+        ["labs/demo:case=--one", "labs_demo:case=--two"],
+    ],
+)
+def test_target_extra_args_reject_malformed_or_duplicate_entries(entries: list[str]) -> None:
+    with pytest.raises(ValueError, match="target-extra-arg"):
+        parse_target_extra_args(entries)
+
+
+def test_target_extra_args_parse_quoted_arguments() -> None:
+    assert parse_target_extra_args(['labs/demo:case=--label "two words"']) == {
+        "labs/demo:case": ["--label", "two words"]
+    }
+
+
+def test_target_extra_arg_preflight_rejects_unmatched_target() -> None:
+    issues = run_benchmarks_module._preflight_target_coverage_and_assets(
+        [run_benchmarks_module.repo_root / "ch01"],
+        {"ch01": {"gemm"}},
+        only_cuda=False,
+        only_python=False,
+        target_extra_args={"ch01:not_selected": ["--flag"]},
+        enforce_external_assets=False,
+    )
+
+    assert any("does not match any selected benchmark" in issue for issue in issues)
+
+
+def test_target_extra_arg_preflight_rejects_cuda_binary_wrapper() -> None:
+    issues = run_benchmarks_module._preflight_target_coverage_and_assets(
+        [run_benchmarks_module.repo_root / "ch01"],
+        {"ch01": {"gemm"}},
+        only_cuda=True,
+        only_python=False,
+        target_extra_args={"ch01:gemm": ["--m", "64"]},
+        enforce_external_assets=False,
+    )
+
+    assert any("selects a CUDA binary wrapper" in issue for issue in issues)
 
 
 class OverrideAwareBenchmark(BaseBenchmark):
@@ -115,6 +166,14 @@ def test_subprocess_worker_import_receives_target_extra_args(tmp_path, monkeypat
 
             class ImportArgBenchmark(BaseBenchmark):
                 allow_cpu = True
+
+                def apply_target_overrides(self, argv):
+                    # The worker presents the same values as sys.argv while it
+                    # imports this module. The hook declares that the override
+                    # is accepted and checks that both readings agree.
+                    hook_args, unknown = parser.parse_known_args(argv)
+                    if unknown or hook_args.scale != import_args.scale:
+                        raise ValueError(f"override {argv} does not match the import-time arguments")
 
                 def setup(self):
                     self.input = torch.arange(4, dtype=torch.float32)

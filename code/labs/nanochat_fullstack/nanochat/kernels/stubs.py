@@ -113,7 +113,7 @@ def resolve_clustered_attention_kernel(
     return clustered_attention_stub
 
 
-def clustered_attention_stub(q, k, v, attn_mask=None, causal=True, num_sm_clusters=None, enable_gqa=False):
+def clustered_attention_stub(q, k, v, attn_mask=None, causal=True, enable_gqa=False):
     raise NotImplementedError(
         "use_clustered_attention_kernel=True but no clustered attention kernel is built. "
         "Provide a custom kernel via GPTConfig.clustered_attention_impl='module:function' "

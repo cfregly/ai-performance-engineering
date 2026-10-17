@@ -16,6 +16,7 @@ Shared headers, CUDA build flags, and Python utilities that keep every chapter a
 | `headers/arch_detection.cuh`, `headers/tma_helpers.cuh` | Device feature probes plus TMA helpers shared by CUDA benchmarks and extensions. |
 | `tcgen05/` | SM100 (tcgen05/TMEM) kernel loaders and wrappers used by the tcgen05 benchmarks. |
 | `async_input_pipeline.py`, `moe_parallelism_plan.py`, `device_utils.py` | Shared Python helpers pulled into both core and labs. |
+| `grace_platform.py` | NVIDIA Grace identity from the sysfs SoC ID and NVLink-C2C host-link checks from the CUDA driver, shared by the hardware probe, the parallelism planner, the data-loading diagnostics and the ch02/ch04 tools. |
 
 ## Running / Usage
 - **Build system**: include `../core/common/cuda_arch.mk` from chapter Makefiles to pick up architecture flags and helper rules.

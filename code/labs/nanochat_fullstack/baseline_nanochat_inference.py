@@ -56,8 +56,7 @@ class BaselineNanochatInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark
             n_kv_head=self.n_kv_head,
             n_embd=self.n_embd,
             use_flash_sdp=False,
-            use_flash3=False,
-            use_cta_clustering=False,
+            use_flash_attn_varlen=False,
             kv_block_size=None,
             kv_page_size=None,
         )

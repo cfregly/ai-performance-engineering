@@ -219,13 +219,15 @@ class EosEarlyExitBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 next_token = self._decode_step()
                 if (step + 1) >= self.cfg.force_eos_after_tokens:
                     next_token.fill_(self.cfg.eos_token_id)
+                # A finished row records EOS at every later step. The recorded
+                # tokens then match the EOS fill used after an early exit.
+                next_token.masked_fill_(self.done_mask_buffer, self.cfg.eos_token_id)
                 self.generated_tokens[:, step].copy_(next_token)
                 filled = step + 1
                 torch.eq(next_token, self.cfg.eos_token_id, out=self.eos_compare_buffer)
                 self.done_mask_buffer.logical_or_(self.eos_compare_buffer)
                 if self.cfg.stop_on_all_done:
                     self._completion_checks += 1
-                next_token.masked_fill_(self.done_mask_buffer, self.cfg.eos_token_id)
                 if self.cfg.stop_on_all_done and self._all_requests_done():
                     break
             if filled < self.cfg.decode_tokens:

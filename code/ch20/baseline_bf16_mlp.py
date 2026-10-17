@@ -56,10 +56,10 @@ class BaselineBF16MLPBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._verify_output_buffer: Optional[torch.Tensor] = None
         self.batch_size = 128
         self.hidden_dim = 2048  # Smaller to make differences more visible
-        tokens = self.batch_size * self.hidden_dim
+        # Each input row is one token. hidden_dim is its feature width, not a token count.
         self._workload = WorkloadMetadata(
             requests_per_iteration=float(self.batch_size),
-            tokens_per_iteration=float(tokens),
+            tokens_per_iteration=float(self.batch_size),
         )
         self._payload_parameter_count = 0
     

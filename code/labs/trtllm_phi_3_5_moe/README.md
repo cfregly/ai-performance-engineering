@@ -56,7 +56,7 @@ python -m cli.aisp bench list-targets --chapter labs/trtllm_phi_3_5_moe
 python -m cli.aisp bench run --targets labs/trtllm_phi_3_5_moe --profile minimal
 ```
 - Targets follow the `labs/trtllm_phi_3_5_moe:<workload>` naming convention listed by `list-targets`.
-- Use `--target-extra-arg labs/trtllm_phi_3_5_moe:<workload>="--flag value"` to sweep schedule knobs.
+- `--target-extra-arg labs/trtllm_phi_3_5_moe:<workload>="--flag value"` passes arguments to one target. The harness fails the target unless the benchmark defines `apply_target_overrides` or launches through torchrun.
 - Benchmark validity profile defaults to strict. Virtualization is warning-only; use `--validity-profile portable` for broader compatibility on hardware-limited environments.
 - Portable runs do not write expectation files unless `--allow-portable-expectations-update` is also provided.
 
@@ -65,3 +65,4 @@ python -m cli.aisp bench run --targets labs/trtllm_phi_3_5_moe --profile minimal
 
 ## Notes
 - This lab is one of the best repo examples for "serving-stack optimization" as opposed to pure kernel tuning.
+- `trtllm_phi_3_5_moe` accepts `--model-path`, `--engine-path`, `--prompt-len`, `--max-new-tokens`, `--batch-size` and `--vocab-slice`, for example `--target-extra-arg labs/trtllm_phi_3_5_moe:trtllm_phi_3_5_moe="--model-path /path/to/model"`. Any other argument fails the target.

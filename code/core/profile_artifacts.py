@@ -39,26 +39,6 @@ def _read_json_object(path: Path, *, label: str) -> Tuple[Dict[str, Any] | None,
     return payload, None
 
 
-def _read_trace_events(path: Path, *, label: str) -> Tuple[List[Any] | None, str | None]:
-    payload, warning = _read_json_file(path, label=label)
-    if warning is not None:
-        return None, warning
-    if isinstance(payload, list):
-        return payload, None
-    if isinstance(payload, dict):
-        events = payload.get("traceEvents", [])
-        if isinstance(events, list):
-            return events, None
-        return None, (
-            f"Failed to read {label} JSON from {path}: expected traceEvents list, "
-            f"got {type(events).__name__}"
-        )
-    return None, (
-        f"Failed to read {label} JSON from {path}: expected JSON list or object, "
-        f"got {type(payload).__name__}"
-    )
-
-
 # =============================================================================
 # Benchmark exports
 # =============================================================================
@@ -142,75 +122,166 @@ def _iter_profile_dirs(code_root: Path) -> List[Path]:
     return profile_dirs
 
 
-def load_flame_graph_data(code_root: Path = CODE_ROOT) -> Dict[str, Any]:
-    """Load flame graph data from the most recent Chrome trace."""
-    flame_data: Dict[str, Any] = {
-        "name": "GPU Execution",
-        "value": 0,
-        "children": [],
+# The flame graph sums complete ("ph": "X") events longer than this.
+FLAME_MIN_EVENT_US = 10
+# Each category keeps only its longest event names.
+FLAME_TOP_EVENTS_PER_CATEGORY = 20
+
+
+def chrome_trace_events(payload: Any, path: Path) -> List[Any] | None:
+    """Return the event list of a Chrome trace payload, or None for any other JSON.
+
+    A Chrome trace is an object with a traceEvents list, or a list that holds
+    at least one event object with a "ph" field. Profile directories also hold
+    manifests and summaries as JSON, and those return None.
+    """
+    if isinstance(payload, dict):
+        if "traceEvents" not in payload:
+            return None
+        events = payload["traceEvents"]
+        if not isinstance(events, list):
+            raise ValueError(f"traceEvents in {path} is a {type(events).__name__}, not a list")
+        return events
+    if isinstance(payload, list) and any(isinstance(event, dict) and "ph" in event for event in payload):
+        return payload
+    return None
+
+
+def _is_json_lines(text: str) -> bool:
+    """Return whether text is JSON Lines: two or more lines that each hold one JSON object."""
+    lines = [line for line in text.splitlines() if line.strip()]
+    if len(lines) < 2:
+        return False
+    for line in lines:
+        try:
+            record = json.loads(line)
+        except ValueError:
+            return False
+        if not isinstance(record, dict):
+            return False
+    return True
+
+
+def find_newest_chrome_trace(code_root: Path) -> Dict[str, Any]:
+    """Find the newest JSON file under artifacts/runs/*/profiles that holds a Chrome trace.
+
+    Profile directories also hold manifests, summaries and metadata as JSON,
+    so each file is parsed, newest first, until one holds trace events (see
+    chrome_trace_events). A JSON Lines file, two or more lines that each hold
+    one JSON object, is not a Chrome trace. It is skipped and listed in
+    skipped_json_lines. HTA capture saves `nsys export --type=json` output in
+    profile directories with a .json suffix, so such an export never stops the
+    search, whether it is one JSON document or JSON Lines. Any other file that
+    does not parse stops the search with error_type trace_read_error, so a
+    broken trace is reported instead of passed over.
+
+    Returns {"trace_path", "events", "skipped_json_lines"} when a trace is
+    found. Otherwise returns success False with error, error_type
+    (trace_read_error or no_chrome_trace) and skipped_json_lines.
+    """
+    runs_root = code_root / "artifacts" / "runs"
+    candidates = sorted(
+        (path for path in runs_root.glob("*/profiles/**/*.json") if path.is_file()),
+        key=lambda path: (path.stat().st_mtime_ns, str(path)),
+        reverse=True,
+    )
+    skipped_json_lines: List[str] = []
+    for path in candidates:
+        try:
+            text = path.read_text(encoding="utf-8")
+            try:
+                payload = json.loads(text)
+            except json.JSONDecodeError:
+                if not _is_json_lines(text):
+                    raise
+                skipped_json_lines.append(str(path))
+                continue
+            events = chrome_trace_events(payload, path)
+        except (OSError, UnicodeDecodeError, ValueError) as exc:
+            return {
+                "success": False,
+                "error": f"Could not check {path} for Chrome trace events: {exc}",
+                "error_type": "trace_read_error",
+                "unreadable_path": str(path),
+                "skipped_json_lines": skipped_json_lines,
+            }
+        if events is not None:
+            return {"trace_path": path, "events": events, "skipped_json_lines": skipped_json_lines}
+    json_lines_note = (
+        f" {len(skipped_json_lines)} of them are JSON Lines files."
+        if skipped_json_lines
+        else ""
+    )
+    return {
+        "success": False,
+        "error": (
+            f"No Chrome trace found under {runs_root}/*/profiles. None of the "
+            f"{len(candidates)} JSON file(s) there holds a traceEvents list or an array of trace events."
+            f"{json_lines_note}"
+        ),
+        "error_type": "no_chrome_trace",
+        "searched_root": str(runs_root),
+        "skipped_json_lines": skipped_json_lines,
     }
 
-    profile_dirs = _iter_profile_dirs(code_root)
 
-    trace_files: List[Path] = []
-    for profile_dir in profile_dirs:
-        if profile_dir.exists():
-            trace_files.extend(profile_dir.glob("**/*.json"))
+def flame_graph_from_trace_events(events: List[Any], trace_path: Path) -> Dict[str, Any]:
+    """Sum the durations of complete trace events by category and event name."""
+    category_times: Dict[str, Dict[str, float]] = {}
+    ignored_events = 0
+    for event in events:
+        if not isinstance(event, dict) or not isinstance(event.get("dur", 0), (int, float)):
+            ignored_events += 1
+            continue
+        if event.get("ph") == "X" and event.get("dur", 0) > FLAME_MIN_EVENT_US:
+            names = category_times.setdefault(event.get("cat", "other"), {})
+            name = event.get("name", "unknown")
+            names[name] = names.get(name, 0) + event["dur"]
+    children = [
+        {
+            "name": category,
+            "value": sum(names.values()),
+            "children": [
+                {"name": name, "value": value, "children": []}
+                for name, value in sorted(names.items(), key=lambda item: -item[1])[
+                    :FLAME_TOP_EVENTS_PER_CATEGORY
+                ]
+            ],
+        }
+        for category, names in category_times.items()
+    ]
+    flame_data: Dict[str, Any] = {
+        "name": "GPU Execution",
+        "value": sum(child["value"] for child in children),
+        "children": children,
+        "trace_path": str(trace_path),
+        "trace_file": trace_path.name,
+    }
+    if ignored_events:
+        _add_warning(flame_data, f"Ignored {ignored_events} malformed trace event(s) in {trace_path}")
+    return flame_data
 
-    if trace_files:
-        trace_files = sorted(trace_files, key=lambda f: f.stat().st_mtime, reverse=True)
-        trace_path = trace_files[0]
-        flame_data["trace_path"] = str(trace_path)
-        try:
-            events, warning = _read_trace_events(trace_path, label="chrome trace")
-            if warning is not None:
-                raise ValueError(warning)
-            if events is None:
-                raise ValueError(f"chrome trace reader returned no events for {trace_path}")
-            ignored_events = 0
 
-            kernel_times: Dict[str, Dict[str, float]] = {}
-            for event in events:
-                if not isinstance(event, dict):
-                    ignored_events += 1
-                    continue
-                if event.get("ph") == "X" and event.get("dur", 0) > 10:
-                    name = event.get("name", "unknown")
-                    cat = event.get("cat", "other")
-                    dur = event.get("dur", 0)
+def _record_trace_selection_failure(payload: Dict[str, Any], selection: Dict[str, Any]) -> None:
+    """Report a failed find_newest_chrome_trace in a dashboard payload."""
+    if selection["error_type"] == "no_chrome_trace":
+        payload["message"] = f"{selection['error']} Run benchmarks with profiling enabled."
+        return
+    payload["trace_path"] = selection["unreadable_path"]
+    payload["error"] = selection["error"]
+    _add_warning(payload, selection["error"])
 
-                    # Group by category
-                    if cat not in kernel_times:
-                        kernel_times[cat] = {}
-                    if name not in kernel_times[cat]:
-                        kernel_times[cat][name] = 0
-                    kernel_times[cat][name] += dur
 
-            for cat, kernels in kernel_times.items():
-                cat_node = {
-                    "name": cat,
-                    "value": sum(kernels.values()),
-                    "children": [
-                        {"name": k, "value": v, "children": []}
-                        for k, v in sorted(kernels.items(), key=lambda x: -x[1])[:20]
-                    ],
-                    }
-                flame_data["children"].append(cat_node)
-
-            flame_data["value"] = sum(c["value"] for c in flame_data["children"])
-            flame_data["trace_file"] = trace_path.name
-            if ignored_events:
-                _add_warning(
-                    flame_data,
-                    f"Ignored {ignored_events} malformed trace event(s) in {trace_path}",
-                )
-
-        except Exception as e:
-            flame_data["error"] = str(e)
-            _add_warning(flame_data, str(e))
-    else:
-        flame_data["message"] = "No profile traces found. Run benchmarks with profiling enabled."
-
+def load_flame_graph_data(code_root: Path = CODE_ROOT) -> Dict[str, Any]:
+    """Load flame graph data from the newest Chrome trace under artifacts/runs/*/profiles."""
+    selection = find_newest_chrome_trace(code_root)
+    if selection.get("error"):
+        flame_data: Dict[str, Any] = {"name": "GPU Execution", "value": 0, "children": []}
+        _record_trace_selection_failure(flame_data, selection)
+        return flame_data
+    flame_data = flame_graph_from_trace_events(selection["events"], selection["trace_path"])
+    if not selection["events"]:
+        _add_warning(flame_data, f"Chrome trace {selection['trace_path']} has no events")
     return flame_data
 
 
@@ -263,7 +334,7 @@ def load_memory_timeline(code_root: Path = CODE_ROOT) -> Dict[str, Any]:
 
 
 def load_cpu_gpu_timeline(code_root: Path = CODE_ROOT) -> Dict[str, Any]:
-    """Load CPU/GPU parallel timeline data."""
+    """Load CPU/GPU parallel timeline data from the newest Chrome trace."""
     timeline_data: Dict[str, Any] = {
         "cpu": [],
         "gpu": [],
@@ -276,23 +347,16 @@ def load_cpu_gpu_timeline(code_root: Path = CODE_ROOT) -> Dict[str, Any]:
         },
     }
 
-    profile_dirs = _iter_profile_dirs(code_root)
-
-    trace_files: List[Path] = []
-    for profile_dir in profile_dirs:
-        if profile_dir.exists():
-            trace_files.extend(profile_dir.glob("**/*.json"))
-
-    if trace_files:
-        trace_files = sorted(trace_files, key=lambda f: f.stat().st_mtime, reverse=True)
-        trace_path = trace_files[0]
+    selection = find_newest_chrome_trace(code_root)
+    if selection.get("error"):
+        _record_trace_selection_failure(timeline_data, selection)
+    else:
+        trace_path = selection["trace_path"]
+        events = selection["events"]
         timeline_data["trace_path"] = str(trace_path)
+        if not events:
+            _add_warning(timeline_data, f"Chrome trace {trace_path} has no events")
         try:
-            events, warning = _read_trace_events(trace_path, label="cpu/gpu timeline")
-            if warning is not None:
-                raise ValueError(warning)
-            if events is None:
-                raise ValueError(f"cpu/gpu timeline reader returned no events for {trace_path}")
             ignored_events = 0
 
             min_ts = float("inf")
@@ -341,8 +405,6 @@ def load_cpu_gpu_timeline(code_root: Path = CODE_ROOT) -> Dict[str, Any]:
         except Exception as e:
             timeline_data["error"] = str(e)
             _add_warning(timeline_data, str(e))
-    else:
-        timeline_data["message"] = "No profile traces found. Run benchmarks with profiling enabled."
 
     return timeline_data
 
@@ -364,6 +426,17 @@ def load_kernel_breakdown(flame_data: Dict[str, Any] | None = None) -> Dict[str,
     all_kernels: List[Dict[str, Any]] = []
     for category in flame.get("children", []):
         cat_name = category.get("name", "other")
+        # PyTorch Chrome traces use the ``kernel`` category for GPU kernels.
+        # CPU operators, runtime calls and memory transfers are also complete
+        # trace events, but reporting them as kernels produces false GPU-time
+        # findings in analyze_bottlenecks.
+        category_tokens = {
+            token.strip().lower()
+            for token in str(cat_name).replace(";", ",").split(",")
+            if token.strip()
+        }
+        if not category_tokens.intersection({"kernel", "gpu_kernel", "cuda_kernel"}):
+            continue
         for kernel in category.get("children", []):
             all_kernels.append(
                 {

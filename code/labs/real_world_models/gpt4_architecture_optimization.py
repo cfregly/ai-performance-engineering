@@ -1,11 +1,15 @@
 #!/usr/bin/env python3
-"""Real-world case study: GPT-4 architecture optimization for Blackwell.
+"""GPT-4-scale memory estimate with a small dense BF16 timing proxy.
 
-Demonstrates optimization strategies for GPT-4 scale models:
-- Expert parallelism for MoE layers
-- Context parallelism for 128K context
-- FP8 quantization
-- Disaggregated prefill/decode
+The memory estimate uses public GPT-4 size estimates. The MoE assumption counts
+the stored weights of every expert. The FP8 assumption counts weights and KV
+cache at one byte per value instead of two. The estimate is arithmetic only and
+is not checked against a multi-GPU run.
+
+The timed workload is a four-layer LayerNorm plus Linear residual stack in BF16
+at hidden size 4096 on one device. It has no attention, MoE routing, FP8 math,
+expert parallelism, context parallelism, or prefill/decode split. The benchmark
+therefore reports MoE, FP8, and context parallelism as not executed.
 """
 
 import math
@@ -23,7 +27,7 @@ logger = get_logger(__name__)
 
 
 class GPT4ArchitectureOptimization:
-    """GPT-4 architecture optimization benchmark."""
+    """GPT-4-scale memory estimate plus a dense BF16 timing proxy."""
     
     # GPT-4 approximate specifications (publicly available estimates)
     HIDDEN_SIZE = 12288
@@ -64,7 +68,7 @@ class GPT4ArchitectureOptimization:
         logger.info("  Requested MoE architecture estimate: %s", self.requested_use_moe)
         logger.info("  Requested FP8 architecture estimate: %s", self.requested_use_fp8)
         logger.info(
-            "  Requested context-parallel architecture estimate: %s",
+            "  Requested context parallelism (recorded only, does not change the estimate): %s",
             self.requested_use_context_parallel,
         )
         logger.info("  Executed proxy precision: BF16 dense")
@@ -73,7 +77,7 @@ class GPT4ArchitectureOptimization:
         self._estimate_memory()
     
     def _estimate_memory(self):
-        """Estimate memory requirements."""
+        """Estimate memory for the full-size configuration, not the timed proxy."""
         # Model parameters (approximate). MoE routing activates only a subset
         # of experts per token, but every expert's weights must remain stored.
         attention_params_per_layer = self.HIDDEN_SIZE * self.HIDDEN_SIZE * 4
@@ -88,21 +92,18 @@ class GPT4ArchitectureOptimization:
 
         total_params = params_per_layer * self.NUM_LAYERS
 
-        # Memory in GB (FP16)
-        param_memory_gb = (total_params * 2) / (1024**3)
-        
-        # KV cache
+        bytes_per_value = 1 if self.requested_use_fp8 else 2
+        param_memory_gb = (total_params * bytes_per_value) / (1024**3)
+
         kv_memory_gb = (
             self.batch_size * self.seq_length *
             self.NUM_LAYERS * 2 * self.NUM_HEADS *
-            (self.HIDDEN_SIZE // self.NUM_HEADS) * 2
+            (self.HIDDEN_SIZE // self.NUM_HEADS) * bytes_per_value
         ) / (1024**3)
-        
-        if self.requested_use_fp8:
-            kv_memory_gb /= 2
 
         total_memory_gb = param_memory_gb + kv_memory_gb
 
+        self.estimated_bytes_per_value = bytes_per_value
         self.estimated_parameter_count = total_params
         self.estimated_parameter_memory_gb = param_memory_gb
         self.estimated_kv_memory_gb = kv_memory_gb
@@ -110,6 +111,11 @@ class GPT4ArchitectureOptimization:
         self.estimated_min_b200_gpus = max(1, math.ceil(total_memory_gb / 192))
 
         logger.info(f"Estimated memory: {total_memory_gb:.2f} GB")
+        logger.info(
+            "  Weight and KV cache precision: %s (bytes per value: %d)",
+            "FP8" if self.requested_use_fp8 else "BF16",
+            bytes_per_value,
+        )
         logger.info(f"  Parameters: {param_memory_gb:.2f} GB")
         logger.info(f"  KV cache: {kv_memory_gb:.2f} GB")
 
@@ -118,7 +124,7 @@ class GPT4ArchitectureOptimization:
             logger.info("Requires %d GPUs minimum", self.estimated_min_b200_gpus)
     
     def setup(self):
-        """Initialize simplified GPT-4 model (for benchmarking)."""
+        """Build the four-layer dense BF16 proxy that the benchmark times."""
         # Use smaller model for actual execution
         class SimplifiedGPT4Layer(nn.Module):
             def __init__(self, hidden_size):
@@ -153,7 +159,7 @@ class GPT4ArchitectureOptimization:
         self._throughput_logged = False
         self._timing_pending = False
         
-        logger.info("Simplified GPT-4 model initialized")
+        logger.info("Dense BF16 timing proxy initialized")
     
     @torch.inference_mode()
     def run(self) -> float:

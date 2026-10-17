@@ -16,6 +16,39 @@ import torch
 from core.utils import compile_utils  # noqa: F401 - installs the guarded get_obj
 
 
+def test_compile_mode_normalization_preserves_explicit_none(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("AISP_COMPILE_MODE_OVERRIDE", "reduce-overhead")
+    options = {"triton.cudagraphs": False}
+
+    assert compile_utils._normalize_compile_kwargs({})[0] == "reduce-overhead"
+    assert compile_utils._normalize_compile_kwargs({"mode": "default"})[0] == "reduce-overhead"
+    assert compile_utils._normalize_compile_kwargs(
+        {"mode": None, "options": options}
+    ) == (None, {"options": options})
+
+
+def test_compile_callable_accepts_options_only_under_mode_override(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("AISP_COMPILE_MODE_OVERRIDE", "reduce-overhead")
+
+    def add_one(value: torch.Tensor) -> torch.Tensor:
+        return value + 1
+
+    compiled = compile_utils.compile_callable(
+        add_one,
+        mode=None,
+        backend="eager",
+        fullgraph=True,
+        dynamic=True,
+        options={"triton.cudagraphs": False},
+    )
+
+    torch.testing.assert_close(compiled(torch.tensor([1.0, 2.0])), torch.tensor([2.0, 3.0]))
+
+
 def test_missing_cudagraph_buckets_stay_python_thread_local(monkeypatch: pytest.MonkeyPatch) -> None:
     import torch._inductor.cudagraph_trees as trees
 

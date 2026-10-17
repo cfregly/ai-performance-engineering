@@ -11,11 +11,11 @@ from __future__ import annotations
 import os
 import re
 import subprocess
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Dict, List, Optional, Tuple
 
-from .topology_detector import TopologyInfo, GPUInfo
+from .topology_detector import TopologyInfo
 
 
 class NetworkType(Enum):
@@ -187,8 +187,11 @@ class ClusterDetector:
         is_hgx = self._is_hgx_cluster()
         is_grace_hopper = single_node_topology and single_node_topology.is_grace_cpu and \
                           any("hopper" in g.architecture for g in single_node_topology.gpus)
+        # GB200 and GB300 GPUs carry the exact "blackwell" planner label (SM 10.0
+        # and 10.3). SM 12.x GPUs are labeled "blackwell_sm12x" and are not
+        # GB200/GB300 superchip GPUs.
         is_grace_blackwell = single_node_topology and single_node_topology.is_grace_cpu and \
-                             any("blackwell" in g.architecture for g in single_node_topology.gpus)
+                             any(g.architecture == "blackwell" for g in single_node_topology.gpus)
         
         cluster = ClusterTopology(
             num_nodes=num_nodes,

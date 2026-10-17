@@ -21,9 +21,10 @@ Representative validated results from `artifacts/runs/20260303_163946__bench__pr
 
 | Target | Baseline | Optimized | Measured delta | What changed |
 | --- | ---: | ---: | ---: | --- |
-| `grace_coherent_memory` | `22468.299 ms` | `970.890 ms` | `23.14x` | coherent-memory placement stops fighting the platform |
 | `memory_transfer` | `18.901 ms` | `3.637 ms` | `5.20x` | optimized transfer path fits the actual link behavior |
 | `cublas` | `0.590 ms` | `0.114 ms` | `5.17x` | tuned cuBLAS settings match the hardware better |
+
+`grace_coherent_memory` has no current measured delta. The same run reported `22468.299 ms` to `970.890 ms` (`23.14x`) for it, but that run predates the Grace host check and timed an older optimized path that staged copies through pinned memory. Both variants now do the same work each iteration: read the host buffer, compute `2x + 1`, and leave the result in host memory. The baseline stages that data through pageable H2D and D2H copies. The optimized variant has the GPU read and write a pinned host buffer in place over NVLink-C2C, with no copies. The pair needs a fresh GB200 or GB300 run before it can claim a speedup.
 
 `grace_coherent_memory` is only valid on Grace-Blackwell coherent-memory hosts. On PCIe-only Blackwell or other non-Grace systems, the target fails fast with `SKIPPED:` instead of emitting fallback transfer numbers under the wrong benchmark name.
 
@@ -41,7 +42,7 @@ python -m cli.aisp bench run --targets ch02:grace_coherent_memory --profile deep
 The expected story is:
 - `cublas`: better math-mode and launch configuration behavior
 - `memory_transfer`: less time lost to the wrong host/device path
-- `grace_coherent_memory`: on GB200/GB300 the placement choice dominates runtime; on non-Grace hosts the benchmark should fail fast with `SKIPPED:`
+- `grace_coherent_memory`: on GB200/GB300 the baseline trace should show a pageable H2D copy, two elementwise kernels, and a pageable D2H copy per iteration, while the optimized trace shows one elementwise kernel that reads and writes host memory and no copies. On non-Grace hosts the benchmark should fail fast with `SKIPPED:`
 
 ## Repro Commands
 ```bash

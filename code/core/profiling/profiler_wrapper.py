@@ -121,8 +121,13 @@ def _run_profile() -> None:
     _target_override_argv = {target_override_argv!r}
     if _target_override_argv:
         _apply_overrides = getattr(benchmark, "apply_target_overrides", None)
-        if callable(_apply_overrides):
-            _apply_overrides(list(_target_override_argv))
+        if not callable(_apply_overrides):
+            # Same rule as BenchmarkHarness._apply_target_overrides: ignored values fail the capture.
+            raise ValueError(
+                f"--target-extra-arg was given for {{_target_label}}, but {{type(benchmark).__name__}} has no "
+                "apply_target_overrides hook, so the arguments would be ignored"
+            )
+        _apply_overrides(list(_target_override_argv))
     _profiling_config = BenchmarkConfig(
         enable_profiling=True,
         enable_nvtx=True,
@@ -274,8 +279,13 @@ def _run_profile() -> None:
     _target_override_argv = {target_override_argv!r}
     if _target_override_argv:
         _apply_overrides = getattr(benchmark, "apply_target_overrides", None)
-        if callable(_apply_overrides):
-            _apply_overrides(list(_target_override_argv))
+        if not callable(_apply_overrides):
+            # Same rule as BenchmarkHarness._apply_target_overrides: ignored values fail the capture.
+            raise ValueError(
+                f"--target-extra-arg was given for {{_target_label}}, but {{type(benchmark).__name__}} has no "
+                "apply_target_overrides hook, so the arguments would be ignored"
+            )
+        _apply_overrides(list(_target_override_argv))
     _profiling_config = BenchmarkConfig(
         enable_profiling=True,
         enable_nsys=True,
@@ -380,8 +390,13 @@ def _run_profile() -> None:
     _target_override_argv = {target_override_argv!r}
     if _target_override_argv:
         _apply_overrides = getattr(benchmark, "apply_target_overrides", None)
-        if callable(_apply_overrides):
-            _apply_overrides(list(_target_override_argv))
+        if not callable(_apply_overrides):
+            # Same rule as BenchmarkHarness._apply_target_overrides: ignored values fail the capture.
+            raise ValueError(
+                f"--target-extra-arg was given for {{_target_label}}, but {{type(benchmark).__name__}} has no "
+                "apply_target_overrides hook, so the arguments would be ignored"
+            )
+        _apply_overrides(list(_target_override_argv))
     profiling_config = BenchmarkConfig(
         enable_profiling=True,
         enable_nvtx=True,

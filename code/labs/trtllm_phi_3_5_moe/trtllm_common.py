@@ -167,17 +167,52 @@ def ensure_trtllm_assets(
     )
 
 
-def parse_trtllm_args() -> argparse.Namespace:
+def build_trtllm_parser() -> argparse.ArgumentParser:
+    """Return the parser for the flags both Phi-3.5-MoE variants accept.
+
+    The model and engine defaults come from AISP_PHI35_MOE_MODEL_PATH and
+    AISP_PHI35_MOE_ENGINE_PATH when those are set.
+    """
     default_model_path = os.environ.get(MODEL_PATH_ENV, str(DEFAULT_MODEL_PATH))
     default_engine_path = str(resolve_default_engine_path())
-    parser = argparse.ArgumentParser(add_help=False)
+    parser = argparse.ArgumentParser(
+        prog="trtllm_phi_3_5_moe",
+        add_help=False,
+        allow_abbrev=False,
+        exit_on_error=False,
+    )
     parser.add_argument("--model-path", type=str, default=default_model_path)
     parser.add_argument("--engine-path", type=str, default=default_engine_path)
     parser.add_argument("--prompt-len", type=int, default=512)
     parser.add_argument("--max-new-tokens", type=int, default=128)
     parser.add_argument("--batch-size", type=int, default=1)
     parser.add_argument("--vocab-slice", type=int, default=256)
-    args, _ = parser.parse_known_args()
+    return parser
+
+
+def parse_trtllm_args(argv: Sequence[str]) -> argparse.Namespace:
+    """Parse the Phi-3.5-MoE flags in ``argv``. An empty argv gives the defaults.
+
+    The benchmarks pass their --target-extra-arg values here from
+    apply_target_overrides. An unknown argument, an invalid value or a count
+    that is not positive raises ValueError, so the harness fails the target
+    instead of running the defaults.
+    """
+    parser = build_trtllm_parser()
+    try:
+        args, unknown = parser.parse_known_args(list(argv))
+    except argparse.ArgumentError as exc:
+        raise ValueError(f"Invalid trtllm_phi_3_5_moe override {list(argv)}: {exc}") from exc
+    if unknown:
+        raise ValueError(f"Unsupported trtllm_phi_3_5_moe override {unknown}. Accepted: {parser.format_usage().strip()}")
+    for flag, value in (
+        ("--prompt-len", args.prompt_len),
+        ("--max-new-tokens", args.max_new_tokens),
+        ("--batch-size", args.batch_size),
+        ("--vocab-slice", args.vocab_slice),
+    ):
+        if value <= 0:
+            raise ValueError(f"{flag} must be positive, got {value}")
     return args
 
 

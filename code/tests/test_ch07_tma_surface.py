@@ -11,7 +11,7 @@ def test_tma_copy_wrappers_surface_the_strict_tma_story() -> None:
     optimized = OptimizedTMACopyBenchmark()
 
     assert baseline.friendly_name == "Scalar Neighbor Gather Copy"
-    assert optimized.friendly_name == "Pipeline + Tensor-Map Neighbor Copy"
+    assert optimized.friendly_name == "Descriptor-Backed 2D TMA Tiled-Neighbor Transform"
 
     baseline_metrics = baseline.get_custom_metrics()
     optimized_metrics = optimized.get_custom_metrics()

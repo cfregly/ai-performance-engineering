@@ -76,13 +76,13 @@ int main() {
     
     for (int iter = 0; iter < iterations; iter++) {
         NVTX_RANGE("transfer_sync:h2d");
-        // Explicit H2D copy (PCIe bottleneck)
+        // Explicit H2D copy over PCIe
         CUDA_CHECK(cudaMemcpy(d_input, h_input.data(), N * sizeof(float), cudaMemcpyHostToDevice));
         
         // Kernel execution
         traditional_process_kernel<<<grid, block>>>(d_input, d_output, N);
         
-        // Explicit D2H copy (PCIe bottleneck)
+        // Explicit D2H copy over PCIe
         CUDA_CHECK(cudaMemcpy(h_output.data(), d_output, N * sizeof(float), cudaMemcpyDeviceToHost));
     }
     
@@ -96,7 +96,7 @@ int main() {
     printf("Average time per iteration: %.3f ms\n", avg_ms);
     printf("Effective H2D+D2H bandwidth including compute: %.1f GB/s\n", bandwidth_gbs);
     printf("Reference: PCIe 5.0 x16 is about 64 GB/s per direction before overhead.\n");
-    printf("These transfers are sequential; the 128 GB/s full-duplex sum is not this metric's ceiling.\n");
+    printf("These transfers run one after another, so the 128 GB/s full-duplex sum is not this metric's ceiling.\n");
     printf("The negotiated link and actual bottleneck are not measured by this demo.\n");
     
     CUDA_CHECK(cudaFree(d_input));

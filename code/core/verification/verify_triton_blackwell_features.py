@@ -17,8 +17,7 @@ Usage:
 
 import argparse
 import sys
-import time
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, Tuple, Optional
 
 # Apply compile patches before importing torch/triton
 from core.utils import compile_utils as _compile_utils_patch  # noqa: F401
@@ -32,6 +31,27 @@ if not torch.cuda.is_available():
 
 import triton
 import triton.language as tl
+
+
+# (architecture, family) for each Blackwell compute capability. These are the
+# labels in core.harness.arch_config.ArchitectureConfig.metadata_for_capability.
+# This script does not import that module, because importing it reconfigures
+# Inductor and Triton before the tests run. SM 12.0 is the GeForce RTX 50 and
+# RTX PRO family and SM 12.1 is GB10. Neither is a GB200 or GB300 GPU, which
+# report SM 10.0 and 10.3.
+_BLACKWELL_FAMILIES = {
+    (10, 0): ("blackwell", "Blackwell B200/GB200 family"),
+    (10, 3): ("blackwell_ultra", "Blackwell Ultra B300/GB300 family"),
+    (12, 0): ("blackwell_consumer", "Blackwell GeForce RTX 50 / RTX PRO family"),
+    (12, 1): ("grace_blackwell", "GB10 / DGX Spark family"),
+}
+# B200, B300, GB200 and GB300 use HBM3e. SM 12.x parts use GDDR7 or LPDDR5X.
+_HBM3E_ARCHITECTURES = frozenset({"blackwell", "blackwell_ultra"})
+
+
+def _blackwell_family(major: int, minor: int) -> Tuple[str, str]:
+    """Return (architecture, family) from the table, or ("other", "Unclassified CUDA GPU") for any other capability."""
+    return _BLACKWELL_FAMILIES.get((major, minor), ("other", "Unclassified CUDA GPU"))
 
 
 def print_header(title: str) -> None:
@@ -54,6 +74,7 @@ def print_result(name: str, status: str, detail: str = "") -> None:
 def get_gpu_info() -> Dict:
     """Get GPU information."""
     props = torch.cuda.get_device_properties(0)
+    architecture, family = _blackwell_family(props.major, props.minor)
     return {
         "name": props.name,
         "compute_capability": f"{props.major}.{props.minor}",
@@ -61,8 +82,9 @@ def get_gpu_info() -> Dict:
         "minor": props.minor,
         "total_memory_gb": props.total_memory / 1024**3,
         "sms": props.multi_processor_count,
-        "is_blackwell": props.major == 10,
-        "is_grace_blackwell": props.major >= 12,
+        "architecture": architecture,
+        "family": family,
+        "is_blackwell": architecture != "other",
     }
 
 
@@ -543,10 +565,7 @@ def main():
     print(f"Memory: {gpu_info['total_memory_gb']:.1f} GB")
     print(f"SMs: {gpu_info['sms']}")
     
-    arch_type = "Grace-Blackwell" if gpu_info['is_grace_blackwell'] else \
-                "Blackwell" if gpu_info['is_blackwell'] else \
-                "Pre-Blackwell"
-    print(f"Architecture: {arch_type}")
+    print(f"Architecture: {gpu_info['family']} ({gpu_info['architecture']})")
     
     # Triton Info
     triton_info = get_triton_info()
@@ -605,10 +624,11 @@ def main():
     print(f"  Warnings: {results['warnings']}")
     
     # Blackwell-specific notes
-    if gpu_info['is_blackwell'] or gpu_info['is_grace_blackwell']:
+    if gpu_info['is_blackwell']:
         print("\n  Blackwell-Specific Notes:")
         print("  - TMA descriptors provide hardware-accelerated bulk memory transfers")
-        print("  - Multi-stage pipelining (num_stages=3-5) optimal for HBM3e")
+        if gpu_info['architecture'] in _HBM3E_ARCHITECTURES:
+            print("  - Multi-stage pipelining (num_stages=3-5) optimal for HBM3e")
         print("  - Warp specialization can improve tensor core utilization")
         print("  - FP8/MXFP8 formats supported for inference workloads")
         if results['warnings'] > 0:

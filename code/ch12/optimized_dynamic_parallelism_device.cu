@@ -89,8 +89,8 @@ int main() {
 
     int launches = 0;
     CUDA_CHECK(cudaMemcpy(&launches, d_launch_count, sizeof(int), cudaMemcpyDeviceToHost));
-    std::printf("Device child launches (optimized): %d\\n", launches);
-    std::printf("Elapsed_ms: %.6f ms\\n", elapsed_ms);
+    std::printf("Device child launches (optimized): %d\n", launches);
+    std::printf("Elapsed_ms: %.6f ms\n", elapsed_ms);
 
 #ifdef VERIFY
     std::vector<float> h_data(N);

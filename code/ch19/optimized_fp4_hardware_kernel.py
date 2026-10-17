@@ -1,63 +1,28 @@
 """Python harness wrapper for optimized_fp4_hardware_kernel.cu (Chapter 19).
 
 This benchmark participates in the harness as a *comparable* optimized variant
-for the FP4 hardware-kernel example.
+for the FP4 hardware-kernel example. It shares the full-output verification
+wrapper defined in baseline_fp4_hardware_kernel.py.
 
 Pairs with: baseline_fp4_hardware_kernel.py
 """
 
 from __future__ import annotations
 
-from pathlib import Path
-from typing import Optional
-
-from core.benchmark.cuda_binary_benchmark import CudaBinaryBenchmark
-from core.benchmark.verification import simple_signature
+from ch19.baseline_fp4_hardware_kernel import _FP4HardwareKernelBinaryBenchmark
 from core.harness.benchmark_harness import BaseBenchmark
 
-_M = 1024
-_N = 1024
-_K = 1024
 
-
-class OptimizedFP4HardwareKernelBenchmark(CudaBinaryBenchmark):
+class OptimizedFP4HardwareKernelBenchmark(_FP4HardwareKernelBinaryBenchmark):
     """Runs optimized_fp4_hardware_kernel.cu (cuBLASLt NVFP4 tensor cores)."""
 
     def __init__(self) -> None:
-        chapter_dir = Path(__file__).parent
         super().__init__(
-            chapter_dir=chapter_dir,
             binary_name="optimized_fp4_hardware_kernel",
             friendly_name="Optimized Fp4 Hardware Kernel",
-            iterations=1,
-            warmup=1,
-            timeout_seconds=300,
-            run_args=[str(_M), str(_N), str(_K)],
-            workload_params={
-                "batch_size": 1,
-                "dtype": "nvfp4_e2m1",
-                "M": _M,
-                "N": _N,
-                "K": _K,
-            },
+            variant="optimized_cublaslt_nvfp4",
         )
-        self.register_workload_metadata(requests_per_iteration=1.0)
-
-    def get_custom_metrics(self) -> Optional[dict]:
-        if self.last_time_ms is None:
-            raise RuntimeError("Benchmark did not capture TIME_MS output")
-        flops = 2.0 * _M * _N * _K
-        tflops = flops / (float(self.last_time_ms) * 1e9)
-        return {"tflops": float(tflops), "variant": "optimized_cublaslt_nvfp4"}
-
-    def get_input_signature(self) -> dict:
-        return simple_signature(batch_size=1, dtype="nvfp4_e2m1", M=_M, N=_N, K=_K).to_dict()
-
-    def get_output_tolerance(self) -> tuple[float, float]:
-        return (1e-2, 1e-2)
 
 
 def get_benchmark() -> BaseBenchmark:
     return OptimizedFP4HardwareKernelBenchmark()
-
-

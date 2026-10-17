@@ -166,7 +166,16 @@ class BaselinePrefillDecodeMonolithicBenchmark(VerificationPayloadMixin, BaseBen
                 "fp8": False,
                 "tf32": torch.backends.cuda.matmul.allow_tf32,
             },
-            output_tolerance=(0.1, 1.0),
+            # The optimized arm runs the same bf16 kernels on the same prompt
+            # and must reproduce this output exactly, even though it decodes
+            # while the next prefill runs on another stream. cuBLAS documents
+            # bitwise-identical results across concurrent streams only when
+            # each stream has its own workspace, which PyTorch provides. No GPU
+            # run has checked exact equality for this pair yet. If the outputs
+            # differ, change the model instead of loosening this tolerance. A
+            # one-ULP change in the prefill state moves the 16-step output about
+            # as far as a different prompt does.
+            output_tolerance=(0.0, 0.0),
         )
 
     def teardown(self) -> None:

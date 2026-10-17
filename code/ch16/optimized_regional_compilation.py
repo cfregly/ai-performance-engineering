@@ -26,6 +26,7 @@ from core.harness.benchmark_harness import (
 )
 from core.profiling.nvtx_helper import nvtx_range, get_nvtx_enabled
 from ch16.baseline_regional_compilation import (
+    REGIONAL_COMPILATION_OUTPUT_TOLERANCE,
     DummyTransformer,
     select_regional_compilation_choice,
 )
@@ -206,7 +207,7 @@ class OptimizedRegionalCompilationBenchmark(VerificationPayloadMixin, BaseBenchm
                 "fp8": False,
                 "tf32": torch.backends.cuda.matmul.allow_tf32,
             },
-            output_tolerance=(0.1, 1.0),
+            output_tolerance=REGIONAL_COMPILATION_OUTPUT_TOLERANCE,
         )
 
     def run(self, compare_eager: bool = False) -> torch.Tensor:

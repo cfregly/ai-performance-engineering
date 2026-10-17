@@ -1,148 +1,175 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import 'tailwindcss';
+@config '../../tailwind.config.ts';
 
-:root {
-  --bg-primary: #06060a;
-  --bg-primary-90: rgba(6, 6, 10, 0.9);
-  --bg-primary-50: rgba(6, 6, 10, 0.5);
-  --bg-secondary: #0c0c14;
-  --bg-tertiary: #12121c;
-  --bg-card: rgba(16, 16, 24, 0.9);
-  --bg-card-90: rgba(16, 16, 24, 0.9);
-  --bg-card-50: rgba(16, 16, 24, 0.5);
-  --bg-glass: rgba(255, 255, 255, 0.02);
-  --border-glass: rgba(255, 255, 255, 0.06);
-  --border-highlight: rgba(0, 245, 212, 0.3);
-  --accent-primary: #00f5d4;
-  --accent-primary-rgb: 0, 245, 212;
-  --accent-secondary: #9d4edd;
-  --accent-secondary-rgb: 157, 78, 221;
-  --accent-tertiary: #f72585;
-  --accent-tertiary-rgb: 247, 37, 133;
-  --accent-success: #00f5a0;
-  --accent-success-rgb: 0, 245, 160;
-  --accent-warning: #ffc43d;
-  --accent-warning-rgb: 255, 196, 61;
-  --accent-danger: #ff4757;
-  --accent-danger-rgb: 255, 71, 87;
-  --accent-info: #4cc9f0;
-  --accent-info-rgb: 76, 201, 240;
-  --text-primary: #ffffff;
-  --text-primary-rgb: 255, 255, 255;
-  --text-secondary: rgba(255, 255, 255, 0.75);
-  --text-secondary-rgb: 255, 255, 255;
-  --text-muted: rgba(255, 255, 255, 0.45);
-  --text-muted-rgb: 255, 255, 255;
+/*
+  Tailwind CSS v4 changed the default border color to `currentcolor`.
+  Keep the v3 gray-200 default until every uncolored border has an explicit color.
+*/
+@layer base {
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--color-gray-200, currentcolor);
+  }
 }
 
-body {
-  background: var(--bg-primary);
+@utility card {
+  @apply bg-brand-card rounded-xl border border-white/5 backdrop-blur-xl;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  background: var(--bg-card);
+  border-color: var(--border-glass);
   color: var(--text-primary);
-  font-family: var(--font-sans), 'Space Grotesk', system-ui, sans-serif;
-  transition: background-color 150ms ease, color 150ms ease;
 }
 
-.bg-brand-bg {
-  background-color: var(--bg-primary) !important;
+@utility card-header {
+  @apply px-5 py-4 border-b border-white/5 flex items-center justify-between;
+  border-color: var(--border-glass);
+  color: inherit;
 }
 
-.bg-brand-bg\/90 {
-  background-color: var(--bg-primary-90, var(--bg-primary)) !important;
+@utility card-body {
+  @apply p-5;
+  color: inherit;
 }
 
-.bg-brand-bg\/50 {
-  background-color: var(--bg-primary-50, var(--bg-primary)) !important;
+@utility btn {
+  @apply px-4 py-2 rounded-lg font-medium transition-all duration-200;
+  @apply hover:scale-[1.02] active:scale-[0.98];
 }
 
-.bg-brand-card {
-  background-color: var(--bg-card) !important;
+@utility btn-primary {
+  @apply bg-linear-to-r from-accent-primary to-accent-secondary text-black;
 }
 
-/* Background gradients */
-.bg-gradient-mesh {
-  background: 
-    radial-gradient(ellipse 80% 50% at 20% 40%, rgba(157, 78, 221, 0.12), transparent),
-    radial-gradient(ellipse 60% 60% at 80% 20%, rgba(0, 245, 212, 0.08), transparent),
-    radial-gradient(ellipse 50% 80% at 50% 100%, rgba(247, 37, 133, 0.06), transparent);
+@utility btn-ghost {
+  @apply bg-white/5 hover:bg-white/10 text-white;
 }
 
-/* Glass card styles */
-@layer components {
-  .card {
-    @apply bg-brand-card rounded-xl border border-white/5 backdrop-blur-xl;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
-    background: var(--bg-card);
-    border-color: var(--border-glass);
-    color: var(--text-primary);
-  }
+@utility badge {
+  @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
+}
 
-  .card-header {
-    @apply px-5 py-4 border-b border-white/5 flex items-center justify-between;
-    border-color: var(--border-glass);
-    color: inherit;
-  }
+@utility badge-success {
+  @apply bg-accent-success/20 text-accent-success;
+}
 
-  .card-body {
-    @apply p-5;
-    color: inherit;
-  }
+@utility badge-danger {
+  @apply bg-accent-danger/20 text-accent-danger;
+}
 
-  .btn {
-    @apply px-4 py-2 rounded-lg font-medium transition-all duration-200;
-    @apply hover:scale-[1.02] active:scale-[0.98];
-  }
+@utility badge-warning {
+  @apply bg-accent-warning/20 text-accent-warning;
+}
 
-  .btn-primary {
-    @apply bg-gradient-to-r from-accent-primary to-accent-secondary text-black;
-  }
+@utility badge-info {
+  @apply bg-accent-info/20 text-accent-info;
+}
 
-  .btn-ghost {
-    @apply bg-white/5 hover:bg-white/10 text-white;
-  }
+@utility stat-value {
+  @apply text-3xl font-bold bg-linear-to-r from-accent-primary to-accent-secondary bg-clip-text text-transparent;
+}
 
-  .badge {
-    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
-  }
+@utility glow-primary {
+  box-shadow: 0 0 60px rgba(0, 245, 212, 0.2);
+}
 
-  .badge-success {
-    @apply bg-accent-success/20 text-accent-success;
-  }
-
-  .badge-danger {
-    @apply bg-accent-danger/20 text-accent-danger;
-  }
-
-  .badge-warning {
-    @apply bg-accent-warning/20 text-accent-warning;
-  }
-
-  .badge-info {
-    @apply bg-accent-info/20 text-accent-info;
-  }
-
-  .stat-value {
-    @apply text-3xl font-bold bg-gradient-to-r from-accent-primary to-accent-secondary bg-clip-text text-transparent;
-  }
-
-  .glow-primary {
-    box-shadow: 0 0 60px rgba(0, 245, 212, 0.2);
-  }
-
-.glow-secondary {
+@utility glow-secondary {
   box-shadow: 0 0 60px rgba(157, 78, 221, 0.2);
-}
 }
 
 /* Utility to hide scrollbars while preserving scroll */
-@layer utilities {
-  .hide-scrollbar {
-    -ms-overflow-style: none; /* IE/Edge */
-    scrollbar-width: none; /* Firefox */
-  }
-  .hide-scrollbar::-webkit-scrollbar {
+
+@utility hide-scrollbar {
+  -ms-overflow-style: none; /* IE/Edge */
+  scrollbar-width: none; /* Firefox */
+  &::-webkit-scrollbar {
     display: none; /* Chrome/Safari */
   }
+}
+
+@layer utilities {
+  :root {
+    --bg-primary: #06060a;
+    --bg-primary-90: rgba(6, 6, 10, 0.9);
+    --bg-primary-50: rgba(6, 6, 10, 0.5);
+    --bg-secondary: #0c0c14;
+    --bg-tertiary: #12121c;
+    --bg-card: rgba(16, 16, 24, 0.9);
+    --bg-card-90: rgba(16, 16, 24, 0.9);
+    --bg-card-50: rgba(16, 16, 24, 0.5);
+    --bg-glass: rgba(255, 255, 255, 0.02);
+    --border-glass: rgba(255, 255, 255, 0.06);
+    --border-highlight: rgba(0, 245, 212, 0.3);
+    --accent-primary: #00f5d4;
+    --accent-primary-rgb: 0, 245, 212;
+    --accent-secondary: #9d4edd;
+    --accent-secondary-rgb: 157, 78, 221;
+    --accent-tertiary: #f72585;
+    --accent-tertiary-rgb: 247, 37, 133;
+    --accent-success: #00f5a0;
+    --accent-success-rgb: 0, 245, 160;
+    --accent-warning: #ffc43d;
+    --accent-warning-rgb: 255, 196, 61;
+    --accent-danger: #ff4757;
+    --accent-danger-rgb: 255, 71, 87;
+    --accent-info: #4cc9f0;
+    --accent-info-rgb: 76, 201, 240;
+    --text-primary: #ffffff;
+    --text-primary-rgb: 255, 255, 255;
+    --text-secondary: rgba(255, 255, 255, 0.75);
+    --text-secondary-rgb: 255, 255, 255;
+    --text-muted: rgba(255, 255, 255, 0.45);
+    --text-muted-rgb: 255, 255, 255;
+  }
+
+  body {
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    font-family: var(--font-sans), 'Space Grotesk', system-ui, sans-serif;
+    transition:
+      background-color 150ms ease,
+      color 150ms ease;
+  }
+
+  .bg-brand-bg {
+    background-color: var(--bg-primary) !important;
+  }
+
+  .bg-brand-bg\/90 {
+    background-color: var(--bg-primary-90, var(--bg-primary)) !important;
+  }
+
+  .bg-brand-bg\/50 {
+    background-color: var(--bg-primary-50, var(--bg-primary)) !important;
+  }
+
+  .bg-brand-card {
+    background-color: var(--bg-card) !important;
+  }
+
+  /* Background gradients */
+  .bg-gradient-mesh {
+    background:
+      radial-gradient(
+        ellipse 80% 50% at 20% 40%,
+        rgba(157, 78, 221, 0.12),
+        transparent
+      ),
+      radial-gradient(
+        ellipse 60% 60% at 80% 20%,
+        rgba(0, 245, 212, 0.08),
+        transparent
+      ),
+      radial-gradient(
+        ellipse 50% 80% at 50% 100%,
+        rgba(247, 37, 133, 0.06),
+        transparent
+      );
+  }
+
+  /* Glass card styles */
 }
 
 /* Scrollbar styling */

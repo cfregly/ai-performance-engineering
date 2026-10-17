@@ -1,0 +1,111 @@
+run_metadata:
+  benchmark_layer: micro
+  benchmark_grade: realism
+  use_case: engineering_debug
+  owner: operator
+  ticket_or_epic: arithmetic_intensity_b200_peak_characterization
+comparison_axis:
+  variable_under_test: payload_kernel_size_and_layout
+  control: reviewed_static_single_b200_profile
+  candidate: highest_stable_result_under_fixed_bounded_protocol
+  constants_locked:
+    - gpu_sku
+    - gpu_count
+    - bf16_precision
+    - beta_zero
+    - seeds
+    - clock_control
+diagnostic_inputs:
+  hbm:
+    distribution: seeded_uniform_random_uint8
+    generation_timed: false
+    copy_correctness: full_tensor_equality
+    read_correctness: full_per_chunk_output_against_independent_full_input_reference
+    write_correctness: full_deterministic_output_word_validation
+  dense_bf16:
+    distribution: seeded_scaled_normal_bf16
+    generation_timed: false
+    correctness: full_bf16_output_against_fp32_reference
+execution:
+  image: supplied_by_operator_and_recorded_in_raw_artifact
+  runtime_versions:
+    scope: lab_specific_isolated_environment
+    qualification_role: current_source_target
+    driver: captured_at_runtime
+    cuda: "13.0_exact_PyTorch_readback_required"
+    nccl: not_used
+    pytorch: "2.13.0+cu130_exact_readback_required"
+    triton: optional_recorded_at_runtime_nonbinding
+    triton_role: unused_by_lab_source
+    global_repository_default_changed: false
+    runtime_or_server: none
+  hardware_tier:
+    gpu_model: NVIDIA_B200
+    gpu_count: 1
+    cpu_model: captured_at_runtime
+    ram_gb: captured_at_runtime
+    network_fabric: not_used
+    storage_tier: not_used
+  topology:
+    gpu_to_gpu: not_used
+    gpu_to_nic_affinity: not_used
+    numa_layout: captured_by_strict_environment_validation
+    pcie_layout: captured_by_gpu_telemetry
+  scheduler_path:
+    platform: operator_host
+    queue_or_scheduler: operator_existing_gpu_lease
+    placement_policy: exclusive_single_gpu
+    control_plane_path: operator_owned
+measurement_policy:
+  screen_trials: 7
+  screen_warmup_trials: 3
+  confirmation_windows: 5
+  confirmation_trials_per_window: 15
+  confirmation_warmup_trials_per_window: 3
+  minimum_gpu_active_ms_per_confirmation_window: 1000
+  report_statistics: [median, mean, stddev, p95, cv_pct, bootstrap_median_95_ci]
+  outlier_policy:
+    method: report_all_samples
+    keep_raw_samples: true
+    auto_flag_only: true
+    discard_requires_written_reason: true
+  confidence_policy:
+    method: deterministic_percentile_bootstrap_of_window_medians
+    resamples: 10000
+    min_effect_size_pct: null
+  environment_controls:
+    gpu_clocks_locked: true
+    clock_preconditioning_each_window: true
+    app_clocks_recorded: true
+    temperature_and_power_recorded: true
+    background_load_recorded: true
+metrics:
+  primary: sustained_dense_bf16_tflops
+  secondary:
+    - effective_requested_copy_read_plus_write_gbps
+    - supporting_requested_read_gbps
+    - supporting_requested_write_gbps
+    - confirmation_cv_pct
+    - requested_byte_arithmetic_intensity
+    - physical_counter_arithmetic_intensity
+    - observed_blas_dispatch
+diagnosis_policy:
+  bottleneck_classes: [compute_bound, memory_bound]
+  required_signals: [gpu_counters, cuda_event_timing, gpu_telemetry, nsys_timeline]
+  distributed:
+    rank_level_visibility: false
+    isolate_suspected_straggler_node: false
+    cordon_on_repeated_failure: false
+artifacts:
+  artifact_root: operator_external_artifact_directory
+  raw_artifacts_immutable: true
+  require_manifest: true
+  require_profiler_artifacts: true
+  require_sha256: true
+  provenance_signing:
+    required: false
+    status: engineering_diagnostic_only
+  publication_packet:
+    include_methodology_writeup: true
+    include_comparison_report: false
+    include_audit_ledger: true

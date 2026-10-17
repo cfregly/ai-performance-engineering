@@ -22,6 +22,7 @@
 #include <string>
 
 #include "../core/common/headers/cuda_verify.cuh"
+#include "../core/common/headers/nvfp4_scale_layout.cuh"
 #include "../core/common/nvtx_utils.cuh"
 
 #define CUDA_CHECK(call) \
@@ -44,50 +45,44 @@
 
 constexpr int FP4_BLOCK_SIZE = 16;
 
-// Quantize float to NVFP4 with block scaling
-void quantize_to_nvfp4(const float* input, uint8_t* output_packed, 
-                       __nv_fp8_e4m3* scales, int rows, int cols) {
-    // Pack as 2 FP4 values per byte, along the contiguous (row-major) dimension.
-    // This matches the packing used by NVIDIA cuBLASLt NVFP4 examples.
-    const int packed_cols = cols / 2;
-    const int num_scale_cols = cols / FP4_BLOCK_SIZE;
-    
-    // Compute per-row scales (block-scaled along the column dimension).
+// Quantize a row-major [rows, reduction_dim] matrix to NVFP4 along the
+// reduction dimension. Values are packed two per byte, and each 16-value block
+// scale is written in cuBLASLt's VEC16_UE4M3 scale-factor layout.
+void quantize_to_nvfp4_kmajor(const float* input,
+                              uint8_t* output_packed,
+                              __nv_fp8_e4m3* scales,
+                              int rows,
+                              int reduction_dim) {
+    NVTX_RANGE("setup:quantize_to_nvfp4");
+    const int packed_cols = reduction_dim / 2;
+    const int num_scale_cols = reduction_dim / FP4_BLOCK_SIZE;
+
     for (int r = 0; r < rows; ++r) {
-        NVTX_RANGE("iteration");
+        const float* row_input = input + static_cast<size_t>(r) * reduction_dim;
         for (int block = 0; block < num_scale_cols; ++block) {
-            NVTX_RANGE("iteration");
             const int block_start = block * FP4_BLOCK_SIZE;
-            
+
             float max_abs = 0.0f;
             for (int i = 0; i < FP4_BLOCK_SIZE; ++i) {
-                NVTX_RANGE("iteration");
-                max_abs = std::max(max_abs, std::abs(input[r * cols + block_start + i]));
+                max_abs = std::max(max_abs, std::abs(row_input[block_start + i]));
             }
-            
-            float scale = (max_abs > 0.0f) ? max_abs / 6.0f : 1.0f;
-            scales[r * num_scale_cols + block] = __nv_fp8_e4m3(scale);
-        }
-    }
 
-    // Pack in row-major order: consecutive elements are adjacent columns.
-    for (int r = 0; r < rows; ++r) {
-        NVTX_RANGE("iteration");
-        for (int block = 0; block < num_scale_cols; ++block) {
-            NVTX_RANGE("iteration");
-            const int block_start = block * FP4_BLOCK_SIZE;
-            float scale = static_cast<float>(scales[r * num_scale_cols + block]);
+            const __nv_fp8_e4m3 stored_scale((max_abs > 0.0f) ? max_abs / 6.0f : 1.0f);
+            scales[aisp::nvfp4_vec16_scale_offset(r, block, reduction_dim)] = stored_scale;
+            // Divide by the rounded UE4M3 scale because that is what cuBLASLt multiplies back.
+            const float scale = static_cast<float>(stored_scale);
+
             for (int i = 0; i < FP4_BLOCK_SIZE; i += 2) {
-                NVTX_RANGE("iteration");
-                float v0 = input[r * cols + block_start + i];
-                float v1 = input[r * cols + block_start + i + 1];
+                float v0 = row_input[block_start + i];
+                float v1 = row_input[block_start + i + 1];
 
                 __nv_fp4_storage_t fp4_0 =
                     __nv_cvt_float_to_fp4(v0 / scale, __NV_E2M1, cudaRoundNearest);
                 __nv_fp4_storage_t fp4_1 =
                     __nv_cvt_float_to_fp4(v1 / scale, __NV_E2M1, cudaRoundNearest);
 
-                int packed_idx = r * packed_cols + (block_start + i) / 2;
+                const size_t packed_idx =
+                    static_cast<size_t>(r) * packed_cols + (block_start + i) / 2;
                 output_packed[packed_idx] = ((fp4_1 & 0x0F) << 4) | (fp4_0 & 0x0F);
             }
         }
@@ -104,20 +99,24 @@ int main(int argc, char** argv) {
     std::cout << "GPU: " << prop.name << " (SM" << prop.major << "." << prop.minor << ")" << std::endl;
     
     // Matrix dimensions (aligned for tensor cores). Must match the baseline.
-    const int M = 1024, N = 1024, K = 1024;
-    
-    // FP4 packed sizes
-    const size_t packed_K = K / 2;
-    const size_t packed_N = N / 2;
-    const size_t elements_A_packed = M * packed_K;
-    const size_t elements_B_packed = K * packed_N;
-    const size_t elements_C = M * N;
-    const size_t num_scales_A = M * (K / FP4_BLOCK_SIZE);
-    const size_t num_scales_B = K * (N / FP4_BLOCK_SIZE);
+    constexpr int M = 1024, N = 1024, K = 1024;
+    static_assert(M % 128 == 0, "M must be multiple of 128 for the scale layout");
+    static_assert(N % 128 == 0, "N must be multiple of 128 for the scale layout");
+    static_assert((K / FP4_BLOCK_SIZE) % 4 == 0,
+                  "K/16 must be multiple of 4 for the scale layout");
 
-    // Host allocation
-    std::vector<float> h_A_fp32(M * K);
-    std::vector<float> h_B_fp32(K * N);
+    // FP4 packed sizes. Both operands are K-major: A is [M, K] and B^T is [N, K].
+    const size_t packed_K = K / 2;
+    const size_t elements_A_packed = static_cast<size_t>(M) * packed_K;
+    const size_t elements_B_packed = static_cast<size_t>(N) * packed_K;
+    const size_t elements_C = static_cast<size_t>(M) * N;
+    const size_t num_scales_A = static_cast<size_t>(M) * (K / FP4_BLOCK_SIZE);
+    const size_t num_scales_B = static_cast<size_t>(N) * (K / FP4_BLOCK_SIZE);
+
+    // Host allocation. h_B_fp32 stores B^T as row-major [N, K]. The baseline
+    // kernel reads the same [N, K] view, so both variants compute the same C.
+    std::vector<float> h_A_fp32(static_cast<size_t>(M) * K);
+    std::vector<float> h_B_fp32(static_cast<size_t>(N) * K);
     std::vector<uint8_t> h_A_packed(elements_A_packed);
     std::vector<uint8_t> h_B_packed(elements_B_packed);
     std::vector<__nv_fp8_e4m3> h_A_scales(num_scales_A);
@@ -136,9 +135,9 @@ int main(int argc, char** argv) {
         v = dis(gen);
     }
 
-    // Quantize to NVFP4
-    quantize_to_nvfp4(h_A_fp32.data(), h_A_packed.data(), h_A_scales.data(), M, K);
-    quantize_to_nvfp4(h_B_fp32.data(), h_B_packed.data(), h_B_scales.data(), K, N);
+    // Quantize to NVFP4 along K, the reduction dimension of both operands.
+    quantize_to_nvfp4_kmajor(h_A_fp32.data(), h_A_packed.data(), h_A_scales.data(), M, K);
+    quantize_to_nvfp4_kmajor(h_B_fp32.data(), h_B_packed.data(), h_B_scales.data(), N, K);
 
     // Device allocation
     uint8_t *d_A = nullptr, *d_B = nullptr;
@@ -187,8 +186,11 @@ int main(int argc, char** argv) {
     //
     // NOTE: NVFP4 elements are stored packed (2 values per byte). The layout
     // leading dimensions are specified in *elements* (not bytes).
+    // With transa=T, cuBLASLt reads A as the column-major K x M matrix, which is
+    // row-major [M, K] storage. With transb=N, it reads B as the column-major
+    // K x N matrix, which is row-major B^T [N, K] storage.
     cublasLtMatrixLayout_t layoutA, layoutB, layoutC;
-    CUBLASLT_CHECK(cublasLtMatrixLayoutCreate(&layoutA, CUDA_R_4F_E2M1, M, K, M));
+    CUBLASLT_CHECK(cublasLtMatrixLayoutCreate(&layoutA, CUDA_R_4F_E2M1, K, M, K));
     CUBLASLT_CHECK(cublasLtMatrixLayoutCreate(&layoutB, CUDA_R_4F_E2M1, K, N, K));
     CUBLASLT_CHECK(cublasLtMatrixLayoutCreate(&layoutC, CUDA_R_16F, M, N, M));
 

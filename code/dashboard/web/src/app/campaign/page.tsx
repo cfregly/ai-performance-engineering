@@ -69,7 +69,7 @@ function CampaignPageInner() {
               value={workspace}
               onChange={(event) => setWorkspace(event.target.value)}
               placeholder="artifacts/campaigns/launch-overhead"
-              className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 font-mono text-sm text-white placeholder:text-white/30 focus:border-accent-primary/50 focus:outline-none"
+              className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 font-mono text-sm text-white placeholder:text-white/30 focus:border-accent-primary/50 focus:outline-hidden"
             />
           </label>
           <button

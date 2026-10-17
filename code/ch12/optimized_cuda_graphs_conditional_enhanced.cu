@@ -41,18 +41,23 @@ int main() {
     NVTX_RANGE("main");
     cudaDeviceProp prop;
     CUDA_CHECK(cudaGetDeviceProperties(&prop, 0));
-    bool is_sm12x = (prop.major >= 12);
+    // Only SM 12.1 is GB10 (Grace-Blackwell). SM 12.0 is the discrete RTX 50 /
+    // RTX PRO part, and SM 10.x is the B200/B300 datacenter family.
+    bool is_sm12x = (prop.major == 12);
+    bool is_gb10 = (prop.major == 12 && prop.minor == 1);
     bool is_sm10x = (prop.major == 10);
     bool supports_graphs = (prop.major >= 7 && prop.minor >= 5) || prop.major >= 8;
     
     std::printf("=== Optimized Conditional Graphs Enhanced (CUDA Graph Static Path) ===\n");
     std::printf("Architecture: %s (SM %d.%d)\n", 
-                is_sm12x ? "Grace-Blackwell GB10" : is_sm10x ? "Blackwell B200/B300" : "Other",
+                is_gb10 ? "Grace-Blackwell GB10"
+                        : is_sm12x ? "Blackwell RTX 50 / RTX PRO"
+                                   : is_sm10x ? "Blackwell B200/B300" : "Other",
                 prop.major, prop.minor);
     
     if (!supports_graphs) {
-        std::printf("CUDA Graphs require compute capability 7.5 or newer.\n");
-        return 0;
+        std::printf("SKIPPED: CUDA Graphs require compute capability 7.5 or newer\n");
+        return 3;
     }
     
     size_t bytes = N * sizeof(float);

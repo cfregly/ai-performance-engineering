@@ -374,7 +374,7 @@ export default function ClusterPage() {
                 <select
                   value={commonPreset}
                   onChange={(e) => setCommonPreset(e.target.value as 'common-answer-fast' | 'core-system' | 'modern-llm' | 'multinode-readiness')}
-                  className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white focus:outline-none"
+                  className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white focus:outline-hidden"
                 >
                   <option value="common-answer-fast">common-answer-fast</option>
                   <option value="core-system">core-system</option>
@@ -388,7 +388,7 @@ export default function ClusterPage() {
                   value={runId}
                   onChange={(e) => setRunId(e.target.value)}
                   placeholder="(optional) default: YYYY-MM-DD"
-                  className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white focus:outline-none"
+                  className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white focus:outline-hidden"
                 />
               </label>
               <label className="space-y-1 lg:col-span-2">
@@ -397,7 +397,7 @@ export default function ClusterPage() {
                   value={hosts}
                   onChange={(e) => setHosts(e.target.value)}
                   placeholder="comma-separated host list"
-                  className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white focus:outline-none"
+                  className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white focus:outline-hidden"
                 />
               </label>
               <label className="space-y-1 lg:col-span-2">
@@ -406,7 +406,7 @@ export default function ClusterPage() {
                   value={labels}
                   onChange={(e) => setLabels(e.target.value)}
                   placeholder="comma-separated, same count as hosts"
-                  className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white focus:outline-none"
+                  className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white focus:outline-hidden"
                 />
               </label>
               <label className="space-y-1">
@@ -415,7 +415,7 @@ export default function ClusterPage() {
                   value={sshUser}
                   onChange={(e) => setSshUser(e.target.value)}
                   placeholder="(optional)"
-                  className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white focus:outline-none"
+                  className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white focus:outline-hidden"
                 />
               </label>
               <label className="space-y-1">
@@ -424,7 +424,7 @@ export default function ClusterPage() {
                   value={sshKey}
                   onChange={(e) => setSshKey(e.target.value)}
                   placeholder="(optional) /path/to/key"
-                  className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white focus:outline-none"
+                  className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white focus:outline-hidden"
                 />
               </label>
               <label className="space-y-1">
@@ -433,7 +433,7 @@ export default function ClusterPage() {
                   value={oobIf}
                   onChange={(e) => setOobIf(e.target.value)}
                   placeholder="(optional) required for multi-node readiness"
-                  className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white focus:outline-none"
+                  className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white focus:outline-hidden"
                 />
               </label>
               <label className="space-y-1">
@@ -442,7 +442,7 @@ export default function ClusterPage() {
                   value={socketIfname}
                   onChange={(e) => setSocketIfname(e.target.value)}
                   placeholder="(optional) e.g. eth0"
-                  className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white focus:outline-none"
+                  className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white focus:outline-hidden"
                 />
               </label>
               <label className="space-y-1">
@@ -451,7 +451,7 @@ export default function ClusterPage() {
                   value={ncclIbHca}
                   onChange={(e) => setNcclIbHca(e.target.value)}
                   placeholder="(optional) e.g. mlx5_0"
-                  className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white focus:outline-none"
+                  className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white focus:outline-hidden"
                 />
               </label>
               <label className="space-y-1">
@@ -460,7 +460,7 @@ export default function ClusterPage() {
                   value={primaryLabel}
                   onChange={(e) => setPrimaryLabel(e.target.value)}
                   placeholder="(optional) for smoke/local steps"
-                  className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white focus:outline-none"
+                  className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white focus:outline-hidden"
                 />
               </label>
               <label className="space-y-1">
@@ -469,7 +469,7 @@ export default function ClusterPage() {
                   value={timeoutSeconds}
                   onChange={(e) => setTimeoutSeconds(e.target.value)}
                   placeholder="(optional)"
-                  className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white focus:outline-none"
+                  className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white focus:outline-hidden"
                 />
               </label>
               <label className="space-y-1 lg:col-span-2">
@@ -478,7 +478,7 @@ export default function ClusterPage() {
                   value={coverageBaselineRunId}
                   onChange={(e) => setCoverageBaselineRunId(e.target.value)}
                   placeholder="RUN_ID for coverage delta output"
-                  className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white focus:outline-none"
+                  className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white focus:outline-hidden"
                 />
               </label>
               <label className="space-y-1 lg:col-span-2">
@@ -487,7 +487,7 @@ export default function ClusterPage() {
                   value={extraArgs}
                   onChange={(e) => setExtraArgs(e.target.value)}
                   placeholder="comma-separated args appended after preset defaults"
-                  className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white focus:outline-none"
+                  className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white focus:outline-hidden"
                 />
               </label>
             </div>
@@ -565,7 +565,7 @@ export default function ClusterPage() {
                 <select
                   value={mode}
                   onChange={(e) => setMode(e.target.value as 'smoke' | 'full')}
-                  className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white focus:outline-none"
+                  className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white focus:outline-hidden"
                 >
                   <option value="smoke">smoke</option>
                   <option value="full">full</option>
@@ -577,7 +577,7 @@ export default function ClusterPage() {
                   value={runId}
                   onChange={(e) => setRunId(e.target.value)}
                   placeholder="default: YYYY-MM-DD"
-                  className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white focus:outline-none"
+                  className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white focus:outline-hidden"
                 />
               </label>
               <label className="space-y-1">
@@ -586,7 +586,7 @@ export default function ClusterPage() {
                   value={extraArgs}
                   onChange={(e) => setExtraArgs(e.target.value)}
                   placeholder="comma-separated args appended to run_cluster_eval_suite.sh"
-                  className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white focus:outline-none"
+                  className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white focus:outline-hidden"
                 />
               </label>
             </div>
@@ -647,7 +647,7 @@ export default function ClusterPage() {
                   value={promoteRunId}
                   onChange={(e) => setPromoteRunId(e.target.value)}
                   placeholder="required run id under cluster/runs/"
-                  className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white focus:outline-none"
+                  className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white focus:outline-hidden"
                 />
               </label>
               <label className="space-y-1">
@@ -656,7 +656,7 @@ export default function ClusterPage() {
                   value={promoteLabel}
                   onChange={(e) => setPromoteLabel(e.target.value)}
                   placeholder="localhost"
-                  className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white focus:outline-none"
+                  className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white focus:outline-hidden"
                 />
               </label>
               <label className="space-y-1">
@@ -665,7 +665,7 @@ export default function ClusterPage() {
                   value={promoteAllowRunIds}
                   onChange={(e) => setPromoteAllowRunIds(e.target.value)}
                   placeholder="comma-separated baselines to retain during cleanup/validation"
-                  className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white focus:outline-none"
+                  className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white focus:outline-hidden"
                 />
               </label>
               <label className="flex items-center gap-3 text-sm text-white/80">
@@ -747,7 +747,7 @@ export default function ClusterPage() {
                   value={packageCanonicalRunId}
                   onChange={(e) => setPackageCanonicalRunId(e.target.value)}
                   placeholder="required primary run id"
-                  className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white focus:outline-none"
+                  className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white focus:outline-hidden"
                 />
               </label>
               <label className="space-y-1">
@@ -756,7 +756,7 @@ export default function ClusterPage() {
                   value={packageComparisonRunIds}
                   onChange={(e) => setPackageComparisonRunIds(e.target.value)}
                   placeholder="comma-separated optional baseline run ids"
-                  className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white focus:outline-none"
+                  className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white focus:outline-hidden"
                 />
               </label>
               <label className="space-y-1">
@@ -765,7 +765,7 @@ export default function ClusterPage() {
                   value={packageHistoricalRunIds}
                   onChange={(e) => setPackageHistoricalRunIds(e.target.value)}
                   placeholder="comma-separated historical run ids to preserve"
-                  className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white focus:outline-none"
+                  className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white focus:outline-hidden"
                 />
               </label>
               <label className="space-y-1">
@@ -774,7 +774,7 @@ export default function ClusterPage() {
                   value={packageOutputDir}
                   onChange={(e) => setPackageOutputDir(e.target.value)}
                   placeholder="cluster/canonical_package"
-                  className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white focus:outline-none"
+                  className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white focus:outline-hidden"
                 />
               </label>
               <label className="space-y-1">
@@ -783,7 +783,7 @@ export default function ClusterPage() {
                   value={packageTimeoutSeconds}
                   onChange={(e) => setPackageTimeoutSeconds(e.target.value)}
                   placeholder="300"
-                  className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white focus:outline-none"
+                  className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white focus:outline-hidden"
                 />
               </label>
             </div>
@@ -857,7 +857,7 @@ export default function ClusterPage() {
                 <input
                   value={reportPath}
                   onChange={(e) => setReportPath(e.target.value)}
-                  className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white focus:outline-none"
+                  className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white focus:outline-hidden"
                 />
               </label>
               <label className="space-y-1">
@@ -865,7 +865,7 @@ export default function ClusterPage() {
                 <input
                   value={notesPath}
                   onChange={(e) => setNotesPath(e.target.value)}
-                  className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white focus:outline-none"
+                  className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white focus:outline-hidden"
                 />
               </label>
               <label className="space-y-1">
@@ -873,7 +873,7 @@ export default function ClusterPage() {
                 <input
                   value={templatePath}
                   onChange={(e) => setTemplatePath(e.target.value)}
-                  className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white focus:outline-none"
+                  className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white focus:outline-hidden"
                 />
               </label>
               <label className="space-y-1">
@@ -881,7 +881,7 @@ export default function ClusterPage() {
                 <input
                   value={runbookPath}
                   onChange={(e) => setRunbookPath(e.target.value)}
-                  className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white focus:outline-none"
+                  className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white focus:outline-hidden"
                 />
               </label>
               <label className="space-y-1">
@@ -890,7 +890,7 @@ export default function ClusterPage() {
                   value={canonicalRunId}
                   onChange={(e) => setCanonicalRunId(e.target.value)}
                   placeholder="RUN_ID expected by the report"
-                  className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white focus:outline-none"
+                  className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white focus:outline-hidden"
                 />
               </label>
               <label className="space-y-1">
@@ -899,7 +899,7 @@ export default function ClusterPage() {
                   value={allowRunId}
                   onChange={(e) => setAllowRunId(e.target.value)}
                   placeholder="comma-separated extra run ids allowed for hygiene checks"
-                  className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white focus:outline-none"
+                  className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white focus:outline-hidden"
                 />
               </label>
             </div>

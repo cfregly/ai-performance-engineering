@@ -4,8 +4,9 @@
 CPU checks exercise real verification, diagnostic, and reporting entrypoints.
 Only stream execution needs CUDA. Diagnostic timing/GPU-state inputs are test
 fixtures, not measurements or hardware qualification. Statistical reporting
-checks preserve all supplied samples; no outlier or cherry-picking classifier
-exists, and these tests do not claim one. Test count is not protection coverage.
+checks confirm that all supplied samples are kept. No outlier or cherry-picking
+classifier exists, and these tests do not claim one. Test count is not
+protection coverage.
 """
 
 import gc
@@ -157,7 +158,7 @@ class TestMemoryProtectionsCatchAttacks:
             runner._run_with_seed(TensorWork("alias"), 42)
 
     def test_preallocated_output_catches_prefilled(self):
-        """Call the setup detector; preallocation alone is legitimate."""
+        """Call the setup detector. Preallocation alone is legitimate."""
         output = torch.zeros(4)
         get_outputs = lambda: {"output": output}
         assert check_setup_precomputation(get_outputs, lambda: None) == (True, None)
@@ -179,7 +180,7 @@ class TestCudaProtectionsCatchAttacks:
         assert any("no synchronization" in reason for reason in reasons)
 
     def test_graph_capture_catches_work_in_capture(self):
-        """Capture/replay diagnostic inputs; this does not qualify GPU graphs."""
+        """Capture/replay diagnostic inputs. This does not qualify GPU graphs."""
         assert check_graph_capture_integrity(2.0, [1.0, 1.1, 0.9]) == (True, None)
         passed, reason = check_graph_capture_integrity(100.0, [1.0, 1.1, 0.9])
         assert not passed
@@ -190,8 +191,8 @@ class TestCudaProtectionsCatchAttacks:
 
 
 class TestStatisticalProtectionsCatchAttacks:
-    def test_outlier_detection_catches_injected_outlier(self):
-        """Reporting retains the outlier; no outlier classifier exists."""
+    def test_stats_retain_injected_outlier(self):
+        """Reporting keeps the outlier. No outlier classifier exists."""
         harness, config = cpu_harness()
         clean = [1.0, 1.1, 0.9, 1.05, 0.95]
         contaminated = clean + [10.0]
@@ -203,8 +204,8 @@ class TestStatisticalProtectionsCatchAttacks:
         assert result.max_ms == 10.0
         assert result.mean_ms == statistics.mean(contaminated)
 
-    def test_variance_check_catches_cherry_picking(self):
-        """The reporter must retain slow samples; it cannot detect omitted input."""
+    def test_stats_retain_slow_samples(self):
+        """The reporter must keep slow samples. It cannot detect omitted input."""
         harness, config = cpu_harness()
         samples = [1.0, 1.1, 8.0, 1.2, 7.0]
         result = harness._compute_stats(samples, config).timing
@@ -305,7 +306,7 @@ class TestMissingEdgeCases:
         assert not compare_tensors(runner, empty, empty, require_nonempty).passed
 
     def test_negative_stride_handling(self, runner):
-        # torch.flip materializes reversed values; PyTorch has no negative-stride
+        # torch.flip materializes reversed values. PyTorch has no negative-stride
         # Tensor views. Compare the values, without claiming stride support.
         expected = torch.arange(10).flip(0)
         assert compare_tensors(runner, expected, expected.clone()).passed
@@ -338,7 +339,7 @@ class TestMissingEdgeCases:
         assert not compare_tensors(runner, expected, quantized + 0.1, tolerance).passed
 
     def test_cuda_oom_recovery(self):
-        """Injected OOM propagation; no giant allocation or GPU recovery claim."""
+        """Injected OOM propagation. No giant allocation or GPU recovery claim."""
         harness, config = cpu_harness()
         work = TensorWork()
         work.setup()
@@ -356,7 +357,7 @@ class TestMissingEdgeCases:
         torch.testing.assert_close(work.output, work.input * 2)
 
     def test_gradient_checkpointing_memory(self, runner):
-        """Verify real checkpointed gradients; this is not a memory-saving claim."""
+        """Verify real checkpointed gradients. This is not a memory-saving claim."""
         from torch.utils.checkpoint import checkpoint
         original = torch.arange(8.0, requires_grad=True)
         candidate = original.detach().clone().requires_grad_(True)

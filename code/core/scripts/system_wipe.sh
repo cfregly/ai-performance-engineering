@@ -422,7 +422,7 @@ cleanup_caches_toolchains() {
     "$HOME_DIR/.torch_extensions" \
     "$HOME_DIR/.torch_inductor" \
     "$HOME_DIR/.cache/torch_extensions"/warp_specialized_* \
-    "$HOME_DIR/Documents/NVIDIA Nsight Compute/2025.3.1/Sections"
+    "$HOME_DIR/Documents/NVIDIA Nsight Compute"/*/Sections
 
   remove_path \
     "$HOME_DIR/.cache/huggingface/hub/models--deepseek-ai--deepseek-coder-6.7b-base" \

@@ -8,7 +8,8 @@ Key Features:
 - Eliminates per-kernel launch overhead
 - Batches multiple operations into single submission
 
-For conditional graph nodes (CUDA 12.4+), see the CUDA binary implementations.
+The CUDA binary optimized_graph_conditional_runtime.cu uses an IF conditional
+node with an ELSE body, which needs CUDA 12.8+.
 """
 
 from __future__ import annotations
@@ -27,17 +28,18 @@ from core.harness.benchmark_harness import (
 
 
 def supports_conditional_graphs() -> bool:
-    """Check if conditional graph nodes are supported (CUDA 12.4+)."""
+    """Report whether PyTorch's CUDA build is 12.8 or newer.
+
+    optimized_graph_conditional_runtime.cu uses an IF node with an ELSE body,
+    which needs CUDA 12.8. IF nodes without an ELSE body date from CUDA 12.3.
+    """
     if not torch.cuda.is_available():
         return False
     cuda_version = torch.version.cuda
-    if cuda_version:
-        try:
-            version_num = int(cuda_version.replace(".", "")[:3])
-            return version_num >= 124
-        except (ValueError, TypeError):
-            pass
-    return False
+    if not cuda_version:
+        return False
+    major, minor = (int(part) for part in cuda_version.split(".")[:2])
+    return (major, minor) >= (12, 8)
 
 
 class OptimizedGraphBenchmark(VerificationPayloadMixin, BaseBenchmark):

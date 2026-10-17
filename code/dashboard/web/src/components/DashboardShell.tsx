@@ -68,7 +68,7 @@ export function DashboardShell({
 
   return (
     <div className="min-h-screen">
-      <header className="px-4 lg:px-8 py-6 border-b border-white/5 bg-brand-bg/70 backdrop-blur-sm">
+      <header className="px-4 lg:px-8 py-6 border-b border-white/5 bg-brand-bg/70 backdrop-blur-xs">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <h1 className="text-2xl font-semibold text-white">{title}</h1>

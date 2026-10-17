@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Real-world case study: Llama 3.1 8B optimization for Blackwell.
+"""Real-world case study: Llama 3.1 8B decoder stack on Blackwell.
 
-Demonstrates end-to-end optimization of Llama 3.1 8B:
+Compares eager and compiled execution of the model's 32 decoder layers:
 - torch.compile with Blackwell-friendly settings
 - Preferred SDPA backends (TE/Flash) via sdpa_kernel
 - Materialized attention retained as an explicit numerical diagnostic
@@ -120,6 +120,18 @@ def _stable_llama_rms_norm(x: torch.Tensor, weight: torch.Tensor) -> torch.Tenso
     return values * torch.rsqrt(mean_square + LLAMA_RMS_NORM_EPS) * weight.float()
 
 
+def _expand_kv_heads(x: torch.Tensor, query_heads_per_kv_head: int) -> torch.Tensor:
+    """Repeat each K/V head for its group of query heads, as Llama's repeat_kv does."""
+    if query_heads_per_kv_head == 1:
+        return x
+    batch, kv_heads, seq_len, head_dim = x.shape
+    return (
+        x[:, :, None, :, :]
+        .expand(batch, kv_heads, query_heads_per_kv_head, seq_len, head_dim)
+        .reshape(batch, kv_heads * query_heads_per_kv_head, seq_len, head_dim)
+    )
+
+
 class StableLlamaRMSNorm(nn.Module):
     """RMSNorm with FP32 accumulation shared by eager and compiled arms."""
 
@@ -159,13 +171,20 @@ def _max_autotune_compile_options() -> dict[str, Any]:
 
 
 class Llama31_8B_Optimization:
-    """Llama 3.1 8B optimization benchmark."""
+    """Llama 3.1 8B decoder-layer stack for the compile-only benchmark pair.
+
+    All 32 decoder layers use the published hidden size, MLP size, and
+    grouped-query attention with 8 key/value heads. The workload maps hidden
+    states to hidden states. It omits the token embedding, final norm, LM
+    head, and rotary position embedding, so it holds 6,979,584,000 of the
+    model's 8,030,261,248 parameters.
+    """
 
     # Model specifications
     HIDDEN_SIZE = 4096
     NUM_HEADS = 32
+    NUM_KEY_VALUE_HEADS = 8
     NUM_LAYERS = 32
-    VOCAB_SIZE = 128256
     INTERMEDIATE_SIZE = 14336
 
     def __init__(
@@ -199,16 +218,28 @@ class Llama31_8B_Optimization:
         attention_mode = self.attention_mode
 
         class SimplifiedAttention(nn.Module):
-            def __init__(self, hidden_size: int, num_heads: int, seq_len: int):
+            def __init__(self, hidden_size: int, num_heads: int, num_kv_heads: int, seq_len: int):
                 super().__init__()
+                if hidden_size % num_heads != 0:
+                    raise ValueError(
+                        f"hidden_size={hidden_size} must be divisible by num_heads={num_heads}"
+                    )
+                if num_kv_heads <= 0 or num_heads % num_kv_heads != 0:
+                    raise ValueError(
+                        f"num_heads={num_heads} must be a positive multiple of "
+                        f"num_kv_heads={num_kv_heads}"
+                    )
                 self.hidden_size = hidden_size
                 self.num_heads = num_heads
+                self.num_kv_heads = num_kv_heads
+                self.query_heads_per_kv_head = num_heads // num_kv_heads
                 self.head_dim = hidden_size // num_heads
                 self._scale = 1.0 / (self.head_dim**0.5)
+                kv_size = num_kv_heads * self.head_dim
 
                 self.q_proj = nn.Linear(hidden_size, hidden_size, bias=False)
-                self.k_proj = nn.Linear(hidden_size, hidden_size, bias=False)
-                self.v_proj = nn.Linear(hidden_size, hidden_size, bias=False)
+                self.k_proj = nn.Linear(hidden_size, kv_size, bias=False)
+                self.v_proj = nn.Linear(hidden_size, kv_size, bias=False)
                 self.o_proj = nn.Linear(hidden_size, hidden_size, bias=False)
 
                 # Materialized attention is retained only as a numerical diagnostic.
@@ -223,8 +254,13 @@ class Llama31_8B_Optimization:
             def forward(self, x):
                 B, T, C = x.shape
                 q = self.q_proj(x).view(B, T, self.num_heads, self.head_dim).transpose(1, 2)
-                k = self.k_proj(x).view(B, T, self.num_heads, self.head_dim).transpose(1, 2)
-                v = self.v_proj(x).view(B, T, self.num_heads, self.head_dim).transpose(1, 2)
+                k = self.k_proj(x).view(B, T, self.num_kv_heads, self.head_dim).transpose(1, 2)
+                v = self.v_proj(x).view(B, T, self.num_kv_heads, self.head_dim).transpose(1, 2)
+                # SDPA's enable_gqa is not implemented by every fused backend,
+                # and the preferred backend set excludes the math kernel.
+                # Expanded K/V keeps every enabled backend eligible.
+                k = _expand_kv_heads(k, self.query_heads_per_kv_head)
+                v = _expand_kv_heads(v, self.query_heads_per_kv_head)
 
                 if attention_mode == "preferred_sdpa":
                     with prefer_sdpa_backends():
@@ -244,7 +280,12 @@ class Llama31_8B_Optimization:
                 attn = attn.transpose(1, 2).contiguous().view(B, T, C)
                 return self.o_proj(attn)
 
-        return SimplifiedAttention(self.HIDDEN_SIZE, self.NUM_HEADS, self.seq_length)
+        return SimplifiedAttention(
+            self.HIDDEN_SIZE,
+            self.NUM_HEADS,
+            self.NUM_KEY_VALUE_HEADS,
+            self.seq_length,
+        )
 
     def _create_mlp_layer(self):
         """Create MLP layer (SwiGLU)."""
@@ -266,7 +307,7 @@ class Llama31_8B_Optimization:
         return SimplifiedMLP(self.HIDDEN_SIZE, self.INTERMEDIATE_SIZE)
 
     def setup(self):
-        """Initialize Llama 3.1 8B model (simplified)."""
+        """Build the 32-layer Llama 3.1 8B decoder stack and its input."""
         if self.device.type == "cuda" and _triton_llama_rms_norm is None:
             detail = f": {_TRITON_IMPORT_ERROR}" if _TRITON_IMPORT_ERROR else ""
             raise RuntimeError(f"SKIPPED: CUDA Llama RMSNorm requires Triton{detail}")

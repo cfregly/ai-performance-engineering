@@ -125,7 +125,7 @@ int main() {
   CUDA_CHECK(cudaEventElapsedTime(&total_ms, start, stop));
   const float avg_ms = total_ms / static_cast<float>(REPEAT);
   std::printf("Coalesced copy (Float8, 256-bit): %.3f ms\n", avg_ms);
-  std::printf("TIME_MS: %.3f\n", avg_ms);
+  std::printf("TIME_MS: %.6f\n", avg_ms);
 
   CUDA_CHECK(cudaMemcpy(h_dst.data(), d_dst, N * sizeof(float), cudaMemcpyDeviceToHost));
   std::printf("Checksum: %.6f, Max diff: %.6e\n", checksum(h_dst), max_abs_diff(h_src, h_dst));

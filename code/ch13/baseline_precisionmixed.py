@@ -52,10 +52,12 @@ class BaselinePrecisionMixedBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.hidden_dim = 3072
         self.micro_steps = 4
         self._micro_step_range = range(self.micro_steps)
-        tokens = self.batch_size * self.hidden_dim
+        # Each input row is one token, and each micro step passes every row through
+        # the model. hidden_dim is the feature width of a row, not a token count.
+        tokens = self.batch_size * self.micro_steps
         self._workload = WorkloadMetadata(
             requests_per_iteration=float(self.micro_steps),
-            tokens_per_iteration=float(tokens * self.micro_steps),
+            tokens_per_iteration=float(tokens),
         )
         self.output = None
         self._verify_input: Optional[torch.Tensor] = None
@@ -63,7 +65,7 @@ class BaselinePrecisionMixedBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.parameter_count: int = 0
         self.register_workload_metadata(
             requests_per_iteration=float(self.micro_steps),
-            tokens_per_iteration=float(tokens * self.micro_steps),
+            tokens_per_iteration=float(tokens),
         )
     
     def setup(self) -> None:

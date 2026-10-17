@@ -433,12 +433,96 @@ class ProfileDomain:
 # DOMAIN 4: ANALYZE
 # =============================================================================
 
+_BOTTLENECK_MODES = ("profile", "llm", "both")
+_BOTTLENECK_FOCUS_AREAS = ("bottleneck", "memory", "compute")
+
+
+def _profile_trace_bottlenecks() -> Dict[str, Any]:
+    """Run rule-based bottleneck detection on the newest Chrome trace under the bench root."""
+    from core import profile_artifacts, profile_insights
+
+    selection = profile_artifacts.find_newest_chrome_trace(Path(_get_handler().bench_root))
+    if selection.get("error"):
+        return selection
+    trace_path: Path = selection["trace_path"]
+    events: List[Any] = selection["events"]
+    skipped_json_lines: List[str] = selection["skipped_json_lines"]
+    if not events:
+        return {
+            "success": False,
+            "error": f"Chrome trace {trace_path} has no events.",
+            "error_type": "empty_chrome_trace",
+            "trace_path": str(trace_path),
+            "skipped_json_lines": skipped_json_lines,
+        }
+    flame_data = profile_artifacts.flame_graph_from_trace_events(events, trace_path)
+    kernel_data = profile_artifacts.load_kernel_breakdown(flame_data)
+    # The trace may come from another host, so this host's capability probe is
+    # not attached to the findings.
+    result = profile_insights.detect_bottlenecks(flame_data, kernel_data, None)
+    result["trace_path"] = str(trace_path)
+    result["trace_event_count"] = len(events)
+    result["skipped_json_lines"] = skipped_json_lines
+    if not flame_data["value"]:
+        result["message"] = (
+            f"Chrome trace {trace_path} has {len(events)} event(s) but no complete ('ph': 'X') "
+            f"event longer than {profile_artifacts.FLAME_MIN_EVENT_US} us, so there is no time to rank."
+        )
+    if flame_data.get("warnings"):
+        result["warnings"] = flame_data["warnings"]
+    return result
+
+
+def _llm_bottleneck_analysis(profile_result: Dict[str, Any], focus: str) -> Dict[str, Any]:
+    """Ask the configured LLM to explain rule-based findings from one trace."""
+    from core.llm import PERF_EXPERT_SYSTEM, is_available, llm_call
+
+    if not is_available():
+        return {
+            "success": False,
+            "error": "LLM not configured. Set OPENAI_API_KEY or ANTHROPIC_API_KEY.",
+            "error_type": "llm_unavailable",
+        }
+    if profile_result.get("error"):
+        return {
+            "success": False,
+            "error": f"No profile findings to analyze: {profile_result['error']}",
+            "error_type": "no_profile_bottlenecks",
+            "profile_error_type": profile_result.get("error_type"),
+        }
+    findings = profile_result.get("bottlenecks") or []
+    if not findings:
+        reason = profile_result.get("message") or "no rule-based bottleneck crossed its threshold"
+        return {
+            "success": False,
+            "error": f"No profile findings to analyze: {reason}",
+            "error_type": "no_profile_bottlenecks",
+            "trace_path": profile_result.get("trace_path"),
+        }
+    prompt = (
+        f"Focus area: {focus}\n"
+        f"Trace: {profile_result.get('trace_path')}\n"
+        "Summed trace-event duration (us): "
+        f"{profile_result.get('total_time_us')}\n"
+        f"Rule-based findings:\n{json.dumps(findings, indent=2)}\n\n"
+        "Explain the most likely root cause of these findings for the focus area. "
+        "Name the next measurement or change to try, and say which finding supports it."
+    )
+    return {
+        "success": True,
+        "llm_response": llm_call(prompt, system=PERF_EXPERT_SYSTEM, json_mode=False),
+        "focus": focus,
+        "trace_path": profile_result.get("trace_path"),
+        "finding_count": len(findings),
+    }
+
+
 class AnalyzeDomain:
     """
     Performance analysis and bottleneck detection.
     
     Operations:
-        bottlenecks()       - Identify performance bottlenecks
+        bottlenecks(mode, focus) - Rule-based trace bottlenecks, optional LLM explanation
         pareto()            - Pareto frontier analysis
         scaling()           - Scaling analysis (GPU count)
         whatif(params)      - What-if constraint analysis
@@ -453,26 +537,36 @@ class AnalyzeDomain:
     def __init__(self, parent: 'PerformanceEngine'):
         self._parent = parent
     
-    def bottlenecks(self, mode: str = "both") -> Dict[str, Any]:
+    def bottlenecks(self, mode: str = "both", focus: str = "bottleneck") -> Dict[str, Any]:
         """
-        Identify performance bottlenecks.
-        
+        Identify performance bottlenecks in the newest Chrome trace under
+        artifacts/runs/*/profiles.
+
         Args:
-            mode: "profile" for static analysis, "llm" for AI, "both" for combined
+            mode: "profile" for rule-based trace analysis, "llm" for an LLM
+                explanation of those findings, "both" for combined
+            focus: "bottleneck", "memory", or "compute". Only the LLM
+                analysis uses it, so profile mode accepts only "bottleneck".
         """
-        profile_result = {}
-        llm_result = {}
-        
-        if mode in ["profile", "both"]:
-            profile_result = _safe_call(_get_handler().detect_bottlenecks)
-        
-        if mode in ["llm", "both"]:
-            llm_result = _safe_call(_get_handler().run_ai_analysis, "bottleneck")
-        
+        if mode not in _BOTTLENECK_MODES:
+            raise ValueError(f"mode must be one of {list(_BOTTLENECK_MODES)}, got {mode!r}")
+        if focus not in _BOTTLENECK_FOCUS_AREAS:
+            raise ValueError(
+                f"focus must be one of {list(_BOTTLENECK_FOCUS_AREAS)}, got {focus!r}"
+            )
+        if mode == "profile" and focus != "bottleneck":
+            raise ValueError("focus applies only to LLM analysis. Use mode='llm' or mode='both'.")
+
+        profile_result = _profile_trace_bottlenecks()
+        llm_result = None
+        if mode != "profile":
+            llm_result = _llm_bottleneck_analysis(profile_result, focus)
+
         return {
             "profile": profile_result if mode != "llm" else None,
-            "llm": llm_result if mode != "profile" else None,
+            "llm": llm_result,
             "source": mode,
+            "focus": focus,
         }
     
     def pareto(self) -> Dict[str, Any]:
