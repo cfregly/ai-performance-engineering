@@ -23,15 +23,15 @@ function HistorySkeleton() {
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
         {Array.from({ length: 4 }).map((_, index) => (
           <div key={`history-skel-${index}`} className="card p-5 animate-pulse">
-            <div className="h-3 w-24 bg-white/10 rounded mb-3" />
-            <div className="h-8 w-32 bg-white/10 rounded" />
-            <div className="h-3 w-20 bg-white/10 rounded mt-3" />
+            <div className="h-3 w-24 bg-white/10 rounded-sm mb-3" />
+            <div className="h-8 w-32 bg-white/10 rounded-sm" />
+            <div className="h-3 w-20 bg-white/10 rounded-sm mt-3" />
           </div>
         ))}
       </div>
       <div className="card p-6 animate-pulse">
-        <div className="h-4 w-40 bg-white/10 rounded mb-4" />
-        <div className="h-48 bg-white/5 rounded" />
+        <div className="h-4 w-40 bg-white/10 rounded-sm mb-4" />
+        <div className="h-48 bg-white/5 rounded-sm" />
       </div>
     </div>
   );
@@ -264,7 +264,7 @@ export default function HistoryPage() {
                   {history?.runs?.map((run) => (
                     <tr
                       key={run.timestamp}
-                      className={`text-sm text-white/70 hover:bg-white/[0.02] transition-colors ${selectedRun?.source === run.source ? 'bg-white/5' : ''}`}
+                      className={`text-sm text-white/70 hover:bg-white/2 transition-colors ${selectedRun?.source === run.source ? 'bg-white/5' : ''}`}
                       onClick={() => setSelectedRun(run)}
                     >
                       <td className="px-5 py-3">{run.date}</td>

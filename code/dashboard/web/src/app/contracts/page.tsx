@@ -110,9 +110,9 @@ function ContractsSkeleton() {
     <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
       {Array.from({ length: 6 }).map((_, index) => (
         <div key={`contracts-skel-${index}`} className="card p-5 animate-pulse">
-          <div className="h-4 w-28 bg-white/10 rounded mb-4" />
-          <div className="h-3 w-full bg-white/10 rounded mb-2" />
-          <div className="h-3 w-5/6 bg-white/10 rounded mb-5" />
+          <div className="h-4 w-28 bg-white/10 rounded-sm mb-4" />
+          <div className="h-3 w-full bg-white/10 rounded-sm mb-2" />
+          <div className="h-3 w-5/6 bg-white/10 rounded-sm mb-5" />
           <div className="space-y-2">
             <div className="h-7 bg-white/5 rounded-lg" />
             <div className="h-7 bg-white/5 rounded-lg" />
@@ -548,7 +548,7 @@ export default function ContractsPage() {
                     <input
                       value={currentForm.name}
                       onChange={(e) => updateForm({ name: e.target.value })}
-                      className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white focus:outline-none"
+                      className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white focus:outline-hidden"
                     />
                   </label>
                   <label className="space-y-1">
@@ -556,7 +556,7 @@ export default function ContractsPage() {
                     <select
                       value={currentForm.benchmarkClass}
                       onChange={(e) => updateForm({ benchmarkClass: e.target.value as GeneratorForm['benchmarkClass'] })}
-                      className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white focus:outline-none"
+                      className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white focus:outline-hidden"
                     >
                       {data?.generator?.choices.benchmarkClass?.map((choice) => (
                         <option key={choice} value={choice}>{choice}</option>
@@ -573,7 +573,7 @@ export default function ContractsPage() {
                     <select
                       value={currentForm.workloadType}
                       onChange={(e) => updateForm({ workloadType: e.target.value as GeneratorForm['workloadType'] })}
-                      className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white focus:outline-none"
+                      className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white focus:outline-hidden"
                     >
                       {data?.generator?.choices.workloadType?.map((choice) => (
                         <option key={choice} value={choice}>{choice}</option>
@@ -591,7 +591,7 @@ export default function ContractsPage() {
                     <select
                       value={currentForm.cadence}
                       onChange={(e) => updateForm({ cadence: e.target.value as GeneratorForm['cadence'] })}
-                      className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white focus:outline-none"
+                      className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white focus:outline-hidden"
                     >
                       {data?.generator?.choices.cadence?.map((choice) => (
                         <option key={choice} value={choice}>{choice}</option>
@@ -609,7 +609,7 @@ export default function ContractsPage() {
                     <input
                       value={currentForm.schedulerPath}
                       onChange={(e) => updateForm({ schedulerPath: e.target.value })}
-                      className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white focus:outline-none"
+                      className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white focus:outline-hidden"
                     />
                   </label>
                   <label className="space-y-1 md:col-span-2">
@@ -617,7 +617,7 @@ export default function ContractsPage() {
                     <input
                       value={currentForm.model}
                       onChange={(e) => updateForm({ model: e.target.value })}
-                      className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white focus:outline-none"
+                      className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white focus:outline-hidden"
                     />
                   </label>
                   <label className="space-y-1">
@@ -625,7 +625,7 @@ export default function ContractsPage() {
                     <input
                       value={currentForm.precision}
                       onChange={(e) => updateForm({ precision: e.target.value })}
-                      className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white focus:outline-none"
+                      className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white focus:outline-hidden"
                     />
                   </label>
                   <label className="space-y-1">
@@ -633,7 +633,7 @@ export default function ContractsPage() {
                     <input
                       value={currentForm.batchingPolicy}
                       onChange={(e) => updateForm({ batchingPolicy: e.target.value })}
-                      className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white focus:outline-none"
+                      className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white focus:outline-hidden"
                     />
                   </label>
                   <label className="space-y-1">
@@ -641,7 +641,7 @@ export default function ContractsPage() {
                     <input
                       value={currentForm.concurrencyModel}
                       onChange={(e) => updateForm({ concurrencyModel: e.target.value })}
-                      className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white focus:outline-none"
+                      className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white focus:outline-hidden"
                     />
                   </label>
                   <label className="space-y-1">
@@ -649,7 +649,7 @@ export default function ContractsPage() {
                     <select
                       value={currentForm.comparisonVariable}
                       onChange={(e) => updateForm({ comparisonVariable: e.target.value as GeneratorForm['comparisonVariable'] })}
-                      className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white focus:outline-none"
+                      className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white focus:outline-hidden"
                     >
                       {data?.generator?.choices.comparisonVariable?.map((choice) => (
                         <option key={choice} value={choice}>{choice}</option>

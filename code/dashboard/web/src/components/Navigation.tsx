@@ -41,7 +41,7 @@ export function Navigation() {
             className={cn(
               'flex items-center gap-2 px-4 py-2 rounded-full border text-sm transition-all',
               isActive
-                ? 'bg-white/10 border-white/20 text-white shadow-sm'
+                ? 'bg-white/10 border-white/20 text-white shadow-xs'
                 : 'bg-white/5 border-white/10 text-white/60 hover:text-white hover:border-white/20'
             )}
           >

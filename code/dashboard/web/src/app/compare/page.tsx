@@ -222,7 +222,7 @@ function ComparePageInner() {
                   <select
                     value={baselinePath}
                     onChange={(e) => setBaselinePath(e.target.value)}
-                    className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white focus:outline-none"
+                    className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white focus:outline-hidden"
                   >
                     {history.runs.map((run) => (
                       <option key={run.source} value={run.source}>
@@ -241,7 +241,7 @@ function ComparePageInner() {
                   <select
                     value={candidatePath}
                     onChange={(e) => setCandidatePath(e.target.value)}
-                    className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white focus:outline-none"
+                    className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white focus:outline-hidden"
                   >
                     {history.runs.map((run) => (
                       <option key={run.source} value={run.source}>
@@ -409,13 +409,13 @@ function ComparePageInner() {
                         placeholder="Search benchmarks..."
                         value={search}
                         onChange={(e) => setSearch(e.target.value)}
-                        className="pl-10 pr-4 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white placeholder:text-white/40 focus:outline-none focus:border-accent-primary/50 w-52"
+                        className="pl-10 pr-4 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white placeholder:text-white/40 focus:outline-hidden focus:border-accent-primary/50 w-52"
                       />
                     </div>
                     <select
                       value={filterMode}
                       onChange={(e) => setFilterMode(e.target.value as typeof filterMode)}
-                      className="px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white focus:outline-none"
+                      className="px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white focus:outline-hidden"
                     >
                       <option value="all">All changes</option>
                       <option value="improvements">Improvements</option>
@@ -425,7 +425,7 @@ function ComparePageInner() {
                     <select
                       value={sortMode}
                       onChange={(e) => setSortMode(e.target.value as typeof sortMode)}
-                      className="px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white focus:outline-none"
+                      className="px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white focus:outline-hidden"
                     >
                       <option value="delta_desc">Sort by delta (desc)</option>
                       <option value="delta_asc">Sort by delta (asc)</option>

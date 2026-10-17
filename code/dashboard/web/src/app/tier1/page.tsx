@@ -25,15 +25,15 @@ function Tier1Skeleton() {
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
         {Array.from({ length: 4 }).map((_, index) => (
           <div key={`tier1-skel-${index}`} className="card p-5 animate-pulse">
-            <div className="h-3 w-24 bg-white/10 rounded mb-3" />
-            <div className="h-8 w-32 bg-white/10 rounded" />
-            <div className="h-3 w-28 bg-white/10 rounded mt-3" />
+            <div className="h-3 w-24 bg-white/10 rounded-sm mb-3" />
+            <div className="h-8 w-32 bg-white/10 rounded-sm" />
+            <div className="h-3 w-28 bg-white/10 rounded-sm mt-3" />
           </div>
         ))}
       </div>
       <div className="card p-6 animate-pulse">
-        <div className="h-4 w-48 bg-white/10 rounded mb-4" />
-        <div className="h-56 bg-white/5 rounded" />
+        <div className="h-4 w-48 bg-white/10 rounded-sm mb-4" />
+        <div className="h-56 bg-white/5 rounded-sm" />
       </div>
     </div>
   );
@@ -689,7 +689,7 @@ function Tier1PageInner() {
                     </div>
                     <div className="rounded-lg border border-white/10 p-4">
                       <div className="text-xs uppercase text-white/40 mb-1">Latest Optimization</div>
-                      <div className="text-white break-words">{targetHistory.latest?.best_optimization || '—'}</div>
+                      <div className="text-white wrap-break-word">{targetHistory.latest?.best_optimization || '—'}</div>
                     </div>
                     <div className="rounded-lg border border-white/10 p-4">
                       <div className="text-xs uppercase text-white/40 mb-2">Selected Run Artifact References</div>
@@ -700,7 +700,7 @@ function Tier1PageInner() {
                           Object.entries(targetHistory.latest?.artifacts || {}).map(([name, path]) => (
                             <div
                               key={name}
-                              className="rounded border border-white/10 p-2 break-all"
+                              className="rounded-sm border border-white/10 p-2 break-all"
                             >
                               <div className="text-accent-primary">{artifactLabel(name)}</div>
                               <div className="mt-1 text-xs text-white/50">{path}</div>
