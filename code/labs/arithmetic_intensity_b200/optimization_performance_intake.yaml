@@ -48,12 +48,16 @@ environment:
     interconnect: [not_in_timed_path]
     topology: single_GPU0
   software:
+    runtime_scope: lab_specific_isolated_environment
+    qualification_role: current_source_target
     os: linux
     kernel: captured_in_run_provenance
     driver: captured_in_run_provenance
     cuda: "13.0"
-    pytorch: 2.11.0+cu130_exact_target_readback_required
-    triton: 3.7.1
+    pytorch: "2.13.0+cu130_exact_readback_required"
+    triton: optional_recorded_at_runtime_nonbinding
+    triton_role: unused_by_lab_source
+    global_repository_default_changed: false
     frameworks: [PyTorch, cuBLAS, cuBLASLt, CUDA_extension]
     nccl: not_used
     container_orchestrator: none
@@ -105,7 +109,8 @@ evidence:
   allocation_or_memory_profile: setup_is_excluded_from_timing
   hardware_counter_artifacts: []
   static_review_findings:
-    - cuBLASLt exposes eight supported heuristics for the fixed 16384-cubed workload
+    - retained PyTorch 2.11 evidence exposed eight supported cuBLASLt heuristics
+    - the PyTorch 2.13 qualification must inventory support again before reusing a signature
     - native copy launch shape and cache-global load policy are bounded tuning variables
 
 candidate_optimizations:
@@ -189,10 +194,14 @@ sustained_search_and_calibration:
   preparation_state: local_source_corrected_pending_static_reaudit_and_exclusive_GPU_handoff
   path: labs.arithmetic_intensity_b200.sustained_optimization_tool
   runtime_contract:
+    qualification_role: current_source_target
     GPU: NVIDIA_B200_GPU0_only
     power_limit_w: 1000
     power_or_clock_changes: forbidden
-    pytorch: 2.11.0+cu130_exact_readback_required
+    pytorch: "2.13.0+cu130_exact_readback_required"
+    pytorch_cuda: "13.0_exact_readback_required"
+    triton: optional_recorded_at_runtime_nonbinding
+    triton_role: unused_by_lab_source
     strict_virtualized_evidence: true
     publication_eligible: false
   bounded_library_search:

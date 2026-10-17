@@ -11,7 +11,9 @@ from types import SimpleNamespace
 import pytest
 import torch
 
+import labs.arithmetic_intensity_b200.ceiling_tool as ceiling_tool
 import labs.arithmetic_intensity_b200.kernel_optimization_tool as kernel_tool
+import labs.arithmetic_intensity_b200.optimization_benchmarks as optimization_benchmarks
 import labs.arithmetic_intensity_b200.sustained_optimization_tool as sustained_tool
 import labs.arithmetic_intensity_b200.verification_tool as verification_tool
 from labs.arithmetic_intensity_b200.ceiling_protocol import (
@@ -79,9 +81,101 @@ from labs.arithmetic_intensity_b200.verification_tool import (
     _publication_status,
     _require_bf16_fp32_accumulation_policy,
     _rotation_count,
+    _validate_lab_runtime_versions,
     _validate_live_source_commit,
     _write_report,
 )
+
+
+@pytest.mark.parametrize("triton", [None, "3.6.0", "3.7.1"])
+def test_lab_runtime_contract_accepts_exact_torch_cuda_and_nonbinding_triton(
+    triton: str | None,
+) -> None:
+    observed = _validate_lab_runtime_versions(
+        pytorch="2.13.0+cu130",
+        pytorch_cuda="13.0",
+        triton=triton,
+    )
+
+    assert observed == {
+        "qualification_role": "current_source_target",
+        "pytorch": "2.13.0+cu130",
+        "pytorch_cuda": "13.0",
+        "triton": triton,
+        "triton_role": "recorded_only_nonbinding_unused_by_lab",
+    }
+
+
+@pytest.mark.parametrize(
+    ("pytorch", "pytorch_cuda", "mismatch"),
+    [
+        ("2.9.1+cu130", "13.0", "PyTorch expected 2.13.0+cu130"),
+        ("2.11.0+cu130", "13.0", "PyTorch expected 2.13.0+cu130"),
+        ("2.13.0+cu130", "12.8", "PyTorch CUDA expected 13.0"),
+        ("2.13.0", None, "PyTorch CUDA expected 13.0"),
+    ],
+)
+def test_lab_runtime_contract_rejects_torch_or_cuda_drift(
+    pytorch: str,
+    pytorch_cuda: str | None,
+    mismatch: str,
+) -> None:
+    with pytest.raises(verification_tool.DiagnosticGateError) as error:
+        _validate_lab_runtime_versions(
+            pytorch=pytorch,
+            pytorch_cuda=pytorch_cuda,
+            triton="3.6.0",
+        )
+    assert mismatch in str(error.value)
+
+
+def test_all_live_entrypoint_seams_gate_runtime_before_cuda(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class RejectCudaAccess:
+        def __getattr__(self, name: str) -> object:
+            raise AssertionError(f"CUDA was accessed through {name} before the runtime gate")
+
+    device = torch.device("cpu")
+    monkeypatch.setattr(torch, "__version__", "2.11.0+cu130")
+    monkeypatch.setattr(torch.version, "cuda", "13.0")
+    monkeypatch.setattr(torch, "cuda", RejectCudaAccess())
+    monkeypatch.setattr(
+        verification_tool,
+        "_validate_live_source_commit",
+        lambda _source_commit: None,
+    )
+    monkeypatch.setattr(
+        ceiling_tool,
+        "_validate_live_source_commit",
+        lambda _source_commit: None,
+    )
+
+    entrypoints = (
+        lambda: verification_tool.run_gpu_diagnostic(
+            argparse.Namespace(
+                warmups=1,
+                repeats=1,
+                large_size=1,
+                rotation_mib=1,
+                source_commit="a" * 40,
+            )
+        ),
+        lambda: ceiling_tool._strict_runtime(
+            torch,
+            device_index=0,
+            source_commit="a" * 40,
+            run_id="runtime-gate-test",
+        ),
+        lambda: optimization_benchmarks._require_b200(device),
+    )
+
+    for entrypoint in entrypoints:
+        with pytest.raises(
+            verification_tool.DiagnosticGateError,
+            match=r"PyTorch expected 2\.13\.0\+cu130, observed 2\.11\.0\+cu130",
+        ):
+            entrypoint()
 
 
 def test_reviewed_b200_profile_and_ridge_are_exact() -> None:

@@ -17,6 +17,7 @@ from labs.arithmetic_intensity_b200.optimization_protocol import (
 )
 from labs.arithmetic_intensity_b200.verification_tool import (
     _bf16_fp32_accumulation_policy,
+    _require_lab_runtime,
 )
 
 GEMM_SIZE = 16_384
@@ -36,6 +37,7 @@ SELECTED_COPY_BLOCKS_PER_SM = 16
 
 
 def _require_b200(device: torch.device) -> None:
+    _require_lab_runtime(torch)
     if not torch.cuda.is_available():
         raise RuntimeError("The arithmetic-intensity B200 optimization pair requires CUDA")
     major, minor = torch.cuda.get_device_capability(device)

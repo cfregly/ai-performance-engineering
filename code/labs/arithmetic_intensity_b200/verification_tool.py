@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import importlib.metadata
 import json
 import math
 import os
@@ -28,6 +29,52 @@ _REPOSITORY_ROOT = _PACKAGE_ROOT.parents[2]
 
 class DiagnosticGateError(RuntimeError):
     """Raised when a required hardware or validity gate is not satisfied."""
+
+
+_LAB_PYTORCH_VERSION = "2.13.0+cu130"
+_LAB_PYTORCH_CUDA_VERSION = "13.0"
+
+
+def _validate_lab_runtime_versions(
+    *,
+    pytorch: str,
+    pytorch_cuda: str | None,
+    triton: str | None,
+) -> dict[str, str | None]:
+    """Validate the version-bound lab runtime without touching CUDA hardware."""
+    observed = {
+        "qualification_role": "current_source_target",
+        "pytorch": pytorch,
+        "pytorch_cuda": pytorch_cuda,
+        "triton": triton,
+        "triton_role": "recorded_only_nonbinding_unused_by_lab",
+    }
+    mismatches = []
+    if pytorch != _LAB_PYTORCH_VERSION:
+        mismatches.append(f"PyTorch expected {_LAB_PYTORCH_VERSION}, observed {pytorch}")
+    if pytorch_cuda != _LAB_PYTORCH_CUDA_VERSION:
+        mismatches.append(
+            f"PyTorch CUDA expected {_LAB_PYTORCH_CUDA_VERSION}, observed {pytorch_cuda}"
+        )
+    if mismatches:
+        raise DiagnosticGateError(
+            "The arithmetic-intensity B200 lab requires its exact isolated PyTorch and "
+            "CUDA runtime. " + " | ".join(mismatches)
+        )
+    return observed
+
+
+def _require_lab_runtime(torch: Any) -> dict[str, str | None]:
+    """Read and enforce the lab-scoped runtime before any CUDA operation."""
+    try:
+        triton = importlib.metadata.version("triton")
+    except importlib.metadata.PackageNotFoundError:
+        triton = None
+    return _validate_lab_runtime_versions(
+        pytorch=str(torch.__version__),
+        pytorch_cuda=(str(torch.version.cuda) if torch.version.cuda is not None else None),
+        triton=triton,
+    )
 
 
 def _git_output(*arguments: str) -> str:
@@ -411,6 +458,7 @@ def _runtime_provenance(
     device: Any,
     source_commit: str,
     run_id: str,
+    lab_runtime_contract: dict[str, str | None],
 ) -> dict[str, Any]:
     properties = torch.cuda.get_device_properties(device)
     return {
@@ -424,6 +472,7 @@ def _runtime_provenance(
         "hostname": socket.gethostname(),
         "pytorch": torch.__version__,
         "pytorch_cuda": torch.version.cuda,
+        "lab_runtime_contract": lab_runtime_contract,
         "precision_policy": {
             "allow_bf16_reduced_precision_reduction": bool(
                 torch.backends.cuda.matmul.allow_bf16_reduced_precision_reduction
@@ -473,6 +522,7 @@ def run_gpu_diagnostic(args: argparse.Namespace) -> dict[str, Any]:
 
     import torch
 
+    lab_runtime_contract = _require_lab_runtime(torch)
     _require_bf16_fp32_accumulation_policy(torch)
     if not torch.cuda.is_available():
         raise DiagnosticGateError("CUDA is required for the live B200 diagnostic")
@@ -517,6 +567,7 @@ def run_gpu_diagnostic(args: argparse.Namespace) -> dict[str, Any]:
         device=device,
         source_commit=args.source_commit,
         run_id=args.run_id,
+        lab_runtime_contract=lab_runtime_contract,
     )
     l2_cache_bytes = provenance["device"]["l2_cache_bytes"]
     measurements: dict[str, Any] = {}

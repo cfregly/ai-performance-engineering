@@ -31,6 +31,7 @@ from .verification_tool import (
     _package_sha256,
     _preflight_output,
     _require_bf16_fp32_accumulation_policy,
+    _require_lab_runtime,
     _runtime_provenance,
     _sample_summary,
     _validate_live_source_commit,
@@ -948,6 +949,7 @@ def _confirm_gemm_candidate(
 
 def _strict_runtime(torch: Any, *, device_index: int, source_commit: str, run_id: str):
     _validate_live_source_commit(source_commit)
+    lab_runtime_contract = _require_lab_runtime(torch)
     _require_bf16_fp32_accumulation_policy(torch)
     if not torch.cuda.is_available():
         raise DiagnosticGateError("CUDA is required for B200 ceiling characterization")
@@ -992,6 +994,7 @@ def _strict_runtime(torch: Any, *, device_index: int, source_commit: str, run_id
         device=device,
         source_commit=source_commit,
         run_id=run_id,
+        lab_runtime_contract=lab_runtime_contract,
     )
     return device, properties, environment, provenance, reviewed
 

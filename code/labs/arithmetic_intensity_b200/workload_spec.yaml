@@ -58,10 +58,15 @@ workload:
 execution:
   image: supplied_by_operator_and_recorded_in_raw_artifact
   runtime_versions:
+    scope: lab_specific_isolated_environment
+    qualification_role: current_source_target
     driver: captured_at_runtime
-    cuda: captured_at_runtime
+    cuda: "13.0_exact_PyTorch_readback_required"
     nccl: not_used
-    pytorch: captured_at_runtime
+    pytorch: "2.13.0+cu130_exact_readback_required"
+    triton: optional_recorded_at_runtime_nonbinding
+    triton_role: unused_by_lab_source
+    global_repository_default_changed: false
     runtime_or_server: none
   hardware_tier:
     gpu_model: NVIDIA_B200
