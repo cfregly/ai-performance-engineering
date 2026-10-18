@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from contextlib import nullcontext
-from pathlib import Path
+import os
 import subprocess
 import sys
 import threading
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -21,6 +21,71 @@ from core.benchmark.numerical_accuracy import (
 
 CODE = Path(__file__).resolve().parents[1]
 CUDA = pytest.mark.skipif(not torch.cuda.is_available(), reason="Actual CUDA runtime required; host checks are not GPU qualification")
+
+_CUTE_ENVIRONMENT_VERSIONS = {
+    "torch": "2.9.1+cu130",
+    "flash-attn-4": "4.0.0b19",
+    "nvidia-cutlass-dsl": "4.5.2",
+    "quack-kernels": "0.5.0",
+}
+
+
+def _write_distribution(root: Path, name: str, version: str) -> None:
+    dist_info = root / f"{name.replace('-', '_')}-{version}.dist-info"
+    dist_info.mkdir()
+    (dist_info / "METADATA").write_text(
+        f"Metadata-Version: 2.1\nName: {name}\nVersion: {version}\n",
+        encoding="utf-8",
+    )
+
+
+def _run_cute_resolver(
+    tmp_path: Path,
+    *,
+    public_api: bool,
+    version_overrides: dict[str, str] | None = None,
+    include_flash_attn_2: bool = False,
+) -> subprocess.CompletedProcess[str]:
+    versions = _CUTE_ENVIRONMENT_VERSIONS | (version_overrides or {})
+    for distribution, version in versions.items():
+        _write_distribution(tmp_path, distribution, version)
+    if include_flash_attn_2:
+        _write_distribution(tmp_path, "flash-attn", "2.8.3")
+
+    cute_package = tmp_path / "flash_attn" / "cute"
+    cute_package.mkdir(parents=True)
+    (tmp_path / "flash_attn" / "__init__.py").write_text("", encoding="utf-8")
+    if public_api:
+        cute_init = "def flash_attn_func(*args, **kwargs):\n    return 'public-fa4'\n"
+    else:
+        cute_init = ""
+        (cute_package / "interface.py").write_text(
+            "def _flash_attn_fwd(*args, **kwargs):\n    return 'private-fa2'\n",
+            encoding="utf-8",
+        )
+    (cute_package / "__init__.py").write_text(cute_init, encoding="utf-8")
+
+    python_path = [str(tmp_path), str(CODE)]
+    if inherited := os.environ.get("PYTHONPATH"):
+        python_path.append(inherited)
+    environment = os.environ | {"PYTHONPATH": os.pathsep.join(python_path)}
+    return subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            (
+                "from labs.flexattention.flex_attention_cute import _resolve_cute_forward; "
+                "forward = _resolve_cute_forward(); "
+                "assert forward.__module__ == 'flash_attn.cute'; "
+                "assert forward() == 'public-fa4'"
+            ),
+        ],
+        cwd=CODE,
+        capture_output=True,
+        text=True,
+        timeout=30,
+        env=environment,
+    )
 
 
 def test_cudnn_intent_and_real_backend_context_are_exclusive():
@@ -158,6 +223,85 @@ def test_cute_layout_preserves_values_and_shape():
     assert result.returncode == 0, result.stderr
 
 
+@pytest.mark.parametrize("with_logsumexp", [False, True])
+def test_cute_public_pair_preserves_output_tensor(with_logsumexp):
+    from labs.flexattention.flex_attention_cute import extract_cute_output
+
+    output = torch.randn(2, 4, 3, 8)
+    logsumexp = torch.randn(2, 3, 4) if with_logsumexp else None
+    assert extract_cute_output((output, logsumexp)) is output
+
+
+@pytest.mark.parametrize("result", [None, (), (None, None), (1, None), (None,), (None, None, None)])
+def test_cute_public_pair_rejects_invalid_return(result):
+    from labs.flexattention.flex_attention_cute import extract_cute_output
+
+    with pytest.raises(RuntimeError):
+        extract_cute_output(result)
+
+
+def test_cute_public_pair_rejects_invalid_logsumexp():
+    from labs.flexattention.flex_attention_cute import extract_cute_output
+
+    with pytest.raises(RuntimeError, match="logsumexp must be a tensor or None"):
+        extract_cute_output((torch.ones(1), "invalid"))
+
+
+def test_cute_environment_lock_preserves_default_fa2_stack():
+    from labs.flexattention.flex_attention_cute import CUTE_ENVIRONMENT_VERSIONS
+
+    requirements = (CODE / "labs/flexattention/requirements_cute.txt").read_text(encoding="utf-8")
+    assert "--extra-index-url https://download.pytorch.org/whl/cu130" in requirements
+    requirement_lines = {
+        line for line in requirements.splitlines() if line and not line.startswith(("#", "--"))
+    }
+    assert {
+        "torch==2.9.1+cu130",
+        "nvidia-cutlass-dsl[cu13]==4.5.2",
+        "quack-kernels==0.5.0",
+        "apache-tvm-ffi==0.1.12",
+        "torch-c-dlpack-ext==0.1.5",
+        "flash-attn-4[cu13]==4.0.0b19",
+    } <= requirement_lines
+    assert all("==" in line for line in requirement_lines)
+    assert CUTE_ENVIRONMENT_VERSIONS == _CUTE_ENVIRONMENT_VERSIONS
+
+    setup = (CODE / "setup.sh").read_text(encoding="utf-8")
+    default_requirements = (CODE / "requirements_latest.txt").read_text(encoding="utf-8")
+    assert 'FLASH_ATTN_TAG="${FLASH_ATTN_TAG:-v2.8.3}"' in setup
+    assert '"nvidia-cutlass-dsl[cu13]==4.5.2"' in setup
+    assert "flash-attn-4" not in setup
+    assert "flash-attn-4" not in default_requirements
+
+
+def test_cute_resolver_uses_public_fa4_api_from_exact_isolated_environment(tmp_path):
+    result = _run_cute_resolver(tmp_path, public_api=True)
+    assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.parametrize(
+    "defect,expected_error",
+    [
+        ("private_api_only", "must export public flash_attn.cute.flash_attn_func"),
+        ("wrong_fa4_version", "flash-attn-4==4.0.0b18, expected 4.0.0b19"),
+        ("fa2_overlap", "must not contain flash-attn==2.8.3"),
+    ],
+)
+def test_cute_resolver_rejects_private_or_nonisolated_environments(
+    tmp_path, defect, expected_error
+):
+    result = _run_cute_resolver(
+        tmp_path,
+        public_api=defect != "private_api_only",
+        version_overrides={"flash-attn-4": "4.0.0b18"}
+        if defect == "wrong_fa4_version"
+        else None,
+        include_flash_attn_2=defect == "fa2_overlap",
+    )
+    assert result.returncode != 0
+    assert expected_error in result.stderr
+
+
 @pytest.mark.parametrize("prefetch", [False, True])
 def test_host_stage_waits_for_ownership_fence_before_actual_cpu_write(prefetch):
     from labs.persistent_decode.paged_kv_offload_common import PagedKVConfig, PagedKVOffloadBenchmark
@@ -271,11 +415,15 @@ def test_real_triton_attention_tail_and_causal(seq, dim, causal):
 
 @CUDA
 def test_real_cute_layout_and_attention():
-    from labs.flexattention.flex_attention_cute import _resolve_cute_forward, to_cute_layout
+    from labs.flexattention.flex_attention_cute import (
+        _resolve_cute_forward,
+        extract_cute_output,
+        to_cute_layout,
+    )
     forward = _resolve_cute_forward()
     q, k, v = [torch.randn(2, 3, 64, 64, device="cuda", dtype=torch.bfloat16) for _ in range(3)]
     result = forward(*to_cute_layout(q, k, v))
-    actual = result[0] if isinstance(result, (tuple, list)) else result
+    actual = extract_cute_output(result)
     with torch.nn.attention.sdpa_kernel([torch.nn.attention.SDPBackend.MATH]):
         # Independent reference: ambient FP32/TF32 policy must not define the
         # expected result of a different fused attention implementation.

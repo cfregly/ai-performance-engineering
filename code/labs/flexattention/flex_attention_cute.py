@@ -1,21 +1,31 @@
-"""FlexAttention CuTe (FlashAttention) tool.
+"""FlexAttention CuTe (FlashAttention-4) tool.
 
-This is a utility script (not a baseline/optimized benchmark pair). It exists so
-users can validate that the FlashAttention CuTe backend is installed and working
-on systems where FlexAttention DSL bindings may be unavailable.
+This is a utility script (not a baseline/optimized benchmark pair). It validates
+the public FlashAttention-4 CuTe backend without changing the repository's
+default FlashAttention-2 environment.
 
-Run via:
-  python -m cli.aisp tools flex-attention-cute -- [args...]
+Run from the dedicated environment documented in this lab's README:
+  python -m labs.flexattention.flex_attention_cute [args...]
 """
 
 from __future__ import annotations
 
 import argparse
+from importlib import metadata
 
 import torch
 
 from core.benchmark.numerical_accuracy import assert_low_precision_attention_accuracy
 from labs.flexattention.flexattention_common import build_qkv_inputs, resolve_device
+
+CUTE_ENVIRONMENT_VERSIONS = {
+    "torch": "2.9.1+cu130",
+    "flash-attn-4": "4.0.0b19",
+    "nvidia-cutlass-dsl": "4.5.2",
+    "quack-kernels": "0.5.0",
+}
+CUTE_REQUIREMENTS_PATH = "labs/flexattention/requirements_cute.txt"
+
 
 def to_cute_layout(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor):
     """Convert public BHSD inputs to the CuTe interface's contiguous BSHD layout."""
@@ -25,11 +35,56 @@ def to_cute_layout(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor):
 
 
 def _resolve_cute_forward():
+    mismatches = []
+    for distribution, expected in CUTE_ENVIRONMENT_VERSIONS.items():
+        try:
+            actual = metadata.version(distribution)
+        except metadata.PackageNotFoundError:
+            mismatches.append(f"{distribution} is missing")
+            continue
+        if actual != expected:
+            mismatches.append(f"{distribution}=={actual}, expected {expected}")
+    if mismatches:
+        details = ", ".join(mismatches)
+        raise RuntimeError(
+            "The dedicated FlashAttention-4 CuTe environment is required. "
+            f"Install {CUTE_REQUIREMENTS_PATH} in a separate environment. "
+            f"Observed: {details}"
+        )
+
     try:
-        from flash_attn.cute.interface import _flash_attn_fwd
-        return _flash_attn_fwd
+        flash_attn_2_version = metadata.version("flash-attn")
+    except metadata.PackageNotFoundError:
+        pass
+    else:
+        raise RuntimeError(
+            "The dedicated FlashAttention-4 CuTe environment must not contain "
+            f"flash-attn=={flash_attn_2_version}. Keep FlashAttention 2 in the default "
+            "repository environment."
+        )
+
+    try:
+        from flash_attn.cute import flash_attn_func
     except ImportError as exc:
-        raise RuntimeError("flash-attn with CuTe DSL support is required") from exc
+        raise RuntimeError(
+            "The pinned flash-attn-4 package must export public "
+            "flash_attn.cute.flash_attn_func"
+        ) from exc
+    if not callable(flash_attn_func):
+        raise RuntimeError("flash_attn.cute.flash_attn_func must be callable")
+    return flash_attn_func
+
+
+def extract_cute_output(result) -> torch.Tensor:
+    """Read the output tensor from the pinned public FA4 pair."""
+    if not isinstance(result, tuple) or len(result) != 2:
+        raise RuntimeError("flash_attn.cute.flash_attn_func must return (output, logsumexp)")
+    output, logsumexp = result
+    if not isinstance(output, torch.Tensor):
+        raise RuntimeError("FlashAttention-4 output must be a tensor")
+    if logsumexp is not None and not isinstance(logsumexp, torch.Tensor):
+        raise RuntimeError("FlashAttention-4 logsumexp must be a tensor or None")
+    return output
 
 
 def _parse_args() -> argparse.Namespace:
@@ -85,7 +140,7 @@ def main() -> None:
         end.synchronize()
     elapsed_s = start.elapsed_time(end) / 1000.0
 
-    output_tensor = out[0] if isinstance(out, (tuple, list)) else out
+    output_tensor = extract_cute_output(out)
     if output_tensor.shape != q.shape:
         raise RuntimeError(f"CuTe returned {tuple(output_tensor.shape)}, expected BSHD {tuple(q.shape)}")
     # Validate the real backend before printing a timing. Layout conversion is

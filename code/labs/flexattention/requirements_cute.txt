@@ -1,0 +1,17 @@
+# Dedicated CUDA 13 environment for the FlexAttention CuTe tool.
+# Do not install this file into the default FlashAttention 2 environment.
+--extra-index-url https://download.pytorch.org/whl/cu130
+
+torch==2.9.1+cu130
+triton==3.5.1
+numpy==2.1.2
+einops==0.8.1
+typing-extensions==4.15.0
+pytest==8.3.4
+cuda-python==13.0.3
+cuda-bindings==13.0.3
+nvidia-cutlass-dsl[cu13]==4.5.2
+quack-kernels==0.5.0
+apache-tvm-ffi==0.1.12
+torch-c-dlpack-ext==0.1.5
+flash-attn-4[cu13]==4.0.0b19
