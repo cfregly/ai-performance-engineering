@@ -69,12 +69,17 @@ def _run_cute_resolver(
     if inherited := os.environ.get("PYTHONPATH"):
         python_path.append(inherited)
     environment = os.environ | {"PYTHONPATH": os.pathsep.join(python_path)}
+    # Import the real tool first, then isolate metadata lookup to the fixture.
+    # Installed FA2 must not leak into a control for a separate FA4 environment.
     return subprocess.run(
         [
             sys.executable,
             "-c",
             (
+                "from pathlib import Path; import sys; "
                 "from labs.flexattention.flex_attention_cute import _resolve_cute_forward; "
+                "sys.path = [entry for entry in sys.path if not "
+                "{'site-packages', 'dist-packages'}.intersection(Path(entry).parts)]; "
                 "forward = _resolve_cute_forward(); "
                 "assert forward.__module__ == 'flash_attn.cute'; "
                 "assert forward() == 'public-fa4'"
