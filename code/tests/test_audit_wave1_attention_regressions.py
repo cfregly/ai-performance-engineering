@@ -46,6 +46,41 @@ def test_math_backend_executes_real_cpu_attention():
     torch.testing.assert_close(result, expected)
 
 
+def test_cudnn_sdpa_baseline_isolated_worker_preserves_device_metadata():
+    from core.benchmark.models import BenchmarkResult
+    from core.harness.isolated_runner import run_benchmark
+    from labs.cudnn_sdpa_bench.baseline_flash_sdp import FlashSDPLabBenchmark
+
+    assert FlashSDPLabBenchmark().backend == "math"
+
+    response = run_benchmark(
+        {
+            "benchmark_module_path": str(
+                CODE / "labs" / "cudnn_sdpa_bench" / "baseline_flash_sdp.py"
+            ),
+            "benchmark_class_name": "FlashSDPLabBenchmark",
+            "config_dict": {
+                "iterations": 1,
+                "warmup": 5,
+                "measurement_timeout_seconds": 2,
+                "setup_timeout_seconds": 2,
+                "enforce_environment_validation": False,
+                "monitor_gpu_state": False,
+                "track_memory_allocations": False,
+                "clear_l2_cache": False,
+                "lock_gpu_clocks": False,
+            },
+            "mode": "custom",
+            "device": "cpu",
+            "initial_state": {"backend": "cudnn"},
+        }
+    )
+
+    result = BenchmarkResult.model_validate_json(response["result_json"])
+    assert result.device == "cpu"
+    assert not any("missing 1 required positional argument: 'backend'" in error for error in result.errors)
+
+
 @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
 @pytest.mark.parametrize("fault", ["correct", "zero", "half_scale", "last_element", "nan", "alias", "short"])
 def test_attention_accuracy_gate_checks_complete_scale_invariant_output(dtype, fault):

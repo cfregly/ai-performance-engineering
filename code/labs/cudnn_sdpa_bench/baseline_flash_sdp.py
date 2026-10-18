@@ -116,7 +116,8 @@ class SDPAAttentionModule(nn.Module):
 class FlashSDPLabBenchmark(VerificationPayloadMixin, BaseBenchmark):
     """Runs SDPA attention with one explicit backend, so each variant times a known kernel path."""
 
-    def __init__(self, backend: str):
+    # Isolated workers construct the class without arguments before replaying parent state.
+    def __init__(self, backend: str = _BASELINE_BACKEND):
         super().__init__()
         self.model: Optional[SDPAAttentionModule] = None
         self.inputs: Optional[torch.Tensor] = None
