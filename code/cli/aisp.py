@@ -647,7 +647,7 @@ if typer and profile_app is not None:
         trace_cuda: bool = typer.Option(True, "--trace-cuda/--no-trace-cuda", help="Trace CUDA API calls"),
         trace_nvtx: bool = typer.Option(True, "--trace-nvtx/--no-trace-nvtx", help="Trace NVTX ranges"),
         trace_osrt: bool = typer.Option(True, "--trace-osrt/--no-trace-osrt", help="Trace OS runtime"),
-        full_timeline: bool = typer.Option(False, "--full-timeline", help="Include cuda-hw/cublas/cudnn traces"),
+        full_timeline: bool = typer.Option(False, "--full-timeline", help="Include CUDA library traces"),
         trace_forks: bool = typer.Option(False, "--trace-forks", help="Trace child processes before exec"),
         wait_mode: str = typer.Option("primary", "--wait-mode", help="NSYS wait mode: primary or all"),
         finalize_grace_seconds: float = typer.Option(

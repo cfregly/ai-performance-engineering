@@ -6,6 +6,7 @@ from typing import Any, Callable, Dict, List, Optional
 import torch
 from torch.profiler import ProfilerActivity, profile
 from core.profiling.nvtx_helper import standardize_nvtx_label
+from core.profiling.torch_profiler_compat import prepare_torch_cuda_profiler
 
 
 ProfileFn = Callable[[], Any]
@@ -38,6 +39,11 @@ def profile_with_chrome_trace(
     """
     if activities is None:
         activities = [ProfilerActivity.CPU, ProfilerActivity.CUDA]
+    prepare_torch_cuda_profiler(
+        cuda_profile_requested=(
+            ProfilerActivity.CUDA in activities and torch.cuda.is_available()
+        )
+    )
     
     with profile(
         activities=activities,
@@ -147,8 +153,12 @@ class ProfilerContext:
         os.makedirs(trace_dir, exist_ok=True)
         
         activities = [ProfilerActivity.CPU]
-        if enable_cuda and torch.cuda.is_available():
+        cuda_profile_requested = enable_cuda and torch.cuda.is_available()
+        if cuda_profile_requested:
             activities.append(ProfilerActivity.CUDA)
+        prepare_torch_cuda_profiler(
+            cuda_profile_requested=cuda_profile_requested
+        )
         
         self.profiler = profile(
             activities=activities,

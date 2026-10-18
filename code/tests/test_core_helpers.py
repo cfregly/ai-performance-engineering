@@ -446,6 +446,44 @@ def test_nsight_automation_build_env_adds_startup_stub(tmp_path: Path):
     assert user_stub.exists()
 
 
+def test_profile_nsys_full_uses_supported_cuda_trace_categories(tmp_path: Path, monkeypatch):
+    import subprocess
+    from core.profiling.nsight_automation import NsightAutomation
+
+    automation = NsightAutomation(tmp_path)
+    automation.nsys_available = True
+    commands = []
+
+    class _FakeProcess:
+        pid = 12345
+        returncode = 0
+
+        def communicate(self, timeout=None):
+            return ("", "")
+
+    def _capture_command(command, **kwargs):
+        commands.append(command)
+        return _FakeProcess()
+
+    def _report(output_path, **kwargs):
+        output_path.write_text("rep", encoding="utf-8")
+        return True
+
+    monkeypatch.setattr(subprocess, "Popen", _capture_command)
+    monkeypatch.setattr(automation, "_wait_for_output_artifact", _report)
+    result = automation.profile_nsys(
+        command=[sys.executable, "-c", "print('ok')"],
+        output_name="full_trace",
+        preset="full",
+    )
+
+    assert result == tmp_path / "full_trace.nsys-rep"
+    command = commands[0]
+    categories = command[command.index("--trace") + 1].split(",")
+    assert categories == ["cuda", "nvtx", "osrt", "cublas", "cusolver", "cusparse", "cudnn"]
+    assert command[command.index("--trace-fork-before-exec") + 1] == "true"
+
+
 def test_profile_nsys_timeout_accepts_late_finalized_report(tmp_path: Path, monkeypatch):
     import subprocess
     from core.profiling.nsight_automation import NsightAutomation

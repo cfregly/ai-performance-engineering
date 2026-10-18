@@ -5382,6 +5382,17 @@ class BenchmarkHarness:
                 # Profiling activity follows the explicitly configured workload
                 # device. A CUDA-only preset cannot record a CPU benchmark.
                 torch_profiler_kwargs["activities"] = [torch.profiler.ProfilerActivity.CPU]
+
+            from core.profiling.torch_profiler_compat import (
+                prepare_torch_cuda_profiler,
+            )
+
+            cuda_profile_requested = torch.profiler.ProfilerActivity.CUDA in (
+                torch_profiler_kwargs.get("activities") or ()
+            )
+            prepare_torch_cuda_profiler(
+                cuda_profile_requested=cuda_profile_requested
+            )
             
             # Run benchmark with PyTorch profiler
             with torch.profiler.profile(**torch_profiler_kwargs) as prof:
@@ -6230,9 +6241,13 @@ class BenchmarkHarness:
         # graph replay; refuse loudly on mismatch instead of reporting a number
         # that times a subset of the workload.
         def _kernel_signature(run_once: Callable[[], Any]) -> Tuple[int, float]:
+            from core.profiling.torch_profiler_compat import (
+                prepare_torch_cuda_profiler,
+            )
             from torch.profiler import ProfilerActivity
             from torch.profiler import profile as torch_profile
             torch.cuda.synchronize(self.device)
+            prepare_torch_cuda_profiler(cuda_profile_requested=True)
             with torch_profile(activities=[ProfilerActivity.CUDA]) as prof:
                 run_once()
                 torch.cuda.synchronize(self.device)

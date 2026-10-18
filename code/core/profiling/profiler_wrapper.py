@@ -380,6 +380,7 @@ from core.harness.benchmark_harness import (
     lock_gpu_clocks,
     ramp_gpu_clocks,
 )
+from core.profiling.torch_profiler_compat import prepare_torch_cuda_profiler
 import torch
 import torch.profiler
 
@@ -426,9 +427,13 @@ def _run_profile() -> None:
         benchmark.benchmark_fn()
         if torch.cuda.is_available():
             torch.cuda.synchronize()
+        cuda_profile_requested = torch.cuda.is_available()
         activities = [torch.profiler.ProfilerActivity.CPU]
-        if torch.cuda.is_available():
+        if cuda_profile_requested:
             activities.append(torch.profiler.ProfilerActivity.CUDA)
+        prepare_torch_cuda_profiler(
+            cuda_profile_requested=cuda_profile_requested
+        )
         with torch.profiler.profile(
             activities=activities,
             record_shapes=False,

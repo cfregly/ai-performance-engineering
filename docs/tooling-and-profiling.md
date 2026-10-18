@@ -29,6 +29,14 @@ The small script `tests/fixtures/mcp_torch_profile_target.py` performs a real
 matrix multiply. It is a capture smoke test, not a performance benchmark. It uses
 CUDA if available and otherwise CPU, so a CPU trace does not prove CUDA capture.
 
+PyTorch 2.9 with CUDA 13.0 can silently omit CUDA activity because its older
+Kineto build resets the CUPTI buffer mode before flushing recorded events.
+The repository's Torch profiling entrypoints initialize that mode before
+profiling to avoid the [upstream ordering bug](https://github.com/pytorch/kineto/pull/1115).
+This preserves the default Torch and serving dependencies. Check that the trace
+contains CUDA kernel, copy, or memset events with positive durations before
+treating it as evidence of GPU activity.
+
 ```bash
 python -m cli.aisp profile torch --help
 python -m cli.aisp profile torch tests/fixtures/mcp_torch_profile_target.py \

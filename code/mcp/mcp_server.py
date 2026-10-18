@@ -7195,7 +7195,7 @@ def tool_profile_compare(params: Dict[str, Any]) -> Dict[str, Any]:
                 "full_timeline": {
                     "type": "boolean",
                     "default": False,
-                    "description": "Trace cuda-hw, cublas, cusolver, cusparse, cudnn (richer timelines)",
+                    "description": "Trace CUDA libraries: cublas, cusolver, cusparse, cudnn",
                 },
                 "trace_forks": {
                     "type": "boolean",
@@ -7204,7 +7204,7 @@ def tool_profile_compare(params: Dict[str, Any]) -> Dict[str, Any]:
                 },
                 "preset": {
                     "type": "string",
-                    "description": "NSYS preset: light (default, smaller/faster) or full (adds cuda-hw/cublas/cusolver/cusparse/cudnn + fork tracing)",
+                    "description": "NSYS preset: light (default, smaller/faster) or full (adds cublas/cusolver/cusparse/cudnn and fork tracing)",
                     "enum": ["light", "full"],
                     "default": "light",
                 },

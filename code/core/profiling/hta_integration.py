@@ -18,6 +18,8 @@ from typing import Any, Dict, List, Optional
 
 import torch
 
+from core.profiling.torch_profiler_compat import prepare_torch_cuda_profiler
+
 
 @dataclass
 class HTAReport:
@@ -362,8 +364,12 @@ class HTAAnalyzer:
         trace_path = self.output_dir / f"{name}_trace.json"
         
         activities = [torch.profiler.ProfilerActivity.CPU]
-        if torch.cuda.is_available():
+        cuda_profile_requested = torch.cuda.is_available()
+        if cuda_profile_requested:
             activities.append(torch.profiler.ProfilerActivity.CUDA)
+        prepare_torch_cuda_profiler(
+            cuda_profile_requested=cuda_profile_requested
+        )
         
         with torch.profiler.profile(
             activities=activities,

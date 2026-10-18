@@ -15,6 +15,7 @@ from typing import Callable, Dict, Iterable, List, Optional
 
 import torch
 from core.profiling.nvtx_helper import standardize_nvtx_label
+from core.profiling.torch_profiler_compat import prepare_torch_cuda_profiler
 from arch_config import ArchitectureConfig
 from torch.profiler import ProfilerActivity, profile
 
@@ -233,6 +234,10 @@ def run_profiler(
     entry = _resolve_entrypoint(module, script)
 
     profiler_kwargs = _configure_profiler(mode)
+    prepare_torch_cuda_profiler(
+        cuda_profile_requested=ProfilerActivity.CUDA
+        in profiler_kwargs["activities"]
+    )
     start_ts = time.time()
     error: Optional[str] = None
 

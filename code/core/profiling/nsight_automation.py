@@ -362,7 +362,7 @@ class NsightAutomation:
             trace_cuda: Trace CUDA API calls
             trace_nvtx: Trace NVTX markers
             trace_osrt: Trace OS runtime
-            full_timeline: If True, include driver/cu/pti traces and richer capture flags
+            full_timeline: If True, include CUDA library traces and richer capture flags
             trace_forks: If True, trace child processes before exec
             capture_range_cuda_profiler_api: Capture only between the target's
                 cudaProfilerStart()/cudaProfilerStop() calls and flush on stop
@@ -375,7 +375,7 @@ class NsightAutomation:
         
         Presets:
             - light (default): cuda,nvtx,osrt, no sampling/ctx switch.
-            - full: adds cuda-hw, cublas, cusolver, cusparse, cudnn, fork tracing.
+            - full: adds cublas, cusolver, cusparse, cudnn, and fork tracing.
 
         Returns:
             output_path: Path to .nsys-rep file, or None if failed
@@ -412,7 +412,7 @@ class NsightAutomation:
         if trace_osrt:
             trace_categories.append('osrt')
         if full_timeline:
-            trace_categories.extend(['cuda-hw', 'cublas', 'cusolver', 'cusparse', 'cudnn'])
+            trace_categories.extend(['cublas', 'cusolver', 'cusparse', 'cudnn'])
         if trace_categories:
             # dedupe while preserving order
             seen = set()
@@ -1104,10 +1104,10 @@ Examples:
     parser.add_argument('--trace-cuda', action='store_true', default=True, help='Trace CUDA API (nsys)')
     parser.add_argument('--trace-nvtx', action='store_true', default=True, help='Trace NVTX ranges (nsys)')
     parser.add_argument('--trace-osrt', action='store_true', default=True, help='Trace OS runtime (nsys)')
-    parser.add_argument('--full-timeline', action='store_true', default=False, help='Enable richer NSYS tracing (cuda-hw, cublas, cusolver, cusparse, cudnn)')
+    parser.add_argument('--full-timeline', action='store_true', default=False, help='Enable richer NSYS tracing (cuda, cublas, cusolver, cusparse, cudnn)')
     parser.add_argument('--trace-forks', action='store_true', default=False, help='Trace child processes before exec (nsys)')
     parser.add_argument('--preset', type=str, default='light', choices=['light', 'full'],
-                        help='NSYS preset: light (default, smaller/faster traces) or full (adds cuda-hw/cublas/cusolver/cusparse/cudnn and fork tracing)')
+                        help='NSYS preset: light (default, smaller/faster traces) or full (adds cublas/cusolver/cusparse/cudnn and fork tracing)')
     parser.add_argument('--wait-mode', type=str, default='primary', choices=['primary', 'all'],
                         help="NSYS --wait mode (default: primary)")
     parser.add_argument('--finalize-grace-seconds', type=float, default=20.0,

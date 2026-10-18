@@ -318,7 +318,8 @@ def test_nsys_source_receipt_digest_changes_when_same_path_bytes_change(
     assert second["source"]["size_bytes"] == len(b"replacement capture")
 
 
-def test_nsight_profile_command_is_preserved_through_chapter_alias() -> None:
+@pytest.mark.parametrize("hardware_trace,trace_category", [(True, "cuda"), (False, "cuda-sw")])
+def test_nsight_profile_command_is_preserved_through_chapter_alias(hardware_trace, trace_category) -> None:
     chapter_guide = importlib.import_module("ch17.blackwell_profiling_guide")
 
     command = chapter_guide.NsightSystemsProfiler.profile_command(
@@ -326,11 +327,11 @@ def test_nsight_profile_command_is_preserved_through_chapter_alias() -> None:
         "capture",
         duration=7,
         ib_switch_guids=["a", "b"],
-        use_hardware_trace=False,
+        use_hardware_trace=hardware_trace,
         include_sqlite_export=False,
     )
 
-    assert command.startswith("nsys profile -o capture --trace=cuda,osrt,nvtx,ucx,gds")
+    assert command.startswith(f"nsys profile -o capture --trace={trace_category},osrt,nvtx,ucx,gds")
     assert "--duration=7" in command
     assert "--ib-switch-metrics-device=a,b" in command
     assert "--export=sqlite" not in command

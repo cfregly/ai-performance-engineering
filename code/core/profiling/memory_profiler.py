@@ -11,6 +11,7 @@ from pathlib import Path
 import torch
 from torch.profiler import ProfilerActivity, profile
 
+from core.profiling.torch_profiler_compat import prepare_torch_cuda_profiler
 from core.utils.python_entrypoints import find_repo_root, temporary_sys_path
 
 
@@ -51,8 +52,12 @@ def main() -> None:
         os.environ[key] = value
 
     activities = [ProfilerActivity.CPU]
-    if torch.cuda.is_available():
+    cuda_profile_requested = torch.cuda.is_available()
+    if cuda_profile_requested:
         activities.append(ProfilerActivity.CUDA)
+    prepare_torch_cuda_profiler(
+        cuda_profile_requested=cuda_profile_requested
+    )
 
     print(f"Profiling memory usage for {script_path} ...")
     sys.argv = [str(script_path)] + args.script_args
