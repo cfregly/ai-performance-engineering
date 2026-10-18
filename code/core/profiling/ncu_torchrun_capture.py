@@ -1,10 +1,11 @@
 """Explicit two-rank TCP/lockstep Nsight Compute capture for torchrun.
 
-Supported scope: one node, two ranks, NCU 2026.2.1, kernel replay, five minimal
-metrics, ``regex:nccl.*``, and named NCCL push/pop NVTX filters. Receipts prove
-source/argv custody and fresh rank artifacts, not counter or performance validity.
-Full process-tree cleanup proof requires Linux procfs and the inherited owner
-marker; unsupported hosts can run only to an explicitly rejected receipt.
+Supported scope: one node, two ranks, NCU 2026.2.1, kernel or range replay,
+five minimal metrics, ``regex:nccl.*``, and named NCCL push/pop NVTX filters.
+Receipts prove source/argv custody and fresh rank artifacts, not counter or
+performance validity. Full process-tree cleanup proof requires Linux procfs and
+the inherited owner marker. Unsupported hosts can run only to an explicitly
+rejected receipt.
 """
 
 from __future__ import annotations
@@ -72,6 +73,7 @@ class NcuTorchrunCapturePlan:
     worker_argv: tuple[str, ...]
     ncu_prefix: tuple[str, ...]
     all_matching_kernels: bool
+    replay_mode: str
 
     @property
     def rank_config_path(self) -> Path:
@@ -242,6 +244,7 @@ def build_capture_plan(
     nccl_nvtx_includes: Sequence[str],
     torchrun_argv: Sequence[str],
     all_matching_kernels: bool = False,
+    replay_mode: str = "kernel",
 ) -> NcuTorchrunCapturePlan:
     """Validate the supported command contract and build exact rank argv."""
 
@@ -260,6 +263,10 @@ def build_capture_plan(
         raise ValueError(f"timeout_seconds must be positive and finite: {timeout_seconds!r}")
     if type(all_matching_kernels) is not bool:
         raise ValueError("all_matching_kernels must be a boolean")
+    if type(replay_mode) is not str or replay_mode not in {"kernel", "range"}:
+        raise ValueError("replay_mode must be 'kernel' or 'range'")
+    if replay_mode == "range" and not all_matching_kernels:
+        raise ValueError("range replay requires all_matching_kernels=True")
     launcher, worker = _split_torchrun(torchrun_argv)
     if str(_option(launcher, "--rdzv_endpoint", "--rdzv-endpoint")).endswith(f":{tcp_port}"):
         raise ValueError("NCU communicator port must differ from the torchrun rendezvous port")
@@ -289,7 +296,7 @@ def build_capture_plan(
     prefix.extend(["--kernel-name", "regex:nccl.*"])
     if not all_matching_kernels:
         prefix.extend(["--launch-count", "1"])
-    prefix.extend(["--replay-mode", "kernel", "--metrics", ",".join(metrics)])
+    prefix.extend(["--replay-mode", replay_mode, "--metrics", ",".join(metrics)])
     return NcuTorchrunCapturePlan(
         label,
         Path(repo_root).resolve(),
@@ -304,6 +311,7 @@ def build_capture_plan(
         worker,
         tuple(prefix),
         all_matching_kernels,
+        replay_mode,
     )
 
 
@@ -775,7 +783,7 @@ def run_capture(
         "nnodes": 1,
         "tcp_communicator": {"hostname": "127.0.0.1", "port": plan.tcp_port, "num_peers": 2},
         "nccl_nvtx_includes": list(plan.nccl_nvtx_includes),
-        "replay_mode": "kernel",
+        "replay_mode": plan.replay_mode,
         "all_matching_kernels": plan.all_matching_kernels,
         "metrics": list(MINIMAL_METRICS),
         "claim_limit": CLAIM_LIMIT,
@@ -880,6 +888,7 @@ def _args(argv: Sequence[str] | None) -> argparse.Namespace:
     parser.add_argument("--tcp-port", required=True, type=int)
     parser.add_argument("--timeout-seconds", required=True, type=float)
     parser.add_argument("--all-matching-kernels", action="store_true")
+    parser.add_argument("--replay-mode", choices=("kernel", "range"), default="kernel")
     parser.add_argument("--nvtx-include", required=True, action="append", dest="includes")
     parser.add_argument("torchrun_argv", nargs=argparse.REMAINDER)
     args = parser.parse_args(argv)
@@ -904,6 +913,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             nccl_nvtx_includes=args.includes,
             torchrun_argv=args.torchrun_argv,
             all_matching_kernels=args.all_matching_kernels,
+            replay_mode=args.replay_mode,
         )
         result = run_capture(plan)
     except (OSError, RuntimeError, ValueError, subprocess.SubprocessError) as exc:

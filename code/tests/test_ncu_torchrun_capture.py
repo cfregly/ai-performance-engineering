@@ -210,6 +210,8 @@ def test_plan_exposes_exact_rank_commands_and_scoped_lockstep(tmp_path: Path) ->
     assert plan.ncu_prefix.count("--nvtx-include") == 2
     assert "--launch-count" in plan.ncu_prefix
     assert plan.ncu_prefix[plan.ncu_prefix.index("--launch-count") + 1] == "1"
+    assert plan.ncu_prefix[plan.ncu_prefix.index("--replay-mode") + 1] == "kernel"
+    assert plan.replay_mode == "kernel"
     assert "compute_kernel" not in " ".join(plan.ncu_prefix)
     for rank in (0, 1):
         command = plan.expected_rank_argv(rank)
@@ -227,6 +229,8 @@ def test_plan_exposes_exact_rank_commands_and_scoped_lockstep(tmp_path: Path) ->
         ({"tcp_port": 80}, "tcp_port"),
         ({"timeout_seconds": math.nan}, "timeout_seconds"),
         ({"timeout_seconds": math.inf}, "timeout_seconds"),
+        ({"replay_mode": "application"}, "replay_mode"),
+        ({"replay_mode": "range"}, "all_matching_kernels=True"),
     ],
 )
 def test_plan_rejects_unsupported_capture_options(
@@ -261,6 +265,36 @@ def test_all_matching_kernels_omits_only_the_launch_limit(tmp_path: Path) -> Non
     del first_without_limit[limit_index : limit_index + 2]
     assert first_without_limit == list(all_matching.ncu_prefix)
     assert all_matching.all_matching_kernels is True
+
+
+def test_range_replay_changes_only_replay_mode_from_all_matching_kernel_plan(
+    tmp_path: Path,
+) -> None:
+    tcp_port = _free_port()
+    command = _torchrun_command(tmp_path / "target.py")
+    kernel = _plan(
+        tmp_path,
+        command,
+        tcp_port=tcp_port,
+        all_matching_kernels=True,
+    )
+    range_replay = _plan(
+        tmp_path,
+        command,
+        tcp_port=tcp_port,
+        all_matching_kernels=True,
+        replay_mode="range",
+    )
+
+    kernel_prefix = list(kernel.ncu_prefix)
+    range_prefix = list(range_replay.ncu_prefix)
+    replay_value = kernel_prefix.index("--replay-mode") + 1
+    assert kernel_prefix[replay_value] == "kernel"
+    assert range_prefix[replay_value] == "range"
+    range_prefix[replay_value] = "kernel"
+    assert range_prefix == kernel_prefix
+    assert "--launch-count" not in range_replay.ncu_prefix
+    assert range_replay.replay_mode == "range"
 
 
 def test_rank_entrypoint_executes_the_recorded_command(tmp_path: Path) -> None:
@@ -594,6 +628,64 @@ def test_cli_records_real_control_plane_subprocess_receipts(tmp_path: Path) -> N
     assert [item["local_rank"] for item in receipt["rank_artifacts"]] == [0, 1]
     assert all(item["observed_argv"] == item["expected_argv"] for item in receipt["rank_artifacts"])
     assert len({item["report_sha256"] for item in receipt["rank_artifacts"]}) == 2
+
+
+def test_range_replay_cli_propagates_exact_argv_and_receipt(tmp_path: Path) -> None:
+    repo, target, source = _make_git_repo(tmp_path)
+    fake_ncu = _make_fake_ncu(tmp_path / "ncu")
+    fake_python = _make_fake_python_launcher(tmp_path / "python")
+    output = tmp_path / "capture"
+    tcp_port = _free_port()
+    command = _torchrun_command(target, interpreter=str(fake_python))
+    cli = [
+        sys.executable,
+        "-m",
+        "core.profiling.ncu_torchrun_capture",
+        "--label",
+        "range-replay-control-plane-test",
+        "--repo-root",
+        str(repo),
+        "--source",
+        source,
+        "--output-dir",
+        str(output),
+        "--ncu",
+        str(fake_ncu),
+        "--tcp-port",
+        str(tcp_port),
+        "--timeout-seconds",
+        "45",
+        "--all-matching-kernels",
+        "--replay-mode",
+        "range",
+    ]
+    for include in NCCL_RANGES:
+        cli.extend(["--nvtx-include", include])
+    cli.extend(["--", *command])
+
+    result = subprocess.run(
+        cli,
+        cwd=CODE_ROOT,
+        env=_capture_environment(repo),
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    )
+
+    receipt = json.loads((output / "receipt.json").read_text(encoding="utf-8"))
+    expected_status = (
+        "CAPTURE_ARTIFACTS_PRESENT" if _proc_cleanup_supported() else "CLEANUP_UNVERIFIED"
+    )
+    assert result.returncode == (0 if _proc_cleanup_supported() else 1), result.stderr
+    assert receipt["status"] == expected_status
+    assert receipt["replay_mode"] == "range"
+    assert receipt["all_matching_kernels"] is True
+    for artifact in receipt["rank_artifacts"]:
+        observed = artifact["observed_argv"]
+        assert observed == artifact["expected_argv"]
+        assert observed[observed.index("--replay-mode") + 1] == "range"
+        assert "--launch-count" not in observed
 
 
 def test_zero_return_with_reports_and_forced_cleanup_is_not_success(tmp_path: Path) -> None:
