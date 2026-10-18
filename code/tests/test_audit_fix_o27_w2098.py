@@ -68,7 +68,14 @@ class FakeHostTools:
         cmd = [str(part) for part in cmd]
         if cmd[:2] == ["nvidia-smi", "c2c"]:
             self.c2c_queries.append(cmd)
-            response = self.c2c[int(cmd[cmd.index("-i") + 1])]
+            selector = cmd[cmd.index("-i") + 1]
+            if ":" in selector:
+                device_index = next(
+                    index for index in self.c2c if self.driver_pci_bus_id(index) == selector
+                )
+            else:
+                device_index = int(selector)
+            response = self.c2c[device_index]
             if response is None:
                 raise FileNotFoundError(cmd[0])
             returncode, stdout = response
@@ -89,6 +96,9 @@ class FakeHostTools:
         if response is None or response[0] != 0:
             return 1
         return 1 if "C2C Link 0:" in response[1] else 0
+
+    def driver_pci_bus_id(self, device_index: int) -> str:
+        return f"0000:{device_index + 1:02x}:00.0"
 
 
 @pytest.fixture
@@ -122,6 +132,7 @@ def use_host(monkeypatch: pytest.MonkeyPatch, machine: str, cpuinfo: str, tools:
     monkeypatch.setattr(builtins, "open", open_with_cpuinfo)
     monkeypatch.setattr(topo.subprocess, "run", tools.run)
     monkeypatch.setattr(grace_platform, "_cuda_driver_attribute", tools.driver_attribute)
+    monkeypatch.setattr(grace_platform, "_cuda_driver_pci_bus_id", tools.driver_pci_bus_id)
 
 
 def use_gpus(

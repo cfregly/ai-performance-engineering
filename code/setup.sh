@@ -97,6 +97,7 @@ PROJECT_ROOT="${SCRIPT_DIR}"
 if ! REPOSITORY_ROOT="$(discover_repository_root "${PROJECT_ROOT}")"; then
     REPOSITORY_ROOT="${PROJECT_ROOT}"
 fi
+CUDA_FULL_VERSION="13.0.2"
 
 bootstrap_repository_checkout() {
     if [ ! -e "${REPOSITORY_ROOT}/.git" ]; then
@@ -120,11 +121,57 @@ bootstrap_repository_checkout() {
     fi
 }
 
-bootstrap_repository_checkout
 if [ "${AISP_SETUP_BOOTSTRAP_ONLY:-0}" = "1" ]; then
+    bootstrap_repository_checkout
     printf 'Repository bootstrap complete: %s\n' "${REPOSITORY_ROOT}"
     exit 0
 fi
+
+require_supported_host() {
+    local architecture distributor
+    architecture="$(uname -m)"
+    if [ "${architecture}" != "x86_64" ]; then
+        echo "ERROR: Architecture ${architecture} is not supported. This setup requires Ubuntu 22.04 or 24.04 on x86_64." >&2
+        return 1
+    fi
+
+    if command -v lsb_release >/dev/null 2>&1; then
+        if ! distributor="$(lsb_release -is)" || ! UBUNTU_VERSION="$(lsb_release -rs)"; then
+            echo "ERROR: Could not read the Linux distribution with lsb_release." >&2
+            return 1
+        fi
+    elif [ -r /etc/os-release ]; then
+        distributor="$(. /etc/os-release && printf '%s' "${ID:-}")"
+        UBUNTU_VERSION="$(. /etc/os-release && printf '%s' "${VERSION_ID:-}")"
+    else
+        echo "ERROR: Cannot identify this host. Expected Ubuntu 22.04 or 24.04 on x86_64." >&2
+        return 1
+    fi
+
+    case "${distributor}" in
+        Ubuntu|ubuntu) ;;
+        *)
+            echo "ERROR: ${distributor:-Unknown Linux} is not supported. This setup requires Ubuntu 22.04 or 24.04 on x86_64." >&2
+            return 1
+            ;;
+    esac
+
+    echo "Detected Ubuntu version: ${UBUNTU_VERSION}"
+    case "${UBUNTU_VERSION}" in
+        22.04) ;;
+        24.04)
+            echo "Warning: This script is tested on Ubuntu 22.04. Ubuntu 24.04 uses NVIDIA's ubuntu2404 CUDA repository and is not yet validated here."
+            ;;
+        *)
+            echo "ERROR: Ubuntu ${UBUNTU_VERSION} is not supported. This script installs CUDA ${CUDA_FULL_VERSION} from NVIDIA's Ubuntu 22.04 or 24.04 repository." >&2
+            return 1
+            ;;
+    esac
+    CUDA_REPO_DISTRO="ubuntu${UBUNTU_VERSION//./}"
+}
+
+require_supported_host
+bootstrap_repository_checkout
 
 # =============================================================================
 # Logging + Disk Hygiene (always-on logging, keep disk usage tidy)
@@ -229,7 +276,6 @@ PYTHON_TARGET_BIN="python${PYTHON_TARGET_VERSION}"
 PYTHON_ABI_TAG="cp${PYTHON_TARGET_MAJOR}${PYTHON_TARGET_MINOR}"
 PYTHON_DIST_PACKAGES="/usr/local/lib/python${PYTHON_TARGET_VERSION}/dist-packages"
 CUDA_SHORT_VERSION="13.0"
-CUDA_FULL_VERSION="13.0.2"
 # cuBLAS is pinned to 13.1.0.3 (Update 2) via cuda-libraries; cuDNN latest in repo
 CUDNN_VERSION="9.16.0.29"
 NCCL_SHORT_VERSION="2.28.7"
@@ -1063,27 +1109,6 @@ if not all(entry["ok"] or entry["ok"] is None for entry in status.values()):
     raise SystemExit(1)
 PY
 }
-
-# Check Ubuntu version
-if ! command -v lsb_release &> /dev/null; then
-    echo "Installing lsb-release..."
-    apt update && apt install -y lsb-release
-fi
-
-UBUNTU_VERSION=$(lsb_release -rs)
-echo "Detected Ubuntu version: $UBUNTU_VERSION"
-
-case "${UBUNTU_VERSION}" in
-    22.04) ;;
-    24.04)
-        echo "Warning: This script is tested on Ubuntu 22.04. Ubuntu 24.04 uses NVIDIA's ubuntu2404 CUDA repository and is not yet validated here."
-        ;;
-    *)
-        echo "ERROR: Ubuntu ${UBUNTU_VERSION} is not supported. This script installs CUDA ${CUDA_FULL_VERSION} from NVIDIA's Ubuntu 22.04 or 24.04 repository." >&2
-        exit 1
-        ;;
-esac
-CUDA_REPO_DISTRO="ubuntu${UBUNTU_VERSION//./}"
 
 echo ""
 echo "Configuring inotify watch limit for large workspaces..."

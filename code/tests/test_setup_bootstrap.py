@@ -55,6 +55,77 @@ def _run_bootstrap(tmp_path: Path, *, fail_on: str = "") -> subprocess.Completed
     )
 
 
+def _write_executable(path: Path, source: str) -> None:
+    path.write_text(source, encoding="utf-8")
+    path.chmod(0o755)
+
+
+def _run_rejected_host(
+    tmp_path: Path,
+    *,
+    architecture: str,
+    distributor: str,
+    version: str,
+) -> tuple[subprocess.CompletedProcess[str], Path]:
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir(parents=True)
+    mutation_log = tmp_path / "mutations.log"
+    _write_executable(
+        bin_dir / "uname",
+        f"#!/bin/sh\nprintf '%s\\n' '{architecture}'\n",
+    )
+    _write_executable(
+        bin_dir / "lsb_release",
+        "#!/bin/sh\n"
+        "case \"$1\" in\n"
+        f"  -is) printf '%s\\n' '{distributor}' ;;\n"
+        f"  -rs) printf '%s\\n' '{version}' ;;\n"
+        "  *) exit 2 ;;\n"
+        "esac\n",
+    )
+    mutation_stub = (
+        "#!/bin/sh\n"
+        "printf '%s %s\\n' \"$0\" \"$*\" >> \"$AISP_TEST_MUTATION_LOG\"\n"
+        "exit 97\n"
+    )
+    for command in (
+        "apt",
+        "apt-get",
+        "chmod",
+        "chown",
+        "git",
+        "install",
+        "ln",
+        "mkdir",
+        "pip3",
+        "python3",
+        "rm",
+        "sed",
+        "sudo",
+        "tee",
+        "touch",
+    ):
+        _write_executable(bin_dir / command, mutation_stub)
+
+    env = os.environ.copy()
+    env.pop("AISP_SETUP_BOOTSTRAP_ONLY", None)
+    env.update(
+        {
+            "AISP_TEST_MUTATION_LOG": str(mutation_log),
+            "PATH": f"{bin_dir}:/usr/bin:/bin",
+            "SETUP_LOG_FILE": str(tmp_path / "setup.log"),
+        }
+    )
+    result = subprocess.run(
+        ["/bin/bash", str(SETUP_SCRIPT)],
+        check=False,
+        capture_output=True,
+        env=env,
+        text=True,
+    )
+    return result, mutation_log
+
+
 def test_bootstrap_resolves_physical_root_and_marks_it_safe_before_git_reads(
     tmp_path: Path,
 ) -> None:
@@ -78,6 +149,25 @@ def test_bootstrap_propagates_injected_submodule_git_failure(tmp_path: Path) -> 
     assert result.returncode == 42
     assert calls[-1] == f"-C {REPOSITORY_ROOT} submodule update --init --recursive"
     assert "Repository bootstrap complete" not in result.stdout
+
+
+def test_unsupported_host_rejection_precedes_every_setup_mutation(tmp_path: Path) -> None:
+    cases = (
+        ("x86_64", "Ubuntu", "20.04", "Ubuntu 20.04 is not supported"),
+        ("aarch64", "Ubuntu", "22.04", "Architecture aarch64 is not supported"),
+    )
+    for index, (architecture, distributor, version, message) in enumerate(cases):
+        result, mutation_log = _run_rejected_host(
+            tmp_path / str(index),
+            architecture=architecture,
+            distributor=distributor,
+            version=version,
+        )
+
+        assert result.returncode != 0
+        assert message in result.stderr
+        assert not mutation_log.exists(), mutation_log.read_text(encoding="utf-8")
+        assert not (tmp_path / str(index) / "setup.log").exists()
 
 
 def _pytorch_source_script() -> str:

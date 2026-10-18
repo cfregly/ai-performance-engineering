@@ -64,6 +64,10 @@ def _machine(monkeypatch: pytest.MonkeyPatch, machine: str) -> None:
     monkeypatch.setattr(grace_platform.platform, "machine", lambda: machine)
 
 
+def _pci_bus_id(device_index: int) -> str:
+    return f"0000:{device_index + 1:02x}:00.0"
+
+
 def _soc_tree(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, soc_id: str) -> None:
     """Point core.common.grace_platform at a temporary /sys/bus/soc/devices tree."""
     bus = tmp_path / "soc_devices"
@@ -92,13 +96,25 @@ def _grace_host(
     monkeypatch.setattr(builtins, "open", _open)
 
 
-def _driver(monkeypatch: pytest.MonkeyPatch, c2c_by_device: dict[int, bool]) -> None:
+def _driver(
+    monkeypatch: pytest.MonkeyPatch,
+    c2c_by_device: dict[int, bool],
+    pci_bus_by_device: dict[int, str] | None = None,
+) -> None:
     """Make the CUDA driver report native host atomics only for C2C devices."""
 
     def _attribute(device_index: int, attribute: int) -> int:
         return 1 if c2c_by_device[device_index] else 0
 
     monkeypatch.setattr(grace_platform, "_cuda_driver_attribute", _attribute)
+    pci_bus_by_device = pci_bus_by_device or {
+        index: _pci_bus_id(index) for index in c2c_by_device
+    }
+    monkeypatch.setattr(
+        grace_platform,
+        "_cuda_driver_pci_bus_id",
+        lambda device_index: pci_bus_by_device[device_index],
+    )
 
 
 def _driver_fails(device_index: int, attribute: int) -> int:
@@ -119,19 +135,24 @@ def _c2c_status(link_count: int) -> str:
     return "\n".join(lines) + "\n"
 
 
-def _smi(monkeypatch: pytest.MonkeyPatch, responses: dict[int, tuple[int, str] | None]) -> None:
-    """Answer ``nvidia-smi c2c -i N -s``. Every other tool is missing."""
+def _smi(
+    monkeypatch: pytest.MonkeyPatch, responses: dict[str, tuple[int, str] | None]
+) -> list[list[str]]:
+    """Answer ``nvidia-smi c2c -i ID -s``. Every other tool is missing."""
+    queries: list[list[str]] = []
 
     def _run(cmd: list[str], *args: object, **kwargs: object) -> SimpleNamespace:
         cmd = [str(part) for part in cmd]
         if cmd[:2] == ["nvidia-smi", "c2c"]:
-            response = responses[int(cmd[cmd.index("-i") + 1])]
+            queries.append(cmd)
+            response = responses[cmd[cmd.index("-i") + 1]]
             if response is None:
                 raise FileNotFoundError(cmd[0])
             return SimpleNamespace(returncode=response[0], stdout=response[1], stderr="")
         raise FileNotFoundError(cmd[0])
 
     monkeypatch.setattr(grace_platform.subprocess, "run", _run)
+    return queries
 
 
 def _props(major: int, minor: int, name: str = "Test GPU") -> SimpleNamespace:
@@ -217,7 +238,7 @@ def test_gpu_c2c_links_follow_the_driver(
 ) -> None:
     _machine(monkeypatch, "aarch64")
     _driver(monkeypatch, {0: driver_c2c})
-    _smi(monkeypatch, {0: smi})
+    _smi(monkeypatch, {_pci_bus_id(0): smi})
 
     assert grace_platform.gpu_c2c_links(_props(10, 0), 0) == expected
 
@@ -242,9 +263,110 @@ def test_gpu_c2c_links_stop_when_nvidia_smi_contradicts_the_driver(
 ) -> None:
     _machine(monkeypatch, "aarch64")
     _driver(monkeypatch, {0: driver_c2c})
-    _smi(monkeypatch, {0: smi})
+    _smi(monkeypatch, {_pci_bus_id(0): smi})
 
     with pytest.raises(RuntimeError, match=message):
+        grace_platform.gpu_c2c_links(_props(10, 0), 0)
+
+
+def test_gpu_c2c_links_uses_driver_pci_identity_when_cuda_devices_are_reordered(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _machine(monkeypatch, "aarch64")
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "1,0")
+    selected_pci_bus = "0000:62:00.0"
+    _driver(monkeypatch, {0: True}, {0: selected_pci_bus})
+    queries = _smi(monkeypatch, {selected_pci_bus: (0, _c2c_status(10))})
+
+    assert grace_platform.gpu_c2c_links(_props(10, 0), 0) == {
+        link: 44.712 for link in range(10)
+    }
+    assert queries == [["nvidia-smi", "c2c", "-i", selected_pci_bus, "-s"]]
+
+
+def test_gpu_c2c_links_uses_parent_pci_identity_for_mig_visible_device(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _machine(monkeypatch, "aarch64")
+    monkeypatch.setenv(
+        "CUDA_VISIBLE_DEVICES",
+        "MIG-GPU-11111111-2222-3333-4444-555555555555/7/0",
+    )
+    parent_pci_bus = "0000:62:00.0"
+    _driver(monkeypatch, {0: True}, {0: parent_pci_bus})
+    queries = _smi(monkeypatch, {parent_pci_bus: (0, _c2c_status(10))})
+
+    assert grace_platform.gpu_c2c_links(_props(10, 0), 0) == {
+        link: 44.712 for link in range(10)
+    }
+    assert queries == [["nvidia-smi", "c2c", "-i", parent_pci_bus, "-s"]]
+    assert "MIG-" not in " ".join(queries[0])
+    assert "GPU-" not in " ".join(queries[0])
+
+
+@pytest.mark.parametrize(
+    ("reported_identity", "native_status", "expected_identity", "error"),
+    [
+        (b"0000:62:00.0", 0, "0000:62:00.0", None),
+        (b"00000000:AF:00.0", 0, "00000000:af:00.0", None),
+        (b"MIG-GPU-not-a-pci-address", 0, None, "returned invalid PCI bus ID"),
+        (b"", 17, None, "cuDeviceGetPCIBusId failed.*CUresult 17"),
+    ],
+)
+def test_cuda_driver_pci_bus_id_validates_native_identity(
+    monkeypatch: pytest.MonkeyPatch,
+    reported_identity: bytes,
+    native_status: int,
+    expected_identity: str | None,
+    error: str | None,
+) -> None:
+    calls: list[tuple[str, int]] = []
+
+    def _init(flags: int) -> int:
+        calls.append(("init", flags))
+        return 0
+
+    def _device_get(device: object, device_index: int) -> int:
+        calls.append(("device", device_index))
+        device._obj.value = 7
+        return 0
+
+    def _pci_bus_id_get(buffer: object, length: int, device: object) -> int:
+        calls.append(("pci", device.value))
+        assert length == 32
+        buffer.value = reported_identity
+        return native_status
+
+    fake_driver = SimpleNamespace(
+        cuInit=_init,
+        cuDeviceGet=_device_get,
+        cuDeviceGetPCIBusId=_pci_bus_id_get,
+    )
+    monkeypatch.setattr(grace_platform.ctypes, "CDLL", lambda _name: fake_driver)
+
+    if error is not None:
+        with pytest.raises(RuntimeError, match=error):
+            grace_platform._cuda_driver_pci_bus_id(0)
+    else:
+        assert grace_platform._cuda_driver_pci_bus_id(0) == expected_identity
+    assert calls == [("init", 0), ("device", 0), ("pci", 7)]
+
+
+def test_gpu_c2c_links_fails_when_driver_pci_identity_is_unavailable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _machine(monkeypatch, "aarch64")
+    _driver(monkeypatch, {0: True})
+
+    def _identity_failure(device_index: int) -> str:
+        raise RuntimeError(f"cuDeviceGetPCIBusId failed for CUDA device {device_index}")
+
+    monkeypatch.setattr(grace_platform, "_cuda_driver_pci_bus_id", _identity_failure)
+
+    with pytest.raises(
+        RuntimeError,
+        match="Cannot resolve a stable nvidia-smi identity for CUDA device 0",
+    ):
         grace_platform.gpu_c2c_links(_props(10, 0), 0)
 
 
@@ -551,7 +673,7 @@ def test_ch02_topology_stops_when_nvidia_smi_contradicts_the_driver(
 ) -> None:
     _grace_host(monkeypatch, tmp_path)
     _fake_cuda(monkeypatch, count=1, major=10, minor=0, name="NVIDIA GB200")
-    _smi(monkeypatch, {0: (0, _c2c_status(10))})
+    _smi(monkeypatch, {_pci_bus_id(0): (0, _c2c_status(10))})
     _driver(monkeypatch, {0: False})
 
     with pytest.raises(RuntimeError, match="the CUDA driver reports no NVLink-C2C host link"):
@@ -563,7 +685,7 @@ def test_ch02_topology_takes_a_driver_reported_pcie_link_as_no_c2c(
 ) -> None:
     _grace_host(monkeypatch, tmp_path)
     _fake_cuda(monkeypatch, count=1, major=12, minor=0, name="NVIDIA RTX PRO 6000 Blackwell")
-    _smi(monkeypatch, {0: (3, "No Devices support C2C.\n")})
+    _smi(monkeypatch, {_pci_bus_id(0): (3, "No Devices support C2C.\n")})
     _driver(monkeypatch, {0: False})
 
     topology = topo.detect_system_topology()
