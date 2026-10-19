@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import time
 import types
+import weakref
 from datetime import timedelta
 from pathlib import Path
 
@@ -14,6 +15,42 @@ import torch.distributed as dist
 
 _LOAD_TEST_DURATION_S = 1.0
 _RANK1_CLOCK_RATE = 4.0
+
+
+def test_inference_server_close_releases_prefill_graph_idempotently() -> None:
+    from ch16.inference_serving_multigpu import InferenceServerMultiGPU
+
+    class GraphHandle:
+        pass
+
+    server = InferenceServerMultiGPU.__new__(InferenceServerMultiGPU)
+    server.device = torch.device("cpu")
+    graph = GraphHandle()
+    graph_ref = weakref.ref(graph)
+    server._prefill_graph = graph
+    server._prefill_graph_available = True
+    server._prefill_graph_input = object()
+    server._prefill_graph_logits = object()
+    server._prefill_graph_keys = object()
+    server._prefill_graph_values = object()
+    server._prefill_logits_buffer = object()
+    server._prefill_key_buffer = object()
+    server._prefill_value_buffer = object()
+    del graph
+
+    server.close()
+    server.close()
+
+    assert graph_ref() is None
+    assert not server._prefill_graph_available
+    assert server._prefill_graph is None
+    assert server._prefill_graph_input is None
+    assert server._prefill_graph_logits is None
+    assert server._prefill_graph_keys is None
+    assert server._prefill_graph_values is None
+    assert server._prefill_logits_buffer is None
+    assert server._prefill_key_buffer is None
+    assert server._prefill_value_buffer is None
 
 
 def _load_test_worker(rank: int, rendezvous: str, output_dir: str) -> None:
@@ -84,6 +121,8 @@ def _load_test_worker(rank: int, rendezvous: str, output_dir: str) -> None:
             rng=np.random.default_rng(42 + rank),
         )
         aggregate = load_test.aggregate_results(local)
+        server.close()
+        server.close()
         report.update(
             status="PASS",
             backend=dist.get_backend(),

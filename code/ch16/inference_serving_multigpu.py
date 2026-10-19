@@ -1699,6 +1699,31 @@ class InferenceServerMultiGPU:
             self._prefill_key_buffer[:, :batch_size],
             self._prefill_value_buffer[:, :batch_size],
         )
+
+    def close(self) -> None:
+        """Release CUDA graph resources before process-group shutdown.
+
+        NCCL keeps replay resources for collectives captured in a CUDA graph.
+        The graph must be destroyed before ``destroy_process_group()`` or NCCL
+        can wait indefinitely for a live graph to release those resources.
+        Keep this ordering until PyTorch issue 115388 is resolved and the
+        pinned CUDA graph and NCCL stack exits without explicit graph release.
+        """
+        graph = self._prefill_graph
+        self._prefill_graph = None
+        self._prefill_graph_available = False
+        if graph is not None:
+            if self.device.type == "cuda":
+                torch.cuda.synchronize(self.device)
+            del graph
+
+        self._prefill_graph_input = None
+        self._prefill_graph_logits = None
+        self._prefill_graph_keys = None
+        self._prefill_graph_values = None
+        self._prefill_logits_buffer = None
+        self._prefill_key_buffer = None
+        self._prefill_value_buffer = None
     
     def generate_batch(
         self, 

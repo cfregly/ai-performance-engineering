@@ -421,6 +421,9 @@ def test_inference_server_multigpu_distributed(nccl_world):
         print(" Distributed inference server validated")
     
     dist.barrier()
+    server.close()
+    assert not server._prefill_graph_available
+    assert server._prefill_graph is None
 
 
 def main() -> int:
