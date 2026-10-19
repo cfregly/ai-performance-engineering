@@ -255,6 +255,7 @@ Recent sessions:
 - [PyTorch Model Optimization](resources/PyTorch_Model_Optimization.pdf)
 
 ### Monthly Meetup Summaries
+- **Oct 19, 2026** - [YouTube](https://www.youtube.com/watch?v=oLRBdCTutKY): Why Does Serving More Users Change GPU Utilization? by Rajat “Raj” Dandekar, Co-founder @ Vizuara + From Agent Traces to Agent Training: Closing the Continuous Learning Loop by Rustem Feyzkhanov, Engineering Manager @ Snorkel AI
 - **Sep 21, 2026** - [YouTube](https://www.youtube.com/watch?v=dU9LAVYkglw): Disaggregated Speculative Decoding with d-Matrix Accelerators by Tom St. John, Head of Applied Research @ Gimlet Labs + Optimizing Inference Engine Performance by Head of Engineering @ Makora
 - **Aug 17, 2026** - [YouTube](https://www.youtube.com/watch?v=s1j7-x6uk_0): Deep Dive into Optimizing Continuous RL @ Fireworks: Rollout, Reward, Update, Repeat by Sinan Ozdemir, Head of AI Education and Developer Relations @ FireworksAI & Slides [Fireworks_AI_Continuous_RL_Rollout_Reward_Update_Repeat_by_Sinan_Ozdemir.pdf](resources/Fireworks_AI_Continuous_RL_Rollout_Reward_Update_Repeat_by_Sinan_Ozdemir.pdf)
 - **Jul 20, 2026** - [YouTube](https://www.youtube.com/watch?v=T9MkCcEAw8c): AI + GPU Systems Performance Tuning with Zymtrace, eBPF, and Flamegraphs with Israel Ogbole and Joel Honer @ Zymtrace
