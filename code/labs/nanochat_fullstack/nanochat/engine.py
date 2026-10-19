@@ -16,6 +16,7 @@ import torch.nn.functional as F
 import signal
 import warnings
 import os
+from importlib import metadata as importlib_metadata
 from contextlib import contextmanager
 from collections import deque
 from nanochat.kernels.persistent_decode import PersistentDecodeRunner
@@ -396,6 +397,48 @@ class RowState:
         self.python_expr_tokens = [] # Tokens of the current python expression
         self.completed = False # Whether this row has completed generation
 
+
+_SM100_COMPILE_GUARD_RUNTIME = ((10, 0), "2.9.1+cu130", "13.0", "3.5.1")
+_SM100_COMPILE_GUARD_MODE = "max-autotune-no-cudagraphs"
+_SM100_COMPILE_GUARD_REASON = (
+    "verified cold-cache SM100 decode guard for torch 2.9.1+cu130, "
+    "CUDA 13.0, and Triton 3.5.1"
+)
+
+
+def _select_compile_mode(
+    *,
+    capability,
+    torch_version,
+    cuda_version,
+    triton_version,
+    default_mode,
+    backend=None,
+):
+    """Select a compile mode from an exact runtime allowlist."""
+    runtime = (
+        tuple(capability),
+        str(torch_version),
+        None if cuda_version is None else str(cuda_version),
+        None if triton_version is None else str(triton_version),
+    )
+    if (
+        runtime == _SM100_COMPILE_GUARD_RUNTIME
+        and default_mode == "max-autotune"
+        and backend is None
+    ):
+        return _SM100_COMPILE_GUARD_MODE, _SM100_COMPILE_GUARD_REASON
+    return default_mode, f"default Engine compile mode {default_mode}"
+
+
+def _read_triton_version():
+    """Read the installed Triton distribution version without importing Triton."""
+    try:
+        return importlib_metadata.version("triton")
+    except importlib_metadata.PackageNotFoundError:
+        return None
+
+
 class Engine:
 
     _COMPILE_MODE = "max-autotune"
@@ -420,6 +463,7 @@ class Engine:
         self.compile_status = "not_evaluated"
         self.compile_status_reason = "compile eligibility has not been evaluated"
         self.compile_mode = None
+        self.compile_mode_reason = None
         self.compile_device = str(self.model.get_device())
         self._compile_graph_count_at_config = None
         self._graph_cache_gen = None  # cache generation tied to current capture
@@ -533,7 +577,18 @@ class Engine:
             )
             return
 
-        self._configure_compiled_model()
+        compile_mode, compile_mode_reason = _select_compile_mode(
+            capability=(cc_major, cc_minor),
+            torch_version=torch.__version__,
+            cuda_version=torch.version.cuda,
+            triton_version=_read_triton_version(),
+            default_mode=self._COMPILE_MODE,
+            backend=self._COMPILE_BACKEND,
+        )
+        self._configure_compiled_model(
+            mode=compile_mode,
+            mode_reason=compile_mode_reason,
+        )
 
     @staticmethod
     def _read_dynamo_unique_graphs():
@@ -549,9 +604,14 @@ class Engine:
         self.compile_status_reason = reason
         self._compile_error = None if error is None else str(error)
 
-    def _configure_compiled_model(self):
+    def _configure_compiled_model(self, *, mode=None, mode_reason=None):
         """Create the lazy compiled wrapper and fail visibly on configuration errors."""
-        self.compile_mode = self._COMPILE_MODE
+        self.compile_mode = self._COMPILE_MODE if mode is None else mode
+        self.compile_mode_reason = (
+            f"default Engine compile mode {self.compile_mode}"
+            if mode_reason is None
+            else mode_reason
+        )
         compile_kwargs = {
             "mode": self.compile_mode,
             "fullgraph": self._COMPILE_FULLGRAPH,
@@ -618,6 +678,7 @@ class Engine:
             "status": self.compile_status,
             "reason": self.compile_status_reason,
             "mode": self.compile_mode,
+            "mode_reason": self.compile_mode_reason,
             "device": self.compile_device,
             "fullgraph": self._COMPILE_FULLGRAPH if self._compile_active else None,
             "dynamic": self._COMPILE_DYNAMIC if self._compile_active else None,

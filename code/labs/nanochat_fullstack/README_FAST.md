@@ -15,6 +15,32 @@ is flag-gated so benchmark rows can identify the backend and execution mode.
 - `use_clustered_attention_kernel` (GPTConfig): experimental hook to call a custom clustered attention kernel. Supply via `clustered_attention_impl="module:function"` or `stubs.register_clustered_attention_kernel(fn)`. Disabled by default; without an override it raises unless `allow_kernel_stub_fallback=True` is set to use the reference path.
 - `use_persistent_decode_kernel` (GPTConfig): experimental hook to call a custom resident decode kernel. Supply via `persistent_decode_impl="module:function"` or `stubs.register_persistent_decode_kernel(fn)`. Both hooks fail fast without an override unless `allow_kernel_stub_fallback=True` is set.
 
+## Inference compile policy
+
+Engine uses `max-autotune` on supported Blackwell and newer runtimes by
+default. One exact runtime tuple uses `max-autotune-no-cudagraphs`: SM100,
+PyTorch `2.9.1+cu130`, CUDA `13.0`, and Triton `3.5.1`. All other capability
+and version combinations keep the configured default mode. Subclasses that
+set a custom compile mode or backend keep those settings, including on the
+affected runtime tuple.
+
+A cold-cache NVIDIA B200 diagnostic ran the existing real-device `n_layer=1`
+compile-policy test in separate processes with fresh compile caches. Both
+processes seeded the CPU and CUDA generators to 42 before constructing the
+model. The original mode ended in a native segmentation fault on the first
+decode. The no-cudagraphs mode completed eager-equivalent prefill and decode
+logits, KV-cache prefix checks, and stable decode without recompilation. This
+evidence does not attribute the failure to an upstream component and does not
+make a performance claim.
+`get_compile_diagnostics()` records the selected mode and its reason separately
+from compile lifecycle status.
+
+Retire the allowlist only after the original `max-autotune` mode passes the
+same real-device test for both `n_layer=1` and `n_layer=2` from separate fresh
+compile caches. The retirement run must retain the full logits, KV-cache, and
+stable decode checks. Repeat any performance qualification collected while
+the guard was active.
+
 ## Usage
 - Programmatic: instantiate `Engine(model, tokenizer, enable_batch_decode=True)` to use `generate_batched(prompts, max_tokens=..., temperature=..., top_k=...)` on padded multi-prompt batches. Per-request temperatures/top-k/max-tokens are accepted as scalars or lists.
 - Web server: 
