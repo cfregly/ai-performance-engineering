@@ -104,6 +104,7 @@ the guard was active.
 
 - Device/checkpoint: NVIDIA B200, `chatsft_checkpoints/d32`, bf16.
 - Rows are `baseline` (math SDPA), `flash_sdp` (PyTorch SDPA preferences), `flash_attn_varlen` (the pinned FA2 extension), `flash_attn_varlen_aligned_cache` (the same FA2 callable with contiguous capacity alignment), and `persistent` (the FA2 callable with side-stream buffer reuse).
+- The baseline enforces math SDPA inside each attention module. Other rows restore the model's original SDPA policy. Global backend flags alone do not enforce the baseline because the model opens its own SDPA context.
 - Output records the backend, execution mode, tokens/sec, and delta versus baseline. The aligned-cache row does not claim paged attention.
 
 ## Decode Optimization Results (B200)

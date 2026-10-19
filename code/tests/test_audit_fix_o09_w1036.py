@@ -154,6 +154,36 @@ def test_b200_sweep_engine_holds_compile_off_and_reports_it(monkeypatch) -> None
     assert diagnostics["reason"] == "Engine(allow_compile=False)"
 
 
+def test_b200_baseline_forces_math_and_restores_attention_policy() -> None:
+    from torch.nn.attention import SDPBackend, sdpa_kernel
+
+    model = _small_model()
+    attention = model.transformer.h[0].attn
+    original_factory = attention.sdpa_ctx_factory
+    backends = [
+        SDPBackend.MATH,
+        SDPBackend.FLASH_ATTENTION,
+        SDPBackend.EFFICIENT_ATTENTION,
+        SDPBackend.CUDNN_ATTENTION,
+    ]
+    with sdpa_kernel(backends):
+        bench_b200_flags.configure_model_mode("baseline", model)
+        with attention.sdpa_ctx_factory([SDPBackend.EFFICIENT_ATTENTION, SDPBackend.MATH]):
+            assert torch.backends.cuda.math_sdp_enabled()
+            assert not torch.backends.cuda.flash_sdp_enabled()
+            assert not torch.backends.cuda.mem_efficient_sdp_enabled()
+            assert not torch.backends.cuda.cudnn_sdp_enabled()
+
+        bench_b200_flags.configure_model_mode("flash_sdp", model)
+        assert attention.sdpa_ctx_factory is original_factory
+        assert attention.use_flash_sdp
+        assert not attention.use_flash_attn_varlen
+
+        bench_b200_flags.configure_model_mode("baseline", model)
+        bench_b200_flags.configure_model_mode("flash_sdp", model)
+        assert attention.sdpa_ctx_factory is original_factory
+
+
 def test_b200_sweep_uses_truthful_fa2_varlen_mode_names_and_cache_metadata() -> None:
     config_fields = GPTConfig.__dataclass_fields__
     assert "use_flash_attn_varlen" in config_fields

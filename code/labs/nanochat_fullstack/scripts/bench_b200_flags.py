@@ -12,6 +12,7 @@ import time
 from typing import Any, Callable, Dict, Tuple
 
 import torch
+from torch.nn.attention import SDPBackend, sdpa_kernel
 
 from nanochat.checkpoint_manager import load_model
 from nanochat.engine import Engine, KVCache
@@ -97,6 +98,38 @@ def configure_mode(mode: str, config) -> Dict[str, Any]:
     return enabled
 
 
+def _math_sdpa_context(_order=None):
+    return sdpa_kernel([SDPBackend.MATH])
+
+
+def configure_model_mode(mode: str, model) -> Dict[str, Any]:
+    """Apply one sweep mode to the config and the loaded attention modules."""
+    enabled = configure_mode(mode, model.config)
+    for block in model.transformer.h:
+        attention = block.attn
+        attention.use_flash_sdp = model.config.use_flash_sdp
+        attention.use_flash_attn_varlen = model.config.use_flash_attn_varlen
+        if not hasattr(attention, "_sweep_sdpa_ctx_factory"):
+            attention._sweep_sdpa_ctx_factory = attention.sdpa_ctx_factory
+        attention.sdpa_ctx_factory = (
+            _math_sdpa_context
+            if mode == "baseline"
+            else attention._sweep_sdpa_ctx_factory
+        )
+        if model.config.use_flash_attn_varlen:
+            attention._init_flash_attn_varlen()
+            if (
+                not attention.use_flash_attn_varlen
+                or attention.flash_attn_varlen_fn is None
+                or attention.flash_attn_varlen_backend != "flash_attn_2_cuda"
+            ):
+                raise RuntimeError(
+                    f"{mode} requested the pinned FlashAttention 2 varlen backend, "
+                    f"but it is unavailable: {attention.flash_attn_varlen_error}"
+                )
+    return enabled
+
+
 def build_sweep_engine(model, tokenizer) -> Engine:
     """Build the decode Engine for one mode with torch.compile held off."""
     return Engine(model, tokenizer, enable_batch_decode=False, allow_compile=False)
@@ -175,23 +208,7 @@ def run_benchmark(args):
 
     results = []
     for mode in BENCHMARK_MODES:
-        enabled = configure_mode(mode, model.config)
-        # Attention modules cache flags at construction; changing config alone
-        # does not activate a different attention backend on a loaded model.
-        for block in model.transformer.h:
-            block.attn.use_flash_sdp = model.config.use_flash_sdp
-            block.attn.use_flash_attn_varlen = model.config.use_flash_attn_varlen
-            if model.config.use_flash_attn_varlen:
-                block.attn._init_flash_attn_varlen()
-                if (
-                    not block.attn.use_flash_attn_varlen
-                    or block.attn.flash_attn_varlen_fn is None
-                    or block.attn.flash_attn_varlen_backend != "flash_attn_2_cuda"
-                ):
-                    raise RuntimeError(
-                        f"{mode} requested the pinned FlashAttention 2 varlen backend, "
-                        f"but it is unavailable: {block.attn.flash_attn_varlen_error}"
-                    )
+        enabled = configure_model_mode(mode, model)
         if model.config.use_flash_attn_varlen:
             attention_backend = "flash_attn_2_cuda"
         elif mode == "baseline":
