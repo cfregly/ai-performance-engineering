@@ -103,9 +103,9 @@ substitute profiled duration for a separately measured end-to-end baseline.
 Collectives that require concurrent ranks can stall under process-tree replay.
 The explicit `core.profiling.ncu_torchrun_capture` command launches one profiler
 per rank, with TCP coordination and lockstep limited to named NCCL NVTX ranges.
-It currently supports one Linux host, two visible GPUs, Nsight Compute 2026.2.1, kernel
-replay, and the repository's five minimal metrics. It runs directly with
-`torchrun`; Slurm is not required.
+It currently supports one Linux host, two visible GPUs, Nsight Compute 2026.2.1,
+kernel replay by default or explicit range replay, and the repository's five
+minimal metrics. It runs directly with `torchrun`. Slurm is not required.
 
 From a clean checkout's `code/` directory, use the Python environment for the
 workload and set `NCU` to the absolute path of the 2026.2.1 executable. Choose
@@ -128,10 +128,15 @@ python -m core.profiling.ncu_torchrun_capture \
   -- --iters 3 --warmup 5 --seed 42
 ```
 
-Omit `--all-matching-kernels` for a faster diagnostic of the first matching
-kernel per rank. The selected ranges must be observed in the workload's trace;
-globally matching launch ordinals is unsafe for asymmetric pipeline stages.
-Neither mode captures non-NCCL compute or changes the default benchmark profiler.
+The example uses the default kernel replay. Add `--replay-mode range` to collect
+range-level metrics for every selected NCCL range. Range replay requires
+`--all-matching-kernels` and does not provide per-kernel attribution.
+
+For kernel replay, omit `--all-matching-kernels` for a faster diagnostic of the
+first matching kernel per rank. The selected ranges must be observed in the
+workload's trace. Globally matching launch ordinals are unsafe for asymmetric
+pipeline stages. Neither replay mode captures non-NCCL compute or changes the
+default benchmark profiler.
 
 The command retains exact arguments, source/tool hashes, logs, rank reports, and
 the owned process-group cleanup result. `CAPTURE_ARTIFACTS_PRESENT` establishes

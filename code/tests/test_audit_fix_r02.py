@@ -53,6 +53,95 @@ def test_inference_server_close_releases_prefill_graph_idempotently() -> None:
     assert server._prefill_value_buffer is None
 
 
+def test_demo_shutdown_closes_server_before_owned_process_group(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import ch16.inference_serving_multigpu as serving
+
+    events: list[str] = []
+
+    class Server:
+        def close(self) -> None:
+            events.append("server.close")
+
+    monkeypatch.setattr(serving.dist, "is_initialized", lambda: True)
+    monkeypatch.setattr(
+        serving.dist,
+        "destroy_process_group",
+        lambda: events.append("dist.destroy_process_group"),
+    )
+
+    serving._close_demo_server(Server(), owns_process_group=True)
+
+    assert events == ["server.close", "dist.destroy_process_group"]
+
+
+def test_demo_shutdown_preserves_caller_owned_process_group(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import ch16.inference_serving_multigpu as serving
+
+    events: list[str] = []
+
+    class Server:
+        def close(self) -> None:
+            events.append("server.close")
+
+    monkeypatch.setattr(serving.dist, "is_initialized", lambda: True)
+    monkeypatch.setattr(
+        serving.dist,
+        "destroy_process_group",
+        lambda: events.append("dist.destroy_process_group"),
+    )
+
+    serving._close_demo_server(Server(), owns_process_group=False)
+
+    assert events == ["server.close"]
+
+
+def test_demo_shutdown_preserves_owned_process_group_when_close_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import ch16.inference_serving_multigpu as serving
+
+    events: list[str] = []
+
+    class Server:
+        def close(self) -> None:
+            events.append("server.close")
+            raise RuntimeError("CUDA synchronize failed")
+
+    monkeypatch.setattr(serving.dist, "is_initialized", lambda: True)
+    monkeypatch.setattr(
+        serving.dist,
+        "destroy_process_group",
+        lambda: events.append("dist.destroy_process_group"),
+    )
+
+    with pytest.raises(RuntimeError, match="CUDA synchronize failed"):
+        serving._close_demo_server(Server(), owns_process_group=True)
+
+    assert events == ["server.close"]
+
+
+def test_demo_shutdown_releases_owned_process_group_without_server(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import ch16.inference_serving_multigpu as serving
+
+    events: list[str] = []
+    monkeypatch.setattr(serving.dist, "is_initialized", lambda: True)
+    monkeypatch.setattr(
+        serving.dist,
+        "destroy_process_group",
+        lambda: events.append("dist.destroy_process_group"),
+    )
+
+    serving._close_demo_server(None, owns_process_group=True)
+
+    assert events == ["dist.destroy_process_group"]
+
+
 def _load_test_worker(rank: int, rendezvous: str, output_dir: str) -> None:
     import numpy as np
 

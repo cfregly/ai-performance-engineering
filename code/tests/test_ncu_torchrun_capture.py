@@ -39,6 +39,20 @@ CODE_ROOT = Path(__file__).resolve().parents[1]
 NCCL_RANGES = ("NCCL@ncclGroupEnd/", "NCCL@ncclAllReduce/")
 
 
+def test_two_rank_capture_docs_cover_both_replay_modes() -> None:
+    guide = (CODE_ROOT.parent / "docs" / "tooling-and-profiling.md").read_text(
+        encoding="utf-8"
+    )
+    section = guide.split("### Two-rank NCCL captures", 1)[1].split(
+        "## Framework traces", 1
+    )[0]
+
+    assert "kernel replay by default or explicit range replay" in section
+    assert "--replay-mode range" in section
+    assert "Range replay requires" in section
+    assert "does not provide per-kernel attribution" in section
+
+
 def _free_port() -> int:
     with socket.socket() as listener:
         listener.bind(("127.0.0.1", 0))

@@ -2015,6 +2015,18 @@ class InferenceServerMultiGPU:
 # Demo and Benchmarks
 # ============================================================================
 
+def _close_demo_server(
+    server: Optional[InferenceServerMultiGPU],
+    *,
+    owns_process_group: bool,
+) -> None:
+    """Release graph resources before tearing down the demo process group."""
+    if server is not None:
+        server.close()
+    if owns_process_group and dist.is_initialized():
+        dist.destroy_process_group()
+
+
 def demo_continuous_batching():
     """
     Demonstrate continuous batching on multiple GPUs.
@@ -2052,54 +2064,59 @@ def demo_continuous_batching():
         max_seq_len=max_seq_len,
     )
     
-    # Create server
-    server = InferenceServerMultiGPU(
-        model=model,
-        num_layers=32,
-        d_model=4096,
-        num_heads=64,
-        max_batch_size=max_batch_size,
-        max_seq_len=max_seq_len,
-    )
-    
-    # Add some demo requests
-    if server.rank == 0:
-        print("Adding demo requests...\n")
-        
-        for i in range(100):
-            request = InferenceRequest(
-                request_id=f"req_{i}",
-                prompt_tokens=list(range(100 + i * 10, 100 + i * 10 + 50)),
-                max_new_tokens=128,
-                temperature=1.0,
-                priority=i % 3,  # Mix of priorities
-            )
-            server.scheduler.add_request(request)
-    
-    # Synchronize before serving
-    if dist.is_initialized():
-        dist.barrier()
-    
-    # Run serving loop
-    server.serve_loop(duration_seconds=10.0)
-    
-    if server.rank == 0:
-        print("\n=== Multi-GPU Performance Targets ===")
-        print(f"  Throughput: >{num_gpus}M tokens/second (aggregate, directional)")
-        print("  Latency: <10ms per token (P50)")
-        print("  Batch size: 256-512 concurrent requests")
-        print("  Scaling: 85-95% efficiency vs single GPU")
-        
-        print("\n=== Key Features ===")
-        print("  Continuous batching (add/remove on the fly)")
-        print(f"  Tensor parallel attention ({num_gpus}-way split)")
-        print("  Sharded KV cache across GPUs")
-        print("  Priority-based scheduling")
-        print("  Dynamic batch size adaptation")
-        
-        print("\n=== Monitoring ===")
-        print("  nvidia-smi dmon -s u -i 0,1,2,3  # adjust for your GPU count")
-        print("  # Watch NVLink bandwidth utilization")
+    owns_process_group = not dist.is_initialized()
+    server: Optional[InferenceServerMultiGPU] = None
+    try:
+        # Create server
+        server = InferenceServerMultiGPU(
+            model=model,
+            num_layers=32,
+            d_model=4096,
+            num_heads=64,
+            max_batch_size=max_batch_size,
+            max_seq_len=max_seq_len,
+        )
+
+        # Add some demo requests
+        if server.rank == 0:
+            print("Adding demo requests...\n")
+
+            for i in range(100):
+                request = InferenceRequest(
+                    request_id=f"req_{i}",
+                    prompt_tokens=list(range(100 + i * 10, 100 + i * 10 + 50)),
+                    max_new_tokens=128,
+                    temperature=1.0,
+                    priority=i % 3,  # Mix of priorities
+                )
+                server.scheduler.add_request(request)
+
+        # Synchronize before serving
+        if dist.is_initialized():
+            dist.barrier()
+
+        # Run serving loop
+        server.serve_loop(duration_seconds=10.0)
+
+        if server.rank == 0:
+            print("\n=== Multi-GPU Performance Targets ===")
+            print(f"  Throughput: >{num_gpus}M tokens/second (aggregate, directional)")
+            print("  Latency: <10ms per token (P50)")
+            print("  Batch size: 256-512 concurrent requests")
+            print("  Scaling: 85-95% efficiency vs single GPU")
+
+            print("\n=== Key Features ===")
+            print("  Continuous batching (add/remove on the fly)")
+            print(f"  Tensor parallel attention ({num_gpus}-way split)")
+            print("  Sharded KV cache across GPUs")
+            print("  Priority-based scheduling")
+            print("  Dynamic batch size adaptation")
+
+            print("\n=== Monitoring ===")
+            print("  nvidia-smi dmon -s u -i 0,1,2,3  # adjust for your GPU count")
+            print("  # Watch NVLink bandwidth utilization")
+    finally:
+        _close_demo_server(server, owns_process_group=owns_process_group)
 
 def main():
     """Main entry point."""
