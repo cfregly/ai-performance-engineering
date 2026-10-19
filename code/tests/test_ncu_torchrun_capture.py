@@ -149,6 +149,9 @@ def _make_fake_ncu(path: Path, marker: Path | None = None) -> Path:
         "if sys.argv[1:] == ['--version']:\n"
         "    print('Version 2026.2.1.0 (test control plane)')\n"
         "    raise SystemExit(0)\n"
+        "if '--replay-mode' in sys.argv and sys.argv[sys.argv.index('--replay-mode') + 1] == 'range' and '--kernel-name' in sys.argv:\n"
+        "    print('Option kernel-name is not supported during range replay.', file=sys.stderr)\n"
+        "    raise SystemExit(2)\n"
         "export_index = sys.argv.index('--export')\n"
         "report = Path(sys.argv[export_index + 1])\n"
         "report.write_text('rank=' + os.environ['LOCAL_RANK'] + '\\n')\n"
@@ -226,6 +229,7 @@ def test_plan_exposes_exact_rank_commands_and_scoped_lockstep(tmp_path: Path) ->
     assert plan.ncu_prefix[plan.ncu_prefix.index("--launch-count") + 1] == "1"
     assert plan.ncu_prefix[plan.ncu_prefix.index("--replay-mode") + 1] == "kernel"
     assert plan.replay_mode == "kernel"
+    assert plan.ncu_prefix[plan.ncu_prefix.index("--kernel-name") + 1] == "regex:nccl.*"
     assert "compute_kernel" not in " ".join(plan.ncu_prefix)
     for rank in (0, 1):
         command = plan.expected_rank_argv(rank)
@@ -281,7 +285,7 @@ def test_all_matching_kernels_omits_only_the_launch_limit(tmp_path: Path) -> Non
     assert all_matching.all_matching_kernels is True
 
 
-def test_range_replay_changes_only_replay_mode_from_all_matching_kernel_plan(
+def test_range_replay_omits_per_kernel_filter_and_launch_limit(
     tmp_path: Path,
 ) -> None:
     tcp_port = _free_port()
@@ -302,12 +306,18 @@ def test_range_replay_changes_only_replay_mode_from_all_matching_kernel_plan(
 
     kernel_prefix = list(kernel.ncu_prefix)
     range_prefix = list(range_replay.ncu_prefix)
+    filter_index = kernel_prefix.index("--kernel-name")
+    assert kernel_prefix[filter_index + 1] == "regex:nccl.*"
+    del kernel_prefix[filter_index : filter_index + 2]
     replay_value = kernel_prefix.index("--replay-mode") + 1
     assert kernel_prefix[replay_value] == "kernel"
     assert range_prefix[replay_value] == "range"
     range_prefix[replay_value] = "kernel"
     assert range_prefix == kernel_prefix
+    assert "--kernel-name" not in range_replay.ncu_prefix
     assert "--launch-count" not in range_replay.ncu_prefix
+    assert range_replay.ncu_prefix.count("--nvtx-include") == 2
+    assert range_replay.ncu_prefix.count("--lockstep-nvtx-include") == 2
     assert range_replay.replay_mode == "range"
 
 
@@ -699,6 +709,7 @@ def test_range_replay_cli_propagates_exact_argv_and_receipt(tmp_path: Path) -> N
         observed = artifact["observed_argv"]
         assert observed == artifact["expected_argv"]
         assert observed[observed.index("--replay-mode") + 1] == "range"
+        assert "--kernel-name" not in observed
         assert "--launch-count" not in observed
 
 

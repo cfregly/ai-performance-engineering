@@ -293,7 +293,8 @@ def build_capture_plan(
     for flag in ("--lockstep-nvtx-include", "--nvtx-include"):
         for include in includes:
             prefix.extend([flag, include])
-    prefix.extend(["--kernel-name", "regex:nccl.*"])
+    if replay_mode == "kernel":
+        prefix.extend(["--kernel-name", "regex:nccl.*"])
     if not all_matching_kernels:
         prefix.extend(["--launch-count", "1"])
     prefix.extend(["--replay-mode", replay_mode, "--metrics", ",".join(metrics)])
