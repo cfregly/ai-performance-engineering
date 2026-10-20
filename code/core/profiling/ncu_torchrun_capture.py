@@ -1,17 +1,21 @@
-"""Explicit two-rank TCP/lockstep Nsight Compute capture for torchrun.
+"""Explicit two-rank Nsight Compute capture for torchrun.
 
-Supported scope: one node, two ranks, NCU 2026.2.1, kernel or range replay,
-five minimal metrics, ``regex:nccl.*``, and named NCCL push/pop NVTX filters.
-Receipts prove source/argv custody and fresh rank artifacts, not counter or
-performance validity. Full process-tree cleanup proof requires Linux procfs and
-the inherited owner marker. Unsupported hosts can run only to an explicitly
+Kernel and range replay use the existing per-rank TCP/lockstep topology.
+Application replay profiles one caller-selected visible device around the
+original full torchrun command. All modes use NCU 2026.2.1 and the repository's
+five minimal metrics. Receipts prove source and argument custody plus bounded
+artifact checks. They do not qualify numerical output, complete coverage, or
+performance. Full process-tree cleanup proof requires Linux procfs and the
+inherited owner marker. Unsupported hosts can run only to an explicitly
 rejected receipt.
 """
 
 from __future__ import annotations
 
 import argparse
+import csv
 import hashlib
+import io
 import json
 import math
 import os
@@ -27,10 +31,21 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from core.benchmark.run_manifest import (
+    RunManifest,
+    RuntimeProvenanceParityError,
+    require_runtime_provenance_parity,
+)
+from core.harness.torchrun_runtime_provenance import (
+    TORCHRUN_RUNTIME_PROVENANCE_PREFIX,
+    TorchrunRuntimeProvenanceError,
+    parse_torchrun_runtime_provenance_stdout,
+)
 from core.profiling.ncu_torchrun_rank import RANK_CONFIG_SCHEMA
 from core.profiling.profiler_config import MINIMAL_METRICS
 
 CAPTURE_RECEIPT_SCHEMA = "aisp.ncu-torchrun-capture.v1"
+APPLICATION_CAPTURE_RECEIPT_SCHEMA = "aisp.ncu-torchrun-application-capture.v1"
 SUPPORTED_NCU_VERSION = "2026.2.1"
 WORLD_SIZE = 2
 CLAIM_LIMIT = (
@@ -48,6 +63,12 @@ _WRAPPER_MODULE = "core.harness.torchrun_wrapper"
 _CAPTURE_OWNER_ENV = "AISP_NCU_TORCHRUN_CAPTURE_ID"
 _PROC_ROOT = Path("/proc")
 _ProcIdentity = tuple[int, int]
+_APPLICATION_MARKER_TEXT = "Application replay pass"
+_APPLICATION_MARKER = re.compile(
+    rb'^==PROF== Profiling(?: on device (?P<device>[0-9]+) :)? '
+    rb'"(?P<kernel>[^"\r\n]+)": Application replay pass '
+    rb'(?P<pass_number>[1-9][0-9]*)\r?\n$'
+)
 
 
 def _rank(value: int) -> int:
@@ -65,7 +86,7 @@ class NcuTorchrunCapturePlan:
     source: str
     output_dir: Path
     ncu_path: Path
-    tcp_port: int
+    tcp_port: int | None
     timeout_seconds: float
     nccl_nvtx_includes: tuple[str, ...]
     torchrun_argv: tuple[str, ...]
@@ -74,6 +95,10 @@ class NcuTorchrunCapturePlan:
     ncu_prefix: tuple[str, ...]
     all_matching_kernels: bool
     replay_mode: str
+    target_visible_device: int | None
+    kernel_name: str | None
+    launch_skip: int | None
+    launch_count: int | None
 
     @property
     def rank_config_path(self) -> Path:
@@ -91,6 +116,22 @@ class NcuTorchrunCapturePlan:
     def stderr_path(self) -> Path:
         return self.output_dir / "stderr.log"
 
+    @property
+    def combined_path(self) -> Path:
+        return self.output_dir / "combined.log"
+
+    @property
+    def application_report_path(self) -> Path:
+        return self.output_dir / "application.ncu-rep"
+
+    @property
+    def application_csv_path(self) -> Path:
+        return self.output_dir / "application.raw.csv"
+
+    @property
+    def application_import_stderr_path(self) -> Path:
+        return self.output_dir / "application-import.stderr.log"
+
     def report_path(self, local_rank: int) -> Path:
         return self.output_dir / f"rank-{_rank(local_rank)}.ncu-rep"
 
@@ -98,6 +139,8 @@ class NcuTorchrunCapturePlan:
         return self.output_dir / f"rank-{_rank(local_rank)}-argv.json"
 
     def expected_rank_argv(self, local_rank: int) -> tuple[str, ...]:
+        if self.replay_mode == "application":
+            raise ValueError("Application replay has one parent NCU command, not rank commands")
         local_rank = _rank(local_rank)
         return (
             *self.ncu_prefix,
@@ -110,6 +153,13 @@ class NcuTorchrunCapturePlan:
 
     @property
     def launch_argv(self) -> tuple[str, ...]:
+        if self.replay_mode == "application":
+            return (
+                *self.ncu_prefix,
+                "--export",
+                str(self.application_report_path),
+                *self.torchrun_argv,
+            )
         return (
             *self.launcher_argv,
             "--no-python",
@@ -120,6 +170,8 @@ class NcuTorchrunCapturePlan:
         )
 
     def rank_config(self) -> dict[str, Any]:
+        if self.replay_mode == "application":
+            raise ValueError("Application replay does not use the rank-local configuration")
         return {
             "schema": RANK_CONFIG_SCHEMA,
             "ncu_prefix": list(self.ncu_prefix),
@@ -197,10 +249,10 @@ def _split_torchrun(argv: Sequence[str]) -> tuple[tuple[str, ...], tuple[str, ..
         raise ValueError("Input torchrun command must not already use --no-python")
     nproc = _option(launcher, "--nproc_per_node", "--nproc-per-node")
     if nproc != "2":
-        raise ValueError(f"Per-rank TCP NCU requires --nproc_per_node 2, got {nproc!r}")
+        raise ValueError(f"Two-rank NCU capture requires --nproc_per_node 2, got {nproc!r}")
     nnodes = _option(launcher, "--nnodes", required=False)
     if nnodes not in (None, "1"):
-        raise ValueError(f"Per-rank TCP NCU supports exactly one node, got {nnodes!r}")
+        raise ValueError(f"Two-rank NCU capture supports exactly one node, got {nnodes!r}")
     backend = _option(launcher, "--rdzv_backend", "--rdzv-backend")
     if backend != "c10d":
         raise ValueError(f"Torchrun rendezvous backend must be c10d, got {backend!r}")
@@ -239,12 +291,16 @@ def build_capture_plan(
     source: str,
     output_dir: Path,
     ncu_path: Path,
-    tcp_port: int,
+    tcp_port: int | None,
     timeout_seconds: float,
-    nccl_nvtx_includes: Sequence[str],
+    nccl_nvtx_includes: Sequence[str] | None,
     torchrun_argv: Sequence[str],
     all_matching_kernels: bool = False,
     replay_mode: str = "kernel",
+    target_visible_device: int | None = None,
+    kernel_name: str | None = None,
+    launch_skip: int | None = None,
+    launch_count: int | None = None,
 ) -> NcuTorchrunCapturePlan:
     """Validate the supported command contract and build exact rank argv."""
 
@@ -253,8 +309,6 @@ def build_capture_plan(
         raise ValueError("label must contain only letters, digits, '.', '_' or '-'")
     if not re.fullmatch(r"[0-9a-f]{40}", source):
         raise ValueError("source must be a full 40-character lowercase Git commit")
-    if type(tcp_port) is not int or not 1024 <= tcp_port <= 65535:
-        raise ValueError(f"tcp_port must be an integer from 1024 through 65535: {tcp_port!r}")
     if (
         type(timeout_seconds) not in (int, float)
         or not math.isfinite(float(timeout_seconds))
@@ -263,41 +317,120 @@ def build_capture_plan(
         raise ValueError(f"timeout_seconds must be positive and finite: {timeout_seconds!r}")
     if type(all_matching_kernels) is not bool:
         raise ValueError("all_matching_kernels must be a boolean")
-    if type(replay_mode) is not str or replay_mode not in {"kernel", "range"}:
-        raise ValueError("replay_mode must be 'kernel' or 'range'")
+    if type(replay_mode) is not str or replay_mode not in {"application", "kernel", "range"}:
+        raise ValueError("replay_mode must be 'application', 'kernel' or 'range'")
     if replay_mode == "range" and not all_matching_kernels:
         raise ValueError("range replay requires all_matching_kernels=True")
     launcher, worker = _split_torchrun(torchrun_argv)
-    if str(_option(launcher, "--rdzv_endpoint", "--rdzv-endpoint")).endswith(f":{tcp_port}"):
-        raise ValueError("NCU communicator port must differ from the torchrun rendezvous port")
-    includes, metrics = _ranges(nccl_nvtx_includes), tuple(MINIMAL_METRICS)
+    metrics = tuple(MINIMAL_METRICS)
     if len(metrics) != 5 or len(set(metrics)) != 5:
         raise RuntimeError("Repository minimal NCU contract must contain exactly five metrics")
-    prefix = [
-        str(ncu_path),
-        "--clock-control",
-        "none",
-        "--target-processes",
-        "all",
-        "--communicator",
-        "tcp",
-        "--communicator-tcp-hostname",
-        "127.0.0.1",
-        "--communicator-tcp-port",
-        str(tcp_port),
-        "--communicator-tcp-num-peers",
-        "2",
-        "--lockstep-kernel-launch",
-        "--nvtx",
-    ]
-    for flag in ("--lockstep-nvtx-include", "--nvtx-include"):
-        for include in includes:
-            prefix.extend([flag, include])
-    if replay_mode == "kernel":
-        prefix.extend(["--kernel-name", "regex:nccl.*"])
-    if not all_matching_kernels:
-        prefix.extend(["--launch-count", "1"])
-    prefix.extend(["--replay-mode", replay_mode, "--metrics", ",".join(metrics)])
+
+    application_values = {
+        "target_visible_device": target_visible_device,
+        "kernel_name": kernel_name,
+        "launch_skip": launch_skip,
+        "launch_count": launch_count,
+    }
+    if replay_mode == "application":
+        if tcp_port is not None:
+            raise ValueError("application replay rejects tcp_port")
+        if nccl_nvtx_includes:
+            raise ValueError("application replay rejects NCCL NVTX includes")
+        if all_matching_kernels:
+            raise ValueError("application replay rejects all_matching_kernels")
+        if type(target_visible_device) is not int or target_visible_device not in (0, 1):
+            raise ValueError("target_visible_device must be the visible ordinal 0 or 1")
+        if (
+            type(kernel_name) is not str
+            or not kernel_name.startswith("regex:")
+            or not kernel_name.removeprefix("regex:")
+            or kernel_name != kernel_name.strip()
+            or "\n" in kernel_name
+            or "\r" in kernel_name
+        ):
+            raise ValueError("kernel_name must be an explicit nonempty regex: selector")
+        try:
+            re.compile(kernel_name.removeprefix("regex:"))
+        except re.error as exc:
+            raise ValueError(f"kernel_name contains an invalid regular expression: {exc}") from exc
+        if type(launch_skip) is not int or launch_skip < 0:
+            raise ValueError("launch_skip must be a nonnegative integer")
+        if type(launch_count) is not int or launch_count != 1:
+            raise ValueError("launch_count must be exactly 1 for bounded application replay")
+        includes: tuple[str, ...] = ()
+        prefix = [
+            str(ncu_path),
+            "--clock-control",
+            "none",
+            "--target-processes",
+            "all",
+            "--devices",
+            str(target_visible_device),
+            "--replay-mode",
+            "application",
+            "--app-replay-mode",
+            "strict",
+            "--app-replay-match",
+            "grid",
+            "--filter-mode",
+            "per-gpu",
+            "--kernel-name",
+            kernel_name,
+            "--launch-skip",
+            str(launch_skip),
+            "--launch-count",
+            str(launch_count),
+            "--kill",
+            "no",
+            "--check-exit-code",
+            "yes",
+            "--metrics",
+            ",".join(metrics),
+        ]
+    else:
+        supplied_application_options = [
+            name for name, value in application_values.items() if value is not None
+        ]
+        if supplied_application_options:
+            raise ValueError(
+                f"{replay_mode} replay rejects application options: "
+                f"{supplied_application_options}"
+            )
+        if type(tcp_port) is not int or not 1024 <= tcp_port <= 65535:
+            raise ValueError(
+                f"tcp_port must be an integer from 1024 through 65535: {tcp_port!r}"
+            )
+        if str(_option(launcher, "--rdzv_endpoint", "--rdzv-endpoint")).endswith(
+            f":{tcp_port}"
+        ):
+            raise ValueError("NCU communicator port must differ from the torchrun rendezvous port")
+        includes = _ranges(nccl_nvtx_includes or ())
+        prefix = [
+            str(ncu_path),
+            "--clock-control",
+            "none",
+            "--target-processes",
+            "all",
+            "--communicator",
+            "tcp",
+            "--communicator-tcp-hostname",
+            "127.0.0.1",
+            "--communicator-tcp-port",
+            str(tcp_port),
+            "--communicator-tcp-num-peers",
+            "2",
+            "--lockstep-kernel-launch",
+            "--nvtx",
+        ]
+        for flag in ("--lockstep-nvtx-include", "--nvtx-include"):
+            for include in includes:
+                prefix.extend([flag, include])
+        if replay_mode == "kernel":
+            prefix.extend(["--kernel-name", "regex:nccl.*"])
+        if not all_matching_kernels:
+            prefix.extend(["--launch-count", "1"])
+        prefix.extend(["--replay-mode", replay_mode, "--metrics", ",".join(metrics)])
     return NcuTorchrunCapturePlan(
         label,
         Path(repo_root).resolve(),
@@ -313,6 +446,10 @@ def build_capture_plan(
         tuple(prefix),
         all_matching_kernels,
         replay_mode,
+        target_visible_device,
+        kernel_name,
+        launch_skip,
+        launch_count,
     )
 
 
@@ -356,6 +493,12 @@ def _preflight(plan: NcuTorchrunCapturePlan, env: Mapping[str, str]) -> dict[str
     devices = tuple(part.strip() for part in env.get("CUDA_VISIBLE_DEVICES", "").split(","))
     if len(devices) != 2 or any(not item for item in devices) or len(set(devices)) != 2:
         raise ValueError("CUDA_VISIBLE_DEVICES must name exactly two distinct devices")
+    if plan.replay_mode == "application":
+        assert plan.target_visible_device is not None
+        if plan.target_visible_device >= len(devices):
+            raise ValueError(
+                "target_visible_device is outside the CUDA_VISIBLE_DEVICES ordinal range"
+            )
     for name in ("AISP_LOCK_GPU_CLOCKS", "AISP_RAMP_GPU_CLOCKS"):
         if env.get(name) != "1":
             raise ValueError(f"{name}=1 is required")
@@ -365,11 +508,13 @@ def _preflight(plan: NcuTorchrunCapturePlan, env: Mapping[str, str]) -> dict[str
     }
     if str(code_root) not in python_paths:
         raise ValueError(f"PYTHONPATH must include {code_root}")
-    with socket.socket() as listener:
-        try:
-            listener.bind(("127.0.0.1", plan.tcp_port))
-        except OSError as exc:
-            raise ValueError(f"NCU TCP port is unavailable: {plan.tcp_port}") from exc
+    if plan.replay_mode != "application":
+        assert plan.tcp_port is not None
+        with socket.socket() as listener:
+            try:
+                listener.bind(("127.0.0.1", plan.tcp_port))
+            except OSError as exc:
+                raise ValueError(f"NCU TCP port is unavailable: {plan.tcp_port}") from exc
     version = subprocess.check_output(
         [str(ncu), "--version"], text=True, stderr=subprocess.STDOUT, timeout=15
     ).strip()
@@ -755,6 +900,496 @@ def _artifacts(
     return items, errors
 
 
+def _kernel_selector_matches(selector: str, kernel_name: str) -> bool:
+    if selector.startswith("regex:"):
+        return re.fullmatch(selector.removeprefix("regex:"), kernel_name) is not None
+    return selector == kernel_name
+
+
+def _parse_application_replay_log(
+    plan: NcuTorchrunCapturePlan,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Validate one complete two-rank provenance generation per replay pass."""
+
+    if plan.replay_mode != "application":
+        raise ValueError("Application replay log parsing requires application mode")
+    assert plan.kernel_name is not None
+    assert plan.target_visible_device is not None
+    raw = plan.combined_path.read_bytes()
+    markers: list[dict[str, Any]] = []
+    offset = 0
+    provenance_prefix = TORCHRUN_RUNTIME_PROVENANCE_PREFIX.encode("ascii")
+    marker_text = _APPLICATION_MARKER_TEXT.encode("ascii")
+    for line in raw.splitlines(keepends=True):
+        if marker_text in line:
+            marker = _APPLICATION_MARKER.fullmatch(line)
+            if marker is None:
+                raise TorchrunRuntimeProvenanceError(
+                    f"Unexpected application replay marker at combined-log byte {offset}"
+                )
+            kernel_name = marker.group("kernel").decode("utf-8")
+            if not _kernel_selector_matches(plan.kernel_name, kernel_name):
+                raise TorchrunRuntimeProvenanceError(
+                    f"Application replay marker kernel {kernel_name!r} does not match "
+                    f"selector {plan.kernel_name!r}"
+                )
+            raw_device = marker.group("device")
+            if raw_device is not None and int(raw_device) != plan.target_visible_device:
+                raise TorchrunRuntimeProvenanceError(
+                    "Application replay marker selected a different visible device: "
+                    f"expected {plan.target_visible_device}, observed {int(raw_device)}"
+                )
+            markers.append(
+                {
+                    "application_replay_pass": int(marker.group("pass_number")),
+                    "kernel_name": kernel_name,
+                    "marker_device": int(raw_device) if raw_device is not None else None,
+                    "marker_start_byte": offset,
+                    "payload_start_byte": offset + len(line),
+                }
+            )
+        offset += len(line)
+
+    if not markers:
+        raise TorchrunRuntimeProvenanceError(
+            "Application replay log contains no recognized pass markers"
+        )
+    if provenance_prefix in raw[: markers[0]["marker_start_byte"]]:
+        raise TorchrunRuntimeProvenanceError(
+            "Torchrun runtime provenance appeared before application replay pass 1"
+        )
+    observed_passes = [item["application_replay_pass"] for item in markers]
+    expected_passes = list(range(1, len(markers) + 1))
+    if observed_passes != expected_passes:
+        raise TorchrunRuntimeProvenanceError(
+            "Application replay pass numbers must be consecutive from one: "
+            f"expected {expected_passes}, observed {observed_passes}"
+        )
+
+    generations: list[dict[str, Any]] = []
+    all_process_ids: set[int] = set()
+    reference_manifest: RunManifest | None = None
+    for index, marker in enumerate(markers):
+        payload_end = (
+            markers[index + 1]["marker_start_byte"] if index + 1 < len(markers) else len(raw)
+        )
+        payload = raw[marker["payload_start_byte"] : payload_end]
+        try:
+            payload_text = payload.decode("utf-8")
+        except UnicodeDecodeError as exc:
+            raise TorchrunRuntimeProvenanceError(
+                "Application replay combined log is not valid UTF-8 in pass "
+                f"{marker['application_replay_pass']}"
+            ) from exc
+        parsed = parse_torchrun_runtime_provenance_stdout(
+            payload_text,
+            expected_local_ranks=(0, 1),
+            target="cuda",
+        )
+        process_ids = parsed.execution_process_ids
+        duplicate_process_ids = all_process_ids.intersection(process_ids.values())
+        if duplicate_process_ids:
+            raise TorchrunRuntimeProvenanceError(
+                "Application replay reused worker process IDs across passes: "
+                f"{sorted(duplicate_process_ids)}"
+            )
+        all_process_ids.update(process_ids.values())
+
+        runtime_by_local_rank: dict[str, Any] = {}
+        for local_rank, snapshot in sorted(parsed.snapshots_by_local_rank.items()):
+            if snapshot.cuda_available is not True:
+                raise TorchrunRuntimeProvenanceError(
+                    "Application replay runtime provenance does not report CUDA available "
+                    f"for pass {marker['application_replay_pass']}, local rank {local_rank}"
+                )
+            manifest = RunManifest.model_construct(runtime_provenance=snapshot)
+            if reference_manifest is None:
+                reference_manifest = manifest
+            try:
+                require_runtime_provenance_parity(
+                    reference_manifest,
+                    manifest,
+                    target="cuda",
+                )
+            except RuntimeProvenanceParityError as exc:
+                raise TorchrunRuntimeProvenanceError(
+                    "Application replay runtime provenance drifted from pass 1, local rank 0 "
+                    f"at pass {marker['application_replay_pass']}, local rank {local_rank}: {exc}"
+                ) from exc
+            runtime_by_local_rank[str(local_rank)] = snapshot.model_dump(mode="json")
+
+        generations.append(
+            {
+                **marker,
+                "payload_end_byte": payload_end,
+                "execution_process_ids": process_ids,
+                "runtime_by_local_rank": runtime_by_local_rank,
+                "both_post_main_receipts": True,
+                "cuda_runtime_parity": True,
+            }
+        )
+
+    return generations, {
+        "path": str(plan.combined_path),
+        "bytes": len(raw),
+        "sha256": hashlib.sha256(raw).hexdigest(),
+        "stream_mode": "stdout-and-stderr-shared-open-file-description-at-launch",
+    }
+
+
+def _application_report_artifact(
+    plan: NcuTorchrunCapturePlan,
+    *,
+    start_ns: int,
+    generations: Sequence[Mapping[str, Any]],
+) -> tuple[dict[str, Any], list[str]]:
+    """Import and validate the bounded application-replay report."""
+
+    errors: list[str] = []
+    report = plan.application_report_path
+    artifact: dict[str, Any] = {
+        "report_path": str(report),
+        "raw_csv_path": str(plan.application_csv_path),
+        "import_stderr_path": str(plan.application_import_stderr_path),
+    }
+    if report.is_symlink() or not report.is_file():
+        return artifact, ["application replay report is missing or symlinked"]
+    stat = report.stat()
+    artifact.update(
+        report_bytes=stat.st_size,
+        report_mtime_ns=stat.st_mtime_ns,
+        report_sha256=_sha256(report),
+    )
+    if not stat.st_size or stat.st_mtime_ns < start_ns:
+        return artifact, ["application replay report is empty or stale"]
+
+    import_argv = (
+        str(plan.ncu_path),
+        "--import",
+        str(report),
+        "--page",
+        "raw",
+        "--csv",
+    )
+    artifact["import_argv"] = list(import_argv)
+    try:
+        completed = subprocess.run(
+            import_argv,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=min(60.0, plan.timeout_seconds),
+            check=False,
+        )
+    except subprocess.TimeoutExpired:
+        return artifact, ["application replay report import timed out"]
+    except (OSError, subprocess.SubprocessError) as exc:
+        return artifact, [f"application replay report import failed: {exc}"]
+    plan.application_csv_path.write_bytes(completed.stdout)
+    plan.application_import_stderr_path.write_bytes(completed.stderr)
+    artifact.update(
+        import_returncode=completed.returncode,
+        raw_csv_bytes=len(completed.stdout),
+        raw_csv_sha256=hashlib.sha256(completed.stdout).hexdigest(),
+        import_stderr_bytes=len(completed.stderr),
+        import_stderr_sha256=hashlib.sha256(completed.stderr).hexdigest(),
+    )
+    if completed.returncode:
+        return artifact, [
+            f"application replay report import exited {completed.returncode}"
+        ]
+    if _sha256(report) != artifact["report_sha256"]:
+        return artifact, ["application replay report changed while it was imported"]
+    try:
+        csv_text = completed.stdout.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        return artifact, [f"application replay raw CSV is not valid UTF-8: {exc}"]
+    rows = list(csv.reader(io.StringIO(csv_text)))
+    if len(rows) != 3 or len({len(row) for row in rows}) != 1:
+        return artifact, [
+            "application replay raw CSV must contain one header, one units row, "
+            "and one data row"
+        ]
+    header, units, values = rows
+    if not header or len(set(header)) != len(header):
+        return artifact, ["application replay raw CSV header is empty or contains duplicates"]
+    fields = dict(zip(header, values, strict=True))
+    unit_fields = dict(zip(header, units, strict=True))
+    required_fields = {
+        "Device",
+        "Kernel Name",
+        "Process ID",
+        "profiler__replayer_passes",
+        *MINIMAL_METRICS,
+    }
+    missing_fields = sorted(required_fields - fields.keys())
+    if missing_fields:
+        return artifact, [
+            f"application replay raw CSV is missing fields: {missing_fields}"
+        ]
+    assert plan.target_visible_device is not None
+    assert plan.kernel_name is not None
+    try:
+        selected_device = int(fields["Device"])
+        process_id = int(fields["Process ID"])
+        raw_pass_count = float(fields["profiler__replayer_passes"].replace(",", ""))
+    except ValueError as exc:
+        return artifact, [f"application replay raw CSV identity is invalid: {exc}"]
+    if selected_device != plan.target_visible_device:
+        errors.append(
+            "application replay raw CSV selected the wrong visible device: "
+            f"expected {plan.target_visible_device}, observed {selected_device}"
+        )
+    device_attribute = fields.get("device__attribute_device_index")
+    if device_attribute not in (None, ""):
+        try:
+            if int(device_attribute) != plan.target_visible_device:
+                errors.append("application replay device attribute differs from the selector")
+        except ValueError:
+            errors.append("application replay device attribute is not an integer")
+    kernel_name = fields["Kernel Name"].strip()
+    if not _kernel_selector_matches(plan.kernel_name, kernel_name):
+        errors.append(
+            f"application replay CSV kernel {kernel_name!r} does not match "
+            f"selector {plan.kernel_name!r}"
+        )
+    if not math.isfinite(raw_pass_count) or raw_pass_count < 1 or not raw_pass_count.is_integer():
+        errors.append("application replay profiler pass count is not a positive integer")
+        profiler_pass_count = None
+    else:
+        profiler_pass_count = int(raw_pass_count)
+        if profiler_pass_count != len(generations):
+            errors.append(
+                "application replay profiler pass count differs from the merged log: "
+                f"CSV={profiler_pass_count}, log={len(generations)}"
+            )
+    selected_rank_pid = generations[0]["execution_process_ids"].get(
+        plan.target_visible_device
+    )
+    if process_id != selected_rank_pid:
+        errors.append(
+            "application replay CSV process does not match the selected local rank in pass 1"
+        )
+
+    metric_values: dict[str, float] = {}
+    for metric in MINIMAL_METRICS:
+        try:
+            value = float(fields[metric].replace(",", ""))
+        except ValueError:
+            errors.append(f"application replay metric is not numeric: {metric}")
+            continue
+        if not math.isfinite(value) or value <= 0:
+            errors.append(f"application replay metric is not finite and positive: {metric}")
+            continue
+        if metric.endswith(("pct_of_peak_sustained_elapsed", "pct_of_peak_sustained_active")):
+            if value > 100:
+                errors.append(f"application replay percentage metric exceeds 100: {metric}")
+                continue
+        metric_values[metric] = value
+
+    artifact["row"] = {
+        "visible_device": selected_device,
+        "kernel_name": kernel_name,
+        "process_id": process_id,
+        "profiler_pass_count": profiler_pass_count,
+        "metrics": metric_values,
+        "metric_units": {metric: unit_fields[metric] for metric in MINIMAL_METRICS},
+    }
+    return artifact, errors
+
+
+def _capture_status(
+    *,
+    cleanup: _CleanupResult,
+    returncode: int | None,
+    timed_out: bool,
+    artifact_errors: Sequence[str],
+) -> str:
+    if not cleanup.supported:
+        return "CLEANUP_UNVERIFIED"
+    if not cleanup.drained or returncode is None:
+        return "CLEANUP_FAILED"
+    if timed_out:
+        return "TIMEOUT"
+    if returncode:
+        return "CAPTURE_FAILED"
+    if not cleanup.natural:
+        return "FORCED_CLEANUP"
+    if artifact_errors:
+        return "CAPTURE_REJECTED"
+    return "CAPTURE_ARTIFACTS_PRESENT"
+
+
+def _run_application_capture(
+    plan: NcuTorchrunCapturePlan,
+    *,
+    env: dict[str, str],
+    preflight: Mapping[str, Any],
+) -> NcuTorchrunCaptureResult:
+    plan.output_dir.mkdir(parents=True, exist_ok=False)
+    capture_marker = uuid.uuid4().hex
+    env.update(
+        PYTHONNOUSERSITE="1",
+        AISP_PROFILE_NO_USER_SITE="1",
+        **{_CAPTURE_OWNER_ENV: capture_marker},
+    )
+    assert plan.target_visible_device is not None
+    assert plan.kernel_name is not None
+    assert plan.launch_skip is not None
+    assert plan.launch_count == 1
+    receipt: dict[str, Any] = {
+        "schema": APPLICATION_CAPTURE_RECEIPT_SCHEMA,
+        "status": "RUNNING",
+        "label": plan.label,
+        "source": plan.source,
+        "cwd": str((plan.repo_root / "code").resolve()),
+        "capture_topology": "parent-application-replay",
+        "torchrun_argv": list(plan.torchrun_argv),
+        "argv": list(plan.launch_argv),
+        "world_size": WORLD_SIZE,
+        "nnodes": 1,
+        "replay_mode": "application",
+        "selector": {
+            "target_visible_device": plan.target_visible_device,
+            "kernel_name": plan.kernel_name,
+            "launch_skip": plan.launch_skip,
+            "launch_count": plan.launch_count,
+        },
+        "application_replay": {
+            "mode": "strict",
+            "match": "grid",
+            "filter_mode": "per-gpu",
+        },
+        "metrics": list(MINIMAL_METRICS),
+        "selected_matching_launches_per_device": 1,
+        "all_matching_launches_covered": False,
+        "full_coverage_qualified": False,
+        "both_devices_covered_by_this_receipt": False,
+        "pipeline_role_inferred": False,
+        "numerical_output_qualified": False,
+        "performance_qualified": False,
+        "claim_limit": CLAIM_LIMIT,
+        "cleanup_limit": CLEANUP_LIMIT,
+        "capture_owner": {"environment": _CAPTURE_OWNER_ENV, "id": capture_marker},
+        "log_stream": {
+            "mode": "stdout-and-stderr-shared-open-file-description-at-launch",
+            "path": str(plan.combined_path),
+        },
+        **preflight,
+    }
+    _write_json(plan.receipt_path, receipt)
+    preexisting_identities = (
+        _snapshot_proc_identities() if _proc_cleanup_supported() else frozenset()
+    )
+    process: subprocess.Popen[bytes] | None = None
+    cleanup: _CleanupResult | None = None
+    start_ns = time.time_ns()
+    timed_out = False
+
+    try:
+        with plan.combined_path.open("wb") as combined:
+            process = subprocess.Popen(
+                plan.launch_argv,
+                cwd=plan.repo_root / "code",
+                env=env,
+                stdin=subprocess.DEVNULL,
+                stdout=combined,
+                stderr=subprocess.STDOUT,
+                start_new_session=True,
+            )
+            receipt["process_id"] = process.pid
+            _write_json(plan.receipt_path, receipt)
+            try:
+                process.wait(timeout=plan.timeout_seconds)
+            except subprocess.TimeoutExpired:
+                timed_out = True
+            cleanup = _cleanup_capture_processes(
+                process,
+                capture_marker,
+                preexisting_identities=preexisting_identities,
+            )
+    except BaseException as exc:
+        if process is not None and cleanup is None:
+            cleanup = _cleanup_capture_processes(
+                process,
+                capture_marker,
+                preexisting_identities=preexisting_identities,
+            )
+        cleanup = cleanup or _CleanupResult(
+            "not-started", True, True, True, (), (), (), (), ()
+        )
+        receipt.update(
+            status="LAUNCH_FAILED",
+            error=f"{type(exc).__name__}: {exc}",
+            timed_out=timed_out,
+            cleanup=cleanup.receipt(),
+            wall_seconds=(time.time_ns() - start_ns) / 1e9,
+        )
+        _write_json(plan.receipt_path, receipt)
+        raise
+
+    assert process is not None
+    assert cleanup is not None
+    application_errors: list[str] = []
+    generations: list[dict[str, Any]] = []
+    combined_artifact: dict[str, Any] = {
+        "path": str(plan.combined_path),
+        "stream_mode": "stdout-and-stderr-shared-open-file-description-at-launch",
+    }
+    try:
+        generations, combined_artifact = _parse_application_replay_log(plan)
+    except (OSError, UnicodeError, ValueError, TorchrunRuntimeProvenanceError) as exc:
+        application_errors.append(f"application replay log validation failed: {exc}")
+
+    application_artifact: dict[str, Any] = {
+        "report_path": str(plan.application_report_path),
+        "raw_csv_path": str(plan.application_csv_path),
+    }
+    if generations:
+        try:
+            application_artifact, report_errors = _application_report_artifact(
+                plan,
+                start_ns=start_ns,
+                generations=generations,
+            )
+            application_errors.extend(report_errors)
+        except (OSError, UnicodeError, ValueError) as exc:
+            application_errors.append(
+                f"application replay report validation failed: {exc}"
+            )
+    else:
+        application_errors.append(
+            "application replay report was not imported because no complete pass generation exists"
+        )
+    status = _capture_status(
+        cleanup=cleanup,
+        returncode=process.returncode,
+        timed_out=timed_out,
+        artifact_errors=application_errors,
+    )
+    receipt.update(
+        status=status,
+        returncode=process.returncode,
+        timed_out=timed_out,
+        cleanup=cleanup.receipt(),
+        wall_seconds=(time.time_ns() - start_ns) / 1e9,
+        combined_log=combined_artifact,
+        profiler_pass_count=len(generations),
+        replay_generations=generations,
+        application_artifact=application_artifact,
+        artifact_errors=application_errors,
+    )
+    _write_json(plan.receipt_path, receipt)
+    return NcuTorchrunCaptureResult(
+        status,
+        process.returncode,
+        timed_out,
+        plan.receipt_path,
+        plan.combined_path,
+        plan.combined_path,
+    )
+
+
 def run_capture(
     plan: NcuTorchrunCapturePlan, *, environment: Mapping[str, str] | None = None
 ) -> NcuTorchrunCaptureResult:
@@ -762,6 +1397,8 @@ def run_capture(
 
     env = dict(os.environ if environment is None else environment)
     preflight = _preflight(plan, env)
+    if plan.replay_mode == "application":
+        return _run_application_capture(plan, env=env, preflight=preflight)
     plan.output_dir.mkdir(parents=True, exist_ok=False)
     capture_marker = uuid.uuid4().hex
     env.update(
@@ -776,6 +1413,7 @@ def run_capture(
         "label": plan.label,
         "source": plan.source,
         "cwd": str((plan.repo_root / "code").resolve()),
+        "capture_topology": "per-rank-tcp-lockstep",
         "torchrun_argv": list(plan.torchrun_argv),
         "argv": list(plan.launch_argv),
         "rank_config_path": str(plan.rank_config_path),
@@ -841,20 +1479,12 @@ def run_capture(
         preexisting_identities=preexisting_identities,
     )
     artifacts, artifact_errors = _artifacts(plan, start_ns)
-    if not cleanup.supported:
-        status = "CLEANUP_UNVERIFIED"
-    elif not cleanup.drained or process.returncode is None:
-        status = "CLEANUP_FAILED"
-    elif timed_out:
-        status = "TIMEOUT"
-    elif process.returncode:
-        status = "CAPTURE_FAILED"
-    elif not cleanup.natural:
-        status = "FORCED_CLEANUP"
-    elif artifact_errors:
-        status = "CAPTURE_REJECTED"
-    else:
-        status = "CAPTURE_ARTIFACTS_PRESENT"
+    status = _capture_status(
+        cleanup=cleanup,
+        returncode=process.returncode,
+        timed_out=timed_out,
+        artifact_errors=artifact_errors,
+    )
     receipt.update(
         status=status,
         returncode=process.returncode,
@@ -879,18 +1509,27 @@ def run_capture(
 
 def _args(argv: Sequence[str] | None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Two-rank TCP/lockstep NCU capture; pass a torchrun-wrapper command after --."
+        description=(
+            "Two-rank NCU capture with TCP/lockstep kernel or range replay, or bounded "
+            "parent application replay. Pass a torchrun-wrapper command after --."
+        )
     )
     parser.add_argument("--label", required=True)
     parser.add_argument("--repo-root", required=True, type=Path)
     parser.add_argument("--source", required=True)
     parser.add_argument("--output-dir", required=True, type=Path)
     parser.add_argument("--ncu", required=True, type=Path)
-    parser.add_argument("--tcp-port", required=True, type=int)
+    parser.add_argument("--tcp-port", type=int)
     parser.add_argument("--timeout-seconds", required=True, type=float)
     parser.add_argument("--all-matching-kernels", action="store_true")
-    parser.add_argument("--replay-mode", choices=("kernel", "range"), default="kernel")
-    parser.add_argument("--nvtx-include", required=True, action="append", dest="includes")
+    parser.add_argument(
+        "--replay-mode", choices=("application", "kernel", "range"), default="kernel"
+    )
+    parser.add_argument("--nvtx-include", action="append", dest="includes")
+    parser.add_argument("--target-visible-device", type=int)
+    parser.add_argument("--kernel-name")
+    parser.add_argument("--launch-skip", type=int)
+    parser.add_argument("--launch-count", type=int)
     parser.add_argument("torchrun_argv", nargs=argparse.REMAINDER)
     args = parser.parse_args(argv)
     if args.torchrun_argv[:1] == ["--"]:
@@ -915,6 +1554,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             torchrun_argv=args.torchrun_argv,
             all_matching_kernels=args.all_matching_kernels,
             replay_mode=args.replay_mode,
+            target_visible_device=args.target_visible_device,
+            kernel_name=args.kernel_name,
+            launch_skip=args.launch_skip,
+            launch_count=args.launch_count,
         )
         result = run_capture(plan)
     except (OSError, RuntimeError, ValueError, subprocess.SubprocessError) as exc:

@@ -103,9 +103,10 @@ substitute profiled duration for a separately measured end-to-end baseline.
 Collectives that require concurrent ranks can stall under process-tree replay.
 The explicit `core.profiling.ncu_torchrun_capture` command launches one profiler
 per rank, with TCP coordination and lockstep limited to named NCCL NVTX ranges.
-It currently supports one Linux host, two visible GPUs, Nsight Compute 2026.2.1,
-kernel replay by default or explicit range replay, and the repository's five
-minimal metrics. It runs directly with `torchrun`. Slurm is not required.
+That kernel and range topology supports one Linux host, two visible GPUs,
+Nsight Compute 2026.2.1, and the repository's five minimal metrics. The command
+also has an explicit application replay topology in which one parent NCU process
+wraps the original full two-rank `torchrun` command. It runs without Slurm.
 
 From a clean checkout's `code/` directory, use the Python environment for the
 workload and set `NCU` to the absolute path of the 2026.2.1 executable. Choose
@@ -138,11 +139,72 @@ workload's trace. Globally matching launch ordinals are unsafe for asymmetric
 pipeline stages. Neither replay mode captures non-NCCL compute or changes the
 default benchmark profiler.
 
-The command retains exact arguments, source/tool hashes, logs, rank reports, and
-the owned process-group cleanup result. `CAPTURE_ARTIFACTS_PRESENT` establishes
-artifact creation only. Import both reports to check the selected kernels,
-finite metrics, PID/device identities and runtime receipts; verify numerical
-outputs and ordinary timings separately. See the
+#### Bounded parent application replay
+
+Use application replay only when the launch selector and target visible device
+are known in advance. The helper fixes NCU to strict application replay, grid
+matching, per-GPU filtering, all target processes, and the repository's five
+minimal metrics. Use a `regex:` kernel selector and `--launch-count 1`. This
+mode does not use the per-rank TCP communicator or named NVTX range filters.
+
+Run one target visible device at a time. Give each invocation a fresh output
+directory and a different torchrun rendezvous port. Set `KERNEL_NAME` and
+`LAUNCH_SKIP` from evidence for the exact source, workload, warmup count, and
+device. Do not copy a pipeline launch ordinal to another workload or device.
+
+```bash
+TARGET_VISIBLE_DEVICE=0
+KERNEL_NAME='regex:ncclDevKernel_SendRecv.*'
+LAUNCH_SKIP="$WORKLOAD_SPECIFIC_LAUNCH_SKIP"
+RDZV_PORT=29610
+OUTPUT_DIR=/tmp/pipeline-app-device-0-attempt-01
+
+AISP_LOCK_GPU_CLOCKS=1 AISP_RAMP_GPU_CLOCKS=1 \
+CUDA_VISIBLE_DEVICES=0,1 PYTHONPATH="$PWD" \
+python -m core.profiling.ncu_torchrun_capture \
+  --label pipeline-app-device-0 --repo-root .. \
+  --source "$(git rev-parse HEAD)" --output-dir "$OUTPUT_DIR" --ncu "$NCU" \
+  --timeout-seconds 300 --replay-mode application \
+  --target-visible-device "$TARGET_VISIBLE_DEVICE" \
+  --kernel-name "$KERNEL_NAME" --launch-skip "$LAUNCH_SKIP" --launch-count 1 \
+  -- python -m torch.distributed.run --nproc_per_node 2 --nnodes 1 \
+  --rdzv_backend c10d --rdzv_endpoint "127.0.0.1:$RDZV_PORT" --max_restarts 0 \
+  -m core.harness.torchrun_wrapper --aisp-emit-runtime-provenance \
+  --aisp-target-module core.harness.benchmark_worker \
+  --aisp-expected-torch-seed 42 --aisp-expected-cuda-seed 42 \
+  --module ch04.baseline_pipeline_parallel_multigpu --callable main \
+  -- --iters 3 --warmup 5 --seed 42
+```
+
+After that command finishes and its artifacts are retained, repeat it serially
+with `TARGET_VISIBLE_DEVICE=1`, a device-specific `LAUNCH_SKIP`, a new
+`RDZV_PORT`, a new label, and a new `OUTPUT_DIR`. The visible ordinal is not a
+pipeline role. Bind it to the physical GPU with the retained CUDA visibility and
+report device identity.
+
+Application replay captures real NCU and worker output in one merged stream so
+each strict `Application replay pass N` interval contains one complete two-rank
+runtime-provenance generation. The helper imports the fresh report with the same
+pinned NCU executable and validates the requested device, replay-pass count, and
+all five finite metric values for the selected row. Keep the report and imported
+CSV for independent audit.
+
+One successful invocation covers one explicitly selected matching launch on one
+visible device. Two serial invocations can provide one selected counter row per
+actual rank and device. They do not cover every NCCL launch, establish receive
+coverage, identify a send or receive direction from the counter row, or prove a
+direction-specific root cause. Measure ordinary workload timing separately.
+Qualify full-tensor numerical outputs separately because the runtime receipts
+prove post-main completion and environment parity, not tensor equality. Run
+the public command on the target hardware and review its report, rank receipts,
+device mapping, clocks, and cleanup before accepting the capture.
+
+Kernel and range modes retain exact arguments, source and tool hashes, logs,
+rank reports, and the owned process-group cleanup result.
+`CAPTURE_ARTIFACTS_PRESENT` establishes artifact creation only. Import both rank
+reports to check the selected kernels, finite metrics, PID and device identities,
+and runtime receipts. Verify numerical outputs and ordinary timings separately.
+See the
 [B200 follow-through report](reviews/2026-09-08-b200-remaining-followthrough.md)
 for measured scope and retained timeout dispositions.
 
