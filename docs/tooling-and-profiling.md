@@ -312,6 +312,7 @@ INPUT_RDZV_PORT=29642
 APPLICATION_RDZV_PORT_BASE=29650
 EXPECTED_APPLICATION_PASSES=9
 NCU_TIMEOUT_SECONDS=1800
+NCU_REPORT_IMPORT_TIMEOUT_SECONDS=600
 OUTPUT_DIR=/tmp/disagg-rank-tcp-all-attempt-01
 
 AISP_LOCK_GPU_CLOCKS=1 AISP_RAMP_GPU_CLOCKS=1 \
@@ -322,6 +323,7 @@ python -m core.profiling.ncu_torchrun_capture \
   --label disagg-rank-tcp-all --repo-root .. \
   --source "$(git rev-parse HEAD)" --output-dir "$OUTPUT_DIR" --ncu "$NCU" \
   --timeout-seconds "$NCU_TIMEOUT_SECONDS" --replay-mode application \
+  --report-import-timeout-seconds "$NCU_REPORT_IMPORT_TIMEOUT_SECONDS" \
   --application-topology rank-tcp --tcp-port "$NCU_TCP_PORT" \
   --expected-application-passes "$EXPECTED_APPLICATION_PASSES" \
   --application-rdzv-port-base "$APPLICATION_RDZV_PORT_BASE" \
@@ -343,6 +345,12 @@ creation. The 1,800-second budget above is for this profiling workload. Set a
 budget for each workload and retain enough time for report creation after the
 last replay generation. After an interrupted capture, use a new output directory
 and available ports.
+
+The report-import timeout is a separate per-report budget for each native
+`ncu --import` subprocess after capture. Importing the retained 68-row rank-0
+report completed naturally in 80.09 seconds, which exceeds the 60-second default
+kept for compatibility. The full example therefore allows 600 seconds for each
+rank import. Set both timeout budgets for the workload and report size.
 
 The helper requires the imported NCU CSV to contain exactly that many rows for
 each rank. It rejects missing, extra, duplicate, or gapped row IDs and any PID,

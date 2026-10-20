@@ -129,6 +129,7 @@ class NcuTorchrunCapturePlan:
     expected_application_passes: int | None = None
     application_rdzv_port_base: int | None = None
     expected_kernel_counts: tuple[int, int] | None = None
+    report_import_timeout_seconds: float = 60.0
 
     @property
     def is_rank_application(self) -> bool:
@@ -300,6 +301,22 @@ class _CleanupResult:
         }
 
 
+@dataclass(frozen=True)
+class _ReportImportResult:
+    started: bool
+    process_id: int | None
+    returncode: int | None
+    timed_out: bool
+    stdout: bytes
+    stderr: bytes
+    wall_seconds: float
+    start_error: str | None
+    communication_error: str | None
+    signals_sent: tuple[str, ...]
+    cleanup_drained: bool
+    cleanup_errors: tuple[str, ...]
+
+
 def _option(argv: Sequence[str], *names: str, required: bool = True) -> str | None:
     found: list[str] = []
     for index, item in enumerate(argv):
@@ -387,6 +404,7 @@ def build_capture_plan(
     expected_application_passes: int | None = None,
     application_rdzv_port_base: int | None = None,
     expected_kernel_counts: tuple[int, int] | None = None,
+    report_import_timeout_seconds: float = 60.0,
 ) -> NcuTorchrunCapturePlan:
     """Validate the supported command contract and build exact rank argv."""
 
@@ -403,6 +421,15 @@ def build_capture_plan(
         raise ValueError(f"timeout_seconds must be positive and finite: {timeout_seconds!r}")
     if type(all_matching_kernels) is not bool:
         raise ValueError("all_matching_kernels must be a boolean")
+    if (
+        type(report_import_timeout_seconds) not in (int, float)
+        or not math.isfinite(float(report_import_timeout_seconds))
+        or report_import_timeout_seconds <= 0
+    ):
+        raise ValueError(
+            "report_import_timeout_seconds must be positive and finite: "
+            f"{report_import_timeout_seconds!r}"
+        )
     if expected_kernel_counts is not None and (
         type(expected_kernel_counts) is not tuple
         or len(expected_kernel_counts) != WORLD_SIZE
@@ -422,6 +449,15 @@ def build_capture_plan(
         raise ValueError(f"{replay_mode} replay rejects application_topology")
     if replay_mode == "range" and not all_matching_kernels:
         raise ValueError("range replay requires all_matching_kernels=True")
+    if float(report_import_timeout_seconds) != 60.0 and not (
+        replay_mode == "application"
+        and application_topology == "rank-tcp"
+        and all_matching_kernels
+    ):
+        raise ValueError(
+            "nondefault report_import_timeout_seconds requires all-matching "
+            "rank-tcp application replay"
+        )
     launcher, worker = _split_torchrun(torchrun_argv)
     torchrun_port = int(
         str(_option(launcher, "--rdzv_endpoint", "--rdzv-endpoint")).rsplit(":", 1)[1]
@@ -666,6 +702,7 @@ def build_capture_plan(
         expected_application_passes,
         application_rdzv_port_base,
         expected_kernel_counts,
+        float(report_import_timeout_seconds),
     )
 
 
@@ -842,6 +879,119 @@ def _drain_owned_process_group(
     if not drained and not errors:
         errors.append(f"process group {process.pid} survived SIGKILL")
     return sent, drained and not errors, errors
+
+
+def _captured_subprocess_bytes(value: bytes | None, *, label: str) -> bytes:
+    if value is None:
+        return b""
+    if not isinstance(value, bytes):
+        raise RuntimeError(f"{label} was not captured as bytes")
+    return value
+
+
+def _longer_capture(current: bytes, candidate: bytes | None, *, label: str) -> bytes:
+    captured = _captured_subprocess_bytes(candidate, label=label)
+    return captured if len(captured) >= len(current) else current
+
+
+def _run_all_matching_report_import(
+    argv: Sequence[str], *, timeout_seconds: float
+) -> _ReportImportResult:
+    """Run one report import in a dedicated group and drain every descendant."""
+
+    start_ns = time.time_ns()
+    try:
+        process = subprocess.Popen(
+            tuple(str(item) for item in argv),
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            start_new_session=True,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        return _ReportImportResult(
+            False,
+            None,
+            None,
+            False,
+            b"",
+            b"",
+            (time.time_ns() - start_ns) / 1e9,
+            f"{type(exc).__name__}: {exc}",
+            None,
+            (),
+            True,
+            (),
+        )
+
+    stdout = b""
+    stderr = b""
+    timed_out = False
+    communication_error: str | None = None
+    signals_sent: list[str] = []
+    cleanup_drained = False
+    cleanup_errors: list[str] = []
+    try:
+        try:
+            stdout_value, stderr_value = process.communicate(timeout=timeout_seconds)
+            stdout = _captured_subprocess_bytes(
+                stdout_value, label="report import stdout"
+            )
+            stderr = _captured_subprocess_bytes(
+                stderr_value, label="report import stderr"
+            )
+        except subprocess.TimeoutExpired as exc:
+            timed_out = True
+            stdout = _longer_capture(
+                stdout, exc.output, label="timed-out report import stdout"
+            )
+            stderr = _longer_capture(
+                stderr, exc.stderr, label="timed-out report import stderr"
+            )
+        except (OSError, subprocess.SubprocessError) as exc:
+            communication_error = f"{type(exc).__name__}: {exc}"
+    finally:
+        signals_sent, cleanup_drained, cleanup_errors = (
+            _drain_owned_process_group(process)
+        )
+    if timed_out or communication_error is not None:
+        try:
+            stdout_value, stderr_value = process.communicate(timeout=2.0)
+            stdout = _longer_capture(
+                stdout, stdout_value, label="final report import stdout"
+            )
+            stderr = _longer_capture(
+                stderr, stderr_value, label="final report import stderr"
+            )
+        except subprocess.TimeoutExpired as exc:
+            stdout = _longer_capture(
+                stdout, exc.output, label="final timed-out report import stdout"
+            )
+            stderr = _longer_capture(
+                stderr, exc.stderr, label="final timed-out report import stderr"
+            )
+            cleanup_errors.append("report import pipes remained open after cleanup")
+            cleanup_drained = False
+        except (OSError, subprocess.SubprocessError) as exc:
+            cleanup_errors.append(
+                f"final report import communication failed: {type(exc).__name__}: {exc}"
+            )
+            cleanup_drained = False
+
+    return _ReportImportResult(
+        True,
+        process.pid,
+        process.returncode,
+        timed_out,
+        stdout,
+        stderr,
+        (time.time_ns() - start_ns) / 1e9,
+        None,
+        communication_error,
+        tuple(signals_sent),
+        cleanup_drained,
+        tuple(cleanup_errors),
+    )
 
 
 def _proc_cleanup_supported(proc_root: Path = _PROC_ROOT) -> bool:
@@ -1879,36 +2029,126 @@ def _application_report_artifact_for(
         "--csv",
     )
     artifact["import_argv"] = list(import_argv)
-    try:
-        completed = subprocess.run(
+    if plan.all_matching_kernels:
+        completed_import = _run_all_matching_report_import(
             import_argv,
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            timeout=min(60.0, plan.timeout_seconds),
-            check=False,
+            timeout_seconds=plan.report_import_timeout_seconds,
         )
-    except subprocess.TimeoutExpired:
-        return artifact, ["application replay report import timed out"]
-    except (OSError, subprocess.SubprocessError) as exc:
-        return artifact, [f"application replay report import failed: {exc}"]
-    csv_path.write_bytes(completed.stdout)
-    import_stderr_path.write_bytes(completed.stderr)
+        import_stdout = completed_import.stdout
+        import_stderr = completed_import.stderr
+        csv_path.write_bytes(import_stdout)
+        import_stderr_path.write_bytes(import_stderr)
+        partial_output = bool(
+            completed_import.timed_out
+            or completed_import.communication_error is not None
+            or completed_import.signals_sent
+            or not completed_import.cleanup_drained
+        )
+        artifact["report_import"] = {
+            "argv": list(import_argv),
+            "timeout_seconds": plan.report_import_timeout_seconds,
+            "process_started": completed_import.started,
+            "process_id": completed_import.process_id,
+            "returncode": completed_import.returncode,
+            "timed_out": completed_import.timed_out,
+            "wall_seconds": completed_import.wall_seconds,
+            "start_error": completed_import.start_error,
+            "communication_error": completed_import.communication_error,
+            "stdout": {
+                "path": str(csv_path),
+                "bytes": len(import_stdout),
+                "sha256": hashlib.sha256(import_stdout).hexdigest(),
+                "partial": partial_output,
+            },
+            "stderr": {
+                "path": str(import_stderr_path),
+                "bytes": len(import_stderr),
+                "sha256": hashlib.sha256(import_stderr).hexdigest(),
+                "partial": partial_output,
+            },
+            "cleanup": {
+                "mode": "dedicated-process-group",
+                "natural": (
+                    completed_import.started
+                    and not completed_import.signals_sent
+                    and completed_import.cleanup_drained
+                ),
+                "forced": bool(completed_import.signals_sent),
+                "signals_sent": list(completed_import.signals_sent),
+                "drained": completed_import.cleanup_drained,
+                "errors": list(completed_import.cleanup_errors),
+            },
+        }
+        import_errors: list[str] = []
+        if completed_import.start_error is not None:
+            import_errors.append(
+                "application replay report import failed to start: "
+                f"{completed_import.start_error}"
+            )
+        if completed_import.communication_error is not None:
+            import_errors.append(
+                "application replay report import communication failed: "
+                f"{completed_import.communication_error}"
+            )
+        if completed_import.timed_out:
+            import_errors.append(
+                "application replay report import timed out after "
+                f"{plan.report_import_timeout_seconds} seconds"
+            )
+        if completed_import.signals_sent and not completed_import.timed_out:
+            import_errors.append(
+                "application replay report import required process-group cleanup"
+            )
+        if not completed_import.cleanup_drained or completed_import.cleanup_errors:
+            import_errors.append(
+                "application replay report import process-group cleanup failed: "
+                f"{list(completed_import.cleanup_errors)}"
+            )
+        if (
+            completed_import.started
+            and not completed_import.timed_out
+            and completed_import.returncode != 0
+        ):
+            import_errors.append(
+                "application replay report import exited "
+                f"{completed_import.returncode}"
+            )
+        import_returncode = completed_import.returncode
+    else:
+        try:
+            completed = subprocess.run(
+                import_argv,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                timeout=min(60.0, plan.timeout_seconds),
+                check=False,
+            )
+        except subprocess.TimeoutExpired:
+            return artifact, ["application replay report import timed out"]
+        except (OSError, subprocess.SubprocessError) as exc:
+            return artifact, [f"application replay report import failed: {exc}"]
+        import_stdout = completed.stdout
+        import_stderr = completed.stderr
+        import_returncode = completed.returncode
+        import_errors = []
+        csv_path.write_bytes(import_stdout)
+        import_stderr_path.write_bytes(import_stderr)
     artifact.update(
-        import_returncode=completed.returncode,
-        raw_csv_bytes=len(completed.stdout),
-        raw_csv_sha256=hashlib.sha256(completed.stdout).hexdigest(),
-        import_stderr_bytes=len(completed.stderr),
-        import_stderr_sha256=hashlib.sha256(completed.stderr).hexdigest(),
+        import_returncode=import_returncode,
+        raw_csv_bytes=len(import_stdout),
+        raw_csv_sha256=hashlib.sha256(import_stdout).hexdigest(),
+        import_stderr_bytes=len(import_stderr),
+        import_stderr_sha256=hashlib.sha256(import_stderr).hexdigest(),
     )
-    if completed.returncode:
-        return artifact, [
-            f"application replay report import exited {completed.returncode}"
-        ]
+    if import_errors:
+        return artifact, import_errors
+    if import_returncode:
+        return artifact, [f"application replay report import exited {import_returncode}"]
     if _sha256(report) != artifact["report_sha256"]:
         return artifact, ["application replay report changed while it was imported"]
     try:
-        csv_text = completed.stdout.decode("utf-8")
+        csv_text = import_stdout.decode("utf-8")
     except UnicodeDecodeError as exc:
         return artifact, [f"application replay raw CSV is not valid UTF-8: {exc}"]
     rows = list(csv.reader(io.StringIO(csv_text)))
@@ -2405,6 +2645,9 @@ def run_capture(
                 all_matching_kernels=True,
                 nvtx_capture_enabled=True,
                 expected_kernel_counts=list(plan.expected_kernel_counts),
+                report_import_timeout_seconds=(
+                    plan.report_import_timeout_seconds
+                ),
                 ncu_launch_count_argument_present=(
                     "--launch-count" in plan.ncu_prefix
                 ),
@@ -2619,6 +2862,15 @@ def _args(argv: Sequence[str] | None) -> argparse.Namespace:
         type=_positive_kernel_count,
         metavar=("RANK0", "RANK1"),
     )
+    parser.add_argument(
+        "--report-import-timeout-seconds",
+        type=float,
+        default=60.0,
+        help=(
+            "Per-report import timeout for all-matching rank-tcp application replay. "
+            "The default is 60 seconds."
+        ),
+    )
     parser.add_argument("--nvtx-include", action="append", dest="includes")
     parser.add_argument("--target-visible-device", type=int)
     parser.add_argument("--kernel-name")
@@ -2660,6 +2912,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 if args.expected_kernel_counts is not None
                 else None
             ),
+            report_import_timeout_seconds=args.report_import_timeout_seconds,
         )
         result = run_capture(plan)
     except (OSError, RuntimeError, ValueError, subprocess.SubprocessError) as exc:

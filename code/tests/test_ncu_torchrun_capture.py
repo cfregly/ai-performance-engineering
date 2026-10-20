@@ -22,9 +22,11 @@ import sys
 import time
 from contextlib import suppress
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
+import core.profiling.ncu_torchrun_capture as ncu_capture
 from core.benchmark.run_manifest import capture_runtime_provenance
 from core.harness.torchrun_runtime_provenance import (
     TORCHRUN_RUNTIME_PROVENANCE_PREFIX,
@@ -47,6 +49,7 @@ from core.profiling.ncu_torchrun_capture import (
     _parse_rank_application_log,
     _proc_cleanup_supported,
     _rank_application_evidence,
+    _run_all_matching_report_import,
     _snapshot_proc_identities,
     build_capture_plan,
 )
@@ -81,6 +84,13 @@ def test_two_rank_capture_docs_cover_each_explicit_replay_topology() -> None:
     assert "--application-rdzv-port-base" in section
     assert "--expected-kernel-counts" in section
     assert "--all-matching-kernels" in section
+    assert "NCU_TIMEOUT_SECONDS=1800" in section
+    assert 'NCU_REPORT_IMPORT_TIMEOUT_SECONDS=600' in section
+    assert '--timeout-seconds "$NCU_TIMEOUT_SECONDS"' in section
+    assert (
+        '--report-import-timeout-seconds "$NCU_REPORT_IMPORT_TIMEOUT_SECONDS"'
+        in section
+    )
     assert "--kernel-name \"$KERNEL_NAME\" --launch-skip 0" in section
     assert "TORCHELASTIC_USE_AGENT_STORE=False" in section
     assert "KERNEL_NAME='regex:ncclDevKernel_AllReduce.*'" in section
@@ -855,13 +865,17 @@ def test_rank_tcp_application_plan_exposes_exact_rank_commands(tmp_path: Path) -
 def test_all_matching_application_control_plane_plan_has_no_launch_cutoff(
     tmp_path: Path,
 ) -> None:
-    plan = _all_matching_rank_application_plan(tmp_path)
+    plan = _all_matching_rank_application_plan(
+        tmp_path,
+        report_import_timeout_seconds=600.0,
+    )
 
     assert plan.all_matching_kernels is True
     assert plan.expected_kernel_counts == (2, 3)
     assert plan.launch_skip == 0
     assert plan.launch_count is None
     assert plan.expected_application_passes == 9
+    assert plan.report_import_timeout_seconds == 600.0
     assert (
         RANK_APPLICATION_ALL_MATCHING_CAPTURE_RECEIPT_SCHEMA
         == "aisp.ncu-torchrun-rank-application-all-matching-capture.v1"
@@ -893,6 +907,8 @@ def test_all_matching_application_control_plane_cli_parses_two_rank_counts(
             "31001",
             "--timeout-seconds",
             "30",
+            "--report-import-timeout-seconds",
+            "600",
             "--all-matching-kernels",
             "--replay-mode",
             "application",
@@ -917,6 +933,142 @@ def test_all_matching_application_control_plane_cli_parses_two_rank_counts(
     assert args.expected_kernel_counts == [2, 3]
     assert args.launch_count is None
     assert args.all_matching_kernels is True
+    assert args.report_import_timeout_seconds == 600.0
+
+
+def test_report_import_timeout_control_plane_keeps_legacy_default(
+    tmp_path: Path,
+) -> None:
+    plans = (
+        _plan(tmp_path),
+        _application_plan(tmp_path),
+        _rank_application_plan(tmp_path),
+        _all_matching_rank_application_plan(tmp_path),
+    )
+
+    assert all(plan.report_import_timeout_seconds == 60.0 for plan in plans)
+
+
+def test_report_import_timeout_control_plane_cli_propagates_budget(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify CLI wiring only. This does not represent a profiler capture."""
+
+    observed: dict[str, object] = {}
+    sentinel_plan = object()
+
+    def fake_build_capture_plan(**kwargs: object) -> object:
+        observed.update(kwargs)
+        return sentinel_plan
+
+    monkeypatch.setattr(ncu_capture, "build_capture_plan", fake_build_capture_plan)
+    monkeypatch.setattr(
+        ncu_capture,
+        "run_capture",
+        lambda plan: SimpleNamespace(
+            status="CAPTURE_ARTIFACTS_PRESENT",
+            returncode=0,
+            timed_out=False,
+            receipt_path=tmp_path / "receipt.json",
+        ),
+    )
+    result = ncu_capture.main(
+        [
+            "--label",
+            "all-matching-control-plane",
+            "--repo-root",
+            str(tmp_path),
+            "--source",
+            "a" * 40,
+            "--output-dir",
+            str(tmp_path / "capture"),
+            "--ncu",
+            str(tmp_path / "ncu"),
+            "--tcp-port",
+            "31001",
+            "--timeout-seconds",
+            "1800",
+            "--report-import-timeout-seconds",
+            "600",
+            "--all-matching-kernels",
+            "--replay-mode",
+            "application",
+            "--application-topology",
+            "rank-tcp",
+            "--expected-application-passes",
+            "9",
+            "--application-rdzv-port-base",
+            "31100",
+            "--expected-kernel-counts",
+            "2",
+            "3",
+            "--kernel-name",
+            "regex:ncclDevKernel.*",
+            "--launch-skip",
+            "0",
+            "--",
+            *_torchrun_command(tmp_path / "target.py"),
+        ]
+    )
+
+    assert result == 0
+    assert observed["report_import_timeout_seconds"] == 600.0
+    assert observed["timeout_seconds"] == 1800.0
+    assert observed["expected_kernel_counts"] == (2, 3)
+
+
+@pytest.mark.parametrize(
+    "report_import_timeout_seconds",
+    [
+        None,
+        "600",
+        [],
+        True,
+        False,
+        0,
+        -1,
+        math.nan,
+        math.inf,
+        -math.inf,
+    ],
+)
+def test_report_import_timeout_control_plane_requires_finite_positive_number(
+    tmp_path: Path,
+    report_import_timeout_seconds: object,
+) -> None:
+    with pytest.raises(ValueError, match="report_import_timeout_seconds"):
+        _all_matching_rank_application_plan(
+            tmp_path,
+            report_import_timeout_seconds=report_import_timeout_seconds,
+        )
+
+
+@pytest.mark.parametrize(
+    "mode",
+    ["kernel", "range", "application-parent", "application-rank-selected"],
+)
+def test_nondefault_report_import_timeout_is_scoped_to_all_matching_rank_application(
+    tmp_path: Path,
+    mode: str,
+) -> None:
+    with pytest.raises(ValueError, match="report_import_timeout_seconds"):
+        if mode == "kernel":
+            _plan(tmp_path, report_import_timeout_seconds=600.0)
+        elif mode == "range":
+            _plan(
+                tmp_path,
+                replay_mode="range",
+                all_matching_kernels=True,
+                report_import_timeout_seconds=600.0,
+            )
+        elif mode == "application-parent":
+            _application_plan(tmp_path, report_import_timeout_seconds=600.0)
+        else:
+            _rank_application_plan(
+                tmp_path,
+                report_import_timeout_seconds=600.0,
+            )
 
 
 @pytest.mark.parametrize(
@@ -1694,6 +1846,7 @@ def test_all_matching_application_control_plane_evidence_validates_exact_rank_ro
         tmp_path,
         ncu_path=fake_ncu,
         expected_kernel_counts=expected_kernel_counts,
+        report_import_timeout_seconds=600.0,
     )
     plan.output_dir.mkdir()
     assert plan.application_rdzv_port_base is not None
@@ -1758,6 +1911,19 @@ def test_all_matching_application_control_plane_evidence_validates_exact_rank_ro
         assert report["expected_row_count"] == expected_count
         assert report["observed_row_count"] == expected_count
         assert report["all_rows_validated"] is True
+        report_import = report["report_import"]
+        assert report_import["timeout_seconds"] == 600.0
+        assert report_import["timed_out"] is False
+        assert report_import["stdout"]["partial"] is False
+        assert report_import["stderr"]["partial"] is False
+        assert report_import["cleanup"] == {
+            "mode": "dedicated-process-group",
+            "natural": True,
+            "forced": False,
+            "signals_sent": [],
+            "drained": True,
+            "errors": [],
+        }
         assert [row["id"] for row in report["rows"]] == list(
             range(expected_count)
         )
@@ -1865,13 +2031,36 @@ def test_all_matching_application_control_plane_rejects_invalid_rows(
     assert artifact.get("all_rows_validated") is not True
 
 
-def test_application_report_import_validates_one_selected_row(tmp_path: Path) -> None:
+def test_application_report_import_validates_one_selected_row(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     fake_ncu = _make_fake_application_ncu(
         tmp_path / "ncu",
         combined_log=b"",
         raw_csv=_application_csv(process_id=102),
     )
-    plan = _application_plan(tmp_path, ncu_path=fake_ncu)
+    plan = _application_plan(
+        tmp_path,
+        ncu_path=fake_ncu,
+        timeout_seconds=120.0,
+    )
+    observed_timeouts: list[object] = []
+    real_subprocess_run = subprocess.run
+
+    def record_selected_import(*args: object, **kwargs: object):
+        observed_timeouts.append(kwargs.get("timeout"))
+        return real_subprocess_run(*args, **kwargs)
+
+    def reject_all_matching_import(*args: object, **kwargs: object) -> None:
+        raise AssertionError("selected import used the all-matching subprocess path")
+
+    monkeypatch.setattr(ncu_capture.subprocess, "run", record_selected_import)
+    monkeypatch.setattr(
+        ncu_capture,
+        "_run_all_matching_report_import",
+        reject_all_matching_import,
+    )
     plan.output_dir.mkdir()
     plan.combined_path.write_bytes(
         _application_generation(1, rank0_pid=101, rank1_pid=102)
@@ -1888,6 +2077,8 @@ def test_application_report_import_validates_one_selected_row(tmp_path: Path) ->
     )
 
     assert errors == []
+    assert plan.report_import_timeout_seconds == 60.0
+    assert observed_timeouts == [60.0]
     assert artifact["row"]["visible_device"] == 1
     assert artifact["row"]["process_id"] == 102
     assert artifact["row"]["profiler_pass_count"] == 2
@@ -2020,6 +2211,60 @@ def test_cleanup_drains_child_that_outlives_parent_and_ignores_sigterm(tmp_path:
     assert errors == []
     with pytest.raises(ProcessLookupError):
         os.kill(child_pid, 0)
+
+
+def test_all_matching_report_import_timeout_preserves_output_and_drains_group(
+    tmp_path: Path,
+) -> None:
+    """Exercise the CPU subprocess control plane without representing NCU output."""
+
+    child_pid_path = tmp_path / "import-child.pid"
+    child_code = (
+        "import os,signal,time\n"
+        "from pathlib import Path\n"
+        "signal.signal(signal.SIGTERM, signal.SIG_IGN)\n"
+        f"Path({str(child_pid_path)!r}).write_text(str(os.getpid()))\n"
+        "time.sleep(60)\n"
+    )
+    importer_code = (
+        "import subprocess,sys,time\n"
+        "from pathlib import Path\n"
+        f"child = subprocess.Popen([sys.executable, '-c', {child_code!r}])\n"
+        f"child_pid_path = Path({str(child_pid_path)!r})\n"
+        "deadline = time.monotonic() + 10\n"
+        "while not child_pid_path.exists() and time.monotonic() < deadline:\n"
+        "    time.sleep(0.01)\n"
+        "sys.stdout.buffer.write(b'partial import stdout\\n')\n"
+        "sys.stdout.buffer.flush()\n"
+        "sys.stderr.buffer.write(b'partial import stderr\\n')\n"
+        "sys.stderr.buffer.flush()\n"
+        "time.sleep(60)\n"
+    )
+    child_pid = -1
+    try:
+        result = _run_all_matching_report_import(
+            [sys.executable, "-c", importer_code],
+            timeout_seconds=0.5,
+        )
+        assert child_pid_path.is_file()
+        child_pid = int(child_pid_path.read_text())
+
+        assert result.started is True
+        assert result.process_id is not None
+        assert result.timed_out is True
+        assert result.start_error is None
+        assert result.communication_error is None
+        assert b"partial import stdout" in result.stdout
+        assert b"partial import stderr" in result.stderr
+        assert result.signals_sent == ("SIGTERM", "SIGKILL")
+        assert result.cleanup_drained is True
+        assert result.cleanup_errors == ()
+        with pytest.raises(ProcessLookupError):
+            os.kill(child_pid, 0)
+    finally:
+        if child_pid > 0:
+            with suppress(ProcessLookupError):
+                os.kill(child_pid, signal.SIGKILL)
 
 
 def test_process_group_cleanup_reaps_running_timed_out_leader_after_kill(
