@@ -1,7 +1,14 @@
 #!/usr/bin/env python3
 """Optimized: Pipeline Parallelism (1F1B schedule).
 
-Interleaves forward and backward micro-batches to reduce pipeline bubbles.
+Each stage runs ``world_size - rank - 1`` warmup forwards, then alternates one
+forward with one backward, then drains its remaining backwards. Alternating
+ties the number of activations a stage holds to the stage count instead of the
+microbatch count. For a fixed microbatch count, the pipeline bubble matches
+GPipe's. The schedule is the shared
+``ch04.pipeline_parallel_common.run_1f1b_iteration``, which posts each
+steady-state send and receive to a neighbor together. The baseline also adds a
+host synchronization and a global barrier after every microbatch transfer.
 Launched via torchrun.
 """
 
@@ -13,6 +20,7 @@ import os
 
 from core.common.device_utils import resolve_local_rank
 import time
+from collections.abc import Callable
 from typing import Optional
 
 import torch
@@ -31,6 +39,8 @@ from core.harness.benchmark_harness import (
 from core.profiling.nvtx_helper import nvtx_range
 from core.utils.logger import get_logger
 from core.utils.worker_seed import apply_worker_seed
+
+from ch04.pipeline_parallel_common import run_1f1b_iteration
 
 logger = get_logger(__name__)
 
@@ -80,7 +90,13 @@ def _resolve_batch_config(
 
 
 def _resolve_1f1b_schedule(world_size: int, num_micro_batches: int) -> tuple[int, int]:
-    """Return warmup and steady-state counts for a nondegenerate 1F1B schedule."""
+    """Return the first stage's warmup and steady-state counts.
+
+    Stage ``r`` runs ``world_size - r - 1`` warmup forwards. The first stage has
+    the longest warmup, so it is the first stage to lose its steady state when
+    there are fewer microbatches than stages. Rejecting that case keeps every
+    stage in the alternating forward/backward loop.
+    """
     if world_size < 2:
         raise ValueError(f"world_size must be >=2, got {world_size}")
     if num_micro_batches < 1:
@@ -89,8 +105,9 @@ def _resolve_1f1b_schedule(world_size: int, num_micro_batches: int) -> tuple[int
     steady_state_steps = num_micro_batches - warmup_steps
     if steady_state_steps < 1:
         raise ValueError(
-            "1F1B requires at least one steady-state microbatch; "
-            f"got world_size={world_size}, num_micro_batches={num_micro_batches}"
+            "1F1B requires at least one steady-state microbatch on the first stage. "
+            f"Got world_size={world_size}, num_micro_batches={num_micro_batches}. "
+            "Use at least world_size microbatches."
         )
     return warmup_steps, steady_state_steps
 
@@ -117,6 +134,77 @@ def _build_stage_layers(hidden: int, layers_per_stage: int, device: torch.device
         for _ in range(layers_per_stage)
     ]).to(device).to(torch.bfloat16)
     return fwd, bwd
+
+
+def _build_1f1b_iteration(
+    *,
+    rank: int,
+    world_size: int,
+    num_micro_batches: int,
+    micro_batch_size: int,
+    seq_length: int,
+    hidden: int,
+    device: torch.device,
+    inputs: Optional[torch.Tensor],
+    fwd_layers: nn.ModuleList,
+    bwd_layers: nn.ModuleList,
+) -> Callable[[], None]:
+    """Allocate one stage's buffers and return its timed 1F1B iteration."""
+    _resolve_1f1b_schedule(world_size, num_micro_batches)
+    if (rank == 0) != (inputs is not None):
+        raise RuntimeError("Only rank zero owns the pipeline input batch")
+
+    def _receive_buffers() -> list[torch.Tensor]:
+        return [
+            torch.empty(
+                micro_batch_size,
+                seq_length,
+                hidden,
+                device=device,
+                dtype=torch.bfloat16,
+            )
+            for _ in range(num_micro_batches)
+        ]
+
+    # The shared schedule receives every microbatch into its own buffer.
+    recv_micro_batches = _receive_buffers() if rank > 0 else []
+    recv_grads = _receive_buffers() if rank < world_size - 1 else []
+    stage_warmup_steps = min(world_size - rank - 1, num_micro_batches)
+    activation_slots: list[Optional[tuple[int, torch.Tensor]]] = [None] * max(
+        stage_warmup_steps, 1
+    )
+
+    def _get_rank0_microbatch(micro_idx: int) -> torch.Tensor:
+        if inputs is None:
+            raise RuntimeError("Only rank zero owns pipeline input microbatches")
+        return inputs.narrow(0, micro_idx * micro_batch_size, micro_batch_size)
+
+    def _forward(micro_batch: torch.Tensor) -> torch.Tensor:
+        x = micro_batch
+        for layer in fwd_layers:
+            x = torch.relu_(layer(x))
+        return x
+
+    def _backward(_activation: torch.Tensor, grad_in: torch.Tensor) -> torch.Tensor:
+        x = grad_in
+        for layer in bwd_layers:
+            x = torch.relu_(layer(x))
+        return x
+
+    def _run_iteration() -> None:
+        run_1f1b_iteration(
+            rank=rank,
+            world_size=world_size,
+            num_micro_batches=num_micro_batches,
+            get_rank0_microbatch=_get_rank0_microbatch,
+            recv_forward_buffers=recv_micro_batches,
+            recv_backward_buffers=recv_grads,
+            forward_step=_forward,
+            backward_step=_backward,
+            activation_slots=activation_slots,
+        )
+
+    return _run_iteration
 
 
 def _run_worker(
@@ -147,127 +235,28 @@ def _run_worker(
         inputs = torch.randn(batch_size, seq_length, hidden, device=device, dtype=torch.bfloat16)
     else:
         inputs = None
-    recv_micro_batch: Optional[torch.Tensor] = None
-    if rank > 0:
-        recv_micro_batch = torch.empty(
-            micro_batch_size,
-            seq_length,
-            hidden,
-            device=device,
-            dtype=torch.bfloat16,
-        )
-    recv_grad: Optional[torch.Tensor] = None
-    if rank < world_size - 1:
-        recv_grad = torch.empty(
-            micro_batch_size,
-            seq_length,
-            hidden,
-            device=device,
-            dtype=torch.bfloat16,
-        )
-
-    def _forward(micro_batch: torch.Tensor) -> torch.Tensor:
-        x = micro_batch
-        for layer in fwd_layers:
-            x = torch.relu_(layer(x))
-        return x
-
-    def _backward(grad_in: torch.Tensor) -> torch.Tensor:
-        x = grad_in
-        for layer in bwd_layers:
-            x = torch.relu_(layer(x))
-        return x
-
-    warmup_steps, _steady_state_steps = _resolve_1f1b_schedule(
-        world_size,
-        num_micro_batches,
+    run_iteration = _build_1f1b_iteration(
+        rank=rank,
+        world_size=world_size,
+        num_micro_batches=num_micro_batches,
+        micro_batch_size=micro_batch_size,
+        seq_length=seq_length,
+        hidden=hidden,
+        device=device,
+        inputs=inputs,
+        fwd_layers=fwd_layers,
+        bwd_layers=bwd_layers,
     )
-    activation_slots: list[Optional[torch.Tensor]] = [None] * warmup_steps
-
-    def _run_iteration() -> None:
-        activation_head = 0
-        activation_count = 0
-
-        for micro_idx in range(warmup_steps):
-            if rank == 0:
-                start_idx = micro_idx * micro_batch_size
-                end_idx = start_idx + micro_batch_size
-                micro_batch = inputs[start_idx:end_idx]
-            else:
-                if recv_micro_batch is None:
-                    raise RuntimeError("recv microbatch buffer missing")
-                micro_batch = recv_micro_batch
-                dist.recv(micro_batch, src=rank - 1)
-
-            out = _forward(micro_batch)
-            activation_slots[(activation_head + activation_count) % warmup_steps] = out
-            activation_count += 1
-            if rank < world_size - 1:
-                dist.send(out, dst=rank + 1)
-
-        for micro_idx in range(warmup_steps, num_micro_batches):
-            activation = activation_slots[activation_head]
-            if activation is None:
-                raise RuntimeError("activation slot missing")
-            activation_slots[activation_head] = None
-            activation_head = (activation_head + 1) % warmup_steps
-            activation_count -= 1
-            if rank < world_size - 1:
-                if recv_grad is None:
-                    raise RuntimeError("recv grad buffer missing")
-                grad_in = recv_grad
-                dist.recv(grad_in, src=rank + 1)
-            else:
-                grad_in = activation
-
-            grad = _backward(grad_in)
-            if rank > 0:
-                dist.send(grad, dst=rank - 1)
-
-            if rank == 0:
-                start_idx = micro_idx * micro_batch_size
-                end_idx = start_idx + micro_batch_size
-                micro_batch = inputs[start_idx:end_idx]
-            else:
-                if recv_micro_batch is None:
-                    raise RuntimeError("recv microbatch buffer missing")
-                micro_batch = recv_micro_batch
-                dist.recv(micro_batch, src=rank - 1)
-
-            out = _forward(micro_batch)
-            activation_slots[(activation_head + activation_count) % warmup_steps] = out
-            activation_count += 1
-            if rank < world_size - 1:
-                dist.send(out, dst=rank + 1)
-
-        while activation_count:
-            activation = activation_slots[activation_head]
-            if activation is None:
-                raise RuntimeError("activation slot missing")
-            activation_slots[activation_head] = None
-            activation_head = (activation_head + 1) % warmup_steps
-            activation_count -= 1
-            if rank < world_size - 1:
-                if recv_grad is None:
-                    raise RuntimeError("recv grad buffer missing")
-                grad_in = recv_grad
-                dist.recv(grad_in, src=rank + 1)
-            else:
-                grad_in = activation
-
-            grad = _backward(grad_in)
-            if rank > 0:
-                dist.send(grad, dst=rank - 1)
 
     with torch.inference_mode():
         for _ in range(max(warmup, 0)):
-            _run_iteration()
+            run_iteration()
         torch.cuda.synchronize(device)
 
         with nvtx_range(PROFILE_NVTX_RANGE, enable=True):
             start = time.perf_counter()
             for _ in range(max(iters, 1)):
-                _run_iteration()
+                run_iteration()
             torch.cuda.synchronize(device)
             elapsed = time.perf_counter() - start
 

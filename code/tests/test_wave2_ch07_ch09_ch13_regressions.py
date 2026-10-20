@@ -12,7 +12,7 @@ CODE_ROOT = Path(__file__).resolve().parents[1]
 REPO_ROOT = CODE_ROOT.parent
 
 
-def test_tma_copy_accounts_for_three_source_reads_and_one_destination_write() -> None:
+def test_tma_copy_counts_one_read_and_one_write_per_element() -> None:
     from ch07.baseline_tma_copy import BaselineTMACopyBenchmark
     from ch07.optimized_tma_copy import OptimizedTMACopyBenchmark
 
@@ -23,7 +23,7 @@ def test_tma_copy_accounts_for_three_source_reads_and_one_destination_write() ->
 
         assert benchmark._workload_params["source_reads_per_output"] == 3
         assert "redundant_reads" not in benchmark._workload_params
-        assert metadata.bytes_per_iteration == n_elems * (3 + 1) * 4
+        assert metadata.bytes_per_iteration == n_elems * (1 + 1) * 4
 
 
 def test_invalid_ch07_expectations_are_retired_until_fresh_gpu_measurement() -> None:

@@ -1,0 +1,78 @@
+objective:
+  primary_kpi: sustained_dense_bf16_tflops
+  secondary_kpis:
+    - effective_requested_copy_read_plus_write_gbps
+    - confirmation_cv_pct
+    - confirmation_window_gpu_active_ms
+benchmark:
+  layer: micro
+  grade: realism
+  variable_under_test: candidate_size_layout_and_kernel_strategy
+runtime_contract:
+  scope: lab_specific_isolated_environment
+  qualification_role: current_source_target
+  pytorch: "2.13.0+cu130_exact_readback_required"
+  pytorch_cuda: "13.0_exact_readback_required"
+  triton: optional_recorded_at_runtime_nonbinding
+  triton_role: unused_by_lab_source
+  global_repository_default_changed: false
+workload:
+  type: diagnostic
+  bounded_search:
+    hbm_payload_mib: [1024, 2048, 4096, 8192]
+    hbm_operations: [copy, read, write]
+    gemm_sizes: [4096, 8192, 12288, 16384]
+    gemm_layouts: [nn, nt, tn, tt]
+  confirmation:
+    finalists:
+      copy: 2
+      read: 1
+      write: 1
+      dense_bf16: 2
+    independent_windows: 5
+    minimum_gpu_active_ms_per_window: 1000
+    maximum_cv_pct: 3.0
+  constraints:
+    - assigned_idle_b200_compute_capability_10_0
+    - exclusive_operator_qualification_lock
+    - strict_environment_validation
+    - repository_application_clock_lock
+    - no_precision_or_portability_fallback
+    - full_actual_output_verification
+    - explicit_blas_preference_requires_dispatch_trace
+hot_path_model:
+  path: labs.arithmetic_intensity_b200.ceiling_tool
+  phase: sustained_confirmation
+  invocation_frequency: bounded_diagnostic_run
+  invocations_per_primary_unit: recorded_per_window
+  estimated_costs:
+    copy_requested_bytes_per_operation: payload_bytes_read_plus_payload_bytes_written
+    read_requested_bytes_per_operation: payload_bytes_read
+    write_requested_bytes_per_operation: payload_bytes_written
+    dense_bf16_flops_per_operation: 2_times_m_times_n_times_k
+    host_device_bytes: 0
+  operation_cost_source: exact_shape_and_dtype_counts_plus_cuda_event_measurements
+  expected_dominant_cost: HBM traffic for copy and tensor-core compute for square BF16 GEMM
+  best_case_primary_kpi_improvement_pct: null
+evidence:
+  baseline_artifact: null
+  profile_artifacts: []
+  hardware_counter_artifacts: []
+  required_labels:
+    - effective_requested_read_plus_write_bandwidth
+    - physical_counter_arithmetic_intensity
+    - requested_byte_arithmetic_intensity
+    - requested_blas_preference_separate_from_observed_dispatch
+  static_review_findings:
+    - The bounded winner is a measured host ceiling under this protocol, not a vendor peak.
+    - Read and write supporting diagnostics do not define the dense GEMM roof.
+    - NCU physical byte counters must validate the requested copy-byte scope.
+candidate_optimizations: []
+known_issues_or_hypotheses:
+  - Virtualized results remain noncanonical even when strict checks pass.
+  - Thermal or clock instability can reject a fast screening candidate.
+risk_guardrails:
+  correctness_tests:
+    - tests/test_arithmetic_intensity_b200.py
+  change_windows:
+    - operator_owned_idle_gpu_lease

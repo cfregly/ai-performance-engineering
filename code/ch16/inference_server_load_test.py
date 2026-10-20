@@ -7,8 +7,8 @@ Run with torchrun:
 
 The harness feeds synthetic requests (random prompt lengths, configurable QPS)
 into the `InferenceServerMultiGPU` implementation and collects latency/throughput
-statistics. All ranks receive the same request stream via broadcast so the
-continuous batching state remains consistent across tensor-parallel workers.
+statistics. Rank 0 broadcasts the request stream and its stop decision, so every
+tensor-parallel rank runs the same ticks and keeps the same batching state.
 """
 
 
@@ -178,7 +178,9 @@ def run_load_test(
 
     run_start = time.perf_counter()
 
-    while time.perf_counter() - run_start < duration:
+    # Rank 0's clock decides when the run ends. If each rank read its own clock,
+    # ranks could stop on different ticks and block in mismatched collectives.
+    while server._serve_loop_should_continue(run_start, duration):
         tick_start = time.perf_counter()
 
         # Generate load on rank 0 and broadcast to others
@@ -570,6 +572,7 @@ def main() -> None:
             args.output_json.write_text(json.dumps(aggregate, indent=2))
             print(f"Saved aggregate metrics to {args.output_json}")
 
+    server.close()
     if dist.is_initialized():
         dist.destroy_process_group()
 

@@ -70,7 +70,7 @@ class NsightSystemsProfiler(NsightSystemsReportParser):
     ) -> str:
         """Return a CLI command that records an Nsight Systems capture."""
         trace_domain = (
-            "cuda-hw,osrt,nvtx,ucx,gds" if use_hardware_trace else "cuda,osrt,nvtx,ucx,gds"
+            "cuda,osrt,nvtx,ucx,gds" if use_hardware_trace else "cuda-sw,osrt,nvtx,ucx,gds"
         )
         cmd = [
             "nsys",
@@ -418,7 +418,7 @@ def print_quick_reference() -> None:
     print("=" * 80)
     print("\nNsight Systems:")
     print(
-        "nsys profile -o trace --trace=cuda-hw,osrt,nvtx,ucx,gds "
+        "nsys profile -o trace --trace=cuda,osrt,nvtx,ucx,gds "
         "--trace-fork-before-exec=true --cuda-graph-trace=graph "
         "--cuda-event-trace=true --sample=cpu --gpu-metrics-devices=all "
         "--nic-metrics=true --storage-metrics --storage-devices=all "

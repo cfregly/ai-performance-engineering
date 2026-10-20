@@ -1,31 +1,24 @@
-"""Optimized variant for cuDNN/Flash SDPA lab (shares implementation with baseline)."""
+"""Optimized variant for the cuDNN SDPA lab. It pins the Flash backend by default."""
 
 from __future__ import annotations
 
-import torch
-
-from labs.cudnn_sdpa_bench.baseline_flash_sdp import (
-    FlashSDPLabBenchmark,
-    _parse_cli_backend,
-    _select_backend,
-)
+from labs.cudnn_sdpa_bench.baseline_flash_sdp import FlashSDPLabBenchmark, _parse_backend_overrides
 
 _DEFAULT_BACKEND = "flash"
 
 
 class OptimizedFlashSDPLabBenchmark(FlashSDPLabBenchmark):
-    """Flash-biased SDPA benchmark with explicit local setup for audit parity."""
+    """Flash-pinned SDPA benchmark that reads only --optimized-backend overrides."""
 
     def __init__(self) -> None:
         super().__init__(backend=_DEFAULT_BACKEND)
-        self.backend = _select_backend(_DEFAULT_BACKEND)
 
-    def setup(self) -> None:
-        # Keep explicit local seeding so audit tools see parity with the baseline file.
-        super().setup()
+    def apply_target_overrides(self, argv: list[str]) -> None:
+        backend = _parse_backend_overrides(argv)["optimized"]
+        if backend is not None:
+            self.backend = backend
 
 
 def get_benchmark() -> FlashSDPLabBenchmark:
-    # Reuse the same benchmark but bias toward the Flash backend for peak throughput.
+    # Same benchmark as the baseline, pinned to the Flash backend.
     return OptimizedFlashSDPLabBenchmark()
-

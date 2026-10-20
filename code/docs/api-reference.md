@@ -158,8 +158,8 @@ Profiling with Nsight Systems, Nsight Compute, and torch.profiler.
 | `torch(script)` | torch.profiler capture summary | `aisp profile torch` | `profile_torch` |
 | `hta(command)` | HTA capture + analysis | `aisp profile hta-capture` | `profile_hta` |
 | `flame_graph()` | Flame graph visualization data | `aisp profile flame` | `profile_flame` |
-| `kernels()` | Kernel execution breakdown | `aisp profile kernels` | `profile_kernels` |
-| `memory_timeline()` | Memory allocation timeline | `aisp profile memory` | `profile_memory` |
+| `kernels()` | Kernel execution breakdown | Not implemented (`aisp profile kernels` exits 1) | `profile_kernels` |
+| `memory_timeline()` | Memory allocation timeline | Not implemented (`aisp profile memory` exits 1) | `profile_memory` |
 | `roofline()` | Roofline model data | `aisp profile roofline` | `profile_roofline` |
 | `compare(chapter)` | Compare baseline vs optimized | `aisp profile compare` | `profile_compare` |
 | `list_profiles()` | List available profile pairs | `aisp profile list-profiles` | `profile_list_profiles` |
@@ -219,7 +219,7 @@ Performance analysis, bottleneck detection, and what-if scenarios.
 
 | Operation | Description | CLI | MCP Tool |
 |-----------|-------------|-----|----------|
-| `bottlenecks(mode)` | Identify performance bottlenecks | `aisp analyze bottlenecks` | `analyze_bottlenecks` |
+| `bottlenecks(mode, focus)` | Rule-based bottlenecks in the newest captured Chrome trace, with an optional LLM explanation | `aisp analyze bottlenecks` | `analyze_bottlenecks` |
 | `pareto()` | Pareto frontier (throughput vs latency vs memory) | `aisp analyze pareto` | `analyze_pareto` |
 | `scaling()` | Scaling analysis with GPU count | `aisp analyze scaling` | `analyze_scaling` |
 | `whatif(...)` | What-if constraint analysis | `aisp analyze whatif` | `analyze_whatif` |
@@ -233,7 +233,8 @@ Performance analysis, bottleneck detection, and what-if scenarios.
 **Python API:**
 ```python
 engine.analyze.bottlenecks()                    # Bottleneck analysis
-engine.analyze.bottlenecks(mode="llm")          # AI-powered analysis
+engine.analyze.bottlenecks(mode="llm")          # LLM explanation of the trace findings
+engine.analyze.bottlenecks(mode="llm", focus="memory")  # LLM explanation focused on memory
 engine.analyze.pareto()                         # Pareto frontier
 engine.analyze.scaling()                        # Scaling analysis
 engine.analyze.whatif(max_vram_gb=24)           # What-if scenarios

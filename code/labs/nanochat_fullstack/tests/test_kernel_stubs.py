@@ -16,7 +16,7 @@ class _Tok:
         return 1
 
 
-def _zero_clustered(q, k, v, attn_mask=None, causal=True, num_sm_clusters=None, enable_gqa=False):
+def _zero_clustered(q, k, v, attn_mask=None, causal=True, enable_gqa=False):
     CALLS["clustered"] += 1
     return torch.zeros_like(q)
 
@@ -28,6 +28,7 @@ def _zero_decode(model, ids, kv_cache, attention_mask=None, token_mask=None):
 
 
 def _cfg(**kw):
+    kw.setdefault("use_flash_attn_varlen", False)
     return GPTConfig(
         sequence_len=16,
         vocab_size=64,

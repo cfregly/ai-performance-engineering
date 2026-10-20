@@ -363,7 +363,12 @@ def detect_bottlenecks(
         cat_pct = (cat_time / total_time * 100) if total_time else 0.0
 
         # Memory transfer bottleneck
-        if cat_name in ["gpu_memcpy", "cuda_runtime"] and cat_pct > 10:
+        if "memcpy" in str(cat_name).lower() and cat_pct > 10:
+            representative_events = [
+                str(event.get("name"))
+                for event in category.get("children", [])
+                if isinstance(event, dict) and event.get("name")
+            ][:5]
             bottlenecks.append(
                 {
                     "type": "memory_transfer",
@@ -371,7 +376,10 @@ def detect_bottlenecks(
                     "category": cat_name,
                     "time_us": cat_time,
                     "percentage": round(cat_pct, 1),
-                    "description": f"Memory transfers taking {cat_pct:.1f}% of execution time",
+                    "representative_events": representative_events,
+                    "description": (
+                        f"Memory-transfer events are {cat_pct:.1f}% of summed trace-event duration"
+                    ),
                     "suggestions": [
                         "Use pinned memory for host-to-device transfers",
                         "Overlap transfers with compute using CUDA streams",
@@ -380,7 +388,7 @@ def detect_bottlenecks(
                         else "Batch small transfers into larger ones",
                         "Use cudaMemcpyAsync instead of synchronous copies",
                     ],
-                    "potential_speedup": f"{cat_pct * 0.5:.0f}% reduction possible",
+                    "potential_speedup": "Requires a controlled measurement",
                 }
             )
 
@@ -393,14 +401,16 @@ def detect_bottlenecks(
                     "category": cat_name,
                     "time_us": cat_time,
                     "percentage": round(cat_pct, 1),
-                    "description": f"Python/CPU overhead taking {cat_pct:.1f}% of execution time",
+                    "description": (
+                        f"Python/CPU events are {cat_pct:.1f}% of summed trace-event duration"
+                    ),
                     "suggestions": [
                         "Use torch.compile() to fuse operations",
                         "Enable CUDA graphs for repeated kernel launches",
                         "Reduce Python-level loops - vectorize operations",
                         "Use torch.jit.script for hot paths",
                     ],
-                    "potential_speedup": f"{cat_pct * 0.7:.0f}% reduction possible",
+                    "potential_speedup": "Requires a controlled measurement",
                 }
             )
 
@@ -413,12 +423,14 @@ def detect_bottlenecks(
                     "category": cat_name,
                     "time_us": cat_time,
                     "percentage": round(cat_pct, 1),
-                    "description": f"Profiler overhead is {cat_pct:.1f}% - actual performance is better",
+                    "description": (
+                        f"Profiler-overhead events are {cat_pct:.1f}% of summed trace-event duration"
+                    ),
                     "suggestions": [
                         "This overhead is from profiling only",
-                        f"Real execution will be faster by ~{cat_pct:.0f}%",
+                        "Measure an unprofiled control run before estimating profiler cost",
                     ],
-                    "potential_speedup": "N/A - profiling artifact",
+                    "potential_speedup": "Requires an unprofiled control run",
                 }
             )
 
@@ -487,7 +499,10 @@ def detect_bottlenecks(
                     "kernel_name": k_name,
                     "time_us": k_time,
                     "percentage": round(k_pct, 1),
-                    "description": f"Kernel '{k_name[:50]}' taking {k_pct:.1f}% of GPU time",
+                    "description": (
+                        f"Kernel '{k_name[:50]}' is {k_pct:.1f}% of summed GPU-kernel "
+                        "trace-event duration"
+                    ),
                     "suggestions": suggestions,
                     "potential_speedup": "Varies by optimization",
                 }
@@ -499,6 +514,10 @@ def detect_bottlenecks(
     return {
         "bottlenecks": bottlenecks,
         "total_time_us": total_time,
+        "duration_basis": (
+            "Sum of complete trace-event durations. Overlapping and nested events can be counted "
+            "more than once"
+        ),
         "hardware": {
             "name": hw_caps.get("gpu", {}).get("name", "Unknown"),
             "architecture": hw_caps.get("architecture", "unknown"),

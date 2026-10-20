@@ -146,7 +146,10 @@ def _mirror_legacy_tf32_flags(enable_matmul: bool, enable_cudnn: bool) -> None:
         torch.backends.cudnn.allow_tf32 = enable_cudnn  # type: ignore[attr-defined]
 
 
-def get_optimal_compile_mode(preferred_mode: str = "max-autotune", sm_threshold: int = 68) -> str:
+def get_optimal_compile_mode(
+    preferred_mode: Optional[str] = "max-autotune",
+    sm_threshold: int = 68,
+) -> Optional[str]:
     """
     Get the optimal torch.compile mode based on GPU SM count.
     
@@ -166,6 +169,11 @@ def get_optimal_compile_mode(preferred_mode: str = "max-autotune", sm_threshold:
         The compile mode to use: "max-autotune" if GPU has enough SMs,
         otherwise "reduce-overhead"
     """
+    # An explicit None selects torch.compile's options-only API. Preserve it so
+    # a process-wide mode override cannot create an invalid mode plus options call.
+    if preferred_mode is None:
+        return None
+
     # Testing / A-B facility: force a specific compile mode regardless of the
     # caller's preference (used by the GB300 sm_103a-unlock re-sweep to measure
     # incumbent arms, e.g. AISP_COMPILE_MODE_OVERRIDE=reduce-overhead). Not set
@@ -253,7 +261,7 @@ def _get_torch_compile() -> Callable[..., Any]:
 _ALLOWED_COMPILE_KWARGS = {"fullgraph", "dynamic", "backend", "options", "disable"}
 
 
-def _normalize_compile_kwargs(kwargs: Dict[str, Any]) -> tuple[str, Dict[str, Any]]:
+def _normalize_compile_kwargs(kwargs: Dict[str, Any]) -> tuple[Optional[str], Dict[str, Any]]:
     extra: Dict[str, Any] = dict(kwargs)  # defensive copy so callers can reuse dicts
     preferred_mode = extra.pop("mode", "max-autotune")
     chosen_mode = get_optimal_compile_mode(preferred_mode)

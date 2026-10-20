@@ -41,9 +41,11 @@ from labs.real_world_models.llama_3_1_8b_optimization import (
 def test_cutlass_profiler_records_the_winning_operation_name(tmp_path: Path) -> None:
     csv_path = tmp_path / "profile.gemm.csv"
     csv_path.write_text(
-        "OperationKind,Operation,Runtime,GFLOPs\n"
-        "Gemm,slow_kernel,2.0,1000\n"
-        "Gemm,winning_kernel,1.0,2000\n",
+        "Provider,OperationKind,Operation,Disposition,Status,raster_order,swizzle_size,"
+        "cluster_m,cluster_n,cluster_k,cluster_m_fallback,cluster_n_fallback,cluster_k_fallback,"
+        "Flops,Runtime,GFLOPs\n"
+        "CUTLASS,gemm,slow_kernel,passed,success,along_m,1,1,1,1,1,1,1,2000000000,2.0,1000\n"
+        "CUTLASS,gemm,winning_kernel,passed,success,along_n,2,2,1,1,1,1,1,2000000000,1.0,2000\n",
         encoding="utf-8",
     )
 

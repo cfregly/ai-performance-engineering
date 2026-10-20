@@ -2579,8 +2579,26 @@ class BenchmarkHarness:
         result.multi_gpu_required = bool(requires_multi)
         result.multi_gpu = bool(resolved_world_size and resolved_world_size > 1)
 
-    def _apply_target_overrides(self, benchmark: BaseBenchmark, config: BenchmarkConfig) -> None:
-        """Apply per-target CLI overrides to a benchmark instance, if supported."""
+    def _apply_target_overrides(
+        self,
+        benchmark: BaseBenchmark,
+        config: BenchmarkConfig,
+        *,
+        launcher_final: bool = True,
+    ) -> None:
+        """Apply this target's --target-extra-arg values to the benchmark.
+
+        The benchmark's apply_target_overrides hook receives the values. An
+        error raised by the hook propagates, so a rejected override fails the
+        target instead of running the defaults.
+
+        A torchrun launch passes the values to the launched script as
+        arguments (see _benchmark_with_torchrun), so that benchmark needs no
+        hook. Any other benchmark without a hook would ignore the values, so
+        this raises ValueError. Pass launcher_final=False before the
+        benchmark's own config is merged, because that config can still select
+        torchrun, and call again once the launcher is final.
+        """
         target_label = getattr(config, "target_label", None)
         if not target_label:
             return
@@ -2596,12 +2614,16 @@ class BenchmarkHarness:
             return
         hook = getattr(benchmark, "apply_target_overrides", None)
         if callable(hook):
-            try:
-                hook(argv)
-                setattr(benchmark, "_applied_target_override_signature", override_signature)
-            except Exception:
-                if LOGGER_AVAILABLE:
-                    logger.warning("Ignoring target overrides for %s due to error", target_label, exc_info=True)
+            hook(argv)
+            setattr(benchmark, "_applied_target_override_signature", override_signature)
+            return
+        launcher = getattr(config, "launch_via", None)
+        if not launcher_final or str(getattr(launcher, "value", launcher)).lower() == LaunchVia.TORCHRUN.value:
+            return
+        raise ValueError(
+            f"--target-extra-arg was given for {target_label}, but {type(benchmark).__name__} has no "
+            "apply_target_overrides hook, so the arguments would be ignored"
+        )
     
     def _create_timeout_result(
         self,
@@ -2654,19 +2676,28 @@ class BenchmarkHarness:
     
     @staticmethod
     def _extract_tokens_per_s(lines: List[str]) -> Optional[float]:
-        """Read reported token throughput without requiring a literal backslash."""
-        # A unit must end here: "loss=12.7 tokens/step=4096" is not throughput.
-        pattern = re.compile(r"([0-9][0-9,.]*)\s*(tok(?:ens)?/s|toks/s)\b", re.IGNORECASE)
+        """Return the highest 'NUMBER tokens/s' rate reported in worker logs."""
+        # The number may not continue a label or another number. Otherwise the
+        # "0" in "rank0 tokens/s: 12.5 tokens/s" or the "32" in "3/32 tokens/s"
+        # is read as the rate. The unit must end a word, so
+        # "loss=12.7 tokens/step=4096" is not throughput.
+        pattern = re.compile(
+            r"(?<![\w.,/+-])"
+            r"((?:[0-9]{1,3}(?:,[0-9]{3})+|[0-9]+)(?:\.[0-9]+)?(?:e[+-]?[0-9]+)?)"
+            r"\s*tok(?:en)?s?/s(?:ec(?:ond)?s?)?\b",
+            re.IGNORECASE,
+        )
         best: Optional[float] = None
         for line in lines:
             match = pattern.search(line)
             if not match:
                 continue
-            try:
-                candidate = float(match.group(1).replace(",", ""))
-                best = candidate if best is None else max(best, candidate)
-            except ValueError:
-                continue
+            candidate = float(match.group(1).replace(",", ""))
+            if not math.isfinite(candidate):
+                raise RuntimeError(
+                    f"Torchrun worker reported a non-finite token rate: {line!r}"
+                )
+            best = candidate if best is None else max(best, candidate)
         return best
 
     @staticmethod
@@ -3209,7 +3240,7 @@ class BenchmarkHarness:
             config.execution_mode = ExecutionMode.THREAD
         # Benchmarks sometimes derive get_config() from per-target CLI state (for example
         # forward vs fwd_bwd). Apply run-level target overrides before reading get_config().
-        self._apply_target_overrides(benchmark, config)
+        self._apply_target_overrides(benchmark, config, launcher_final=False)
         bench_config = benchmark.get_config()
         if bench_config is not None:
             # Benchmarks often return a persistent config instance. Work on a copy so
@@ -3274,6 +3305,9 @@ class BenchmarkHarness:
         config._sync_execution_mode()
         config._sync_launch_via()
         print(f"[harness] execution_mode={config.execution_mode} launch_via={config.launch_via}", flush=True)
+        # The merge can select torchrun, which passes the values to the launched
+        # script. With the launcher final, fail a target whose values would be ignored.
+        self._apply_target_overrides(benchmark, config)
         
         previous_config = getattr(benchmark, "_config", None)
 
@@ -5348,6 +5382,17 @@ class BenchmarkHarness:
                 # Profiling activity follows the explicitly configured workload
                 # device. A CUDA-only preset cannot record a CPU benchmark.
                 torch_profiler_kwargs["activities"] = [torch.profiler.ProfilerActivity.CPU]
+
+            from core.profiling.torch_profiler_compat import (
+                prepare_torch_cuda_profiler,
+            )
+
+            cuda_profile_requested = torch.profiler.ProfilerActivity.CUDA in (
+                torch_profiler_kwargs.get("activities") or ()
+            )
+            prepare_torch_cuda_profiler(
+                cuda_profile_requested=cuda_profile_requested
+            )
             
             # Run benchmark with PyTorch profiler
             with torch.profiler.profile(**torch_profiler_kwargs) as prof:
@@ -6196,9 +6241,13 @@ class BenchmarkHarness:
         # graph replay; refuse loudly on mismatch instead of reporting a number
         # that times a subset of the workload.
         def _kernel_signature(run_once: Callable[[], Any]) -> Tuple[int, float]:
+            from core.profiling.torch_profiler_compat import (
+                prepare_torch_cuda_profiler,
+            )
             from torch.profiler import ProfilerActivity
             from torch.profiler import profile as torch_profile
             torch.cuda.synchronize(self.device)
+            prepare_torch_cuda_profiler(cuda_profile_requested=True)
             with torch_profile(activities=[ProfilerActivity.CUDA]) as prof:
                 run_once()
                 torch.cuda.synchronize(self.device)

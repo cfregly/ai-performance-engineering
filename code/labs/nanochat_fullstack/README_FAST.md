@@ -1,18 +1,45 @@
 # Fast-Path Flags & Dynamic Batching
 
-This repo now defaults to the fastest kernels available on Blackwell/GB200: FlashAttention-3, block/page KV cache hints, and clustering hints for long sequences. Everything stays **flag-gated** so you can measure deltas one by one.
+The optional B200 paths include the pinned FlashAttention 2 varlen callable,
+contiguous KV cache capacity alignment, and side-stream buffer reuse. Each path
+is flag-gated so benchmark rows can identify the backend and execution mode.
 
 ## New flags
 - `use_padded_attention` (GPTConfig): enables key padding masks + per-row rotary positions. Default `False`.
 - `enable_batch_decode` (Engine / `labs/nanochat_fullstack/scripts/chat_web.py`): turns on padded attention and the batched decode path. Default `False`.
 - `--enable-dynamic-batching` (chat_web): queues requests and forms batches up to `--batch-size` or `--batch-timeout-ms`. Defaults off.
-- `use_flash3` / `flash3_block_size` (GPTConfig): FlashAttention-3 varlen kernels on B200/GB200; defaults on with graceful fallback if FA3 is missing or unsupported.
-- `use_cta_clustering` / `cta_cluster_size` / `cta_cluster_seq_threshold` (GPTConfig): CTA clustering hint for FA3 varlen kernels. Default `False`; auto-tunes cluster size by sequence length when enabled.
-- `kv_block_size` / `kv_page_size` (GPTConfig): optional KV cache block/paging hints for TMA staging. Defaults `None`.
-- `enable_persistent_decode` / `use_cuda_graphs` (GPTConfig): persistent decode buffer reuse + optional CUDA Graph capture on a shared stream; graphs recapture when KV cache grows. Defaults `False`.
+- `use_flash_attn_varlen` (GPTConfig): calls `flash_attn.flash_attn_interface.flash_attn_varlen_func` only when that interface identifies its extension as `flash_attn_2_cuda`. The ordinary model path disables this option when the dependency is unavailable. The B200 sweep fails instead of timing a fallback under this row. Default `True`.
+- `kv_block_size` / `kv_page_size` (GPTConfig): optional alignment boundaries for the capacity and growth of one contiguous KV tensor. They do not create a page table or change the attention kernel layout. Defaults `None`.
+- `enable_persistent_decode` / `use_cuda_graphs` (GPTConfig): side-stream decode with reusable buffers, plus optional CUDA Graph capture on a shared stream. Graphs recapture when KV cache grows. Defaults `False`.
 - `use_te_weight_only` / `te_weight_dtype` (GPTConfig): Transformer Engine weight-only linears for q/k/v/proj/lm_head. If TE is missing, this flag fails fast. Default `False` (enable to measure gains).
 - `use_clustered_attention_kernel` (GPTConfig): experimental hook to call a custom clustered attention kernel. Supply via `clustered_attention_impl="module:function"` or `stubs.register_clustered_attention_kernel(fn)`. Disabled by default; without an override it raises unless `allow_kernel_stub_fallback=True` is set to use the reference path.
 - `use_persistent_decode_kernel` (GPTConfig): experimental hook to call a custom resident decode kernel. Supply via `persistent_decode_impl="module:function"` or `stubs.register_persistent_decode_kernel(fn)`. Both hooks fail fast without an override unless `allow_kernel_stub_fallback=True` is set.
+
+## Inference compile policy
+
+Engine uses `max-autotune` on supported Blackwell and newer runtimes by
+default. One exact runtime tuple uses `max-autotune-no-cudagraphs`: SM100,
+PyTorch `2.9.1+cu130`, CUDA `13.0`, and Triton `3.5.1`. All other capability
+and version combinations keep the configured default mode. Subclasses that
+set a custom compile mode or backend keep those settings, including on the
+affected runtime tuple.
+
+A cold-cache NVIDIA B200 diagnostic ran the existing real-device `n_layer=1`
+compile-policy test in separate processes with fresh compile caches. Both
+processes seeded the CPU and CUDA generators to 42 before constructing the
+model. The original mode ended in a native segmentation fault on the first
+decode. The no-cudagraphs mode completed eager-equivalent prefill and decode
+logits, KV-cache prefix checks, and stable decode without recompilation. This
+evidence does not attribute the failure to an upstream component and does not
+make a performance claim.
+`get_compile_diagnostics()` records the selected mode and its reason separately
+from compile lifecycle status.
+
+Retire the allowlist only after the original `max-autotune` mode passes the
+same real-device test for both `n_layer=1` and `n_layer=2` from separate fresh
+compile caches. The retirement run must retain the full logits, KV-cache, and
+stable decode checks. Repeat any performance qualification collected while
+the guard was active.
 
 ## Usage
 - Programmatic: instantiate `Engine(model, tokenizer, enable_batch_decode=True)` to use `generate_batched(prompts, max_tokens=..., temperature=..., top_k=...)` on padded multi-prompt batches. Per-request temperatures/top-k/max-tokens are accepted as scalars or lists.
@@ -76,8 +103,9 @@ This repo now defaults to the fastest kernels available on Blackwell/GB200: Flas
 `python -m labs.nanochat_fullstack.scripts.bench_b200_flags --batch-size 2 --prompt-len 256 --decode-len 64 --iters 2`
 
 - Device/checkpoint: NVIDIA B200, `chatsft_checkpoints/d32`, bf16.
-- Modes are cumulative: baseline (math SDP), +flash SDP, +FA3 varlen, +FA3 with KV block/page hints (`kv_block_size=32`), +persistent decode (buffer reuse) when enabled.
-- Output includes tokens/sec and % delta vs baseline so you can see incremental uplifts per flag.
+- Rows are `baseline` (math SDPA), `flash_sdp` (PyTorch SDPA preferences), `flash_attn_varlen` (the pinned FA2 extension), `flash_attn_varlen_aligned_cache` (the same FA2 callable with contiguous capacity alignment), and `persistent` (the FA2 callable with side-stream buffer reuse).
+- The baseline enforces math SDPA inside each attention module. Other rows restore the model's original SDPA policy. Global backend flags alone do not enforce the baseline because the model opens its own SDPA context.
+- Output records the backend, execution mode, tokens/sec, and delta versus baseline. The aligned-cache row does not claim paged attention.
 
 ## Decode Optimization Results (B200)
 
@@ -91,7 +119,8 @@ Measured via `labs/decode_optimization/` (batch=8, prompt=256, decode=64, hidden
 | Pinned Memory | 1.43x | 170K | Async H2D with pinned host buffers |
 | Streams | ~1.0x | 163K | Overlapped copy/compute (no gain here) |
 
-**Best path**: CUDA Graphs + FlashAttention-3 → **4.4x** decode speedup.
+The CUDA Graph measurements in this separate table do not establish a combined
+gain with the external FlashAttention varlen path.
 
 Run the microbenchmarks:
 ```bash

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import sys
 from pathlib import Path
 
@@ -30,6 +31,11 @@ except Exception:  # pylint: disable=broad-except
 
 
 ARTIFACT_DIR = REPO_ROOT / "artifacts" / "cutlass_profiler"
+# Inputs are standard normal, so each output element has standard deviation
+# sqrt(K). fp32 accumulation order and TF32 rounding of f32 inputs stay below
+# this bound. A dropped or repeated K tile exceeds it, and so does an unmasked
+# K tail that reads nonzero data.
+MAX_ABS_ERROR_PER_SQRT_K = 1e-2
 
 
 def _dtype_from_str(dtype: str) -> torch.dtype:
@@ -106,6 +112,30 @@ else:
     _matmul_kernel = None
 
 
+def verify_triton_matmul_output(c: torch.Tensor, a: torch.Tensor, b: torch.Tensor) -> float:
+    """Check the timed Triton output against an fp32 torch.matmul reference.
+
+    Returns the max absolute error and raises when the output is wrong.
+    """
+    if a.dim() != 2 or b.dim() != 2 or a.shape[1] != b.shape[0]:
+        raise ValueError(f"Incompatible matmul inputs: a={tuple(a.shape)} b={tuple(b.shape)}")
+    expected_shape = (a.shape[0], b.shape[1])
+    if tuple(c.shape) != expected_shape:
+        raise RuntimeError(f"Triton matmul output shape {tuple(c.shape)} != expected {expected_shape}")
+    if not bool(torch.isfinite(c).all()):
+        raise RuntimeError("Triton matmul output contains non-finite values")
+    error = torch.matmul(a.float(), b.float())
+    error.sub_(c.float()).abs_()
+    max_abs_error = float(error.max())
+    limit = MAX_ABS_ERROR_PER_SQRT_K * math.sqrt(a.shape[1])
+    if max_abs_error > limit:
+        raise RuntimeError(
+            f"Triton matmul output does not match torch.matmul: max abs error "
+            f"{max_abs_error:.4g} exceeds {limit:.4g} (K={a.shape[1]})"
+        )
+    return max_abs_error
+
+
 def benchmark_triton_matmul(
     shape: GemmShape, warmup: int, iters: int, dtype: torch.dtype
 ) -> dict[str, float] | None:
@@ -174,10 +204,11 @@ def benchmark_triton_matmul(
     if not times_ms:
         return None
 
+    max_abs_error = verify_triton_matmul_output(c, a, b)
     best_ms = min(times_ms)
     flops = 2.0 * shape.m * shape.n * shape.k
     tflops = flops / (best_ms * 1e-3) / 1e12
-    return {"runtime_ms": best_ms, "tflops": tflops}
+    return {"runtime_ms": best_ms, "tflops": tflops, "max_abs_error": max_abs_error}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -221,7 +252,10 @@ def main(argv: list[str] | None = None) -> int:
             failed.append(shape.name)
             continue
 
-        print(f"   runtime={metrics['runtime_ms']:.3f} ms, throughput={metrics['tflops']:.2f} TFLOP/s")
+        print(
+            f"   runtime={metrics['runtime_ms']:.3f} ms, throughput={metrics['tflops']:.2f} TFLOP/s, "
+            f"max_abs_error={metrics['max_abs_error']:.3g}"
+        )
         results.append(
             {
                 **shape.as_dict(),

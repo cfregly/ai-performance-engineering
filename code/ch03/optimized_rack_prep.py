@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os
-import argparse
 import shutil
 import subprocess
 from pathlib import Path
@@ -18,18 +17,22 @@ from core.harness.benchmark_harness import (
     BenchmarkConfig,
 )
 
+from ch03.baseline_rack_prep import (
+    DEFAULT_RESERVE_CORES,
+    discover_requested_nics,
+    parse_rack_prep_overrides,
+)
 from ch03.grace_blackwell_topology import (
     NICInfo,
     cpulist_to_mask,
-    discover_nics,
     recommended_cpuset,
     render_affinity_block,
 )
 
 
-def _compute_topology(reserve: int = 2, nic_names: Optional[List[str]] = None) -> tuple[List[NICInfo], Optional[NICInfo], List[int], List[str]]:
+def _compute_topology(reserve: int = DEFAULT_RESERVE_CORES, nic_names: Optional[List[str]] = None) -> tuple[List[NICInfo], Optional[NICInfo], List[int], List[str]]:
     """Return NIC discovery + primary NIC + CPU set + rendered snippet."""
-    nic_plan = discover_nics(nic_names)
+    nic_plan = discover_requested_nics(nic_names or [])
     primary = nic_plan[0] if nic_plan else None
     target_cpus = recommended_cpuset(primary.local_cpus if primary else [], reserve=reserve)
     snippet = render_affinity_block(primary, target_cpus) if primary else []
@@ -43,7 +46,7 @@ class OptimizedRackPrepBenchmark(VerificationPayloadMixin, BaseBenchmark):
         super().__init__()
         self.seq_len = 4096
         self.hidden_size = 4096
-        self.reserve_cores = 2
+        self.reserve_cores = DEFAULT_RESERVE_CORES
         self.apply_affinity = False
         self.preferred_nics: List[str] = []
         self.host_buffers: List[torch.Tensor] = []
@@ -89,12 +92,14 @@ class OptimizedRackPrepBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.apply_actions = []
         self.verify_report = None
 
-        if self.apply_affinity and primary_nic and target_cpus:
+        if self.apply_affinity:
+            # --apply was requested explicitly, so a run that cannot apply it fails.
+            if primary_nic is None or not target_cpus:
+                raise RuntimeError("--apply needs a NIC with local CPUs to bind, but none was found")
             if os.geteuid() != 0:
-                self.apply_actions.append("SKIP apply: requires root")
-            else:
-                self.apply_actions.extend(_apply_affinity(primary_nic, target_cpus))
-                self.verify_report = _verify_affinity(primary_nic, target_cpus)
+                raise RuntimeError("--apply writes IRQ/RPS/XPS affinity and needs root")
+            self.apply_actions.extend(_apply_affinity(primary_nic, target_cpus))
+            self.verify_report = _verify_affinity(primary_nic, target_cpus)
 
         # Use pinned memory for efficient async H2D (the optimization)
         # Same dtype as baseline (float32) for fair verification comparison
@@ -206,18 +211,11 @@ class OptimizedRackPrepBenchmark(VerificationPayloadMixin, BaseBenchmark):
         )
 
     def apply_target_overrides(self, argv: List[str]) -> None:
-        """Handle aisp bench --target-extra-arg overrides."""
-        parser = argparse.ArgumentParser(add_help=False)
-        parser.add_argument("--apply", action="store_true", help="Apply IRQ/RPS/XPS affinity on setup (root required).")
-        parser.add_argument("--reserve", type=int, default=self.reserve_cores, help="Number of local CPUs to reserve for system tasks.")
-        parser.add_argument("--nic", action="append", default=None, help="NIC(s) to prefer (first found will be primary). Repeatable.")
-        try:
-            opts, _ = parser.parse_known_args(argv)
-        except SystemExit:
-            return
-        self.apply_affinity = bool(opts.apply)
-        self.reserve_cores = max(0, int(opts.reserve))
-        self.preferred_nics = [n for n in (opts.nic or []) if n]
+        """Apply the rack_prep --target-extra-arg flags. Unknown or invalid flags raise ValueError."""
+        args = parse_rack_prep_overrides(argv)
+        self.apply_affinity = args.apply
+        self.reserve_cores = args.reserve
+        self.preferred_nics = args.nic
 
 
 def get_benchmark() -> BaseBenchmark:

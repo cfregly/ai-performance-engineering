@@ -130,6 +130,12 @@ class BottleneckMode(str, Enum):
     both = "both"
 
 
+class BottleneckFocus(str, Enum):
+    bottleneck = "bottleneck"
+    memory = "memory"
+    compute = "compute"
+
+
 class GoalChoice(str, Enum):
     throughput = "throughput"
     latency = "latency"
@@ -521,13 +527,34 @@ if typer:
 
 if typer:
 
-    @analyze_app.command("bottlenecks", help="Identify performance bottlenecks")
+    @analyze_app.command(
+        "bottlenecks",
+        help=(
+            "Find rule-based bottlenecks in the newest Chrome trace under artifacts/runs/*/profiles, "
+            "with an optional LLM explanation"
+        ),
+    )
     def analyze_bottlenecks_cmd(
         ctx: typer.Context,
-        mode: BottleneckMode = typer.Option(BottleneckMode.both, "--mode", "-m", help="Analysis mode")
+        mode: BottleneckMode = typer.Option(
+            BottleneckMode.both,
+            "--mode",
+            "-m",
+            help="profile: rule-based trace findings. llm: LLM explanation of those findings. both: combined.",
+        ),
+        focus: BottleneckFocus = typer.Option(
+            BottleneckFocus.bottleneck,
+            "--focus",
+            help="Focus area for the LLM explanation. --mode profile accepts only bottleneck.",
+        ),
     ) -> None:
+        if mode is BottleneckMode.profile and focus is not BottleneckFocus.bottleneck:
+            raise typer.BadParameter(
+                "applies only to the LLM explanation. Use --mode llm or --mode both.",
+                param_hint="'--focus'",
+            )
         from core.engine import get_engine
-        result = get_engine().analyze.bottlenecks(mode=mode.value)
+        result = get_engine().analyze.bottlenecks(mode=mode.value, focus=focus.value)
         emit_json(result)
         raise typer.Exit(0)
 
@@ -620,7 +647,7 @@ if typer and profile_app is not None:
         trace_cuda: bool = typer.Option(True, "--trace-cuda/--no-trace-cuda", help="Trace CUDA API calls"),
         trace_nvtx: bool = typer.Option(True, "--trace-nvtx/--no-trace-nvtx", help="Trace NVTX ranges"),
         trace_osrt: bool = typer.Option(True, "--trace-osrt/--no-trace-osrt", help="Trace OS runtime"),
-        full_timeline: bool = typer.Option(False, "--full-timeline", help="Include cuda-hw/cublas/cudnn traces"),
+        full_timeline: bool = typer.Option(False, "--full-timeline", help="Include CUDA library traces"),
         trace_forks: bool = typer.Option(False, "--trace-forks", help="Trace child processes before exec"),
         wait_mode: str = typer.Option("primary", "--wait-mode", help="NSYS wait mode: primary or all"),
         finalize_grace_seconds: float = typer.Option(
@@ -830,16 +857,21 @@ if typer and profile_app is not None:
         from cli.commands import profiling
         _run(profiling.flame, ctx, file=str(file) if file else None, output=output)
 
-    @profile_app.command("memory", help="Memory timeline analysis")
+    @profile_app.command(
+        "memory",
+        help="Not implemented. Exits 1 without reading the profile or writing a memory timeline.",
+    )
     def profile_memory(
         ctx: typer.Context,
         file: Optional[Path] = typer.Argument(None, help="Profile file"),
-        output: Optional[str] = typer.Option(None, "--output", "-o", help="Optional path to write JSON timeline"),
     ) -> None:
         from cli.commands import profiling
-        _run(profiling.memory, ctx, file=str(file) if file else None, output=output)
+        _run(profiling.memory, ctx, file=str(file) if file else None)
 
-    @profile_app.command("kernels", help="Kernel breakdown analysis")
+    @profile_app.command(
+        "kernels",
+        help="Not implemented. Exits 1 without analysis. Use 'aisp profile compare' for kernel breakdowns.",
+    )
     def profile_kernels(
         ctx: typer.Context,
         file: Optional[Path] = typer.Argument(None, help="Profile file"),

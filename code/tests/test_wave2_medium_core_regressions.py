@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import subprocess
 import sys
 from contextlib import nullcontext
@@ -173,13 +172,22 @@ def test_w2_078_w2_079_tma_box_limits_follow_driver_contract() -> None:
                 "cluster": {
                     "supports_clusters": True,
                     "has_dsmem": True,
-                    "max_cluster_size": 4,
+                    "max_cluster_size": 8,
                 },
             }
         }
     )
     assert "9, 0" in generated_entry
     assert "1024" not in generated_entry
+
+    # W2-078: the portable cluster limit on Hopper is 8, in the checked-in header
+    # and in the generator that writes it.
+    generator_source = (
+        CODE_ROOT / "core/scripts/utilities/generate_arch_detection_header.py"
+    ).read_text(encoding="utf-8")
+    assert "cached.max_cluster_size = 4;" not in header
+    assert "cached.max_cluster_size = 4;" not in generator_source
+    assert "cached.max_cluster_size = 8;" in header
 
 
 def test_w2_080_sync_dashboard_handler_runs_via_worker_thread(monkeypatch) -> None:
@@ -197,18 +205,25 @@ def test_w2_080_sync_dashboard_handler_runs_via_worker_thread(monkeypatch) -> No
     response = asyncio.run(endpoint(request))
 
     assert response.status_code == 200
-    assert calls == [(route.handler, ({"value": "1"},))]
+    # One worker-thread call runs both the handler and build_response.
+    assert len(calls) == 1
+    function, args = calls[0]
+    assert function is server._run_route
+    assert args[:2] == (route, {"value": "1"})
+    assert isinstance(args[2], float)
     server_source = Path(server.__file__).read_text(encoding="utf-8")
     assert "await asyncio.to_thread(get_engine().gpu.info)" in server_source
 
 
 def test_w2_081_unattributable_sdpa_speedup_is_not_a_b200_expectation() -> None:
-    expectation_path = CODE_ROOT / "labs/cudnn_sdpa_bench/expectations_b200.json"
-    payload = json.loads(expectation_path.read_text(encoding="utf-8"))
-    readme = (expectation_path.parent / "README.md").read_text(encoding="utf-8")
+    # tests/test_audit_fix_o25_w2081.py decides when a stored bar is allowed.
+    readme = (CODE_ROOT / "labs/cudnn_sdpa_bench/README.md").read_text(encoding="utf-8")
 
-    assert payload["examples"] == {}
     assert "backend attribution unverified" in readme
+    assert "The baseline used `auto`" in readme
+    assert "fall back to Flash" not in readme
+    assert "compares the Flash path against cuDNN" not in readme
+    assert '--target-extra-arg labs/cudnn_sdpa_bench:flash_sdp="--backend' not in readme
     assert "Fresh GPU verification and profiler evidence are required" in readme
 
 

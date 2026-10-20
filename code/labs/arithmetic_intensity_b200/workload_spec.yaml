@@ -1,0 +1,127 @@
+run_metadata:
+  benchmark_layer: micro
+  benchmark_grade: realism
+  use_case: engineering_debug
+  owner: operator
+  ticket_or_epic: arithmetic_intensity_b200
+comparison_axis:
+  variable_under_test: none_diagnostic_observation
+  control: reviewed_static_b200_profile
+  candidate: active_single_b200_measurement
+  constants_locked: [gpu_sku, gpu_count, precision, shapes, beta, seed, cache_policy]
+diagnostic_inputs:
+  hbm_copy:
+    distribution: seeded_uniform_random_uint8
+    generation_timed: false
+    correctness: full_tensor_equality
+workload:
+  type: inference
+  name: single_b200_arithmetic_intensity_diagnostic
+  model:
+    name: analytical_weight_and_kv_model
+    parameter_count_b: 7.57
+    precision: bf16
+    weights_source: analytical_15.14_decimal_GB
+  input_distribution:
+    sequence_length_mix:
+      p50: 872
+      p95: 872
+      max: 872
+    prompt_tokens:
+      p50: 872
+      p95: 872
+      max: 872
+    completion_tokens:
+      p50: 1
+      p95: 1
+      max: 1
+  batching_policy:
+    mode: static
+    max_batch_size: 64
+    max_num_seqs: 64
+    max_tokens_in_batch: 64
+  concurrency_model:
+    mode: closed_loop
+    values: [64]
+  serving_contract:
+    stack_under_test: none
+    protocol: none
+    deployment_model: single_process_single_gpu
+    fairness_constraints:
+      protocol_fixed_across_candidates: true
+      deployment_model_fixed_across_candidates: true
+      api_behavior_fixed_across_candidates: true
+  quality_constraints:
+    correctness_suite: [full_copy_equality, full_bf16_output_against_fp32_reference]
+    max_accuracy_delta_pct: 0.0
+    allowed_quality_exceptions: [bf16_rtol_0.03_atol_0.03]
+execution:
+  image: supplied_by_operator_and_recorded_in_raw_artifact
+  runtime_versions:
+    scope: lab_specific_isolated_environment
+    qualification_role: current_source_target
+    driver: captured_at_runtime
+    cuda: "13.0_exact_PyTorch_readback_required"
+    nccl: not_used
+    pytorch: "2.13.0+cu130_exact_readback_required"
+    triton: optional_recorded_at_runtime_nonbinding
+    triton_role: unused_by_lab_source
+    global_repository_default_changed: false
+    runtime_or_server: none
+  hardware_tier:
+    gpu_model: NVIDIA_B200
+    gpu_count: 1
+    cpu_model: captured_at_runtime
+    ram_gb: null
+    network_fabric: not_used
+    storage_tier: not_used
+  topology:
+    gpu_to_gpu: not_used
+    gpu_to_nic_affinity: not_used
+    numa_layout: captured_by_strict_environment_validation
+    pcie_layout: captured_by_gpu_telemetry
+  scheduler_path:
+    platform: bare_metal
+    queue_or_scheduler: operator_existing_gpu_lease
+    placement_policy: exclusive_single_gpu
+    control_plane_path: operator_owned
+measurement_policy:
+  trials: 10
+  warmup_trials: 5
+  report_statistics: [median, mean, stddev, p95, cv_pct]
+  outlier_policy:
+    method: report_all_samples
+    keep_raw_samples: true
+    auto_flag_only: true
+    discard_requires_written_reason: true
+  confidence_policy:
+    method: raw_distribution_no_claimed_confidence_interval
+    min_effect_size_pct: null
+  environment_controls:
+    gpu_clocks_locked: true
+    app_clocks_recorded: true
+    topology_recorded: true
+    background_load_recorded: true
+metrics:
+  primary: effective_hbm_bandwidth_gbs
+  secondary: [bf16_tflops, timing_cv_pct, logical_arithmetic_intensity]
+diagnosis_policy:
+  bottleneck_classes: [compute_bound, memory_bound]
+  required_signals: [gpu_counters, cuda_event_timing, gpu_telemetry]
+  distributed:
+    rank_level_visibility: false
+    isolate_suspected_straggler_node: false
+    cordon_on_repeated_failure: false
+artifacts:
+  artifact_root: operator_external_artifact_directory
+  raw_artifacts_immutable: true
+  require_manifest: true
+  require_profiler_artifacts: true
+  require_sha256: true
+  provenance_signing:
+    required: false
+    status: engineering_diagnostic_only
+  publication_packet:
+    include_methodology_writeup: true
+    include_comparison_report: false
+    include_audit_ledger: true

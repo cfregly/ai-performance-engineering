@@ -4,8 +4,8 @@
  * Exposes one GEMM primitive:
  *   A[M, K] x B_rows[N, K]^T -> C[M, N]
  *
- * The Python benchmark uses this to score grouped query rows against
- * block-compressed K tiles and to run the grouped backward GEMMs.
+ * The Python benchmark uses this to score reduced grouped query rows against
+ * block-compressed K tiles. The grouped backward GEMMs run through torch.matmul.
  */
 
 #include <torch/extension.h>

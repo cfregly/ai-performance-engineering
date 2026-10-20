@@ -201,7 +201,7 @@ export function BenchmarkTable({
                 }
                 setPage(1);
               }}
-              className="pl-10 pr-4 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white placeholder:text-white/40 focus:outline-none focus:border-accent-primary/50 w-48"
+              className="pl-10 pr-4 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white placeholder:text-white/40 focus:outline-hidden focus:border-accent-primary/50 w-48"
             />
           </div>
 
@@ -215,7 +215,7 @@ export function BenchmarkTable({
               }
               setPage(1);
             }}
-            className="px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white focus:outline-none"
+            className="px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white focus:outline-hidden"
           >
             <option value="all">All Chapters</option>
             {chapterOptions.map((ch) => (
@@ -235,7 +235,7 @@ export function BenchmarkTable({
               }
               setPage(1);
             }}
-            className="px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white focus:outline-none"
+            className="px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white focus:outline-hidden"
           >
             <option value="all">All Status</option>
             <option value="succeeded">Succeeded</option>
@@ -249,7 +249,7 @@ export function BenchmarkTable({
               setPageSize(Number(e.target.value));
               setPage(1);
             }}
-            className="px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white focus:outline-none"
+            className="px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white focus:outline-hidden"
           >
             {[10, 25, 50, 100].map((size) => (
               <option key={size} value={size}>
@@ -323,7 +323,7 @@ export function BenchmarkTable({
               Array.from({ length: Math.min(6, pageSize) }).map((_, index) => (
                 <tr key={`skeleton-${index}`} className="animate-pulse">
                   <td className="px-5 py-4" colSpan={columnCount}>
-                    <div className="h-3 bg-white/10 rounded w-full" />
+                    <div className="h-3 bg-white/10 rounded-sm w-full" />
                   </td>
                 </tr>
               ))}
@@ -354,7 +354,7 @@ export function BenchmarkTable({
                   <tr
                     key={`${b.chapter}-${b.name}-${i}`}
                     className={cn(
-                      'hover:bg-white/[0.02] transition-colors',
+                      'hover:bg-white/2 transition-colors',
                       isPinned && 'bg-accent-primary/5 border-l-2 border-accent-primary',
                       isHighlighted && 'bg-accent-secondary/10'
                     )}
@@ -366,7 +366,7 @@ export function BenchmarkTable({
                             <button
                               onClick={() => onTogglePin(key)}
                               className={cn(
-                                'p-1 rounded transition-all',
+                                'p-1 rounded-sm transition-all',
                                 isPinned
                                   ? 'text-accent-primary'
                                   : 'text-white/20 hover:text-white/60'
@@ -380,7 +380,7 @@ export function BenchmarkTable({
                             <button
                               onClick={() => onToggleFavorite(key)}
                               className={cn(
-                                'p-1 rounded transition-all',
+                                'p-1 rounded-sm transition-all',
                                 favorites.has(key)
                                   ? 'text-accent-secondary'
                                   : 'text-white/20 hover:text-white/60'
@@ -397,7 +397,7 @@ export function BenchmarkTable({
                       <span className="font-medium text-white">{b.name}</span>
                     </td>
                     <td className="px-5 py-4">
-                      <span className="px-2 py-1 bg-accent-secondary/10 text-accent-secondary rounded text-xs">
+                      <span className="px-2 py-1 bg-accent-secondary/10 text-accent-secondary rounded-sm text-xs">
                         {b.chapter}
                       </span>
                     </td>
@@ -418,7 +418,7 @@ export function BenchmarkTable({
                           </span>
                           {isCapped && (
                             <span
-                              className="text-[10px] text-white/50 bg-white/5 px-1.5 py-0.5 rounded"
+                              className="text-[10px] text-white/50 bg-white/5 px-1.5 py-0.5 rounded-sm"
                               title={`Raw ${rawSpeedup.toFixed(2)}x${speedupCap ? ` • capped at ${speedupCap.toFixed(0)}x for display` : ''}`}
                             >
                               capped

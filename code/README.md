@@ -48,6 +48,8 @@ Stored suite speedup (not requalified): `8.22x` geomean, `8.54x` median, `34.41x
 | `ch04:gradient_fusion` | `54.484 ms` | `0.323 ms` | `168.70x` | `artifacts/history/tier1/20260329_e2e_truthful_canonical_main_4a8c827a__tier1/summary.json` |
 | `labs/real_world_models:llama_3_1_8b` | `12.761 ms` | `5.242 ms` | `2.43x` | `artifacts/history/tier1/20260329_e2e_truthful_canonical_main_4a8c827a__tier1/summary.json` |
 
+The `labs/real_world_models:llama_3_1_8b` row timed a retired workload: a four-layer stack whose attention upcast to FP32. The current target times a 32-layer stack with 8 key/value heads and changes only compilation, so this row does not describe it.
+
 ## Profiler Evidence
 When you want proof beyond wall-clock timing, use the same harness target with a profiling mode instead of a different script.
 

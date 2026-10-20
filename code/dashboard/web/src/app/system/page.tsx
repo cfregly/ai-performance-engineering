@@ -108,7 +108,7 @@ export default function SystemPage() {
                   value={smClock}
                   onChange={(e) => setSmClock(e.target.value)}
                   placeholder="(optional) e.g. 1500"
-                  className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white focus:outline-none"
+                  className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white focus:outline-hidden"
                 />
               </label>
               <label className="space-y-1">
@@ -117,7 +117,7 @@ export default function SystemPage() {
                   value={memClock}
                   onChange={(e) => setMemClock(e.target.value)}
                   placeholder="(optional) leave blank for max supported"
-                  className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white focus:outline-none"
+                  className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white focus:outline-hidden"
                 />
               </label>
               <label className="space-y-1">
@@ -126,7 +126,7 @@ export default function SystemPage() {
                   value={devices}
                   onChange={(e) => setDevices(e.target.value)}
                   placeholder="(optional) comma list e.g. 0,1,2,3"
-                  className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white focus:outline-none"
+                  className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white focus:outline-hidden"
                 />
               </label>
             </div>

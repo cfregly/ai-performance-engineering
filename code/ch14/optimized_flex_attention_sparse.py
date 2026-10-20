@@ -29,6 +29,11 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from ch14.baseline_flex_attention_sparse import (
+    SPARSE_ATTENTION_OUTPUT_TOLERANCE,
+    sliding_window_causal_allowed,
+    verification_row_slice,
+)
 from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import (
     BaseBenchmark,
@@ -67,16 +72,14 @@ def sliding_window_mask(window_size: int):
 
 
 def sliding_window_causal_mask(window_size: int):
-    """Sliding window + causal: attend to last `window_size` tokens only."""
+    """Sliding window + causal: attend to the last `window_size` tokens, including the current one."""
     def mask_fn(b: int, h: int, q_idx: int, kv_idx: int) -> bool:
-        causal = q_idx >= kv_idx
-        in_window = q_idx - kv_idx < window_size
-        return causal and in_window
+        return sliding_window_causal_allowed(q_idx, kv_idx, window_size)
     return mask_fn
 
 
 def _causal_window_key_pairs(seq_len: int, window_size: int) -> int:
-    """Count the exact query/key pairs in a causal local-attention window."""
+    """Count the query/key pairs that sliding_window_causal_allowed admits."""
     if seq_len <= 0 or window_size <= 0:
         raise ValueError("seq_len and window_size must be positive")
     full_window_queries = max(0, seq_len - window_size)
@@ -90,7 +93,7 @@ def block_sparse_mask(block_size: int, sparse_ratio: float = 0.5):
         q_block = q_idx // block_size
         kv_block = kv_idx // block_size
         stride = int(1.0 / sparse_ratio)
-        return q_block == kv_block or kv_block % stride == 0
+        return (q_block == kv_block) | (kv_block % stride == 0)
     return mask_fn
 
 
@@ -173,12 +176,8 @@ class SlidingWindowCausalAttention(nn.Module):
         key = (batch_size, seq_len, str(device))
         
         if key not in self._block_mask_cache:
-            window = self.window_size
-            def mask_fn(b, h, q_idx, kv_idx):
-                return (q_idx >= kv_idx) & ((q_idx - kv_idx) < window)
-            
             self._block_mask_cache[key] = create_block_mask(
-                mask_fn,
+                sliding_window_causal_mask(self.window_size),
                 B=batch_size,
                 H=self.num_heads,
                 Q_LEN=seq_len,
@@ -337,6 +336,7 @@ class FlexAttentionSparseBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._verification_payload = None
         self.output = None
         self._verify_output_buffer: Optional[torch.Tensor] = None
+        self._verify_rows: Optional[slice] = None
         self._enable_nvtx = False
         
         tokens = self.batch_size * self.seq_len
@@ -378,6 +378,7 @@ class FlexAttentionSparseBenchmark(VerificationPayloadMixin, BaseBenchmark):
             device=self.device,
             dtype=torch.float32,
         )
+        self._verify_rows = verification_row_slice(self.seq_len, self._verify_output_buffer.shape[1])
 
         self.attn._get_block_mask(self.batch_size, self.seq_len, self.device)
         
@@ -396,11 +397,16 @@ class FlexAttentionSparseBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._payload_dtype = self.x.dtype
 
     def capture_verification_payload(self) -> None:
-        if self.x is None or self.output is None or self._verify_output_buffer is None:
+        if (
+            self.x is None
+            or self.output is None
+            or self._verify_output_buffer is None
+            or self._verify_rows is None
+        ):
             raise RuntimeError("capture_verification_payload() requires completed run")
         output_slice = self.output[
             : self._verify_output_buffer.shape[0],
-            : self._verify_output_buffer.shape[1],
+            self._verify_rows,
             : self._verify_output_buffer.shape[2],
         ]
         self._verify_output_buffer.copy_(output_slice)
@@ -416,7 +422,7 @@ class FlexAttentionSparseBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 "fp8": False,
                 "tf32": torch.backends.cuda.matmul.allow_tf32,
             },
-            output_tolerance=(0.1, 1.0),
+            output_tolerance=SPARSE_ATTENTION_OUTPUT_TOLERANCE,
         )
 
     def teardown(self) -> None:
@@ -426,6 +432,7 @@ class FlexAttentionSparseBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.x = None
         self.output = None
         self._verify_output_buffer = None
+        self._verify_rows = None
         torch.cuda.empty_cache()
 
     def get_config(self) -> BenchmarkConfig:

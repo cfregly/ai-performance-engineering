@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
-"""Numerical flag checks, with separate explicit CUDA capability gates.
+"""Numerical flag checks with separate explicit CUDA capability gates.
 
 Run from code: python -m labs.nanochat_fullstack.test_new_optimizations
-CPU hint parity is not evidence that a clustered CUDA kernel executed.
+CPU checks do not qualify the external CUDA attention backend.
 """
 from dataclasses import replace
 from unittest import SkipTest
 
 import torch
 
-import labs.nanochat_fullstack
+import labs.nanochat_fullstack  # noqa: F401  (registers the top-level nanochat package)
 from nanochat.engine import Engine, KVCache
 from nanochat.gpt import GPT, GPTConfig
 
@@ -25,9 +25,10 @@ def _model(config, device):
 
 
 def _config(**overrides):
+    overrides.setdefault("use_flash_attn_varlen", False)
     return GPTConfig(sequence_len=64, vocab_size=64, n_layer=2, n_head=2,
                      n_kv_head=2, n_embd=32, use_flash_sdp=False,
-                     use_flash3=False, **overrides)
+                     **overrides)
 
 
 def _assert_logits(actual, expected, shape, tolerance=2e-5):
@@ -37,19 +38,6 @@ def _assert_logits(actual, expected, shape, tolerance=2e-5):
     torch.testing.assert_close(actual, expected, atol=tolerance, rtol=tolerance)
 
 
-@torch.inference_mode()
-def test_cta_clustering():
-    """The optional hint must preserve output on the ordinary SDPA path."""
-    device = torch.device("cpu")
-    off = _model(_config(), device)
-    on = _model(_config(use_cta_clustering=True, cta_cluster_seq_threshold=8), device)
-    on.load_state_dict(off.state_dict())
-    for length in (4, 16):
-        inputs = torch.randint(0, 64, (2, length), device=device)
-        _assert_logits(on(inputs), off(inputs), (2, length, 64))
-    print("PASS: identical-weight CTA hint parity on CPU SDPA; no clustered kernel claimed")
-
-
 def _require_cuda():
     if not torch.cuda.is_available():
         raise SkipTest("requires a real CUDA device; CPU does not qualify this optimization")
@@ -57,26 +45,31 @@ def _require_cuda():
 
 
 @torch.inference_mode()
-def test_cta_backend():
+def test_flash_attn_varlen_backend():
     device = _require_cuda()
-    config = replace(_config(use_cta_clustering=True, cta_cluster_seq_threshold=8),
-                     use_flash3=True)
+    config = replace(_config(), use_flash_attn_varlen=True)
     model = _model(config, device)
-    if any(not b.attn.use_flash3 or b.attn.flash3_fn is None or not b.attn._flash3_accepts_clusters
-           for b in model.transformer.h):
-        raise SkipTest("requires a real FA3 backend accepting num_sm_clusters")
+    if any(
+        not block.attn.use_flash_attn_varlen
+        or block.attn.flash_attn_varlen_fn is None
+        or block.attn.flash_attn_varlen_backend != "flash_attn_2_cuda"
+        for block in model.transformer.h
+    ):
+        raise SkipTest("requires the pinned FlashAttention 2 CUDA backend")
     baseline = _model(_config(), device)
     baseline.load_state_dict(model.state_dict())
     inputs = torch.randint(0, 64, (2, 16), device=device)
     _assert_logits(model(inputs), baseline(inputs), (2, 16, 64), tolerance=2e-2)
-    print("PASS: cluster-capable FA3 numerical parity (performance unmeasured)")
+    print("PASS: FlashAttention 2 varlen numerical parity (performance unmeasured)")
 
 
 @torch.inference_mode()
 def _compare_decode(config):
     device = _require_cuda()
     model = _model(config, device)
-    engine = Engine(model, tokenizer=None, enable_batch_decode=False)
+    # This check compares side-stream decode with eager decode. Engine compiles by
+    # default on Blackwell, which would change the mode to side_stream_torch_compile.
+    engine = Engine(model, tokenizer=None, enable_batch_decode=False, allow_compile=False)
     assert engine.enable_persistent_decode and engine._persistent_stream is not None
     assert engine.reuse_ids_buffer
     cached = engine._get_or_create_persistent_buffer("test", (2, 64), torch.float32, device)
@@ -103,14 +96,13 @@ def test_persistent_decode():
 
 
 def test_integration():
-    # This tests the hint + actual side stream together, not resident kernels.
-    _compare_decode(_config(use_cta_clustering=True, cta_cluster_seq_threshold=8,
-                            enable_persistent_decode=True))
+    # This tests the external varlen backend and side-stream buffer reuse together.
+    _compare_decode(_config(use_flash_attn_varlen=True, enable_persistent_decode=True))
 
 
 def main():
     passed = skipped = 0
-    for test in (test_cta_clustering, test_cta_backend, test_persistent_decode, test_integration):
+    for test in (test_flash_attn_varlen_backend, test_persistent_decode, test_integration):
         try:
             test()
             passed += 1

@@ -1,0 +1,301 @@
+objective:
+  primary_kpi: dense_bf16_tflop_per_s
+  secondary_kpis:
+    - effective_requested_rw_copy_decimal_tb_per_s
+    - paired_candidate_vs_baseline_pct
+    - dense_bf16_nominal_fraction
+    - requested_copy_nominal_fraction
+
+benchmark:
+  layer: micro
+  grade: realism
+  variable_under_test: kernel_or_library_algorithm
+
+workload:
+  type: synthetic_kernel_microbenchmark
+  model: dense_bf16_gemm_and_random_uint8_copy
+  prompt_or_seq_len:
+    p50: null
+    p95: null
+    max: null
+  batch_shape:
+    p50: null
+    p95: null
+    max: null
+  constraints:
+    - GPU0 only
+    - dense BF16 without sparsity or TF32
+    - FP32 GEMM accumulation and beta zero
+    - row-major 16384x16384 NN GEMM
+    - random 8 GiB uint8 copy payload
+    - full-output correctness
+    - setup and allocation excluded from CUDA-event timing
+
+slos:
+  latency_ms:
+    p50: null
+    p95: null
+    p99: null
+  availability: null
+  cost_budget: one_bounded_screen_plus_one_five_window_confirmation
+
+environment:
+  hardware:
+    gpu: [NVIDIA B200, 1, 183359_MiB]
+    cpu: virtualized_host
+    ram_gb: null
+    storage: not_in_timed_path
+    interconnect: [not_in_timed_path]
+    topology: single_GPU0
+  software:
+    runtime_scope: lab_specific_isolated_environment
+    qualification_role: current_source_target
+    os: linux
+    kernel: captured_in_run_provenance
+    driver: captured_in_run_provenance
+    cuda: "13.0"
+    pytorch: "2.13.0+cu130_exact_readback_required"
+    triton: optional_recorded_at_runtime_nonbinding
+    triton_role: unused_by_lab_source
+    global_repository_default_changed: false
+    frameworks: [PyTorch, cuBLAS, cuBLASLt, CUDA_extension]
+    nccl: not_used
+    container_orchestrator: none
+  data_pipeline:
+    - seeded operand generation before timing
+    - fresh operands for every confirmation window
+
+current_baseline:
+  time_to_train_hours: null
+  mfu_pct: null
+  scaling_efficiency_pct: null
+  tokens_per_second: null
+  ttft_ms: null
+  p50_ms: null
+  p99_ms: null
+  jitter_cv_pct: null
+  gpu_util_percent: null
+  mem_bw_percent: null
+  nic_gbps: null
+  goodput_percent: null
+  cost_per_token_usd: null
+  cost_per_request_usd: null
+  dense_bf16_tflop_per_s: 1444.724349
+  effective_requested_rw_copy_decimal_tb_per_s: 6.511999
+  source: 2026-10-13_frozen_peak_characterization
+
+hot_path_model:
+  path: labs.arithmetic_intensity_b200.optimization_benchmarks
+  phase: steady_state
+  invocation_frequency: per_iteration
+  invocations_per_primary_unit: 1
+  estimated_costs:
+    bytes_read: workload_specific
+    bytes_written: workload_specific
+    host_device_bytes: 0
+    allocations_or_materializations: 0
+    kernel_launches: 1
+    synchronizations_or_locks: 0
+    api_process_or_rpc_crossings: 0
+    storage_or_network_operations: 0
+  operation_cost_source: prior_frozen_evidence_and_fresh_bounded_screen
+  expected_dominant_cost: tensor_core_pipeline_for_gemm_and_device_memory_for_copy
+  best_case_primary_kpi_improvement_pct: null
+
+evidence:
+  baseline_artifact: null
+  baseline_artifact_note: prior_local_evidence_is_not_published_with_this_source
+  profile_artifacts: []
+  allocation_or_memory_profile: setup_is_excluded_from_timing
+  hardware_counter_artifacts: []
+  static_review_findings:
+    - retained PyTorch 2.11 evidence exposed eight supported cuBLASLt heuristics
+    - the PyTorch 2.13 qualification must inventory support again before reusing a signature
+    - native copy launch shape and cache-global load policy are bounded tuning variables
+
+candidate_optimizations:
+  - persistent_cublaslt_descriptors_workspace_and_exact_algorithm
+  - supported_cublaslt_tile_stage_cluster_selection
+  - cache_global_uint4_loads_with_four_way_grid_stride_unroll
+  - copy_threads_and_blocks_per_sm_launch_tuning
+
+known_issues_or_hypotheses:
+  - short screens may overstate compute gains that disappear at the 1000 W sustained cap
+  - requested copy bytes are a logical proxy and are not raw physical HBM traffic
+  - virtualization makes all results strict_noncanonical_virtualized and publication ineligible
+
+risk_guardrails:
+  correctness_tests:
+    - FP32_reference_of_exact_BF16_inputs_rtol_0.03_atol_0.03
+    - full_268435456_element_GEMM_output_check_per_window
+    - full_8589934592_byte_copy_equality_per_window
+    - misaligned_and_overlapping_native_copy_arguments_rejected
+  change_windows:
+    - exclusive_flock_idle_preflight_foreign_process_monitor_and_watchdog
+    - preserve_1000_W_power_and_existing_clock_configuration
+
+nominal_gap_phase1:
+  path: labs.arithmetic_intensity_b200.kernel_optimization_tool:diagnose-nominal-gap
+  role: diagnostic_only
+  primary_workload:
+    shape: [16384, 16384, 16384]
+    layout: row_major_nn
+    input_dtype: bfloat16
+    accumulator_dtype: float32
+    beta: 0
+    operand_distribution: seeded_scaled_normal_n_to_negative_one_quarter
+    logical_flops_per_iteration: 8796093022208
+    semantic_minimum_requested_bytes_per_iteration: 1610612736
+  cost_model:
+    expected_dominant_cost: sustained_tensor_core_issue_under_the_1000_W_cap
+    exact_work_settling_ms_before_each_arm: 3000
+    maximum_settle_to_timing_host_gap_ms: 20
+    calibration_pairs: 8
+    primary_windows: 3
+    minimum_gpu_active_ms_per_timed_arm: 1000
+    target_wall_time_minutes: 6
+    hard_slot_limit_minutes: 10
+  observer:
+    repository_helpers:
+      - core.profiling.gpu_telemetry.query_gpu_telemetry
+      - core.utils.power_sampling.PowerSampler
+    interval_ms: 100
+    minimum_complete_queries_per_window: 8
+    maximum_query_midpoint_gap_ms: 250
+    leading_and_trailing_boundary_gap_limit_ms: 250
+    maximum_gap_to_requested_interval_ratio: 2.5
+    minimum_window_and_cadence_must_fit_required_queries: true
+    paired_overhead_limit_pct: 0.5
+    paired_overhead_acceptance: every_observed_pair_within_symmetric_limit
+    bootstrap_interval_role: descriptive_only_not_equivalence_proof
+    power_sampler_role: coarse_host_phase_energy_only
+    power_sampler_identity: exact_NVML_UUID_matches_selected_CUDA_device
+  required_outputs:
+    - CUDA_event_TFLOP_per_s
+    - graphics_and_application_clocks
+    - power_temperature_and_throttle_bitmask
+    - per_query_monotonic_intervals_and_latency
+    - conservative_exact_work_settling_host_envelope
+    - cadence_and_missed_sample_summary
+    - realized_full_tensor_operand_min_max_mean_and_rms
+    - full_output_FP32_oracle_check
+    - per_window_declared_steady_state_gate
+  claim_boundaries:
+    - no_clock_scaled_nominal
+    - no_accepted_optimization_claim
+    - no_replacement_of_prior_primary_result
+    - no_exact_host_to_CUDA_event_point_alignment
+    - no_transferred_profiler_counters
+    - unsettled_windows_retained_but_sustained_summary_and_nominal_fraction_suppressed
+    - uniform_fill_changes_distribution_and_RMS_amplitude
+    - RMS_matched_uniform_and_zero_are_optional_controls_not_primary_results
+
+sustained_search_and_calibration:
+  preparation_state: local_source_corrected_pending_static_reaudit_and_exclusive_GPU_handoff
+  path: labs.arithmetic_intensity_b200.sustained_optimization_tool
+  runtime_contract:
+    qualification_role: current_source_target
+    GPU: NVIDIA_B200_GPU0_only
+    power_limit_w: 1000
+    power_or_clock_changes: forbidden
+    pytorch: "2.13.0+cu130_exact_readback_required"
+    pytorch_cuda: "13.0_exact_readback_required"
+    triton: optional_recorded_at_runtime_nonbinding
+    triton_role: unused_by_lab_source
+    strict_virtualized_evidence: true
+    publication_eligible: false
+  bounded_library_search:
+    workspace_ceilings_mib: [0, 64, 512, 2048]
+    max_heuristics_per_ceiling: 128
+    candidate_cap: 24
+    prior_required_signatures: 8
+    CTA_strata_prioritized: [1, 2]
+    balanced_ranking_pairs: 2
+    exact_settling_ms_per_arm: 3000
+    minimum_timed_GPU_ms_per_arm: 1000
+    result_scope: descriptive_ranking_only
+    not_exhaustive_algorithm_enumeration: true
+  equivalent_work_confirmation:
+    fresh_operand_windows: 5
+    order: alternating_AB_BA
+    same_operands_within_pair: true
+    full_output_FP32_oracle: true
+    every_window_steady_state_gate: true
+    observer_OFF_ON_pairs: 8
+    observer_and_primary_invocation_counts_sized_separately: true
+    unsettled_aggregate_policy: suppress_baseline_candidate_and_paired_summaries
+    promotion_threshold_pct: 5.0
+    promotion_also_requires_fully_positive_paired_interval: true
+    strict_repository_harness_required_for_speedup_claim: true
+  matrix_value_study:
+    frozen_implementation_selected_on_scaled_normal_only: true
+    two_resident_rotated_buffer_sets: true
+    natural_warmed_cache_no_explicit_flush: true
+    windows_per_fill: 5
+    balanced_interleaving: five_row_subset_of_six_treatment_Williams_design
+    every_fill_has_five_distinct_ordinal_positions: true
+    K_order_direction_counts: {random_before_clustered: 3, clustered_before_random: 2}
+    observer_OFF_ON_pairs_per_fill: 8
+    per_fill_short_sizing: true
+    maximum_planned_observer_and_primary_GPU_active_minutes: 25
+    phase_wall_time_budget_minutes: 30
+    unsettled_aggregate_policy: suppress_latency_throughput_power_and_energy_summaries
+    fills:
+      scaled_normal:
+        role: representative_reference
+      uniform_rms_matched_to_scaled_normal:
+        role: distribution_control_at_matched_expected_RMS
+      uniform_minus1_plus1:
+        role: documented_uniform_control_with_amplitude_confound
+      k_order_random_balanced:
+        role: low_entropy_ordering_control
+      k_order_positive_then_negative:
+        role: common_K_permutation_of_low_entropy_ordering_control
+      zero_power_switching_calibration:
+        role: low_switching_calibration_pending_executed_tensor_work_proof
+    ordering_control_hard_gates:
+      - exact_full_value_histograms
+      - full_FP32_reference_bitwise_equality
+      - identical_shapes_and_strides
+      - matching_allocation_alignment_classes
+      - full_actual_output_oracle_checks
+      - final_actual_outputs_bitwise_equal_and_nonzero
+    causal_limit: no_internal_switching_or_operand_accumulator_isolation_claim
+  profiles:
+    exact_post_settling_NVTX_launch: true
+    nsys_kernel_and_launch_identity: required
+    ncu_clock_control: none
+    ncu_cache_control: none
+    same_pass_GPC_clock_and_duration: required
+    native_SM100_dense_BF16_tensor_work_metric: query_then_require_supported_metric
+  copy_refresh:
+    payload_bytes: 8589934592
+    implementation: torch_CUDA_tensor_copy
+    fresh_random_windows: 5
+    exact_settling_ms: 3000
+    minimum_timed_GPU_ms: 1000
+    full_equality: true
+    observer_OFF_ON_pairs: 8
+    observer_and_primary_invocation_counts_sized_separately: true
+    required_same_window_gates:
+      - complete_query_cadence_including_boundaries
+      - memory_clock_stability
+      - power_stability
+      - stable_application_memory_clock
+      - performance_state_P0
+      - selected_logical_GPU_identity
+    graphics_clock_role: diagnostic_only
+    copy_engine_identity_requires_matching_Nsys_trace: true
+    unsettled_aggregate_policy: suppress_requested_byte_summary_and_nominal_fraction
+    metric: effective_requested_read_plus_write_decimal_TB_per_s
+    raw_physical_HBM_claim: false
+  slot_budget_minutes:
+    custody_and_source_readback: 5
+    phase1_timeline: 7
+    settled_library_screen: 18
+    five_window_confirmation: 7
+    matrix_value_peak_calibration: 30
+    copy_refresh: 5
+    exact_profiles: 13
+    hashes_and_postflight: 5
+    total: 90

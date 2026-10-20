@@ -59,8 +59,7 @@ class OptimizedNanochatInferenceBenchmark(VerificationPayloadMixin, BaseBenchmar
             n_embd=self.n_embd,
             # Match the baseline attention kernels and cache layout exactly.
             use_flash_sdp=False,
-            use_flash3=False,
-            use_cta_clustering=False,
+            use_flash_attn_varlen=False,
             kv_block_size=None,
             kv_page_size=None,
         )

@@ -21,18 +21,18 @@ This is a workflow-oriented matrix/playbook lab, not currently a clean benchmark
 ## Running the Benchmarks
 Use the benchmark harness for quick comparisons or drive the Typer CLI when you need repeatable artifact capture.
 ```bash
-cd ai-performance-engineering
+cd ai-performance-engineering/code
 python labs/cutlass_profiler_kernel_selector/run_cutlass_profiler_sweep.py --output-dir artifacts/cutlass_profiler
 python labs/cutlass_profiler_kernel_selector/run_triton_matmul.py --output-dir artifacts/cutlass_profiler
 python labs/cutlass_profiler_kernel_selector/compare_against_baselines.py --include-default-triton
 ```
-- Set `CUTLASS_PROFILER_BIN` to point at your `cutlass_profiler` binary after running `setup.sh` from the repo root.
+- `code/setup.sh` clones CUTLASS into `code/third_party/cutlass` but does not build `cutlass_profiler`. Build the `cutlass_profiler` CMake target in `code/third_party/cutlass/build_profiler`, where the sweep looks by default, or point `CUTLASS_PROFILER_BIN` or `--profiler-bin` at an existing binary.
 - Add extra providers by writing JSON files matching the documented schema (see `compare_against_baselines.py`).
 
 ## Validation Checklist
-- Profiler runs emit `artifacts/cutlass_profiler/cutlass_profiler_results.json` with per-shape winners; rerun when upgrading CUDA or GPUs.
+- Profiler runs emit `artifacts/cutlass_profiler/cutlass_profiler_results.json` with per-shape winners. Rerun the sweep when upgrading CUDA or GPUs.
 - Triton baselines land in `artifacts/cutlass_profiler/triton_matmul_results.json` and should stay within a few percent of CUTLASS for supported shapes.
-- `compare_against_baselines.py` exits non-zero when provided result files are missing records, ensuring CI catches stale outputs.
+- `compare_against_baselines.py` exits non-zero when the baseline or a provider file is missing, or when any file lacks a positive TFLOP/s record for a shape in `shapes.py` (or the `--shapes` subset) or lists that shape as failed. CI therefore catches stale or partial outputs.
 
 ## Notes
 - Shapes can be overridden via CLI flags (e.g., `--shapes decode_mlp_m4096_n4096_k8192`).

@@ -154,11 +154,11 @@ def test_cutlass_version_reads_only_macro_definitions(monkeypatch, tmp_path):
     include_dir = tmp_path / "third_party" / "cutlass" / "include" / "cutlass"
     include_dir.mkdir(parents=True)
     (include_dir / "version.h").write_text(
-        "// Copyright 2026. CUTLASS_VERSION_MAJOR should not be read here.\n"
-        "#define CUTLASS_VERSION_MAJOR 4\n"
-        "#define CUTLASS_VERSION_MINOR 12\n"
-        "#define CUTLASS_VERSION_PATCH 3\n"
-        "#define CUTLASS_VERSION (CUTLASS_VERSION_MAJOR * 100 + CUTLASS_VERSION_MINOR)\n",
+        "// Copyright 2026. CUTLASS_MAJOR should not be read here.\n"
+        "#define CUTLASS_MAJOR 4\n"
+        "#define CUTLASS_MINOR 12\n"
+        "#define CUTLASS_PATCH 3\n"
+        "#define CUTLASS_VERSION ((CUTLASS_MAJOR)*100 + (CUTLASS_MINOR)*10 + CUTLASS_PATCH)\n",
         encoding="utf-8",
     )
     monkeypatch.setattr(perf_core_base, "CODE_ROOT", tmp_path)
@@ -168,8 +168,8 @@ def test_cutlass_version_reads_only_macro_definitions(monkeypatch, tmp_path):
 
 
 @pytest.mark.parametrize("header", [
-    "#define CUTLASS_VERSION_MAJOR 4\n#define CUTLASS_VERSION_MINOR 1\n",
-    "#define CUTLASS_VERSION_MAJOR invalid\n#define CUTLASS_VERSION_MINOR 1\n#define CUTLASS_VERSION_PATCH 0\n",
+    "#define CUTLASS_MAJOR 4\n#define CUTLASS_MINOR 1\n",
+    "#define CUTLASS_MAJOR invalid\n#define CUTLASS_MINOR 1\n#define CUTLASS_PATCH 0\n",
 ])
 def test_cutlass_incomplete_or_invalid_versions_remain_unknown(monkeypatch, tmp_path, header):
     include_dir = tmp_path / "third_party" / "cutlass" / "include" / "cutlass"

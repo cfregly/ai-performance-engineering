@@ -220,12 +220,21 @@ class OptimizedMemoryDoubleBufferingBenchmark(VerificationPayloadMixin, BaseBenc
                 if self._micro_batch_schedule_count != self._expected_micro_batch_schedule_count:
                     raise RuntimeError("Double-buffer microbatch schedule not initialized")
 
-                # Preload first buffer on the copy stream and signal completion.
+                # The caller may still be reading the output or a buffer slot from an
+                # earlier call, so side-stream writes must start after its queued work.
+                current = torch.cuda.current_stream(device=self.device)
+                self.copy_stream.wait_stream(current)
+                self.compute_stream.wait_stream(current)
+
+                # Every H2D into a slot waits for the last compute that read that slot,
+                # including compute left over from the previous call. A compute event
+                # that was never recorded makes the wait a no-op on the first call.
                 with torch.cuda.stream(self.copy_stream):
+                    self.copy_stream.wait_event(compute_events[0])
                     buffers[0].copy_(self.host_batches[0], non_blocking=True)
                     copy_events[0].record(self.copy_stream)
 
-                for batch_idx, slot_idx, next_batch_idx, next_slot_idx in self._micro_batch_schedule:
+                for _batch_idx, slot_idx, next_batch_idx, next_slot_idx in self._micro_batch_schedule:
                     current_buffer = buffers[slot_idx]
                     current_event = copy_events[slot_idx]
 
@@ -239,13 +248,9 @@ class OptimizedMemoryDoubleBufferingBenchmark(VerificationPayloadMixin, BaseBenc
                         next_buffer = buffers[next_slot_idx]
                         next_event = copy_events[next_slot_idx]
                         with torch.cuda.stream(self.copy_stream):
-                            # Once a slot has entered the ping-pong reuse cycle,
-                            # its prior compute must finish before H2D overwrites it.
-                            if batch_idx > 0:
-                                self.copy_stream.wait_event(compute_events[next_slot_idx])
+                            self.copy_stream.wait_event(compute_events[next_slot_idx])
                             next_buffer.copy_(self.host_batches[next_batch_idx], non_blocking=True)
                             next_event.record(self.copy_stream)
-                current = torch.cuda.current_stream(device=self.device)
                 current.wait_stream(self.compute_stream)
                 current.wait_stream(self.copy_stream)
         if self.output is None or (self.buffer_a is None and self.buffer_b is None):

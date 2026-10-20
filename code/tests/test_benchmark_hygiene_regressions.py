@@ -1013,7 +1013,8 @@ def test_ch04_ddp_nvlink_overlap_reuses_transfer_events_and_buffers() -> None:
     assert "len(self._grad_slots)" not in naive_benchmark
     assert "buf.copy_(grads[0].to(root))" in naive_reduce
     assert "for g in grads[1:]" in naive_reduce
-    assert "if self._model_count == 1:" in naive_reduce
+    # setup() raises SKIPPED below two GPUs, so the single-model branch is gone (W2-043).
+    assert "if self._model_count == 1:" not in naive_reduce
     assert "buf.mul_(self._grad_scale)" in naive_reduce
     assert "len(grads)" not in naive_reduce
     assert "buf.zero_()" not in naive_reduce
@@ -1470,7 +1471,8 @@ def test_ch07_tma_copy_surfaces_scalar_vs_strict_descriptor_tma_story() -> None:
     optimized_cuda = (REPO_ROOT / "ch07" / "optimized_tma_copy.cu").read_text(encoding="utf-8")
     readme = (REPO_ROOT / "ch07" / "README.md").read_text(encoding="utf-8")
 
-    assert "Pipeline + Tensor-Map Neighbor Copy" in optimized_wrapper
+    assert "Descriptor-Backed 2D TMA Tiled-Neighbor Transform" in optimized_wrapper
+    assert "Pipeline + Tensor-Map Neighbor Copy" not in optimized_wrapper
     assert "strict `tma_copy` path" in optimized_wrapper
     assert "dst[global_row * N + global_col] = combine_values(" in optimized_cuda
     assert "output_tile[local_row][local_col] = combine_values(" in optimized_cuda
@@ -4149,10 +4151,7 @@ def test_pipeline_and_demo_activation_paths_use_inplace_relu() -> None:
         ]
         assert not allocations, f"Timed tensor allocation in {schedule.name}"
 
-    for relative in (
-        "ch04/baseline_pipeline_parallel_multigpu.py",
-        "ch04/optimized_pipeline_parallel_multigpu_1f1b.py",
-    ):
+    for relative in ("ch04/baseline_pipeline_parallel_multigpu.py",):
         source = (REPO_ROOT / relative).read_text(encoding="utf-8")
         worker_section = source.split("def _run_worker", maxsplit=1)[1].split(
             "def main",
@@ -4173,26 +4172,33 @@ def test_pipeline_and_demo_activation_paths_use_inplace_relu() -> None:
         assert "with torch.inference_mode():" in worker_section
         assert "torch.no_grad()" not in worker_section
 
-    for relative in (
-        "ch04/optimized_pipeline_parallel_multigpu_1f1b.py",
-    ):
-        source = (REPO_ROOT / relative).read_text(encoding="utf-8")
-        worker_section = source.split("def _run_worker", maxsplit=1)[1].split(
-            "def main",
-            maxsplit=1,
-        )[0]
-        run_iteration_section = worker_section.split("def _run_iteration", maxsplit=1)[1].split(
-            "with torch.inference_mode():",
-            maxsplit=1,
-        )[0]
-
-        assert "from collections import deque" not in source
-        assert "activation_slots: list[Optional[torch.Tensor]] = [None] * warmup_steps" in worker_section
-        assert "activation_count = 0" in run_iteration_section
-        assert "activation_slots[(activation_head + activation_count) % warmup_steps] = out" in run_iteration_section
-        assert "activation_slots[activation_head] = None" in run_iteration_section
-        assert "activations.append(" not in run_iteration_section
-        assert "activations.popleft(" not in run_iteration_section
+    # The 1F1B worker allocates its receive buffers and activation slots once in
+    # _build_1f1b_iteration and times run_1f1b_iteration, which the AST scan of
+    # pipeline_parallel_common above checks for timed allocations.
+    source = (REPO_ROOT / "ch04/optimized_pipeline_parallel_multigpu_1f1b.py").read_text(
+        encoding="utf-8"
+    )
+    builder_section = source.split("def _build_1f1b_iteration", maxsplit=1)[1].split(
+        "def _run_worker",
+        maxsplit=1,
+    )[0]
+    worker_section = source.split("def _run_worker", maxsplit=1)[1].split(
+        "def main",
+        maxsplit=1,
+    )[0]
+    run_iteration_section = builder_section.split("def _run_iteration", maxsplit=1)[1]
+    assert "from collections import deque" not in source
+    assert "recv_micro_batches = _receive_buffers() if rank > 0 else []" in builder_section
+    assert "recv_grads = _receive_buffers() if rank < world_size - 1 else []" in builder_section
+    assert (
+        "activation_slots: list[Optional[tuple[int, torch.Tensor]]] = [None] * max("
+        in builder_section
+    )
+    assert "run_1f1b_iteration(" in run_iteration_section
+    assert "torch.empty(" not in run_iteration_section
+    assert "run_iteration = _build_1f1b_iteration(" in worker_section
+    assert "with torch.inference_mode():" in worker_section
+    assert "torch.no_grad()" not in worker_section
 
 
 def test_ch04_pipeline_wrappers_cache_micro_batch_views() -> None:
@@ -7133,8 +7139,14 @@ def test_cutlass_profiler_sweep_streaming_csv_parser(tmp_path: Path) -> None:
     from labs.cutlass_profiler_kernel_selector.run_cutlass_profiler_sweep import parse_best_result
 
     csv_path = tmp_path / "profiler.csv"
+    header = (
+        "Provider,Operation,Disposition,Status,raster_order,swizzle_size,cluster_m,cluster_n,cluster_k,"
+        "cluster_m_fallback,cluster_n_fallback,cluster_k_fallback,Runtime,GFLOPs\n"
+    )
     csv_path.write_text(
-        "Kernel,Runtime,GFLOPs\nslow,2.0,1000\nfast,1.0,2500\n",
+        header
+        + "CUTLASS,slow,passed,success,along_n,1,1,1,1,1,1,1,2.0,1000\n"
+        + "CUTLASS,fast,passed,success,along_m,2,2,1,1,1,1,1,1.0,2500\n",
         encoding="utf-8",
     )
 
@@ -7145,7 +7157,7 @@ def test_cutlass_profiler_sweep_streaming_csv_parser(tmp_path: Path) -> None:
     assert best["runtime_ms"] == 1.0
 
     empty_path = tmp_path / "empty.csv"
-    empty_path.write_text("Kernel,Runtime,GFLOPs\n", encoding="utf-8")
+    empty_path.write_text(header, encoding="utf-8")
     with pytest.raises(ValueError, match="No rows found"):
         parse_best_result(empty_path)
 
@@ -7193,8 +7205,16 @@ def test_cutlass_comparison_cli_reuses_loaded_provider_results(
     monkeypatch.setattr(compare_module, "ARTIFACT_DIR", tmp_path)
     monkeypatch.setattr(compare_module, "load_results", counting_load_results)
 
+    # The baseline holds one shape, so the comparison must be limited to it.
     rc = compare_module.main(
-        ["--baseline", str(baseline_path), "--providers", str(provider_path)]
+        [
+            "--baseline",
+            str(baseline_path),
+            "--providers",
+            str(provider_path),
+            "--shapes",
+            shape_name,
+        ]
     )
 
     assert rc == 0
@@ -11174,8 +11194,11 @@ def test_dynamic_router_percentiles_reuse_sorted_samples(tmp_path: Path) -> None
     from labs.dynamic_router.scorecard import _read_jsonl
 
     jsonl_path = tmp_path / "rows.jsonl"
-    jsonl_path.write_text('{"a": 1}\nnot json\n{"b": 2}\n', encoding="utf-8")
+    jsonl_path.write_text('{"a": 1}\n\n{"b": 2}\n', encoding="utf-8")
     assert _read_jsonl(jsonl_path) == [{"a": 1}, {"b": 2}]
+    jsonl_path.write_text('{"a": 1}\nnot json\n{"b": 2}\n', encoding="utf-8")
+    with pytest.raises(json.JSONDecodeError):
+        _read_jsonl(jsonl_path)
 
 
 def test_dynamic_router_eval_stack_avoids_redundant_sorting() -> None:
@@ -11250,10 +11273,17 @@ def test_dynamic_router_eval_stack_avoids_redundant_sorting() -> None:
     assert "per_task_acc.setdefault" not in quality_section
     assert "sum(v) / len(v)" not in quality_section
     assert "sum(per_task_summary.values())" not in quality_section
-    assert "entropy_total += float(row[\"entropy\"])" in summarize_moe_section
-    assert "margin_total += float(row.get(\"margin\", 0.0))" in summarize_moe_section
-    assert '"entropy": entropy_total / entropy_count if entropy_count else 0.0' in summarize_moe_section
-    assert '"gate_margin": margin_total / margin_count if margin_count else 0.0' in summarize_moe_section
+    # Window rows carry per-window means, so the summary weights them by tokens (W2-027).
+    assert 'entropy_total += float(row["entropy"]) * tokens' in summarize_moe_section
+    assert 'margin_total += float(row["margin"]) * tokens' in summarize_moe_section
+    assert (
+        '"entropy": entropy_total / entropy_tokens if entropy_tokens else 0.0'
+        in summarize_moe_section
+    )
+    assert (
+        '"gate_margin": margin_total / margin_tokens if margin_tokens else 0.0'
+        in summarize_moe_section
+    )
     assert "entropy_samples.append" not in summarize_moe_section
     assert "margin_samples.append" not in summarize_moe_section
     assert 'latency_summary = scorecard["latency"]' in run_summary_section
@@ -13190,7 +13220,7 @@ def test_nanochat_prefix_causal_mask_avoids_zero_fill_and_tril_allocations() -> 
         maxsplit=1,
     )[0]
     prefix_section = source.split("def _prefix_causal_mask_for", maxsplit=1)[1].split(
-        "def _flash3_attention",
+        "def _flash_attn_varlen_attention",
         maxsplit=1,
     )[0]
 
@@ -13376,15 +13406,19 @@ def test_nanochat_clustered_attention_fallback_uses_native_sdpa_gqa(monkeypatch:
     from labs.nanochat_fullstack.nanochat.kernels import clustered_attention as clustered_attention_module
 
     source = inspect.getsource(clustered_attention_module.clustered_attention)
-    flash3_source = inspect.getsource(clustered_attention_module._flash3_clustered)
+    flash_attn_varlen_source = inspect.getsource(clustered_attention_module._flash_attn_varlen)
     cu_seqlens_source = inspect.getsource(clustered_attention_module._cu_seqlens_for)
+    assert "num_sm_clusters" not in inspect.signature(
+        clustered_attention_module.clustered_attention
+    ).parameters
     assert "repeat_interleave" not in source
-    assert "repeat_interleave" not in flash3_source
-    assert "inspect.signature" not in flash3_source
-    assert "_flash3_accepts_clusters" in flash3_source
-    assert "cu_q = _cu_seqlens_for(B, Tq, q.device)" in flash3_source
-    assert "cu_k = _cu_seqlens_for(B, Tk, q.device)" in flash3_source
-    assert "torch.arange(0, (B + 1)" not in flash3_source
+    assert "repeat_interleave" not in flash_attn_varlen_source
+    assert "inspect.signature" not in flash_attn_varlen_source
+    assert '"flash_attn_2_cuda"' in flash_attn_varlen_source
+    assert "num_sm_clusters" not in flash_attn_varlen_source
+    assert "cu_q = _cu_seqlens_for(B, Tq, q.device)" in flash_attn_varlen_source
+    assert "cu_k = _cu_seqlens_for(B, Tk, q.device)" in flash_attn_varlen_source
+    assert "torch.arange(0, (B + 1)" not in flash_attn_varlen_source
     assert "_CU_SEQLENS_CACHE.get(key)" in cu_seqlens_source
     assert "enable_gqa=enable_gqa" in source
 
@@ -15750,7 +15784,9 @@ def test_ch16_load_test_batches_percentile_calculations() -> None:
 
     assert "def _summarize_samples(values: List[int], total: Optional[float] = None)" in source
     assert "run_start = time.perf_counter()" in run_loop
-    assert "while time.perf_counter() - run_start < duration:" in run_loop
+    # Rank 0's clock ends the run for every rank (W2-022).
+    assert "while server._serve_loop_should_continue(run_start, duration):" in run_loop
+    assert "while time.perf_counter() - run_start < duration:" not in run_loop
     assert "tick_start = time.perf_counter()" in run_loop
     assert "tick_elapsed = time.perf_counter() - tick_start" in tick_section
     assert "elapsed = time.perf_counter() - run_start" in run_loop
@@ -19480,8 +19516,10 @@ def test_ch16_radix_attention_reuses_token_and_kv_buffers() -> None:
     second_cache = second_state.kv_cache
     assert first_cache.seq_len == 1
     assert second_cache.seq_len == 2
-    assert first_cache.keys.data_ptr() != second_cache.keys.data_ptr()
-    assert first_cache.values.data_ptr() != second_cache.values.data_ptr()
+    # first_cache ends at its written-rows mark, so the second forward appends
+    # row 1 in place. Its one-row view must still be unchanged.
+    assert first_cache.keys.data_ptr() == second_cache.keys.data_ptr()
+    assert first_cache.values.data_ptr() == second_cache.values.data_ptr()
     torch.testing.assert_close(first_cache.key_view, first_keys)
     torch.testing.assert_close(first_cache.value_view, first_values)
     torch.testing.assert_close(second_cache.key_view[:1], first_keys)
@@ -20554,7 +20592,10 @@ def test_ch19_double_buffering_reuses_copy_events_outside_hot_loop() -> None:
     assert "Double-buffer microbatch schedule not initialized" in benchmark_section
     assert "len(buffers)" not in benchmark_section
     assert "len(copy_events)" not in benchmark_section
-    assert "for batch_idx, slot_idx, next_batch_idx, next_slot_idx in self._micro_batch_schedule:" in benchmark_section
+    assert (
+        "for _batch_idx, slot_idx, next_batch_idx, next_slot_idx in self._micro_batch_schedule:"
+        in benchmark_section
+    )
     assert "range(self.micro_batches)" not in benchmark_section
     assert "i % 2" not in benchmark_section
     assert "(i + 1) % 2" not in benchmark_section

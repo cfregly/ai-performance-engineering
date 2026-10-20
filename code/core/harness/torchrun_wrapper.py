@@ -102,6 +102,7 @@ def _run_profiled_target(
     if not output:
         run_target()
         return
+    from core.profiling.torch_profiler_compat import prepare_torch_cuda_profiler
     from torch.profiler import ProfilerActivity, profile
 
     rank = _parse_int_env("RANK") or 0
@@ -109,9 +110,13 @@ def _run_profiled_target(
     if rank:
         trace_path = trace_path.with_name(f"{trace_path.stem}.rank{rank}{trace_path.suffix}")
     trace_path.parent.mkdir(parents=True, exist_ok=True)
+    cuda_profile_requested = torch.cuda.is_available()
     activities = [ProfilerActivity.CPU]
-    if torch.cuda.is_available():
+    if cuda_profile_requested:
         activities.append(ProfilerActivity.CUDA)
+    prepare_torch_cuda_profiler(
+        cuda_profile_requested=cuda_profile_requested
+    )
     with profile(activities=activities) as profiler:
         profiler.add_metadata("aisp_profile_scope", "torchrun_worker_lifetime")
         profiler.add_metadata("aisp_rank", str(rank))

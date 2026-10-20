@@ -70,18 +70,17 @@ def test_w2_113_block_sparse_sparsity_counts_every_local_block() -> None:
     assert attention._calculate_sparsity() == pytest.approx(44.0)
 
 
-def test_w2_114_fp6_header_uses_packed_storage_and_b200_dense_rates() -> None:
+def test_w2_114_historical_fp6_path_truthfully_describes_int6_proxy() -> None:
     source = (CODE_ROOT / "ch19" / "native_fp6_quantization.py").read_text(
         encoding="utf-8"
     )
     header = source.split('"""', 2)[1]
 
-    assert "62.5% vs FP16" in header
-    assert "~4.5 PFLOPS dense for either FP6 or FP8" in header
-    assert "~9 PFLOPS with structured sparsity" in header
-    assert "up to 2.67x as many packed weights as FP16" in header
-    assert "~1400 TFLOPS" not in header
-    assert "~1200 FP8" not in header
+    assert "uniform signed integer quantization" in header
+    assert "not FP6 E3M2" in header
+    assert "not a native FP6 kernel" in header
+    assert "PFLOPS" not in header
+    assert "acceptable for most tasks" not in source
 
 
 def test_w2_115_moe_metadata_counts_rows_as_tokens() -> None:
@@ -186,16 +185,22 @@ def test_w2_119_tma_dispatch_handles_every_selected_tile_shape() -> None:
 def test_w2_120_grace_coherence_requires_a_grace_host(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    from core.common import grace_platform
     from core.scripts.utilities import probe_hardware_capabilities as probe
 
-    cc12 = SimpleNamespace(major=12)
-    monkeypatch.setattr(probe, "_is_grace_host", lambda: False)
-    assert probe._has_grace_coherence(cc12) is False
-    assert "NVLink-C2C" not in probe._build_features(cc12)
-
-    monkeypatch.setattr(probe, "_is_grace_host", lambda: True)
-    assert probe._has_grace_coherence(cc12) is True
-    assert "NVLink-C2C" in probe._build_features(cc12)
+    # The probe takes the host link from core.common.grace_platform, which asks
+    # the CUDA driver. Only the machine name and the driver query are replaced.
+    gb200 = SimpleNamespace(major=10, minor=0)
+    monkeypatch.setattr(grace_platform.platform, "machine", lambda: "x86_64")
+    assert probe._host_link_flags(gb200, 0) == (False, False)
+    monkeypatch.setattr(grace_platform.platform, "machine", lambda: "aarch64")
+    monkeypatch.setattr(grace_platform, "_cuda_driver_attribute", lambda _index, _attr: 0)
+    assert probe._host_link_flags(gb200, 0) == (False, False)
+    monkeypatch.setattr(grace_platform, "_cuda_driver_attribute", lambda _index, _attr: 1)
+    assert probe._host_link_flags(gb200, 0) == (True, True)
+    assert "NVLink-C2C" in probe._build_features(gb200, nvlink_c2c=True, grace_coherence=True)
+    rtx = SimpleNamespace(major=12, minor=0)
+    assert "NVLink-C2C" not in probe._build_features(rtx, nvlink_c2c=False, grace_coherence=False)
 
 
 def test_w2_121_dashboard_treats_nvidia_memory_units_as_mib() -> None:

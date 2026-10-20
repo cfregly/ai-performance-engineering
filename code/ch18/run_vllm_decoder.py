@@ -51,19 +51,21 @@ from core.benchmark.verification_mixin import VerificationPayloadMixin
 DEFAULT_SPEC_CONFIG = Path(__file__).parent / "spec_configs" / "draft_and_verify.json"
 
 
-class GraphMode(Enum):
+class GraphMode(str, Enum):
+    # The str base lets the subprocess harness carry graph_mode to the timed child.
     EAGER = "eager"
     FULL = "full"
     PIECEWISE = "piecewise"
     FULL_AND_PIECEWISE = "full_and_piecewise"
 
     @classmethod
-    def from_str(cls, raw: Optional[str]) -> "GraphMode":
-        normalized = (raw or cls.FULL_AND_PIECEWISE.value).strip().lower().replace("-", "_")
+    def from_str(cls, raw: str) -> "GraphMode":
+        normalized = raw.strip().lower().replace("-", "_")
         for mode in cls:
             if normalized == mode.value:
                 return mode
-        return cls.FULL_AND_PIECEWISE
+        choices = ", ".join(mode.value for mode in cls)
+        raise ValueError(f"Unknown graph mode {raw!r}. Expected one of: {choices}")
 
 
 class SpeculatorConfig:
@@ -356,22 +358,35 @@ class VLLMMoEInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.router = DisaggregatedRouter(config_path=os.getenv("DYNAMO_ROUTER_CONFIG"))
         self.paged_cache: Optional[PagedKVCache] = None
         self.spec_decoder: Optional[SpeculativeDecoder] = None
-        self.spec_config_path: Optional[Path] = None
+        # A str path survives the subprocess harness hand-off, and a Path does not.
+        self.spec_config_path: Optional[str | Path] = None
         self.spec_config: SpeculatorConfig = SpeculatorConfig()
         requested_graph_mode = os.getenv("OPT_MOE_GRAPH_MODE")
-        self.graph_mode = GraphMode.from_str(requested_graph_mode)
+        self.graph_mode = (
+            GraphMode.EAGER if requested_graph_mode is None else GraphMode.from_str(requested_graph_mode)
+        )
         enable_graphs_override = os.getenv("OPT_MOE_ENABLE_GRAPHS")
+        if enable_graphs_override not in (None, "0", "1"):
+            raise ValueError(f"OPT_MOE_ENABLE_GRAPHS must be 0 or 1, got {enable_graphs_override!r}")
         self.enable_graphs = (
             enable_graphs_override == "1"
             if enable_graphs_override is not None
-            else requested_graph_mode is not None and self.graph_mode != GraphMode.EAGER
+            else self.graph_mode != GraphMode.EAGER
         )
         self.prefill_workers = env_override_int("OPT_MOE_PREFILL_WORKERS", 2)
         self.decode_workers = env_override_int("OPT_MOE_DECODE_WORKERS", 2)
         self._dtype_bytes = dtype_bytes(self.config.dtype_obj)
-        total_tokens = self.config.context_window + self.config.decode_tokens
         self.engine_variant = "v1"
-        self.max_capture_tokens = env_override_int("OPT_MOE_MAX_CAPTURE_TOKENS", total_tokens)
+        # None means no explicit limit. Full-graph replay then covers the whole context plus decode length.
+        max_capture_override = os.getenv("OPT_MOE_MAX_CAPTURE_TOKENS")
+        try:
+            self.max_capture_tokens: Optional[int] = (
+                None if max_capture_override is None else int(max_capture_override)
+            )
+        except ValueError as exc:
+            raise ValueError(
+                f"OPT_MOE_MAX_CAPTURE_TOKENS must be an integer, got {max_capture_override!r}"
+            ) from exc
         self._full_graph: Optional[torch.cuda.CUDAGraph] = None
         self._full_graph_tokens: Optional[torch.Tensor] = None
         self._full_prefill_done: Optional[torch.cuda.Event] = None
@@ -486,6 +501,15 @@ class VLLMMoEInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
     # --------------------------------------------------------------------- setup
     def setup(self) -> None:
+        self._validate_graph_request()
+        config_path: Optional[Path] = None
+        if self.spec_config_path is not None:
+            config_path = Path(self.spec_config_path)
+            if not config_path.is_file():
+                raise FileNotFoundError(f"Speculator config not found: {config_path}")
+        elif DEFAULT_SPEC_CONFIG.exists():
+            config_path = DEFAULT_SPEC_CONFIG
+        self.spec_config = SpeculatorConfig.load(config_path)
         cfg = self.config
         self.model = SimpleMoEGPT(cfg, device=self.device).eval()
         self._replace_moe_dispatch(self.model, cfg)
@@ -516,12 +540,6 @@ class VLLMMoEInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.draft_model = SimpleMoEGPT(draft_cfg, device=self.device).eval()
         self._replace_moe_dispatch(self.draft_model, draft_cfg)
 
-        config_path: Optional[Path] = None
-        if self.spec_config_path and self.spec_config_path.exists():
-            config_path = self.spec_config_path
-        elif DEFAULT_SPEC_CONFIG.exists():
-            config_path = DEFAULT_SPEC_CONFIG
-        self.spec_config = SpeculatorConfig.load(config_path)
         self.paged_cache = PagedKVCache(
             batch_size=cfg.batch_size,
             max_tokens=cfg.context_window + cfg.decode_tokens,
@@ -578,7 +596,7 @@ class VLLMMoEInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark):
             if logger.start():
                 self._mem_logger = logger
                 self._mem_log_path = log_path
-        if self.enable_graphs and self._cuda_available:
+        if self.graph_mode != GraphMode.EAGER:
             self._prepare_graphs()
 
     def _refresh_router_metrics(self) -> None:
@@ -649,6 +667,27 @@ class VLLMMoEInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark):
         return tokens
 
     # ----------------------------------------------------------- graph preparation
+    def _validate_graph_request(self) -> None:
+        """Reject a graph request that cannot run as labeled, before setup allocates anything."""
+        # The subprocess harness hands graph_mode to the child as its plain string value.
+        self.graph_mode = GraphMode(self.graph_mode)
+        if self.enable_graphs != (self.graph_mode != GraphMode.EAGER):
+            raise ValueError(
+                f"enable_graphs={self.enable_graphs} conflicts with graph mode "
+                f"'{self.graph_mode.value}'. Choose the execution path with OPT_MOE_GRAPH_MODE "
+                "or --graph-mode."
+            )
+        if self.max_capture_tokens is not None:
+            if self.max_capture_tokens <= 0:
+                raise ValueError(f"max_capture_tokens must be positive, got {self.max_capture_tokens}")
+            if self.graph_mode == GraphMode.EAGER:
+                raise ValueError(
+                    f"max_capture_tokens={self.max_capture_tokens} has no effect in graph mode 'eager' "
+                    "because it limits CUDA graph replay only. Unset OPT_MOE_MAX_CAPTURE_TOKENS and "
+                    "drop --max-capture-tokens."
+                )
+        self._require_graph_capture_support()
+
     def _require_graph_capture_support(self) -> None:
         """Reject graph modes whose current decode/dispatch control flow is not capturable."""
         if self.graph_mode == GraphMode.EAGER:
@@ -661,15 +700,13 @@ class VLLMMoEInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
     def _prepare_graphs(self) -> None:
         cfg = self.config
-        if not self.enable_graphs:
-            return
-        if not self._cuda_available:
-            return
         if self.graph_mode == GraphMode.EAGER:
             return
         # Fail before constructing or entering a CUDAGraph. The current path reaches
         # Tensor.item() in acceptance control and a host metadata read in MoE dispatch.
         self._require_graph_capture_support()
+        if not self._cuda_available:
+            raise RuntimeError(f"CUDA graph mode '{self.graph_mode.value}' requires a CUDA device")
         if self._prefill_next_values is None:
             self._prefill_next_values = torch.empty(
                 (cfg.batch_size, 1),
@@ -769,7 +806,7 @@ class VLLMMoEInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark):
         return (
             self._full_graph is not None
             and self._full_graph_tokens is not None
-            and total_tokens <= self.max_capture_tokens
+            and (self.max_capture_tokens is None or total_tokens <= self.max_capture_tokens)
         )
 
     def _can_use_piecewise_graph(self) -> bool:
@@ -993,18 +1030,11 @@ class VLLMMoEInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark):
                     spec_accept_used = self._captured_piecewise_spec_accept
                     spec_chunk_used = self._captured_piecewise_spec_chunk
             else:
-                (
-                    ttft_times,
-                    tpot_times,
-                    graph_path,
-                    spec_accept_used,
-                    spec_chunk_used,
-                    tokens,
-                    ttft_total_ms,
-                    tpot_total_ms,
-                    ttft_count,
-                    tpot_count,
-                ) = self._run_eager_path()
+                raise RuntimeError(
+                    f"Graph mode '{self.graph_mode.value}' has no replayable CUDA graph "
+                    f"(max_capture_tokens={self.max_capture_tokens}). Refusing to time the "
+                    "eager path under a graph-mode label."
+                )
 
         telemetry_after = query_gpu_telemetry(logical_index)
 
@@ -1207,7 +1237,7 @@ def _run_harness(
 
     benchmark = get_benchmark()
     if spec_config:
-        benchmark.spec_config_path = Path(spec_config)
+        benchmark.spec_config_path = spec_config
     if graph_mode:
         benchmark.graph_mode = GraphMode.from_str(graph_mode)
         benchmark.enable_graphs = benchmark.graph_mode != GraphMode.EAGER
@@ -1220,8 +1250,12 @@ def _run_harness(
         config.warmup = warmup
     harness = BenchmarkHarness(mode=BenchmarkMode.CUSTOM, config=config)
     result = harness.benchmark(benchmark)
-    mean_ms = result.timing.mean_ms if result.timing else 0.0
-    print(f"Optimized MoE inference mean latency: {mean_ms:.3f} ms")
+    if result.errors or result.timing is None:
+        raise RuntimeError(
+            "Optimized MoE inference benchmark failed:\n"
+            + "\n".join(result.errors or ["no timing samples"])
+        )
+    print(f"Optimized MoE inference mean latency: {result.timing.mean_ms:.3f} ms")
 
 
 def main(argv: Optional[List[str]] = None) -> int:
@@ -1232,17 +1266,25 @@ def main(argv: Optional[List[str]] = None) -> int:
         "--graph-mode",
         type=str,
         choices=[m.value for m in GraphMode],
-        help="Graph execution mode (default: full_and_piecewise or OPT_MOE_GRAPH_MODE env)",
+        help=(
+            "Graph execution mode (default: OPT_MOE_GRAPH_MODE env, else eager). Only eager runs "
+            "today. The other modes fail before capture because speculative acceptance and MoE "
+            "dispatch read device data on the host."
+        ),
     )
     parser.add_argument(
         "--max-capture-tokens",
         type=int,
-        help="Maximum total tokens allowed for graph capture before falling back to piecewise/eager",
+        help=(
+            "Context plus decode token limit for full CUDA graph replay (default: "
+            "OPT_MOE_MAX_CAPTURE_TOKENS env, else no limit). It applies only to graph modes, and "
+            "every graph mode fails today. Eager rejects it because the limit would have no effect."
+        ),
     )
     parser.add_argument(
         "--spec-config",
         type=str,
-        help=f"Optional path to Speculators-style config; defaults to {DEFAULT_SPEC_CONFIG}",
+        help=f"Path to a Speculators-style config. A missing file fails. Default: {DEFAULT_SPEC_CONFIG}",
     )
     args = parser.parse_args(argv)
     _run_harness(

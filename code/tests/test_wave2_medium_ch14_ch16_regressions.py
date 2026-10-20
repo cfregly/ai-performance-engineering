@@ -60,7 +60,7 @@ def test_w2_058_ptq_tolerance_rejects_zero_and_unrelated_outputs() -> None:
     reference = torch.tensor([[-0.75, -0.25, 0.25, 0.75]])
     rtol, atol = PTQ_OUTPUT_TOLERANCE
 
-    assert PTQ_OUTPUT_TOLERANCE == (0.25, 0.15)
+    assert PTQ_OUTPUT_TOLERANCE == (0.05, 0.15)
     assert not torch.allclose(torch.zeros_like(reference), reference, rtol=rtol, atol=atol)
     assert not torch.allclose(-reference, reference, rtol=rtol, atol=atol)
 
@@ -71,7 +71,7 @@ def test_w2_059_dense_attention_family_uses_bounded_shared_tolerance() -> None:
     reference = torch.tensor([[-0.25, -0.10, 0.10, 0.25]])
     rtol, atol = DENSE_ATTENTION_OUTPUT_TOLERANCE
 
-    assert DENSE_ATTENTION_OUTPUT_TOLERANCE == (5e-2, 5e-2)
+    assert DENSE_ATTENTION_OUTPUT_TOLERANCE == (2e-2, 2e-3)
     assert not torch.allclose(torch.zeros_like(reference), reference, rtol=rtol, atol=atol)
 
     ch16 = Path(__file__).resolve().parents[1] / "ch16"
@@ -188,9 +188,12 @@ def test_w2_061_blackwell_generate_passes_cache_to_prefill_and_decode() -> None:
     class FakeCache:
         def __init__(self) -> None:
             self.clear_count = 0
+            # One attention layer, one row. generate() checks these lengths.
+            self._layer_seq_lens_host = [[0]]
 
         def clear(self) -> None:
             self.clear_count += 1
+            self._layer_seq_lens_host[0][0] = 0
 
     class CacheAwareModel:
         def __init__(self) -> None:
@@ -198,6 +201,8 @@ def test_w2_061_blackwell_generate_passes_cache_to_prefill_and_decode() -> None:
 
         def __call__(self, tokens: torch.Tensor, *, kv_cache: object) -> torch.Tensor:
             self.calls.append((tokens.clone(), kv_cache))
+            # The one attention layer appends this forward's tokens.
+            kv_cache._layer_seq_lens_host[0][0] += tokens.size(1)
             logits = torch.zeros(tokens.size(0), tokens.size(1), 4)
             logits[..., len(self.calls) % 4] = 1.0
             return logits
@@ -205,6 +210,7 @@ def test_w2_061_blackwell_generate_passes_cache_to_prefill_and_decode() -> None:
     pipeline = BlackwellInferencePipeline.__new__(BlackwellInferencePipeline)
     pipeline.model = CacheAwareModel()
     pipeline.kv_cache = FakeCache()
+    pipeline.max_batch_size = 1
     pipeline._next_token_buffer = None
     pipeline._next_token_values = None
     pipeline._generated_token_buffer = None
@@ -243,7 +249,9 @@ def test_w2_062_radix_cache_extensions_use_copy_on_write() -> None:
     torch.testing.assert_close(prefix.key_view[:, 0, 0], torch.tensor([1.0, 2.0]))
     torch.testing.assert_close(left.key_view[:, 0, 0], torch.tensor([1.0, 2.0, 3.0]))
     torch.testing.assert_close(right.key_view[:, 0, 0], torch.tensor([1.0, 2.0, 4.0]))
-    assert left.keys.data_ptr() != prefix.keys.data_ptr()
+    # The first branch owns the prefix's unused row and writes it in place.
+    # The second branch must copy.
+    assert left.keys.data_ptr() == prefix.keys.data_ptr()
     assert right.keys.data_ptr() != prefix.keys.data_ptr()
     assert left.keys.data_ptr() != right.keys.data_ptr()
 

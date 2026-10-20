@@ -55,9 +55,9 @@ defaults:
 jobs:
   validate:
     runs-on: ubuntu-latest
-    # Full CPU validation can approach 30 minutes on slower hosted runners.
+    # Full CPU validation exceeded 35 minutes on a slower hosted runner.
     # Keep the complete suite and leave time for the final audits and artifacts.
-    timeout-minutes: 35
+    timeout-minutes: 60
 
     steps:
       - name: Checkout repository
@@ -80,7 +80,7 @@ jobs:
             pytest==8.3.4 \
             pytest-cov==7.1.0 \
             coverage[toml]==7.15.2 \
-            cmake==3.31.10 \
+            cmake==4.4.4 \
             pyyaml==6.0.2 \
             pydantic==2.12.4 \
             typer==0.15.4 \

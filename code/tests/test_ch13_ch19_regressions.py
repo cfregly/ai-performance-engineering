@@ -14,7 +14,7 @@ import ch19.optimized_mxfp8_moe as optimized_mxfp8_moe
 import ch19.optimized_fp4_weight_quantization as optimized_fp4
 from ch13.optimized_autograd_standard import OptimizedAutogradCompiledBenchmark
 from ch19.mxfp8_moe_common import bucket_by_expert, restore_bucketed_reduce
-from ch19.native_fp6_quantization import FP6Tensor
+from ch19.native_fp6_quantization import PackedInt6Tensor
 
 
 def test_optimized_autograd_standard_uses_wall_clock_with_full_sync() -> None:
@@ -301,9 +301,9 @@ def test_mxfp8_moe_benchmark_wrappers_use_inference_mode() -> None:
         assert "self.weights.numel()" not in capture_source
 
 
-def test_native_fp6_quantization_avoids_tensor_bool_scale_branch() -> None:
-    source = inspect.getsource(FP6Tensor._quantize_fp6)
-    forward_source = inspect.getsource(native_fp6.FP6Linear.forward)
+def test_packed_int6_quantization_avoids_tensor_bool_scale_branch() -> None:
+    source = inspect.getsource(PackedInt6Tensor._quantize_int6)
+    forward_source = inspect.getsource(native_fp6.PackedInt6Linear.forward)
 
     assert "if abs_max > 0" not in source
     assert "torch.where(" not in source
@@ -314,10 +314,11 @@ def test_native_fp6_quantization_avoids_tensor_bool_scale_branch() -> None:
     assert "return F.linear(x, weight, self.bias)" in forward_source
 
     data = torch.zeros(8, dtype=torch.float16)
-    fp6 = FP6Tensor(data)
+    int6 = PackedInt6Tensor(data)
 
-    assert fp6.scales.device == data.device
-    torch.testing.assert_close(fp6.scales, torch.ones_like(fp6.scales))
+    assert int6.scales.device == data.device
+    torch.testing.assert_close(int6.scales, torch.ones_like(int6.scales))
+    torch.testing.assert_close(int6.dequantize(), data, rtol=0, atol=0)
 
 
 def test_native_fp4_fp6_demo_timing_uses_cuda_events() -> None:
@@ -333,12 +334,12 @@ def test_native_fp4_fp6_demo_timing_uses_cuda_events() -> None:
         assert "time.time()" not in source
 
     fp4_demo = inspect.getsource(native_fp4.benchmark_fp4)
-    fp6_demo = inspect.getsource(native_fp6.benchmark_fp6_vs_fp16)
+    int6_demo = inspect.getsource(native_fp6.benchmark_int6_vs_fp16)
 
     assert fp4_demo.count("_benchmark_forward(") == 4
     assert "time.perf_counter()" not in fp4_demo
-    assert fp6_demo.count("_benchmark_forward(") == 2
-    assert "time.time()" not in fp6_demo
+    assert int6_demo.count("_benchmark_forward(") == 2
+    assert "time.time()" not in int6_demo
 
 
 def test_native_fp4_fp8_bridge_reuses_weight_activation_and_scale_buffers() -> None:

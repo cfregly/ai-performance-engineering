@@ -10,12 +10,12 @@ from functools import partial
 from typing import Dict, Optional, Tuple
 
 import torch
-import torch.nn as nn
 
 from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.common.device_utils import require_cuda_device
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig, WorkloadMetadata
 from core.profiling.nvtx_helper import get_nvtx_enabled, nvtx_range
+from ch16.baseline_piece_graphs import PIECE_GRAPHS_OUTPUT_TOLERANCE
 from ch16.piece_graphs_model import RegionalPieceGraph
 
 resolve_device = partial(
@@ -153,7 +153,7 @@ class OptimizedPieceGraphsBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 "fp8": False,
                 "tf32": torch.backends.cuda.matmul.allow_tf32,
             },
-            output_tolerance=(0.1, 1.0),
+            output_tolerance=PIECE_GRAPHS_OUTPUT_TOLERANCE,
         )
 
     def teardown(self) -> None:

@@ -15,6 +15,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, Protocol
 
+from core.common.grace_platform import host_grace_soc_id
+
 ObservationStatus = Literal["observed", "not_observed", "unknown"]
 GpuStatus = Literal["available", "unavailable", "unknown"]
 NumaMappingStatus = Literal["known", "unknown", "not_applicable"]
@@ -251,7 +253,11 @@ class ReadOnlyDataLoadingAnalysisProvider:
 
 
 def observe_cpu() -> CpuObservation:
-    """Observe CPU identity; only an explicit Grace marker establishes Grace."""
+    """Observe CPU identity. Only an NVIDIA SoC ID in sysfs establishes Grace.
+
+    On arm64, /proc/cpuinfo lists Arm core part numbers and never names Grace,
+    so cpuinfo supplies only the model text.
+    """
     architecture = platform.machine().strip() or None
     logical_cpu_count = os.cpu_count()
     cpuinfo_path = Path("/proc/cpuinfo")
@@ -287,19 +293,22 @@ def observe_cpu() -> CpuObservation:
         if model is not None:
             break
 
-    if cpuinfo:
-        explicit_grace = re.search(
-            r"\bnvidia\s+grace\b|\bgrace\s+(?:cpu|processor)\b",
-            cpuinfo,
-            flags=re.IGNORECASE,
-        )
-        is_grace: bool | None = True if explicit_grace else None
-        grace_status: ObservationStatus = "observed" if explicit_grace else "not_observed"
-        provenance = "platform.machine, os.cpu_count, /proc/cpuinfo"
+    grace_soc_id = host_grace_soc_id()
+    is_grace: bool | None = True if grace_soc_id is not None else None
+    grace_status: ObservationStatus
+    if grace_soc_id is not None:
+        grace_status = "observed"
+    elif cpuinfo:
+        grace_status = "not_observed"
     else:
-        is_grace = None
         grace_status = "unknown"
-        provenance = "platform.machine, os.cpu_count; /proc/cpuinfo unavailable"
+    provenance = "platform.machine, os.cpu_count, /sys/bus/soc/devices/soc*/soc_id"
+    if cpuinfo:
+        provenance += ", /proc/cpuinfo"
+    else:
+        provenance += ". /proc/cpuinfo unavailable"
+    if grace_soc_id is not None:
+        provenance += f". Grace SoC ID {grace_soc_id}"
 
     return CpuObservation(
         architecture=architecture,

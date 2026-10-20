@@ -13,17 +13,20 @@ class SimpleLLM(nn.Module):
         super().__init__()
         self.hidden_dim = hidden_dim
         self.layers = nn.ModuleList([nn.Linear(hidden_dim, hidden_dim) for _ in range(num_layers)])
+        # The default Linear init shrinks activations at every layer until the
+        # biases dominate. Every prompt then decays to the same output, and
+        # verification cannot separate a right answer from a wrong one. He init
+        # with zero bias preserves the expected activation scale at each layer,
+        # so the decoded state depends on the prompt and on the number of
+        # decode steps.
+        for layer in self.layers:
+            nn.init.kaiming_normal_(layer.weight, nonlinearity="relu")
+            nn.init.zeros_(layer.bias)
         self.register_buffer("_prefill_input_buffer", torch.empty(0), persistent=False)
-        self.register_buffer(
-            "_prefill_feature_scale",
-            torch.linspace(
-                1.0 / max(hidden_dim, 1),
-                1.0,
-                hidden_dim,
-                dtype=torch.bfloat16,
-            ),
-            persistent=False,
-        )
+        self.register_buffer("_prefill_angle_buffer", torch.empty(0), persistent=False)
+        # Per-feature angular frequencies for the sinusoidal token features.
+        # _prefill_input builds them in float32 on first use.
+        self.register_buffer("_prefill_feature_scale", torch.empty(0), persistent=False)
 
     def _prefill_input(self, prompt_tokens: torch.Tensor) -> torch.Tensor:
         batch_size = int(prompt_tokens.size(0))
@@ -40,13 +43,39 @@ class SimpleLLM(nn.Module):
                 device=prompt_tokens.device,
                 dtype=torch.bfloat16,
             )
+        if (
+            self._prefill_angle_buffer.numel() < numel
+            or self._prefill_angle_buffer.device != prompt_tokens.device
+            or self._prefill_angle_buffer.dtype != torch.float32
+        ):
+            self._prefill_angle_buffer = torch.empty(
+                numel,
+                device=prompt_tokens.device,
+                dtype=torch.float32,
+            )
+        # Module.to(torch.bfloat16) casts every floating buffer, including the
+        # frequencies. In bf16 only 512 of 1024 frequencies stay distinct, so
+        # rebuild them in float32 after any cast or move.
+        if (
+            self._prefill_feature_scale.numel() != self.hidden_dim
+            or self._prefill_feature_scale.device != prompt_tokens.device
+            or self._prefill_feature_scale.dtype != torch.float32
+        ):
+            self._prefill_feature_scale = torch.linspace(
+                1.0 / max(self.hidden_dim, 1),
+                1.0,
+                self.hidden_dim,
+                device=prompt_tokens.device,
+                dtype=torch.float32,
+            )
+        # bf16 holds integers exactly only up to 256, so a bf16 product would
+        # merge nearby token ids. Build the angles in float32 and round only
+        # the sine features to bf16.
+        angles = self._prefill_angle_buffer[:numel].view(shape)
+        angles.copy_(prompt_tokens.unsqueeze(-1).expand(shape))
+        angles.mul_(self._prefill_feature_scale)
         prefill_input = self._prefill_input_buffer[:numel].view(shape)
-        torch.mul(
-            prompt_tokens.unsqueeze(-1),
-            self._prefill_feature_scale,
-            out=prefill_input,
-        )
-        prefill_input.mul_(1.0 / 10_000.0)
+        torch.sin(angles, out=prefill_input)
         return prefill_input
 
     def prefill(self, prompt_tokens: torch.Tensor) -> torch.Tensor:

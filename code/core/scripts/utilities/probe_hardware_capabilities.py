@@ -6,9 +6,9 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import platform
 import shutil
 import subprocess
+import sys
 import tempfile
 import textwrap
 import time
@@ -24,7 +24,19 @@ REPO_ROOT = Path(__file__).resolve().parents[3]  # core/scripts/utilities -> cor
 ARTIFACTS_DIR = REPO_ROOT / "artifacts"
 CACHE_PATH = ARTIFACTS_DIR / "hardware_capabilities.json"
 
-CUDA_ATTR_CLUSTER_LAUNCH = 164
+# The harness and setup.sh run this file as a script, which leaves the repo
+# root off sys.path. Add it so the core package imports, as
+# generate_arch_detection_header.py does.
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from core.common.grace_platform import host_link_flags as _host_link_flags  # noqa: E402
+
+# cudaDevAttrClusterLaunch in driver_types.h (CU_DEVICE_ATTRIBUTE_CLUSTER_LAUNCH in cuda.h).
+CUDA_ATTR_CLUSTER_LAUNCH = 120
+
+# B200, B300, GB200 and GB300 all use HBM3e. SM 12.x parts use GDDR7 or LPDDR5X.
+HBM3E_CAPABILITIES = frozenset({(10, 0), (10, 3)})
 
 
 def _run_command(
@@ -222,44 +234,39 @@ def _query_cluster_launch(device_index: int) -> Optional[int]:
         return None
 
 
-def _read_grace_host_identity() -> str:
-    """Read host identity sources that can explicitly name an NVIDIA Grace CPU."""
-    samples: List[str] = []
-    for path in (
-        Path("/proc/cpuinfo"),
-        Path("/sys/firmware/devicetree/base/model"),
-        Path("/sys/devices/virtual/dmi/id/product_name"),
-    ):
-        try:
-            samples.append(path.read_text(encoding="utf-8", errors="ignore"))
-        except OSError:
-            continue
-    return "\n".join(samples).lower()
+def _architecture_label(props) -> str:
+    """Name the GPU family from NVIDIA's compute capability table.
+
+    The label describes the GPU only. For SM 10.0, 10.3, 12.0 and 12.1 it
+    agrees with core.harness.arch_config. SM 12.0 is the discrete GeForce
+    RTX 50 and RTX PRO family. SM 12.1 is GB10. NVLink-C2C and Grace
+    coherence come from core.common.grace_platform, never from this label.
+    https://developer.nvidia.com/cuda/gpus
+    """
+    capability = (props.major, props.minor)
+    if capability == (12, 0):
+        return "blackwell_consumer"
+    if capability == (12, 1):
+        return "grace_blackwell"
+    if props.major == 10 and props.minor >= 3:
+        return "blackwell_ultra"
+    if props.major in (10, 11):
+        return "blackwell"
+    if props.major == 9:
+        return "hopper"
+    return "other"
 
 
-def _is_grace_host() -> bool:
-    """Return true only when an ARM host explicitly identifies NVIDIA Grace."""
-    if platform.machine().lower() not in ("aarch64", "arm64"):
-        return False
-    identity = _read_grace_host_identity()
-    return "nvidia" in identity and "grace" in identity
-
-
-def _has_grace_coherence(props) -> bool:
-    """Grace-Blackwell coherent memory: a Grace (ARM) host with a Blackwell-class
-    GPU. GB200/GB300 report CC 10.x; GB10 reports CC 12.x. A non-Grace (x86)
-    B200/B300 has no NVLink-C2C coherent fabric."""
-    return props.major >= 10 and _is_grace_host()
-
-
-def _build_features(props) -> List[str]:
+def _build_features(props, *, nvlink_c2c: bool, grace_coherence: bool) -> List[str]:
     features: List[str] = []
-    if props.major >= 10:
+    if (props.major, props.minor) in HBM3E_CAPABILITIES:
         features.append("HBM3e")
+    if props.major >= 10:
         features.append("Stream-ordered memory APIs")
-    if _has_grace_coherence(props):
+    if nvlink_c2c:
         features.append("NVLink-C2C")
-        features.append("Grace-Blackwell coherence fabric")
+    if grace_coherence:
+        features.append("Grace hardware coherence")
     return features
 
 
@@ -304,17 +311,12 @@ def _probe_device(device_index: int) -> Dict[str, Any]:
     else:
         dsmem_note = cluster_note or "Cluster launch disabled"
     tensor_core_desc = "5th Gen" if props.major >= 10 else ("4th Gen" if props.major == 9 else "Unknown")
+    nvlink_c2c, grace_coherence = _host_link_flags(props, device_index)
     entry: Dict[str, Any] = {
         "device_index": device_index,
         "name": props.name,
         "key": f"sm_{props.major}{props.minor}",
-        "architecture": (
-            "grace_blackwell" if props.major >= 12
-            else "blackwell_ultra" if (props.major == 10 and props.minor >= 3)
-            else "blackwell" if props.major >= 10
-            else "hopper" if props.major >= 9
-            else "other"
-        ),
+        "architecture": _architecture_label(props),
         "compute_capability": f"{props.major}.{props.minor}",
         "total_memory_gb": props.total_memory / (1024 ** 3),
         "num_sms": props.multi_processor_count,
@@ -324,12 +326,14 @@ def _probe_device(device_index: int) -> Dict[str, Any]:
         "max_shared_mem_per_block": props.shared_memory_per_block,
         "max_shared_mem_per_sm": props.shared_memory_per_multiprocessor,
         "l2_cache_bytes": getattr(props, "L2_cache_size", 0),
-        "features": _build_features(props),
+        "features": _build_features(props, nvlink_c2c=nvlink_c2c, grace_coherence=grace_coherence),
         "tensor_cores": tensor_core_desc,
         "memory_bandwidth_tbps": None,
-        "max_unified_memory_tb": 30 if props.major >= 12 else None,
-        "nvlink_c2c": _has_grace_coherence(props),
-        "grace_coherence": _has_grace_coherence(props),
+        # Rack-scale unified memory, such as the NVL72 total, is not observable
+        # from one device, so the probe does not report a value.
+        "max_unified_memory_tb": None,
+        "nvlink_c2c": nvlink_c2c,
+        "grace_coherence": grace_coherence,
         "notes": [],
         "tma": {
             "supported": tma_supported,
@@ -341,7 +345,9 @@ def _probe_device(device_index: int) -> Dict[str, Any]:
         "cluster": {
             "supports_clusters": cluster_supported,
             "has_dsmem": dsmem_supported,
-            "max_cluster_size": 8 if props.major >= 10 else 4 if props.major >= 9 else 1,
+            # 8 is the portable cluster limit from SM 9.0 on. Larger clusters need
+            # cudaFuncAttributeNonPortableClusterSizeAllowed.
+            "max_cluster_size": 8 if props.major >= 9 else 1,
             "notes": cluster_note,
         },
     }

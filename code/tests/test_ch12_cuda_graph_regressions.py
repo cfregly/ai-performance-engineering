@@ -26,7 +26,9 @@ def test_conditional_graph_populates_cuda_owned_if_else_bodies_after_node_creati
     text = source("ch12/optimized_graph_conditional_runtime.cu")
     compact = "".join(text.split())
 
-    assert "#if CUDA_VERSION >= 12040" in text
+    # An IF node with an ELSE body (conditional.size = 2) needs CUDA 12.8.
+    assert "#if CUDA_VERSION >= 12080" in text
+    assert "#if CUDA_VERSION >= 12040" not in text
     assert "#if CUDART_VERSION >= 13000" in text
     assert "cudaGraphCondTypeWhile" not in text
     assert "cond_node_params.conditional.type=cudaGraphCondTypeIf;" in compact

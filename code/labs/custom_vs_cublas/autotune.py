@@ -8,13 +8,19 @@ It benchmarks all available kernels and caches the optimal choice per problem si
 How it works:
 1. Tries all available optimizations (stages 2-6)
 2. Measures actual performance on your hardware
-3. Caches the winner for instant selection next time
+3. Caches the winner and every kernel's time on disk only when every kernel ran,
+   so later runs skip tuning
 4. Adapts to different matrix sizes (small vs large may prefer different kernels)
+
+Cache files written before cache format version 2 can hold winners from sweeps
+in which a faster kernel failed. Their entries are ignored and re-tuned, and the
+next complete sweep rewrites the file.
 """
 
 import heapq
 import json
 import os
+import warnings
 from typing import Callable, Dict, Optional, Union
 
 import torch
@@ -32,6 +38,12 @@ from tcgen05_loader import (
 # Cache file location
 _CACHE_DIR = os.path.dirname(os.path.abspath(__file__))
 _CACHE_FILE = os.path.join(_CACHE_DIR, ".autotune_cache.json")
+_CACHE_FORMAT_VERSION = 2
+
+# Winners of sweeps in which at least one kernel failed. The failed kernel may
+# have been the fastest, so these winners serve only the current process and
+# are never written to the on-disk cache.
+_PARTIAL_SWEEP_WINNERS: Dict[str, str] = {}
 
 
 DeviceLike = Union[torch.device, str, int]
@@ -58,24 +70,59 @@ def _get_device_key(device: Optional[DeviceLike] = None) -> str:
     return f"{props.name}_{props.major}.{props.minor}"
 
 
-def _load_cache() -> Dict:
-    """Load the autotune cache from disk."""
-    if os.path.exists(_CACHE_FILE):
+def _validate_cache_entry(cache_key: str, entry: object) -> None:
+    """Require a cached winner to be the fastest of its recorded sweep."""
+    timings = entry.get("timings_ms") if isinstance(entry, dict) else None
+    if (
+        not isinstance(timings, dict)
+        or not timings
+        or not all(isinstance(t, (int, float)) for t in timings.values())
+        or set(entry) != {"winner", "timings_ms"}
+        or entry["winner"] != min(timings, key=timings.get)
+    ):
+        raise RuntimeError(
+            f"Autotune cache {_CACHE_FILE} entry {cache_key!r} must hold "
+            f"'timings_ms' for every swept kernel and the fastest kernel as "
+            f"'winner', got {entry!r}"
+        )
+
+
+def _load_cache() -> Dict[str, Dict]:
+    """Load complete-sweep entries from the on-disk autotune cache."""
+    if not os.path.exists(_CACHE_FILE):
+        return {}
+    with open(_CACHE_FILE, "r", encoding="utf-8") as f:
         try:
-            with open(_CACHE_FILE, 'r') as f:
-                return json.load(f)
-        except:
-            pass
-    return {}
+            data = json.load(f)
+        except json.JSONDecodeError as exc:
+            raise RuntimeError(f"Autotune cache {_CACHE_FILE} is not valid JSON: {exc}") from exc
+    if not isinstance(data, dict):
+        raise RuntimeError(f"Autotune cache {_CACHE_FILE} must hold a JSON object")
+    if "format_version" not in data:
+        warnings.warn(
+            f"Ignoring {len(data)} autotune cache entries in {_CACHE_FILE}. They "
+            f"predate cache format version {_CACHE_FORMAT_VERSION} and may hold "
+            f"winners from partial sweeps. The next complete sweep rewrites the file.",
+            RuntimeWarning,
+            stacklevel=3,
+        )
+        return {}
+    if data["format_version"] != _CACHE_FORMAT_VERSION or not isinstance(data.get("entries"), dict):
+        raise RuntimeError(
+            f"Autotune cache {_CACHE_FILE} must have format_version "
+            f"{_CACHE_FORMAT_VERSION} and an 'entries' object, got "
+            f"format_version={data['format_version']!r}"
+        )
+    for cache_key, entry in data["entries"].items():
+        _validate_cache_entry(cache_key, entry)
+    return data["entries"]
 
 
-def _save_cache(cache: Dict):
-    """Save the autotune cache to disk."""
-    try:
-        with open(_CACHE_FILE, 'w') as f:
-            json.dump(cache, f, indent=2)
-    except:
-        pass
+def _save_cache(cache: Dict[str, Dict]) -> None:
+    """Write complete-sweep entries to the on-disk autotune cache."""
+    with open(_CACHE_FILE, "w", encoding="utf-8") as f:
+        json.dump({"format_version": _CACHE_FORMAT_VERSION, "entries": cache}, f, indent=2)
+        f.write("\n")
 
 
 def _benchmark_kernel(fn: Callable, A: torch.Tensor, B: torch.Tensor, 
@@ -140,10 +187,21 @@ def autotune(
     
     # Check cache
     cache = _load_cache()
-    if cache_key in cache:
-        winner = cache[cache_key]
+    entry = cache.get(cache_key)
+    if entry is not None and set(entry["timings_ms"]) == set(KERNELS):
+        winner = entry["winner"]
         if verbose:
             print(f"  [Autotune cache hit: {winner}]")
+        return winner
+    if entry is not None and verbose:
+        print(
+            f"  [Autotune cache entry timed {sorted(entry['timings_ms'])}, "
+            f"not the current kernels {sorted(KERNELS)}. Re-tuning.]"
+        )
+    if cache_key in _PARTIAL_SWEEP_WINNERS:
+        winner = _PARTIAL_SWEEP_WINNERS[cache_key]
+        if verbose:
+            print(f"  [Autotune partial-sweep winner for this process: {winner}]")
         return winner
     
     if verbose:
@@ -175,10 +233,10 @@ def autotune(
             del A, B
             torch.cuda.empty_cache()
 
+    failure_summary = "; ".join(
+        f"{name}={message}" for name, message in sorted(failures.items())
+    )
     if not results:
-        failure_summary = "; ".join(
-            f"{name}={message}" for name, message in sorted(failures.items())
-        )
         raise RuntimeError(
             f"Autotuning {M}x{N}x{K} on {device_key} failed: "
             f"all {len(KERNELS)} kernels failed ({failure_summary})"
@@ -190,9 +248,18 @@ def autotune(
     if verbose:
         print(f"  ★ Winner: {winner} ({results[winner]:.3f} ms) ★\n")
     
-    # Update cache
-    cache[cache_key] = winner
-    _save_cache(cache)
+    if failures:
+        _PARTIAL_SWEEP_WINNERS[cache_key] = winner
+        warnings.warn(
+            f"Autotuning {M}x{N}x{K} on {device_key}: {len(failures)} of "
+            f"{len(KERNELS)} kernels failed ({failure_summary}). Using {winner!r} "
+            f"for this process without saving it to {_CACHE_FILE}.",
+            RuntimeWarning,
+            stacklevel=2,
+        )
+    else:
+        cache[cache_key] = {"winner": winner, "timings_ms": results}
+        _save_cache(cache)
     
     return winner
 
@@ -201,8 +268,10 @@ def matmul_autotuned(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
     """
     Execute GEMM using the autotuned best kernel.
     
-    The first call for a given size will run autotuning (takes a few seconds).
-    Subsequent calls use the cached optimal kernel.
+    The first call for a given size and device runs autotuning, which takes a
+    few seconds. A complete sweep is saved to disk, so later calls and later
+    processes reuse its winner. After a partial sweep, later calls in this
+    process reuse that sweep's winner, and the next process tunes again.
     
     Args:
         a: MxK FP16 tensor
@@ -229,6 +298,7 @@ def matmul_autotuned(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
 
 def clear_cache():
     """Clear the autotune cache to force re-tuning."""
+    _PARTIAL_SWEEP_WINNERS.clear()
     if os.path.exists(_CACHE_FILE):
         os.remove(_CACHE_FILE)
         print("Autotune cache cleared.")
@@ -243,8 +313,9 @@ def show_cache():
     
     print("\nAutotune Cache:")
     print("-" * 50)
-    for key, value in sorted(cache.items()):
-        print(f"  {key}: {value}")
+    for key, entry in sorted(cache.items()):
+        winner = entry["winner"]
+        print(f"  {key}: {winner} ({entry['timings_ms'][winner]:.3f} ms)")
     print("-" * 50)
 
 

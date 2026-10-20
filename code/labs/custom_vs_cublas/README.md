@@ -58,7 +58,7 @@ python -m cli.aisp bench list-targets --chapter labs/custom_vs_cublas
 python -m cli.aisp bench run --targets labs/custom_vs_cublas --profile minimal
 ```
 - Targets follow the `labs/custom_vs_cublas:<workload>` naming convention listed by `list-targets`.
-- Use `--target-extra-arg labs/custom_vs_cublas:<workload>="--flag value"` to sweep schedule knobs.
+- `--target-extra-arg labs/custom_vs_cublas:<workload>="--flag value"` passes arguments to one target. The harness fails the target unless the benchmark defines `apply_target_overrides` or launches through torchrun.
 - Benchmark validity profile defaults to strict. Virtualization is warning-only; use `--validity-profile portable` for broader compatibility on hardware-limited environments.
 - Portable runs do not write expectation files unless `--allow-portable-expectations-update` is also provided.
 

@@ -233,7 +233,7 @@ export default function ProfilerPage() {
                 placeholder="Search pairs..."
                 value={pairsSearch}
                 onChange={(e) => setPairsSearch(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 bg-white/5 border border-white/10 rounded-lg text-white placeholder:text-white/30 focus:outline-none focus:border-accent-primary/50 text-sm"
+                className="w-full pl-10 pr-4 py-2 bg-white/5 border border-white/10 rounded-lg text-white placeholder:text-white/30 focus:outline-hidden focus:border-accent-primary/50 text-sm"
               />
             </div>
           </div>
@@ -303,7 +303,7 @@ export default function ProfilerPage() {
                       <select
                         value={baselineFile}
                         onChange={(e) => setBaselineFile(e.target.value)}
-                        className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white focus:outline-none"
+                        className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white focus:outline-hidden"
                       >
                         {selectedPair.baseline_ncu.map((f) => (
                           <option key={`base-${f}`} value={f}>
@@ -319,7 +319,7 @@ export default function ProfilerPage() {
                       <select
                         value={optimizedFile}
                         onChange={(e) => setOptimizedFile(e.target.value)}
-                        className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white focus:outline-none"
+                        className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white focus:outline-hidden"
                       >
                         {selectedPair.optimized_ncu.map((f) => (
                           <option key={`opt-${f}`} value={f}>
@@ -338,7 +338,7 @@ export default function ProfilerPage() {
                         max={200}
                         value={topK}
                         onChange={(e) => setTopK(Number(e.target.value))}
-                        className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white focus:outline-none"
+                        className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white focus:outline-hidden"
                       />
                     </label>
 
@@ -350,7 +350,7 @@ export default function ProfilerPage() {
                         max={3600}
                         value={timeoutSeconds}
                         onChange={(e) => setTimeoutSeconds(Number(e.target.value))}
-                        className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white focus:outline-none"
+                        className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white focus:outline-hidden"
                       />
                     </label>
 

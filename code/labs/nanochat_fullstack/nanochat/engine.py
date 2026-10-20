@@ -16,6 +16,7 @@ import torch.nn.functional as F
 import signal
 import warnings
 import os
+from importlib import metadata as importlib_metadata
 from contextlib import contextmanager
 from collections import deque
 from nanochat.kernels.persistent_decode import PersistentDecodeRunner
@@ -106,7 +107,7 @@ class KVCache:
         self.graph_attention_mask = None
 
     def _round_seq_len(self, seq_len):
-        """Round sequence length to block/page boundaries to align with TMA paging."""
+        """Round contiguous cache capacity to the configured alignment boundaries."""
         rounded = seq_len
         if self.block_size is not None and self.block_size > 0:
             rounded = ((rounded + self.block_size - 1) // self.block_size) * self.block_size
@@ -220,7 +221,7 @@ class KVCache:
         )
 
     def get_blocked_kv(self, layer_idx):
-        """Return block-major view for TMA/TMEM kernels."""
+        """Return a block-major view of the contiguous cache allocation."""
         if self.block_size is None or self.kv_cache is None:
             return None
         total_tokens = self.get_pos()
@@ -396,6 +397,48 @@ class RowState:
         self.python_expr_tokens = [] # Tokens of the current python expression
         self.completed = False # Whether this row has completed generation
 
+
+_SM100_COMPILE_GUARD_RUNTIME = ((10, 0), "2.9.1+cu130", "13.0", "3.5.1")
+_SM100_COMPILE_GUARD_MODE = "max-autotune-no-cudagraphs"
+_SM100_COMPILE_GUARD_REASON = (
+    "verified cold-cache SM100 decode guard for torch 2.9.1+cu130, "
+    "CUDA 13.0, and Triton 3.5.1"
+)
+
+
+def _select_compile_mode(
+    *,
+    capability,
+    torch_version,
+    cuda_version,
+    triton_version,
+    default_mode,
+    backend=None,
+):
+    """Select a compile mode from an exact runtime allowlist."""
+    runtime = (
+        tuple(capability),
+        str(torch_version),
+        None if cuda_version is None else str(cuda_version),
+        None if triton_version is None else str(triton_version),
+    )
+    if (
+        runtime == _SM100_COMPILE_GUARD_RUNTIME
+        and default_mode == "max-autotune"
+        and backend is None
+    ):
+        return _SM100_COMPILE_GUARD_MODE, _SM100_COMPILE_GUARD_REASON
+    return default_mode, f"default Engine compile mode {default_mode}"
+
+
+def _read_triton_version():
+    """Read the installed Triton distribution version without importing Triton."""
+    try:
+        return importlib_metadata.version("triton")
+    except importlib_metadata.PackageNotFoundError:
+        return None
+
+
 class Engine:
 
     _COMPILE_MODE = "max-autotune"
@@ -403,11 +446,12 @@ class Engine:
     _COMPILE_FULLGRAPH = True
     _COMPILE_DYNAMIC = True
 
-    def __init__(self, model, tokenizer, reuse_ids_buffer=True, enable_batch_decode=False):
+    def __init__(self, model, tokenizer, reuse_ids_buffer=True, enable_batch_decode=False, *, allow_compile=True):
         self.model = model
         self.tokenizer = tokenizer # needed for tool use
         self.reuse_ids_buffer = reuse_ids_buffer
         self.enable_batch_decode = enable_batch_decode
+        self.allow_compile = bool(allow_compile)
         self.enable_persistent_decode = bool(getattr(self.model.config, "enable_persistent_decode", False))
         self.use_cuda_graphs = bool(getattr(self.model.config, "use_cuda_graphs", False))
         self._decode_graph_disabled = False
@@ -419,6 +463,7 @@ class Engine:
         self.compile_status = "not_evaluated"
         self.compile_status_reason = "compile eligibility has not been evaluated"
         self.compile_mode = None
+        self.compile_mode_reason = None
         self.compile_device = str(self.model.get_device())
         self._compile_graph_count_at_config = None
         self._graph_cache_gen = None  # cache generation tied to current capture
@@ -483,13 +528,23 @@ class Engine:
         self._maybe_compile_model()
 
     def _maybe_compile_model(self):
-        """Use torch.compile by default on Blackwell/GB200 for steadier decode overhead."""
+        """Use torch.compile by default on Blackwell/GB200 for steadier decode overhead.
+
+        Pass allow_compile=False to keep the model eager, for example in a
+        flag sweep where compilation would change rows that do not request it.
+        """
         # Manual graph capture owns replay/state; nested compiler-managed graphs
         # have a separate lifetime contract and are not supported in this mode.
         if self.use_cuda_graphs:
             self._set_compile_status(
                 "manual_graphs",
                 "manual CUDA graph capture owns replay and state",
+            )
+            return
+        if not self.allow_compile:
+            self._set_compile_status(
+                "disabled",
+                "Engine(allow_compile=False)",
             )
             return
         if os.getenv("NANOCHAT_DISABLE_COMPILE", "0") == "1":
@@ -522,7 +577,18 @@ class Engine:
             )
             return
 
-        self._configure_compiled_model()
+        compile_mode, compile_mode_reason = _select_compile_mode(
+            capability=(cc_major, cc_minor),
+            torch_version=torch.__version__,
+            cuda_version=torch.version.cuda,
+            triton_version=_read_triton_version(),
+            default_mode=self._COMPILE_MODE,
+            backend=self._COMPILE_BACKEND,
+        )
+        self._configure_compiled_model(
+            mode=compile_mode,
+            mode_reason=compile_mode_reason,
+        )
 
     @staticmethod
     def _read_dynamo_unique_graphs():
@@ -538,9 +604,14 @@ class Engine:
         self.compile_status_reason = reason
         self._compile_error = None if error is None else str(error)
 
-    def _configure_compiled_model(self):
+    def _configure_compiled_model(self, *, mode=None, mode_reason=None):
         """Create the lazy compiled wrapper and fail visibly on configuration errors."""
-        self.compile_mode = self._COMPILE_MODE
+        self.compile_mode = self._COMPILE_MODE if mode is None else mode
+        self.compile_mode_reason = (
+            f"default Engine compile mode {self.compile_mode}"
+            if mode_reason is None
+            else mode_reason
+        )
         compile_kwargs = {
             "mode": self.compile_mode,
             "fullgraph": self._COMPILE_FULLGRAPH,
@@ -607,6 +678,7 @@ class Engine:
             "status": self.compile_status,
             "reason": self.compile_status_reason,
             "mode": self.compile_mode,
+            "mode_reason": self.compile_mode_reason,
             "device": self.compile_device,
             "fullgraph": self._COMPILE_FULLGRAPH if self._compile_active else None,
             "dynamic": self._COMPILE_DYNAMIC if self._compile_active else None,
@@ -666,10 +738,12 @@ class Engine:
             logits.record_stream(caller)
             if kv_cache.kv_cache is not None:
                 kv_cache.kv_cache.record_stream(caller)
-            self.decode_execution_mode = "side_stream"
+            self.decode_execution_mode = (
+                "side_stream_torch_compile" if self._compile_active else "side_stream"
+            )
             return logits
         else:
-            self.decode_execution_mode = "eager"
+            self.decode_execution_mode = "torch_compile" if self._compile_active else "eager"
             return self._model_forward(
                 ids,
                 kv_cache=kv_cache,

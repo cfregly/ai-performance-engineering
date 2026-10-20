@@ -113,6 +113,21 @@ def _classify_rejection(
     return "mixed_or_unchanged_rejected"
 
 
+def _expectation_hardware_key(event: Dict[str, Any], *, target: str, events_path: Path) -> str:
+    # The harness names the expectations file it compared against after the
+    # run's hardware key, which it records in new_provenance. The stored entry's
+    # old_provenance key can differ when the rejection is a hardware_key mismatch.
+    new_provenance = event.get("new_provenance") or {}
+    hardware_key = new_provenance.get("hardware_key")
+    if not hardware_key:
+        raise ValueError(
+            f"Rejected expectation update for {target} in {events_path} has no "
+            "new_provenance.hardware_key, so the expectations file it was checked "
+            "against is unknown"
+        )
+    return str(hardware_key)
+
+
 def _load_expectation_updates(run_dir: Path, repo_root: Path) -> List[Dict[str, Any]]:
     events_path = run_dir / "logs" / "benchmark_events.jsonl"
     rows: List[Dict[str, Any]] = []
@@ -129,11 +144,7 @@ def _load_expectation_updates(run_dir: Path, repo_root: Path) -> List[Dict[str, 
         validation_issue_types = list(event.get("validation_issue_types") or [])
         old_provenance = event.get("old_provenance") or {}
         new_provenance = event.get("new_provenance") or {}
-        hardware_key = str(
-            old_provenance.get("hardware_key")
-            or new_provenance.get("hardware_key")
-            or "b200"
-        )
+        hardware_key = _expectation_hardware_key(event, target=target, events_path=events_path)
         expectation_path, stored_entry, stored_warning = _fallback_stored_entry(
             repo_root,
             chapter,

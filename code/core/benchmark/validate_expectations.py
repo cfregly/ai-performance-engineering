@@ -6,6 +6,7 @@ This tool scans expectation files and reports data integrity issues:
 - Masked regressions (speedup=1.0 hiding actual regression)
 - Metadata drift (metadata speedup differs from metrics)
 - Missing provenance (required fields missing)
+- Timing outliers (a stored mean above its p75, or above its median when no p75 is stored, by more than 1.25x, or a stored p75 or median that is not a positive time)
 
 Usage:
     python -m core.benchmark.validate_expectations [paths...] [--fix] [--verbose] [--strict]
@@ -17,7 +18,7 @@ Examples:
     # Validate specific chapter
     python -m core.benchmark.validate_expectations ch07/
 
-    # Fix issues (recompute speedups from timing)
+    # Recompute derived ratios and fill missing provenance
     python -m core.benchmark.validate_expectations --fix
 
     # Strict mode for CI (exit 1 on issues)
@@ -335,7 +336,11 @@ def validate_expectations(
             if fix:
                 if fix_file(path, verbose=verbose, backup=backup):
                     files_fixed += 1
-                    print(f"    ✓ Fixed {len(report.issues)} issue(s)")
+                    remaining = validate_file(path, verbose).issues
+                    print(
+                        f"    ✓ Recomputed derived fields. {len(remaining)} of "
+                        f"{len(report.issues)} issue(s) remain"
+                    )
         else:
             print(f"    ✓ {report.total_entries} entries, all valid")
 
@@ -369,7 +374,11 @@ def validate_expectations(
             print("\n❌ FAILED: Issues found in strict mode")
             return 1
         else:
-            print("\n⚠️  Issues found (use --fix to repair, --strict for CI)")
+            print(
+                "\n⚠️  Issues found. --fix recomputes derived ratios and fills missing provenance only. "
+                "timing_outlier_skew and invalid_timing_percentile issues need a fresh run on the "
+                "matching hardware. Use --strict for CI."
+            )
             return 0
     else:
         print("\n✓ All expectation files are valid")
@@ -385,7 +394,7 @@ def main():
 Examples:
   %(prog)s                     # Validate all files
   %(prog)s ch07/               # Validate specific chapter
-  %(prog)s --fix               # Fix issues by recomputing speedups
+  %(prog)s --fix               # Recompute derived ratios and fill missing provenance
   %(prog)s --strict            # CI mode: exit 1 if issues found
   %(prog)s --verbose           # Show detailed issue information
 """,
@@ -399,7 +408,10 @@ Examples:
     parser.add_argument(
         "--fix",
         action="store_true",
-        help="Recompute speedups from timing values to fix inconsistencies",
+        help=(
+            "Recompute derived speedup and memory ratios and fill missing provenance fields. "
+            "Timing outlier issues need a fresh run on the matching hardware."
+        ),
     )
     parser.add_argument(
         "--verbose",

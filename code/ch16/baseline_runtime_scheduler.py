@@ -15,6 +15,15 @@ from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig, Workl
 from core.profiling.nvtx_helper import get_nvtx_enabled, nvtx_range
 from ch16.runtime_scheduler_common import RuntimeSchedulerWorkload, SchedulerScenario
 
+# Both sides run the same bf16 GEMM on the same seeded buffers. On the CPU their
+# outputs match bit for bit. The output has a standard deviation near 39 and a
+# peak near 195. The FP32 product of the same inputs uses at most a fifth of this
+# bound. That product rounded once to bf16, as another GEMM kernel could return it,
+# uses at most 40%. The bound rejects an all-zero output and one scaled by 0.9. The
+# optimized file imports this bound because the harness rejects an optimized
+# tolerance that is looser than the baseline's.
+RUNTIME_SCHEDULER_OUTPUT_TOLERANCE = (2e-2, 1e-2)
+
 
 class BaselineRuntimeSchedulerBenchmark(VerificationPayloadMixin, BaseBenchmark):
     """Baseline: CPU prep + GPU compute + per-token streaming, no overlap."""
@@ -129,7 +138,7 @@ class BaselineRuntimeSchedulerBenchmark(VerificationPayloadMixin, BaseBenchmark)
                 "fp8": False,
                 "tf32": torch.backends.cuda.matmul.allow_tf32,
             },
-            output_tolerance=(0.1, 1.0),
+            output_tolerance=RUNTIME_SCHEDULER_OUTPUT_TOLERANCE,
         )
 
     def get_custom_metrics(self) -> Optional[dict]:

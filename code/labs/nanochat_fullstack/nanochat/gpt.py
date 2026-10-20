@@ -77,17 +77,13 @@ class GPTConfig:
     use_fp32_logits: bool = True  # if False, keep logits in bf16 during loss to hit fused CE
     use_flash_sdp: bool = True  # if True, prefer Flash/TE SDP kernels (training path)
     use_padded_attention: bool = False  # if True, enable attention masks for padded batches
-    use_flash3: bool = True  # prefer FlashAttention-3 varlen kernels (B200/TMA) when available
-    flash3_block_size: int = 128  # sequence tile for FA3 varlen kernels (aligns to TMEM staging)
-    kv_block_size: Optional[int] = None  # optional KV cache block size for TMA/paged layout
-    kv_page_size: Optional[int] = None  # optional KV cache page size for growth hints
+    use_flash_attn_varlen: bool = True  # prefer the pinned external FlashAttention 2 varlen callable
+    kv_block_size: Optional[int] = None  # optional contiguous KV capacity alignment
+    kv_page_size: Optional[int] = None  # optional larger capacity and growth alignment
     enable_persistent_decode: bool = False  # reusable buffers + dedicated decode stream (not a resident kernel)
     use_cuda_graphs: bool = False  # gate CUDA Graph capture in Engine generate paths
     use_te_weight_only: bool = False  # if True, prefer Transformer Engine weight-only linears (q/k/v/proj + lm_head)
     te_weight_dtype: str = "fp8"  # fp8|fp4|int4 hint for TE weight-only path
-    use_cta_clustering: bool = False  # if True, enable CTA clustering (prefill) when kernels are available
-    cta_cluster_size: int = 2  # default CTAs per cluster (auto-tuned per sequence length)
-    cta_cluster_seq_threshold: int = 1024  # minimum sequence length before attempting clustering
     use_clustered_attention_kernel: bool = False  # experimental: attempt custom clustered attention kernel (requires build)
     use_persistent_decode_kernel: bool = False  # experimental: attempt custom resident decode kernel (requires build)
     clustered_attention_impl: Optional[str] = None  # optional module:function override for clustered attention
@@ -155,12 +151,8 @@ class CausalSelfAttention(nn.Module):
         self.n_embd = config.n_embd
         self.head_dim = self.n_embd // self.n_head
         self.use_flash_sdp = config.use_flash_sdp
-        self.use_flash3 = getattr(config, "use_flash3", False)
-        self.flash3_block_size = getattr(config, "flash3_block_size", None)
+        self.use_flash_attn_varlen = getattr(config, "use_flash_attn_varlen", False)
         self.use_te_weight_only = getattr(config, "use_te_weight_only", False)
-        self.use_cta_clustering = getattr(config, "use_cta_clustering", False)
-        self.cta_cluster_seq_threshold = getattr(config, "cta_cluster_seq_threshold", 1024)
-        self.cta_cluster_size = getattr(config, "cta_cluster_size", 2)
         self.use_clustered_attention_kernel = getattr(config, "use_clustered_attention_kernel", False)
         self.use_padded_attention = config.use_padded_attention
         self.clustered_attention_impl = getattr(config, "clustered_attention_impl", None)
@@ -183,13 +175,13 @@ class CausalSelfAttention(nn.Module):
         self.c_proj, backend = _maybe_make_weight_only_linear(self.n_embd, self.n_embd, config, name="c_proj")
         self.weight_only_backend = backend or self.weight_only_backend
         self.sdpa_ctx_factory = prefer_sdpa_backends if prefer_sdpa_backends is not None else (lambda order=None: nullcontext())
-        if self.use_flash3 and torch.cuda.is_available():
+        if self.use_flash_attn_varlen and torch.cuda.is_available():
             cc_major, _ = torch.cuda.get_device_capability()
             if cc_major < 10:
-                self.use_flash3 = False
-        self.flash3_fn = None
-        self.flash3_error = None
-        self._flash3_accepts_clusters = False
+                self.use_flash_attn_varlen = False
+        self.flash_attn_varlen_fn = None
+        self.flash_attn_varlen_backend = None
+        self.flash_attn_varlen_error = None
         self._cu_q_cache = None
         self._cu_k_cache = None
         self._mask_q_pos_cache = None
@@ -201,30 +193,32 @@ class CausalSelfAttention(nn.Module):
         self._padded_attn_mask_cache = None
         self._rotary_q_cache = None
         self._rotary_k_cache = None
-        if self.use_flash3:
-            self._init_flash3()
+        if self.use_flash_attn_varlen:
+            self._init_flash_attn_varlen()
 
-    def _init_flash3(self):
-        """Best-effort lazy import of FlashAttention-3 varlen kernel."""
+    def _init_flash_attn_varlen(self):
+        """Load the pinned FlashAttention 2 varlen callable and identify its backend."""
         try:  # pragma: no cover - import guard
-            from flash_attn.flash_attn_interface import flash_attn_varlen_func  # type: ignore
+            from flash_attn import flash_attn_interface  # type: ignore
 
-            self.flash3_fn = flash_attn_varlen_func
+            backend = getattr(flash_attn_interface, "flash_attn_gpu", None)
+            backend_name = getattr(backend, "__name__", None)
+            if backend_name != "flash_attn_2_cuda":
+                raise RuntimeError(
+                    "flash_attn.flash_attn_interface must use flash_attn_2_cuda, "
+                    f"observed {backend_name or 'unknown'}"
+                )
+            self.flash_attn_varlen_fn = flash_attn_interface.flash_attn_varlen_func
+            self.flash_attn_varlen_backend = backend_name
+            self.flash_attn_varlen_error = None
         except Exception as exc:
-            self.flash3_error = str(exc)
-            self.flash3_fn = None
-            self._flash3_accepts_clusters = False
-            self.use_flash3 = False
-            return
-        try:
-            import inspect
+            self.flash_attn_varlen_error = str(exc)
+            self.flash_attn_varlen_fn = None
+            self.flash_attn_varlen_backend = None
+            self.use_flash_attn_varlen = False
 
-            self._flash3_accepts_clusters = "num_sm_clusters" in inspect.signature(flash_attn_varlen_func).parameters
-        except Exception:
-            self._flash3_accepts_clusters = False
-
-    def _flash3_supported(self, q, attn_mask):
-        if not self.use_flash3 or self.flash3_fn is None:
+    def _flash_attn_varlen_supported(self, q, attn_mask):
+        if not self.use_flash_attn_varlen or self.flash_attn_varlen_fn is None:
             return False
         if attn_mask is not None or self.use_padded_attention:
             return False
@@ -233,14 +227,6 @@ class CausalSelfAttention(nn.Module):
         if q.dtype not in (torch.float16, torch.bfloat16):
             return False
         return True
-
-    def _auto_cluster_size(self, seq_len):
-        # Simple heuristic: larger sequences benefit from larger clusters
-        if seq_len >= 4096:
-            return max(4, self.cta_cluster_size)
-        if seq_len >= 2048:
-            return max(3, self.cta_cluster_size)
-        return self.cta_cluster_size
 
     def _cu_seqlens_buffer(self, batch, seq_len, device, cache_name):
         spec_name = f"{cache_name}_spec"
@@ -319,8 +305,8 @@ class CausalSelfAttention(nn.Module):
             setattr(self, name, buffer)
         return buffer[:numel].view(shape)
 
-    def _flash3_attention(self, q, k, v, kv_cache, enable_gqa, use_clustering=False):
-        """Varlen FlashAttention-3 path (no masks). Returns None on fallback."""
+    def _flash_attn_varlen_attention(self, q, k, v, kv_cache, enable_gqa):
+        """Pinned FlashAttention 2 varlen path without attention masks."""
         Tq, Tk = q.size(2), k.size(2)
         if kv_cache is None or Tq == Tk:
             causal = True
@@ -328,7 +314,7 @@ class CausalSelfAttention(nn.Module):
             causal = False  # steady-state decode: allow full prefix
         else:
             return None  # unsupported shape, fall back to SDPA
-        # Expand GQA heads if FA3 build doesn't expose num_heads_k
+        # The pinned callable receives equal query and KV head counts here.
         if enable_gqa and self.n_head != self.n_kv_head:
             repeat_k = self.n_head // self.n_kv_head
             k = _expand_gqa_kv_heads(k, repeat_k)
@@ -340,20 +326,8 @@ class CausalSelfAttention(nn.Module):
         v_flat = v.transpose(1, 2).reshape(B * Tk, Hk, D)
         cu_q = self._cu_seqlens_buffer(B, Tq, q.device, "_cu_q_cache")
         cu_k = self._cu_seqlens_buffer(B, Tk, q.device, "_cu_k_cache")
-        
-        # CTA clustering hint: Some FlashAttention-3 builds support num_sm_clusters
-        # to enable cooperative thread array clustering on Hopper/Blackwell
-        fa3_kwargs = dict(
-            dropout_p=0.0,
-            causal=causal,
-        )
-        if use_clustering:
-            # Try to pass cluster size hint if FlashAttention-3 supports it
-            # This enables __cluster_dims__ in CUDA kernels for better L1 sharing
-            if self._flash3_accepts_clusters:
-                fa3_kwargs['num_sm_clusters'] = self._auto_cluster_size(Tk)
-        
-        out = self.flash3_fn(  # type: ignore[misc]
+
+        out = self.flash_attn_varlen_fn(  # type: ignore[misc]
             q_flat,
             k_flat,
             v_flat,
@@ -361,22 +335,15 @@ class CausalSelfAttention(nn.Module):
             cu_k,
             Tq,
             Tk,
-            **fa3_kwargs,
+            dropout_p=0.0,
+            causal=causal,
         )
         return out.view(B, Tq, Hq, D).transpose(1, 2).contiguous()
 
     def forward(self, x, cos_sin, kv_cache, attention_mask=None, token_mask=None):
         B, T, C = x.size()
         graph_decode = kv_cache is not None and kv_cache.graph_mode
-        
-        # CTA clustering hint for attention kernels (Blackwell/Hopper optimization)
-        # Note: Full CTA clustering requires custom CUDA kernels with __cluster_dims__ annotations
-        # or FlashAttention-3 cluster support. This flag enables best-effort optimizations:
-        # 1. Use larger tile sizes when T >= threshold (better SM occupancy)
-        # 2. Provide hint to flash_attn_varlen_func if it supports clustering
-        # 3. Enable when custom cluster kernels become available
-        use_cta_hint = self.use_cta_clustering and T >= self.cta_cluster_seq_threshold
-        
+
         # Project the input to get queries, keys, and values
         q = self.c_q(x).view(B, T, self.n_head, self.head_dim)
         k = self.c_k(x).view(B, T, self.n_kv_head, self.head_dim)
@@ -416,7 +383,7 @@ class CausalSelfAttention(nn.Module):
         attn_mask = None
         if graph_decode:
             # Fixed capacity, but visible keys advance on the device at replay.
-            # This masked path uses SDPA, not the unmasked FA3 varlen backend.
+            # This masked path uses SDPA, not the unmasked external varlen backend.
             attn_mask = kv_cache.graph_attention_mask.view(1, 1, 1, -1)
         elif use_mask:
             if attention_mask.dim() == 2:
@@ -435,11 +402,17 @@ class CausalSelfAttention(nn.Module):
             else:
                 causal = self._causal_mask_for(Tq, Tk, q.device)
                 attn_mask = self._padded_attn_mask_for(key_mask, causal)
-        fa3_out = None
-        if attn_mask is None and self._flash3_supported(q, attn_mask):
-            fa3_out = self._flash3_attention(q, k, v, kv_cache, enable_gqa=enable_gqa, use_clustering=use_cta_hint)
-        if fa3_out is not None:
-            y = fa3_out
+        flash_attn_varlen_out = None
+        if attn_mask is None and self._flash_attn_varlen_supported(q, attn_mask):
+            flash_attn_varlen_out = self._flash_attn_varlen_attention(
+                q,
+                k,
+                v,
+                kv_cache,
+                enable_gqa=enable_gqa,
+            )
+        if flash_attn_varlen_out is not None:
+            y = flash_attn_varlen_out
         else:
             if self.use_clustered_attention_kernel:
                 y = self.clustered_attention_kernel(
@@ -448,7 +421,6 @@ class CausalSelfAttention(nn.Module):
                     v,
                     attn_mask=attn_mask,
                     causal=(kv_cache is None or Tq == Tk) if kv_cache is None else (Tq == Tk or Tq == 1),
-                    num_sm_clusters=self._auto_cluster_size(Tk) if use_cta_hint else None,
                     enable_gqa=enable_gqa and self.n_head != self.n_kv_head,
                 )
             else:

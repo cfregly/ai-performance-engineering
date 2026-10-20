@@ -27,6 +27,8 @@ echo "Step 1: Configuring NCCL for NVLink mesh..."
 echo ""
 
 # Critical: Enable NVLink (was incorrectly disabled before)
+# NCCL finds NVLink through topology discovery. It has no environment switch
+# that turns NVLink or NVLink-C2C on.
 export NCCL_P2P_LEVEL=NVL
 export NCCL_P2P_DISABLE=0
 export NCCL_IB_DISABLE=1
@@ -35,7 +37,6 @@ export NCCL_NET_GDR_LEVEL=5
 export NCCL_NVLS_ENABLE=1
 export NCCL_PROTO=Simple
 export NCCL_ALGO=Tree,Ring,NVLS
-export NCCL_NVLINK_TCE_ENABLE=1
 export NCCL_NCHANNELS_PER_NET_PEER=8
 
 echo "NCCL Configuration:"
@@ -140,78 +141,65 @@ fi
 
 # Step 6: Create summary document
 echo "Step 6: Creating summary document..."
-cat > "${OUTPUT_DIR}/BENCHMARK_SUMMARY.md" << EOF
-# Inference Server Benchmark with Correct NCCL Settings
-
-**Generated:** $(date)
-**Duration:** ${DURATION}s
-**Target QPS:** ${TARGET_QPS}
-**Status:** $(if [ ${SUCCESS} -eq 1 ]; then echo "[OK] Success"; else echo "WARNING: Completed with errors"; fi)
-
-## Configuration
-
-### NCCL Settings (Corrected)
-
-\`\`\`bash
-export NCCL_P2P_LEVEL=NVL         # Force NVLink level
-export NCCL_P2P_DISABLE=0         # ENABLE P2P (was incorrectly 1!)
-export NCCL_IB_DISABLE=1          # Disable InfiniBand
-export NCCL_SHM_DISABLE=0         # Enable shared memory
-export NCCL_NVLS_ENABLE=1         # Enable NVLS multicast
-export NCCL_PROTO=Simple          # Simple protocol
-export NCCL_ALGO=Tree,Ring,NVLS   # Use Tree, Ring, NVLS
-\`\`\`
-
-### Hardware
-
-- Multi-GPU NVIDIA GPUs
-- Full NVLink mesh (18 links @ 50 GB/s = 900 GB/s per GPU)
-- NVLS multicast support (24 channels)
-
-## Results
-
-$(if [ -f "${OUTPUT_DIR}/metrics_summary.txt" ]; then
-    echo "\`\`\`"
-    cat "${OUTPUT_DIR}/metrics_summary.txt"
-    echo "\`\`\`"
+GENERATED_AT="$(date)"
+if [ "${SUCCESS}" -eq 1 ]; then
+    RUN_STATUS="Load-test process exited successfully"
 else
-    echo "Results not available - check logs"
-fi)
+    RUN_STATUS="Load-test process exited with errors"
+fi
 
+{
+    printf '# Inference Server Benchmark\n\n'
+    printf '**Generated:** %s\n' "${GENERATED_AT}"
+    printf '**Requested duration:** %ss\n' "${DURATION}"
+    printf '**Target QPS:** %s\n' "${TARGET_QPS}"
+    printf '**Process status:** %s\n\n' "${RUN_STATUS}"
+    printf '%s\n' '## Requested NCCL configuration
+
+```bash
+export NCCL_P2P_LEVEL=NVL
+export NCCL_P2P_DISABLE=0
+export NCCL_IB_DISABLE=1
+export NCCL_SHM_DISABLE=0
+export NCCL_NVLS_ENABLE=1
+export NCCL_PROTO=Simple
+export NCCL_ALGO=Tree,Ring,NVLS
+```
+
+These settings are launch requests. They do not prove that NCCL selected NVLink,
+NVSwitch, or NVLS, or that any link reached its rated bandwidth. Inspect the
+captured topology, NCCL logs, and measured results before making those claims.
+
+## Results'
+    if [ -f "${OUTPUT_DIR}/metrics_summary.txt" ]; then
+        printf '\n```\n'
+        cat "${OUTPUT_DIR}/metrics_summary.txt"
+        printf '\n```\n'
+    else
+        printf '\nNo parsed metrics are available. Inspect the load-test log.\n'
+    fi
+    printf '%s\n' '
 ## Files
 
-- \`inference_results.json\`: Detailed benchmark results
-- \`inference_server.log\`: Full log output
-- \`system_info.txt\`: System and GPU information
-- \`nvlink_verification.txt\`: NVLink configuration verification
-- \`metrics_summary.txt\`: Key metrics summary
-- \`BENCHMARK_SUMMARY.md\`: This file
+- `inference_results.json`: Raw load-test results, when produced
+- `inference_server.log`: Load-test process output
+- `system_info.txt`: System, GPU, topology, and requested NCCL settings
+- `nvlink_verification.txt`: NVLink probe output, when available
+- `metrics_summary.txt`: Parsed metrics, when available
+- `BENCHMARK_SUMMARY.md`: This summary
 
-## Comparison with Previous Results
+## Validation boundary
 
-**Previous (Incorrect NCCL):**
-- NCCL_P2P_DISABLE=1 (NVLink disabled)
-- Fallback to PCIe (~64 GB/s)
-- Lower throughput expected
+A successful process exit does not establish correctness, a speedup, or a valid
+comparison with an earlier run. Compare equivalent workloads and retain the
+required repository clock, verification, provenance, and profiler evidence.
 
-**Current (Correct NCCL):**
-- NCCL_P2P_DISABLE=0 (NVLink enabled)
-- Full NVLink bandwidth (900 GB/s per GPU)
-- Higher throughput expected
+## Related documentation
 
-## Next Steps
-
-1. Compare results with previous benchmarks
-2. Update performance expectations in documentation
-3. Document correct NCCL configuration
-4. Run additional benchmarks at different QPS levels
-
-## Related Documentation
-
-- \`docs/playbooks/nvlink_pcie_playbook.md\` - NCCL configuration guide
-- \`core/scripts/orchestrate_multigpu_load_test.sh\` - Load test orchestration
-- \`ch16/inference_server_load_test.py\` - Inference server implementation
-EOF
+- `docs/playbooks/nvlink_pcie_playbook.md`: NCCL configuration guide
+- `core/scripts/orchestrate_multigpu_load_test.sh`: Load-test orchestration
+- `ch16/inference_server_load_test.py`: Inference-server implementation'
+} > "${OUTPUT_DIR}/BENCHMARK_SUMMARY.md"
 
 echo "Summary written to: ${OUTPUT_DIR}/BENCHMARK_SUMMARY.md"
 echo ""

@@ -7,6 +7,7 @@ from typing import Any, Dict, Optional
 import torch
 
 from core.benchmark.verification_mixin import VerificationPayloadMixin
+from core.common.grace_platform import host_link_flags
 from core.harness.benchmark_harness import (
     BaseBenchmark,
     BenchmarkConfig,
@@ -21,7 +22,7 @@ logger = get_logger(__name__)
 _CUDA_SKIP_REASON = "SKIPPED: grace_coherent_memory requires CUDA"
 _GRACE_SKIP_REASON = (
     "SKIPPED: grace_coherent_memory requires Grace-Blackwell coherent memory support "
-    "(GB200/GB300 on Grace CPU hosts)."
+    "(the CUDA driver must report an NVLink-C2C host link to a Grace CPU, as on GB200 and GB300)."
 )
 
 
@@ -41,26 +42,17 @@ class BaselineGraceCoherentMemory:
             raise RuntimeError(_GRACE_SKIP_REASON)
 
     def _detect_grace_blackwell(self) -> bool:
-        """Detect if running on Grace-Blackwell platform."""
-        if not torch.cuda.is_available():
-            return False
+        """Return whether the CUDA driver puts this GPU on an NVLink-C2C host link to Grace.
 
-        try:
-            import platform
-
-            props = torch.cuda.get_device_properties(0)
-            is_arm_host = platform.machine() in ("aarch64", "arm64")
-            # Grace-Blackwell coherent memory needs a Grace (ARM) host paired with
-            # a Blackwell-class GPU. GB200/GB300 GPUs report CC 10.x (B200=10.0,
-            # B300=10.3); GB10 reports CC 12.x. A non-Grace (x86) B200/B300 host has
-            # no NVLink-C2C coherent fabric, so the ARM host check is the
-            # discriminator. The old CC==12.1 check wrongly skipped real GB300.
-            if is_arm_host and props.major >= 10:
-                return True
-        except Exception as e:
-            logger.debug(f"Grace-Blackwell detection failed: {e}")
-
-        return False
+        The optimized variant needs that link, so the pair runs only where it
+        exists. Compute capability cannot decide this. GB200 and GB300 GPUs
+        report SM 10.0 and 10.3, the same as B200 and B300 GPUs on PCIe in x86
+        servers. Driver query errors propagate.
+        """
+        device_index = torch.cuda.current_device()
+        props = torch.cuda.get_device_properties(device_index)
+        nvlink_c2c, _ = host_link_flags(props, device_index)
+        return nvlink_c2c
 
     def setup(self):
         """Initialize data structures with pageable CPU memory (baseline)."""
@@ -120,8 +112,7 @@ class GraceCoherentMemoryBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._verify_output_buffer: Optional[torch.Tensor] = None
 
     def setup(self) -> None:
-        # Seed FIRST for deterministic verification
-
+        # Inputs use the RNG already seeded by the harness.
         self._impl.setup()
         self._verify_output_buffer = torch.empty_like(self._impl.cpu_data[:1000])
         self.register_workload_metadata(
@@ -136,7 +127,7 @@ class GraceCoherentMemoryBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def benchmark_fn(self) -> None:
         elapsed = self._impl.run_step()
         self.elapsed_s = elapsed
-        self.bandwidth_gb_s = (self._impl.size_mb / 1024) * 2 / elapsed
+        self.bandwidth_gb_s = self._workload.bytes_per_iteration / elapsed / 1e9
         self.output = None
 
     def capture_verification_payload(self) -> None:
@@ -187,15 +178,14 @@ class GraceCoherentMemoryBenchmark(VerificationPayloadMixin, BaseBenchmark):
         return self._workload
 
     def get_custom_metrics(self) -> Optional[dict]:
-        """Return memory transfer metrics for grace_coherent_memory."""
-        from core.benchmark.metrics import compute_memory_transfer_metrics
-
-        bytes_transferred = float(self.size_mb * 1024 * 1024 * 2)
-        return compute_memory_transfer_metrics(
-            bytes_transferred=bytes_transferred,
-            elapsed_ms=(self.elapsed_s or 0.001) * 1000.0,
-            transfer_type="nvlink" if self._impl.is_grace_blackwell else "pcie",
-        )
+        """Return the bytes each step moves across the CPU-GPU link."""
+        # core.benchmark.metrics has no NVLink-C2C peak, and its NVLink peak is the
+        # GPU-to-GPU link, so this reports achieved bandwidth without an efficiency.
+        bytes_moved = self._workload.bytes_per_iteration
+        metrics = {"transfer.bytes": bytes_moved}
+        if self.elapsed_s is not None:
+            metrics["transfer.achieved_gbps"] = bytes_moved / self.elapsed_s / 1e9
+        return metrics
 
     def validate_result(self) -> Optional[str]:
         if self.elapsed_s is None:
@@ -224,7 +214,9 @@ def run_benchmark(
     result = harness.benchmark(benchmark, name="baseline_grace_coherent_memory")
     mean_ms = result.timing.mean_ms if result.timing else 0.0
     elapsed_s = mean_ms / 1000.0 if mean_ms > 0 else 0.0
-    bandwidth_gb_s = (size_mb / 1024) * 2 / elapsed_s if elapsed_s > 0 else 0.0
+    # Decimal GB/s of the H2D plus D2H bytes, the same unit as benchmark_fn.
+    bytes_per_iteration = size_mb * 1024 * 1024 * 2
+    bandwidth_gb_s = bytes_per_iteration / elapsed_s / 1e9 if elapsed_s > 0 else 0.0
 
     return {
         "mean_time_ms": mean_ms,

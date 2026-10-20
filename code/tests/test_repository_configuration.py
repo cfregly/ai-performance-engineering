@@ -688,7 +688,7 @@ def test_dashboard_make_and_node_contracts_match_documented_ports() -> None:
     assert "$(PYTHON) -m dashboard.api.server serve --port $(DASHBOARD_API_PORT)" in makefile
     assert "npm --prefix dashboard/web run dev -- --port $(DASHBOARD_WEB_PORT)" in makefile
     assert package["engines"]["node"] == ">=24.0.0"
-    assert package["devDependencies"]["concurrently"] == "10.0.5"
+    assert package["devDependencies"]["concurrently"] == "10.0.6"
     assert "make dashboard" in readme
     assert "127.0.0.1:6970" in readme
     assert "127.0.0.1:3000" in readme

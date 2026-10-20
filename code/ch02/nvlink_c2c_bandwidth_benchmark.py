@@ -3,17 +3,27 @@
 """
 NVLink-C2C Bandwidth Benchmark for Grace-Blackwell GB10
 
-Measures coherent CPU↔GPU bandwidth via NVLink-C2C (900 GB/s aggregate,
-≈450 GB/s per direction). Compares against discrete GPU PCIe bandwidth for
-reference.
+Measures host-to-device, device-to-host, and simultaneous copy bandwidth, plus
+GPU kernel reads of pinned host memory with no copy (zero-copy). On GB10 (DGX
+Spark) the CPU and GPU share one LPDDR5X memory with a published 273 GB/s
+peak, so that peak bounds every rate measured here. On other Blackwell
+systems the results measure the GPU's host link and are compared against
+that link's spec peak.
 
 Architecture detection:
-- GB10 (SM 12.x): Grace-Blackwell with NVLink-C2C
-- B200 (SM 10.0): Discrete Blackwell with PCIe 5.0
-- Other: Generic GPU
+- GB10 (SM 12.1): Grace-Blackwell with unified LPDDR5X memory
+- GB200 (SM 10.0) and GB300 (SM 10.3): Blackwell GPU attached to a Grace CPU
+  over NVLink-C2C, 450 GB/s per direction
+- B200 (SM 10.0) and B300 (SM 10.3): Blackwell GPU attached to the host over
+  PCIe 5.0 x16, 64 GB/s per direction
+- Other: Generic GPU, including SM 12.0 workstation GPUs, with no reference peak
+
+SM 10.0 and 10.3 GPUs ship in both kinds of system, so the CUDA driver's
+host-link attributes decide between them, not the compute capability. The run
+stops with an error when the driver cannot answer.
 
 Usage:
-    python nvlink_c2c_bandwidth_benchmark.py
+    python -m ch02.nvlink_c2c_bandwidth_benchmark
 """
 
 import os
@@ -21,7 +31,30 @@ import time
 
 import torch
 
+from core.common.grace_platform import host_link_flags
+from core.utils.pinned_host_view import pinned_host_cuda_view
+
 BENCHMARK_QUICK = os.environ.get("BENCHMARK_QUICK", "0") == "1"
+
+GB10_COMPUTE_CAPABILITY = (12, 1)
+# DGX Spark has no separate GPU memory. This published peak covers all CPU and
+# GPU reads and writes of its shared LPDDR5X.
+GB10_UNIFIED_MEMORY_PEAK_GBPS = 273.0
+PCIE5_X16_PER_DIRECTION_GBPS = 64.0
+# NVIDIA specifies NVLink-C2C at 900 GB/s bidirectional, 450 GB/s per direction.
+NVLINK_C2C_PER_DIRECTION_GBPS = 450.0
+
+# Each SM 10.x capability names a PCIe-attached GPU or a Grace superchip GPU.
+_SM10_PLATFORMS = {
+    (10, 0): {"pcie": "b200", "nvlink_c2c": "gb200"},
+    (10, 3): {"pcie": "b300", "nvlink_c2c": "gb300"},
+}
+_HOST_LINK_PEAKS = {
+    "b200": ("PCIe 5.0 x16", PCIE5_X16_PER_DIRECTION_GBPS),
+    "b300": ("PCIe 5.0 x16", PCIE5_X16_PER_DIRECTION_GBPS),
+    "gb200": ("NVLink-C2C", NVLINK_C2C_PER_DIRECTION_GBPS),
+    "gb300": ("NVLink-C2C", NVLINK_C2C_PER_DIRECTION_GBPS),
+}
 
 
 def _decimal_gb_per_second(
@@ -34,21 +67,31 @@ def _decimal_gb_per_second(
     return total_bytes / elapsed_seconds / 1e9
 
 
+def _classify_platform(props, device_index: int) -> str:
+    """Map a CUDA device to the platform whose reference peaks apply."""
+    capability = (props.major, props.minor)
+    if capability == GB10_COMPUTE_CAPABILITY:
+        return "gb10"
+    if capability not in _SM10_PLATFORMS:
+        return "other"
+    try:
+        nvlink_c2c, _ = host_link_flags(props, device_index)
+    except RuntimeError as exc:
+        raise RuntimeError(
+            f"cannot tell whether the SM {props.major}.{props.minor} GPU reaches host "
+            "memory over NVLink-C2C or PCIe, so no reference peak applies"
+        ) from exc
+    return _SM10_PLATFORMS[capability]["nvlink_c2c" if nvlink_c2c else "pcie"]
+
+
 def detect_architecture():
-    """Detect GPU architecture"""
+    """Return the platform class and compute capability of the current CUDA device."""
     if not torch.cuda.is_available():
         return "cpu", 0, 0
-    
-    props = torch.cuda.get_device_properties(0)
-    
-    if props.major >= 12:
-        return "gb10", props.major, props.minor
-    elif props.major == 10:
-        if props.minor >= 3:
-            return "b300", props.major, props.minor
-        return "b200", props.major, props.minor
-    else:
-        return "other", props.major, props.minor
+
+    device_index = torch.cuda.current_device()
+    props = torch.cuda.get_device_properties(device_index)
+    return _classify_platform(props, device_index), props.major, props.minor
 
 
 def measure_h2d_bandwidth(size_mb=1024, iterations=100):
@@ -163,24 +206,24 @@ def measure_bidirectional_bandwidth(size_mb=512, iterations=100):
 
 def measure_zero_copy_read_bandwidth(size_mb=1024, iterations=50):
     """
-    Measure GPU reading from CPU memory (zero-copy)
-    
-    On GB10: ~800-900 GB/s via NVLink-C2C
-    On discrete: ~25 GB/s via PCIe
+    Measure a GPU kernel that reads pinned host memory in place (zero-copy).
+
+    Each iteration negates the pinned host buffer into a device buffer. The
+    kernel's loads read host memory directly and no DMA copy runs. On GB10
+    both buffers live in the shared LPDDR5X, whose 273 GB/s peak covers the
+    reads and the writes together. On other GPUs every load crosses the host
+    link: PCIe 5.0 x16 at 64 GB/s per direction on B200 and B300, or NVLink-C2C
+    at 450 GB/s per direction on GB200 and GB300.
     """
     size = size_mb * 1024 * 1024 // 4
-    
-    # CPU memory (pinned for GPU access)
+
     cpu_tensor = torch.randn(size, device='cpu', pin_memory=True)
-    gpu_output = torch.empty(size, device='cuda')
-    
-    # Simple kernel: read from CPU, write to GPU
+    host_view = pinned_host_cuda_view(cpu_tensor, torch.device("cuda", torch.cuda.current_device()))
+    gpu_output = torch.empty(size, device=host_view.device)
+
     def zero_copy_kernel():
-        # PyTorch doesn't expose direct zero-copy in Python
-        # This simulates it by using non-blocking copy
-        # In real CUDA code, GPU reads CPU memory directly
-        gpu_output.copy_(cpu_tensor, non_blocking=True)
-    
+        torch.neg(host_view, out=gpu_output)
+
     # Warmup
     warmup_iters = 3 if BENCHMARK_QUICK else 10
     for _ in range(warmup_iters):
@@ -195,16 +238,94 @@ def measure_zero_copy_read_bandwidth(size_mb=1024, iterations=50):
     for _ in range(iterations):
         zero_copy_kernel()
     end.record()
-    
+
     end.synchronize()
     elapsed_ms = start.elapsed_time(end)
-    
+
+    if not torch.equal(gpu_output.cpu(), cpu_tensor.neg()):
+        raise RuntimeError(
+            "zero-copy read kernel output does not match the negated pinned host input"
+        )
+
     bandwidth_gbs = _decimal_gb_per_second(
         size_mb=size_mb,
         iterations=iterations,
         elapsed_seconds=elapsed_ms / 1000.0,
     )
     return bandwidth_gbs, elapsed_ms / iterations
+
+
+def theoretical_comparison_lines(
+    arch_type: str,
+    *,
+    h2d_gbps: float,
+    d2h_gbps: float,
+    bidir_gbps: float,
+    zero_copy_gbps: float,
+) -> list[str]:
+    """Return the reference-peak comparison for measured payload rates."""
+    gb10_peak = GB10_UNIFIED_MEMORY_PEAK_GBPS
+    measured = (
+        ("H2D", h2d_gbps),
+        ("D2H", d2h_gbps),
+        ("Bidirectional", bidir_gbps),
+        ("Zero-copy read", zero_copy_gbps),
+    )
+
+    if arch_type == "gb10":
+        lines = [
+            f"Unified LPDDR5X peak:      {gb10_peak:.0f} GB/s, shared by CPU and GPU",
+            "Every payload byte is read from and written to that same memory,",
+            "so memory traffic is at least twice the payload rate.",
+        ]
+        for label, payload in measured:
+            traffic = 2.0 * payload
+            lines.append(
+                f"{label + ':':<27}{payload:.2f} GB/s payload, {traffic:.2f} GB/s traffic "
+                f"({(traffic / gb10_peak) * 100:.1f}% of peak)"
+            )
+        lines += [
+            "",
+            "[OK] GB10 characteristics:",
+            "  • CPU and GPU share one coherent LPDDR5X memory, with no separate GPU memory",
+            "  • GPU kernels read CPU-written buffers in place, which suits CPU preprocessing pipelines",
+            f"  • The {gb10_peak:.0f} GB/s peak is {gb10_peak / PCIE5_X16_PER_DIRECTION_GBPS:.1f}x the "
+            f"{PCIE5_X16_PER_DIRECTION_GBPS:.0f} GB/s per-direction rate of PCIe 5.0 x16",
+            "  • An explicit copy costs twice its size in memory traffic, so in-place access is cheaper",
+        ]
+        return lines
+
+    if arch_type in _HOST_LINK_PEAKS:
+        link, per_dir = _HOST_LINK_PEAKS[arch_type]
+        both = 2.0 * per_dir
+        gb10_copy_ceiling = gb10_peak / 2.0
+        name = arch_type.upper()
+        lines = [
+            f"{link + ' spec peak:':<27}{per_dir:.0f} GB/s per direction, "
+            f"{both:.0f} GB/s both directions",
+        ]
+        for label, payload in measured:
+            reference = both if label == "Bidirectional" else per_dir
+            lines.append(
+                f"{label + ':':<27}{payload:.2f} GB/s ({(payload / reference) * 100:.1f}%)"
+            )
+        if link == "NVLink-C2C":
+            lines.append(
+                f"NVIDIA quotes this peak for the NVLink-C2C of a {name} superchip, which "
+                "joins one Grace CPU to two GPUs, so one GPU may not reach it."
+            )
+        lines += [
+            "",
+            f"ℹ️  Note: GB10 vs {name} comparison:",
+            f"  • GB10 unified LPDDR5X:  {gb10_peak:.0f} GB/s peak, shared by CPU and GPU "
+            f"({gb10_peak / per_dir:.1f}x {link} per direction)",
+            f"  • {name + ' ' + link + ':':<23}{per_dir:.0f} GB/s per direction",
+            f"  • A GB10 copy reads and writes the same memory, so its payload ceiling is "
+            f"{gb10_copy_ceiling:.1f} GB/s ({gb10_copy_ceiling / per_dir:.1f}x {link} per direction)",
+        ]
+        return lines
+
+    return []
 
 
 def main():
@@ -217,20 +338,21 @@ def main():
     print(f"\nArchitecture: ", end="")
     if arch_type == "gb10":
         print(f"Grace-Blackwell GB10 (SM {major}.{minor})")
-        print(f"Interconnect: NVLink-C2C (900 GB/s aggregate, ≈450/dir)")
-    elif arch_type == "b300":
-        print(f"Blackwell B300 (SM {major}.{minor})")
-        print(f"Interconnect: NVLink 5.0 / PCIe 5.0 depending on host wiring")
-    elif arch_type == "b200":
-        print(f"Blackwell B200 (SM {major}.{minor})")
-        print(f"Interconnect: NVLink 5.0 / PCIe 5.0 depending on host wiring")
+        print("Interconnect: NVLink-C2C between the CPU and GPU dies")
+        print(f"Memory: {GB10_UNIFIED_MEMORY_PEAK_GBPS:.0f} GB/s peak LPDDR5X, shared by CPU and GPU")
+    elif arch_type in ("gb200", "gb300"):
+        print(f"Grace-Blackwell {arch_type.upper()} (SM {major}.{minor})")
+        print("Host link: NVLink-C2C to a Grace CPU, as reported by the CUDA driver")
+    elif arch_type in ("b200", "b300"):
+        print(f"Blackwell {arch_type.upper()} (SM {major}.{minor})")
+        print("Host link: PCIe, because this system has no NVLink-C2C host link")
     else:
         print(f"Generic GPU (SM {major}.{minor})")
-        print(f"Interconnect: Unknown")
+        print("Host link: unknown, so no reference peak is shown")
     
     if arch_type != "gb10":
-        print("\nWARNING: WARNING: This benchmark is optimized for Grace-Blackwell GB10!")
-        print("   Results on discrete GPUs will show PCIe bandwidth, not NVLink-C2C.\n")
+        print("\nWARNING: This benchmark targets Grace-Blackwell GB10 unified memory.")
+        print("   Results on this GPU measure its host link, not GB10 unified memory.\n")
     
     test_sizes = [256, 512] if BENCHMARK_QUICK else [256, 512, 1024, 2048]
     h2d_iterations = 5 if BENCHMARK_QUICK else 100
@@ -269,76 +391,46 @@ def main():
         print(f"{size_mb:<12} {bw:<20.2f} {latency:<15.3f}")
     
     # Peak measurement (large transfer)
-    print("\n" + "=" * 80)
-    print("Peak Bandwidth Measurement (4 GB transfer)")
-    print("=" * 80)
-    
     peak_iter = 5 if BENCHMARK_QUICK else 50
     peak_size_mb = 512 if BENCHMARK_QUICK else 4096
+    print("\n" + "=" * 80)
+    print("Peak Bandwidth Measurement (large transfers)")
+    print("=" * 80)
+
     h2d_peak, _ = measure_h2d_bandwidth(size_mb=peak_size_mb, iterations=peak_iter)
     d2h_peak, _ = measure_d2h_bandwidth(size_mb=peak_size_mb, iterations=peak_iter)
     bidir_peak_size = 256 if BENCHMARK_QUICK else 2048
     bidir_peak, _ = measure_bidirectional_bandwidth(size_mb=bidir_peak_size, iterations=peak_iter)
-    
-    print(f"H2D Peak:          {h2d_peak:.2f} GB/s")
-    print(f"D2H Peak:          {d2h_peak:.2f} GB/s")
-    print(f"Bidirectional:     {bidir_peak:.2f} GB/s")
+
+    print(f"H2D Peak:          {h2d_peak:.2f} GB/s ({peak_size_mb} MB copies)")
+    print(f"D2H Peak:          {d2h_peak:.2f} GB/s ({peak_size_mb} MB copies)")
+    print(f"Bidirectional:     {bidir_peak:.2f} GB/s ({bidir_peak_size} MB each way)")
 
     print("\n" + "=" * 80)
-    print("Test 4: Zero-Copy CPU Memory Reads")
+    print("Test 4: Zero-Copy Reads of Pinned Host Memory")
     print("=" * 80)
     zero_copy_size_mb = 512 if BENCHMARK_QUICK else 1024
     bw_zero_copy, latency_zero_copy = measure_zero_copy_read_bandwidth(
         size_mb=zero_copy_size_mb, iterations=zero_copy_iterations
     )
     print(f"Size (MB):         {zero_copy_size_mb}")
-    print(f"Bandwidth:         {bw_zero_copy:.2f} GB/s")
+    print(f"Bandwidth:         {bw_zero_copy:.2f} GB/s (host bytes read by the kernel)")
     print(f"Latency:           {latency_zero_copy:.3f} ms")
-    
+
     # Theoretical comparison
     print("\n" + "=" * 80)
     print("Theoretical Bandwidth Comparison")
     print("=" * 80)
-    
-    if arch_type == "gb10":
-        theoretical = 900.0
-        print(f"NVLink-C2C Theoretical:    {theoretical:.0f} GB/s")
-        print(f"H2D Achieved:              {h2d_peak:.2f} GB/s ({(h2d_peak/theoretical)*100:.1f}%)")
-        print(f"D2H Achieved:              {d2h_peak:.2f} GB/s ({(d2h_peak/theoretical)*100:.1f}%)")
-        print(f"Bidirectional:             {bidir_peak:.2f} GB/s ({(bidir_peak/theoretical)*100:.1f}%)")
-        
-        print("\n[OK] GB10 Benefits:")
-        print("  • 900 GB/s coherent CPU-GPU interconnect")
-        print("  • Cache-coherent memory access")
-        print("  • ~14x faster than PCIe 5.0 (64 GB/s)")
-        print("  • Ideal for:")
-        print("    - Large KV caches in CPU memory")
-        print("    - Optimizer states offload")
-        print("    - CPU preprocessing pipelines")
-        
-    elif arch_type == "b200":
-        theoretical = 64.0  # PCIe 5.0
-        print(f"PCIe 5.0 Theoretical:      {theoretical:.0f} GB/s")
-        print(f"H2D Achieved:              {h2d_peak:.2f} GB/s ({(h2d_peak/theoretical)*100:.1f}%)")
-        print(f"D2H Achieved:              {d2h_peak:.2f} GB/s ({(d2h_peak/theoretical)*100:.1f}%)")
-        print(f"Bidirectional:             {bidir_peak:.2f} GB/s ({(bidir_peak/theoretical)*100:.1f}%)")
-        
-        print("\nℹ️  Note: GB10 vs B200 comparison:")
-        print(f"  • GB10 NVLink-C2C:  ~900 GB/s  ({900/theoretical:.1f}x faster)")
-        print(f"  • B200 PCIe 5.0:    ~{theoretical:.0f} GB/s")
-        print(f"  • For CPU-GPU data movement, GB10 has {900/h2d_peak:.1f}x more headroom")
-    elif arch_type == "b300":
-        theoretical = 64.0  # PCIe 5.0
-        print(f"PCIe 5.0 Theoretical:      {theoretical:.0f} GB/s")
-        print(f"H2D Achieved:              {h2d_peak:.2f} GB/s ({(h2d_peak/theoretical)*100:.1f}%)")
-        print(f"D2H Achieved:              {d2h_peak:.2f} GB/s ({(d2h_peak/theoretical)*100:.1f}%)")
-        print(f"Bidirectional:             {bidir_peak:.2f} GB/s ({(bidir_peak/theoretical)*100:.1f}%)")
-        
-        print("\nℹ️  Note: GB10 vs B300 comparison:")
-        print(f"  • GB10 NVLink-C2C:  ~900 GB/s  ({900/theoretical:.1f}x faster)")
-        print(f"  • B300 PCIe 5.0:    ~{theoretical:.0f} GB/s")
-        print(f"  • For CPU-GPU data movement, GB10 has {900/h2d_peak:.1f}x more headroom")
-    
+
+    for line in theoretical_comparison_lines(
+        arch_type,
+        h2d_gbps=h2d_peak,
+        d2h_gbps=d2h_peak,
+        bidir_gbps=bidir_peak,
+        zero_copy_gbps=bw_zero_copy,
+    ):
+        print(line)
+
     print("\n" + "=" * 80)
 
 

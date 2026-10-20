@@ -74,12 +74,12 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       {children}
       
       {/* Toast container */}
-      <div className="fixed bottom-4 right-4 z-[10000] flex flex-col gap-2">
+      <div className="fixed bottom-4 right-4 z-10000 flex flex-col gap-2">
         {toasts.map((toast) => (
           <div
             key={toast.id}
             className={cn(
-              'flex items-center gap-3 px-4 py-3 rounded-lg border backdrop-blur-sm shadow-lg animate-slide-in',
+              'flex items-center gap-3 px-4 py-3 rounded-lg border backdrop-blur-xs shadow-lg animate-slide-in',
               'min-w-[300px] max-w-[400px]',
               getStyles(toast.type)
             )}
@@ -88,7 +88,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
             <span className="flex-1 text-white">{toast.message}</span>
             <button
               onClick={() => removeToast(toast.id)}
-              className="p-1 hover:bg-white/10 rounded"
+              className="p-1 hover:bg-white/10 rounded-sm"
             >
               <X className="w-4 h-4 text-white/50" />
             </button>

@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from textwrap import indent
 from typing import Dict, Iterable, List, Optional, Tuple
 
-from labs.moe_parallelism.plan import ClusterSpec, ModelSpec, ParallelismPlan
+from labs.moe_parallelism.plan import ClusterSpec, ModelSpec, ParallelismPlan, _bytes_to_ms
 
 # Minimal validation commands common to the MoE env presets (format placeholders).
 DEFAULT_VALIDATION: List[str] = [
@@ -29,14 +29,15 @@ class EnvPreset:
 
 
 def bytes_to_ms(value_bytes: float, bandwidth_GBps: float) -> float:
-    if bandwidth_GBps <= 0.0:
-        return float("inf")
-    seconds = value_bytes / (bandwidth_GBps * (1024 ** 3))
-    return seconds * 1e3
+    """Transfer time in ms at a decimal GB/s rate. A zero-byte payload takes 0 ms.
+
+    Uses the same conversion as plan.PlanEvaluator, so both estimates agree.
+    """
+    return _bytes_to_ms(value_bytes, bandwidth_GBps)
 
 
 def estimate_payload_bytes(plan: ParallelismPlan, model: ModelSpec) -> float:
-    """Rough payload for MoE all-to-all at a given batch/sequence."""
+    """Rough payload for MoE all-to-all at a given batch/sequence. EP=1 moves no data."""
     tokens_total = model.sequence_length * plan.microbatch_sequences
     moe_tokens_per_gpu = tokens_total * model.router_topk / max(plan.ep, 1)
     hidden_per_gpu = model.hidden_size / max(plan.tp, 1)
@@ -45,7 +46,7 @@ def estimate_payload_bytes(plan: ParallelismPlan, model: ModelSpec) -> float:
         * hidden_per_gpu
         * model.dtype_bytes
         * plan.microbatches
-        * max(plan.ep - 1, 1)
+        * max(plan.ep - 1, 0)
     )
 
 
@@ -62,7 +63,10 @@ def estimate_collective(
         cluster.nic_bandwidth_GBps if plan.cross_node_ep else cluster.nvlink_bandwidth_GBps
     )
     effective_bw = base_bw * efficiency
-    collective_ms = bytes_to_ms(payload_bytes, effective_bw) + handshake_ms
+    collective_ms = bytes_to_ms(payload_bytes, effective_bw)
+    # EP=1 runs no collective, so it pays no handshake either.
+    if payload_bytes > 0:
+        collective_ms += handshake_ms
     return payload_bytes, base_bw, effective_bw, collective_ms
 
 

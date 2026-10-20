@@ -8,7 +8,7 @@ import re
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, FrozenSet, List, Optional, Tuple
 
 
 # Schema version - increment for breaking changes
@@ -26,6 +26,55 @@ EXPECTATION_FILENAME_TEMPLATE = "expectations_{hardware_key}.json"
 RELATIVE_TOLERANCE = 0.25  # 25%
 ABSOLUTE_TOLERANCE = 1e-5
 
+# Speedup is derived from mean times. A mean more than this ratio above its
+# p75, or above its median when the run recorded no p75, means a few slow
+# outlier iterations dominate it. The derived speedup then does not describe
+# the typical iteration.
+#
+# Why 1 + RELATIVE_TOLERANCE: a baseline mean inflated by a factor r inflates
+# the stored speedup by r. A clean rerun then scores 1/r of the stored bar, and
+# the regression check fails it once 1/r falls below 1 - RELATIVE_TOLERANCE,
+# which happens above r = 1.33. At r <= 1.25 a clean rerun still passes.
+#
+# No flag overrides this limit, including --update-expectations. The harness
+# stores and reports the mean, so a skewed mean is unusable evidence, not a
+# slower result. When the slow iterations are a real periodic cost of the
+# workload, such as a dataloader refill, change the benchmark so each timed
+# call covers a whole period. Then every sample carries the same share of that
+# cost, and the row can be refreshed.
+MAX_MEAN_SKEW_RATIO = 1.0 + RELATIVE_TOLERANCE
+
+# One wording for --update-expectations in the CLI, the MCP tools and the
+# harness runner, so every surface states the same refusal.
+UPDATE_EXPECTATIONS_HELP_TEXT = (
+    "Write observed metrics into expectation files even when they regress or provenance differs. "
+    "Timing whose mean exceeds its p75 (or its median when no p75 is recorded) by more than "
+    f"{MAX_MEAN_SKEW_RATIO:g}x is still refused."
+)
+
+# Rejections caused by unusable run evidence rather than by a slower result.
+# The harness marks a benchmark failed_expectation_invalid when its update is
+# rejected for one of them, because the reported result comes from the same
+# evidence. No flag stores an entry with a NON_OVERRIDABLE issue.
+# accept_regressions does accept a dropped throughput metric
+# (tracked_metric_missing) as a deliberate refresh.
+NON_OVERRIDABLE_ISSUE_TYPES: FrozenSet[str] = frozenset(
+    {"timing_outlier_skew", "invalid_timing_percentile", "missing_memory_metrics"}
+)
+INVALID_EVIDENCE_ISSUE_TYPES: FrozenSet[str] = NON_OVERRIDABLE_ISSUE_TYPES | {"tracked_metric_missing"}
+
+# ThroughputStats fields with a fixed unit. custom_unit_per_s is compared
+# separately because custom_unit_name sets its unit per benchmark.
+THROUGHPUT_METRIC_DIRECTIONS: Dict[str, str] = {
+    "requests_per_s": "higher",
+    "tokens_per_s": "higher",
+    "samples_per_s": "higher",
+    "bytes_per_s": "higher",
+    "goodput": "higher",
+    "latency_ms": "lower",
+}
+THROUGHPUT_METRIC_PREFIXES: Tuple[str, ...] = ("baseline_throughput", "best_optimized_throughput")
+
 # Metric direction hints. Extend as new metrics are tracked.
 METRIC_DIRECTIONS: Dict[str, str] = {
     "best_speedup": "higher",
@@ -36,20 +85,15 @@ METRIC_DIRECTIONS: Dict[str, str] = {
     "best_optimized_memory_mb": "lower",
     "best_memory_savings_ratio": "higher",
     "best_memory_savings_pct": "higher",
-    "baseline_throughput.requests_per_s": "higher",
-    "baseline_throughput.tokens_per_s": "higher",
-    "baseline_throughput.samples_per_s": "higher",
-    "baseline_throughput.bytes_per_s": "higher",
-    "baseline_throughput.goodput": "higher",
-    "baseline_throughput.latency_ms": "lower",
-    "best_optimized_throughput.requests_per_s": "higher",
-    "best_optimized_throughput.tokens_per_s": "higher",
-    "best_optimized_throughput.samples_per_s": "higher",
-    "best_optimized_throughput.bytes_per_s": "higher",
-    "best_optimized_throughput.goodput": "higher",
-    "best_optimized_throughput.latency_ms": "lower",
+    **{
+        f"{prefix}.{field_name}": direction
+        for prefix in THROUGHPUT_METRIC_PREFIXES
+        for field_name, direction in THROUGHPUT_METRIC_DIRECTIONS.items()
+    },
+    "baseline_median_ms": "lower",
     "baseline_p75_ms": "lower",
     "baseline_p90_ms": "lower",
+    "best_optimized_median_ms": "lower",
     "best_optimized_p75_ms": "lower",
     "best_optimized_p90_ms": "lower",
     "baseline_custom.scenario_total_phase_ms": "lower",
@@ -75,6 +119,10 @@ class RunProvenance:
     execution_environment: str = "unknown"
     validity_profile: Optional[str] = None
     dmi_product_name: Optional[str] = None
+    # The --target-extra-arg values the harness passed to this target. None
+    # means the run used the target's defaults. Other values time a different
+    # workload or backend, so this field is compared like the fields above.
+    target_override_argv: Optional[List[str]] = None
 
     def mismatch_fields(self, other: "RunProvenance") -> List[str]:
         """Return the provenance fields that materially differ."""
@@ -85,6 +133,7 @@ class RunProvenance:
             "profile_name",
             "execution_environment",
             "validity_profile",
+            "target_override_argv",
         ]
         for field_name in comparable_fields:
             if getattr(self, field_name) != getattr(other, field_name):
@@ -96,8 +145,12 @@ class RunProvenance:
         return not self.mismatch_fields(other)
 
     def to_dict(self) -> Dict[str, Any]:
-        """Serialize to dictionary for JSON storage."""
-        return {
+        """Serialize to dictionary for JSON storage.
+
+        target_override_argv is written only when the run passed overrides, so
+        rows from default runs keep their existing shape.
+        """
+        payload: Dict[str, Any] = {
             "git_commit": self.git_commit,
             "hardware_key": self.hardware_key,
             "profile_name": self.profile_name,
@@ -108,10 +161,21 @@ class RunProvenance:
             "validity_profile": self.validity_profile,
             "dmi_product_name": self.dmi_product_name,
         }
+        if self.target_override_argv is not None:
+            payload["target_override_argv"] = list(self.target_override_argv)
+        return payload
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "RunProvenance":
         """Deserialize from dictionary."""
+        target_override_argv = data.get("target_override_argv")
+        if target_override_argv is not None and not (
+            isinstance(target_override_argv, list)
+            and all(isinstance(arg, str) for arg in target_override_argv)
+        ):
+            raise ValueError(
+                f"provenance target_override_argv must be a list of strings, got {target_override_argv!r}"
+            )
         return cls(
             git_commit=data.get("git_commit", ""),
             hardware_key=data.get("hardware_key", ""),
@@ -122,6 +186,7 @@ class RunProvenance:
             execution_environment=data.get("execution_environment", "unknown"),
             validity_profile=data.get("validity_profile"),
             dmi_product_name=data.get("dmi_product_name"),
+            target_override_argv=list(target_override_argv) if target_override_argv is not None else None,
         )
 
 
@@ -155,6 +220,8 @@ class ExpectationEntry:
     baseline_p90_ms: Optional[float] = None
     best_optimized_p75_ms: Optional[float] = None
     best_optimized_p90_ms: Optional[float] = None
+    baseline_median_ms: Optional[float] = None
+    best_optimized_median_ms: Optional[float] = None
     baseline_throughput: Optional[Dict[str, float]] = None
     best_optimized_throughput: Optional[Dict[str, float]] = None
     custom_metrics: Optional[Dict[str, Any]] = None
@@ -251,6 +318,10 @@ class ExpectationEntry:
             result["metrics"]["best_optimized_p75_ms"] = self.best_optimized_p75_ms
         if self.best_optimized_p90_ms is not None:
             result["metrics"]["best_optimized_p90_ms"] = self.best_optimized_p90_ms
+        if self.baseline_median_ms is not None:
+            result["metrics"]["baseline_median_ms"] = self.baseline_median_ms
+        if self.best_optimized_median_ms is not None:
+            result["metrics"]["best_optimized_median_ms"] = self.best_optimized_median_ms
 
         # Add throughput metrics
         if self.baseline_throughput:
@@ -315,6 +386,8 @@ class ExpectationEntry:
             baseline_p90_ms=metrics.get("baseline_p90_ms"),
             best_optimized_p75_ms=metrics.get("best_optimized_p75_ms"),
             best_optimized_p90_ms=metrics.get("best_optimized_p90_ms"),
+            baseline_median_ms=metrics.get("baseline_median_ms"),
+            best_optimized_median_ms=metrics.get("best_optimized_median_ms"),
             baseline_throughput=baseline_throughput if baseline_throughput else None,
             best_optimized_throughput=best_optimized_throughput if best_optimized_throughput else None,
             custom_metrics=data.get("custom_metrics"),
@@ -548,6 +621,208 @@ def _compare_metric(metric: str, direction: Optional[str], observed: Optional[fl
     return comparison
 
 
+def _finite_number(value: Any) -> Optional[float]:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    value_f = float(value)
+    if not math.isfinite(value_f):
+        return None
+    return value_f
+
+
+def _timing_outlier_issues(example_key: str, metrics: Dict[str, Any]) -> List[ValidationIssue]:
+    """Return issues for mean times dominated by slow outlier iterations.
+
+    ``metrics`` uses the stored metric names. Each side's mean
+    (``baseline_time_ms`` or ``best_optimized_time_ms``) is compared with its
+    ``*_p75_ms``, or with its ``*_median_ms`` when the run recorded no p75.
+    That happens when a benchmark's configured percentiles omit 75. A recorded
+    p75 or median that is not a positive time is reported, because the harness
+    must not invent one.
+
+    Limits: a side with neither value cannot be checked. That covers rows
+    written before medians were recorded. Torchrun timing is a single sample
+    (one rank-0 iteration mean or one process wall time), so its mean equals
+    its median and outliers inside that sample cannot be seen.
+    """
+    issues: List[ValidationIssue] = []
+    for side in ("baseline", "best_optimized"):
+        mean_key = f"{side}_time_ms"
+        references: List[Tuple[str, float]] = []
+        side_invalid = False
+        for reference_key in (f"{side}_p75_ms", f"{side}_median_ms"):
+            value = metrics.get(reference_key)
+            if value is None:
+                continue
+            value_ms = _finite_number(value)
+            if value_ms is None or value_ms <= 0:
+                side_invalid = True
+                issues.append(
+                    ValidationIssue(
+                        example_key=example_key,
+                        issue_type="invalid_timing_percentile",
+                        message=f"{reference_key} must be a positive finite time in ms, got {value!r}",
+                        stored_value=value,
+                        expected_value="positive finite milliseconds",
+                    )
+                )
+                continue
+            references.append((reference_key, value_ms))
+        if side_invalid or not references:
+            continue
+        mean_ms = _finite_number(metrics.get(mean_key))
+        if mean_ms is None or mean_ms <= 0:
+            continue
+        reference_key, reference_ms = references[0]
+        ratio = mean_ms / reference_ms
+        if ratio > MAX_MEAN_SKEW_RATIO:
+            issues.append(
+                ValidationIssue(
+                    example_key=example_key,
+                    issue_type="timing_outlier_skew",
+                    message=(
+                        f"{mean_key} {mean_ms:.6g} ms is {ratio:.2f}x {reference_key} {reference_ms:.6g} ms "
+                        f"(limit {MAX_MEAN_SKEW_RATIO:.2f}x). Slow outlier iterations dominate the "
+                        "mean, so the speedup derived from it is not representative. Remove the "
+                        "outlier source and rerun. If the slow iterations are a periodic cost of the "
+                        "workload, make each timed call cover a whole period."
+                    ),
+                    stored_value=mean_ms,
+                    expected_value=reference_ms * MAX_MEAN_SKEW_RATIO,
+                    delta_pct=(ratio - 1.0) * 100.0,
+                )
+            )
+    return issues
+
+
+def _entry_timing_metrics(entry: "ExpectationEntry") -> Dict[str, Any]:
+    return {
+        "baseline_time_ms": entry.baseline_time_ms,
+        "baseline_p75_ms": entry.baseline_p75_ms,
+        "baseline_median_ms": entry.baseline_median_ms,
+        "best_optimized_time_ms": entry.best_optimized_time_ms,
+        "best_optimized_p75_ms": entry.best_optimized_p75_ms,
+        "best_optimized_median_ms": entry.best_optimized_median_ms,
+    }
+
+
+def _throughput_measurement(field_name: str, value: Any) -> Optional[float]:
+    """Return ``value`` when it can be a measured throughput field, else None.
+
+    A completed run cannot have a zero rate or a zero latency, so a value at or
+    below zero comes from a workload that declared no units of that kind.
+    goodput is a 0-1 ratio, so a goodput of zero is a real measurement.
+    """
+    number = _finite_number(value)
+    if number is None:
+        return None
+    if field_name == "goodput":
+        return number if number >= 0 else None
+    return number if number > 0 else None
+
+
+def _throughput_field_issues(
+    example_key: str,
+    prefix: str,
+    field_name: str,
+    direction: str,
+    stored: Any,
+    observed: Any,
+) -> List[ValidationIssue]:
+    metric = f"{prefix}.{field_name}"
+    stored_value = _throughput_measurement(field_name, stored)
+    if stored_value is None:
+        return []
+    observed_value = _throughput_measurement(field_name, observed)
+    if observed_value is None:
+        return [
+            ValidationIssue(
+                example_key=example_key,
+                issue_type="tracked_metric_missing",
+                message=f"{metric} is tracked at {stored_value:.6g} but this run reported {observed!r}",
+                stored_value=stored_value,
+                expected_value=observed,
+            )
+        ]
+    comparison = _compare_metric(metric, direction, observed_value, stored_value)
+    if comparison["status"] != "regressed":
+        return []
+    return [
+        ValidationIssue(
+            example_key=example_key,
+            issue_type="regression",
+            message=(
+                f"{metric} new {observed_value:.6g} vs existing {stored_value:.6g} "
+                f"({direction} is better)"
+            ),
+            stored_value=stored_value,
+            expected_value=observed_value,
+            delta_pct=comparison["delta_pct"],
+        )
+    ]
+
+
+def _throughput_issues(
+    example_key: str,
+    existing: "ExpectationEntry",
+    entry: "ExpectationEntry",
+) -> List[ValidationIssue]:
+    """Compare every tracked throughput field of ``entry`` against ``existing``.
+
+    The primary score is a ratio, so it hides a slowdown shared by baseline and
+    optimized and rises when only the baseline slows down. These absolute
+    checks catch both cases.
+    """
+    issues: List[ValidationIssue] = []
+    sides = (
+        ("baseline_throughput", existing.baseline_throughput, entry.baseline_throughput),
+        ("best_optimized_throughput", existing.best_optimized_throughput, entry.best_optimized_throughput),
+    )
+    for prefix, stored_payload, new_payload in sides:
+        stored_payload = stored_payload or {}
+        new_payload = new_payload or {}
+        for field_name, direction in THROUGHPUT_METRIC_DIRECTIONS.items():
+            issues.extend(
+                _throughput_field_issues(
+                    example_key,
+                    prefix,
+                    field_name,
+                    direction,
+                    stored_payload.get(field_name),
+                    new_payload.get(field_name),
+                )
+            )
+        custom_metric = f"{prefix}.custom_unit_per_s"
+        stored_custom = _throughput_measurement("custom_unit_per_s", stored_payload.get("custom_unit_per_s"))
+        stored_unit = stored_payload.get("custom_unit_name")
+        new_unit = new_payload.get("custom_unit_name")
+        if stored_custom is not None and new_unit != stored_unit:
+            issues.append(
+                ValidationIssue(
+                    example_key=example_key,
+                    issue_type="tracked_metric_missing",
+                    message=(
+                        f"{custom_metric} is tracked in {stored_unit!r} units but this run "
+                        f"reported {new_unit!r} units"
+                    ),
+                    stored_value=stored_unit,
+                    expected_value=new_unit,
+                )
+            )
+            continue
+        issues.extend(
+            _throughput_field_issues(
+                example_key,
+                prefix,
+                "custom_unit_per_s",
+                "higher",
+                stored_payload.get("custom_unit_per_s"),
+                new_payload.get("custom_unit_per_s"),
+            )
+        )
+    return issues
+
+
 @dataclass
 class ExpectationEvaluation:
     example_key: str
@@ -608,7 +883,8 @@ class ExpectationsStore:
                 import warnings
                 warnings.warn(
                     f"Expectation file {self.path} has {len(report.issues)} validation issues. "
-                    f"Run 'python -m core.benchmark.validate_expectations {self.path} --fix' to repair.",
+                    f"Run 'python -m core.benchmark.validate_expectations {self.path} --verbose' to list them. "
+                    "--fix recomputes derived ratios and provenance only. Timing outlier issues need a fresh run.",
                     UserWarning,
                     stacklevel=2,
                 )
@@ -737,8 +1013,14 @@ class ExpectationsStore:
         This is the new schema v2 update method that ensures:
         - All metrics are updated together (atomic)
         - Speedup is always derived from timing values
+        - Timing is never stored when slow outliers dominate its mean
         - Provenance is tracked and validated
         - Mixed-provenance updates are rejected unless explicitly allowed
+        - Speedup and throughput regressions and dropped throughput metrics
+          are rejected unless regressions are accepted
+
+        A rejection lists every cause found, so a regression is still reported
+        when the same run also has outlier timing.
 
         Args:
             example_key: Key identifying the benchmark example (e.g., "matmul_cuda")
@@ -751,6 +1033,23 @@ class ExpectationsStore:
         existing = examples.get(example_key)
 
         goal = (entry.optimization_goal or "speed").strip().lower()
+
+        # accept_regressions does not override this check. Outlier timing is
+        # invalid evidence, not a slower result.
+        timing_issues = _timing_outlier_issues(example_key, _entry_timing_metrics(entry))
+
+        def reject(reasons: List[str], issues: List[ValidationIssue]) -> UpdateResult:
+            if timing_issues:
+                reasons = reasons + [
+                    "Timing rejected (accept_regressions does not override this): "
+                    + " ".join(issue.message for issue in timing_issues)
+                ]
+            return UpdateResult(
+                status="rejected",
+                message=" ".join(reasons),
+                entry=entry,
+                validation_issues=issues + timing_issues,
+            )
 
         # Check provenance consistency if entry already exists
         if existing and not self._allow_mixed_provenance:
@@ -766,14 +1065,12 @@ class ExpectationsStore:
                             f"stored='{getattr(existing_prov, field_name)}'"
                         )
                     mismatch_summary = ", ".join(mismatches) if mismatches else "unknown mismatch"
-                    return UpdateResult(
-                        status="rejected",
-                        message=(
+                    return reject(
+                        [
                             f"Provenance mismatch: {mismatch_summary}. "
                             f"Use allow_mixed_provenance=True (or --allow-mixed-provenance / --update-expectations) to override."
-                        ),
-                        entry=entry,
-                        validation_issues=[
+                        ],
+                        [
                             ValidationIssue(
                                 example_key=example_key,
                                 issue_type="provenance_mismatch",
@@ -789,11 +1086,9 @@ class ExpectationsStore:
             metric_label = "best_memory_savings_ratio"
             new_score = entry.best_memory_savings_ratio
             if new_score is None:
-                return UpdateResult(
-                    status="rejected",
-                    message="Memory-goal benchmark missing memory metrics (baseline_memory_mb/best_optimized_memory_mb).",
-                    entry=entry,
-                    validation_issues=[
+                return reject(
+                    ["Memory-goal benchmark missing memory metrics (baseline_memory_mb/best_optimized_memory_mb)."],
+                    [
                         ValidationIssue(
                             example_key=example_key,
                             issue_type="missing_memory_metrics",
@@ -809,6 +1104,9 @@ class ExpectationsStore:
 
         # Determine if this is an improvement, regression, or unchanged
         status = "updated"
+        regression_reasons: List[str] = []
+        regression_issues: List[ValidationIssue] = []
+        throughput_problems: List[ValidationIssue] = []
         if existing:
             existing_entry = ExpectationEntry.from_dict(existing)
             if goal == "memory":
@@ -821,26 +1119,20 @@ class ExpectationsStore:
             if new_score > old_score * (1 + RELATIVE_TOLERANCE):
                 status = "improved"
             elif new_score < old_score * (1 - RELATIVE_TOLERANCE):
-                if not self._accept_regressions:
-                    return UpdateResult(
-                        status="rejected",
-                        message=(
-                            f"Regression detected ({metric_label}): new {new_score:.3f} < "
-                            f"existing {old_score:.3f}. Use accept_regressions=True to override."
-                        ),
-                        entry=entry,
-                        validation_issues=[
-                            ValidationIssue(
-                                example_key=example_key,
-                                issue_type="regression",
-                                message="Performance regression rejected",
-                                stored_value=old_score,
-                                expected_value=new_score,
-                                delta_pct=((new_score - old_score) / old_score) * 100 if old_score else None,
-                            )
-                        ],
-                    )
                 status = "regressed"
+                regression_reasons.append(
+                    f"Regression detected ({metric_label}): new {new_score:.3f} < existing {old_score:.3f}."
+                )
+                regression_issues.append(
+                    ValidationIssue(
+                        example_key=example_key,
+                        issue_type="regression",
+                        message="Performance regression rejected",
+                        stored_value=old_score,
+                        expected_value=new_score,
+                        delta_pct=((new_score - old_score) / old_score) * 100 if old_score else None,
+                    )
+                )
             else:
                 # Within tolerance - check if timing values changed significantly
                 existing_metrics = existing.get("metrics", {})
@@ -865,6 +1157,24 @@ class ExpectationsStore:
                 ):
                     status = "unchanged"
 
+            throughput_problems = _throughput_issues(example_key, existing_entry, entry)
+            if throughput_problems:
+                details = ", ".join(issue.message for issue in throughput_problems)
+                throughput_regressed = any(issue.issue_type == "regression" for issue in throughput_problems)
+                heading = "Regression detected (throughput)" if throughput_regressed else "Tracked throughput missing"
+                regression_reasons.append(f"{heading}: {details}.")
+                regression_issues.extend(throughput_problems)
+                if throughput_regressed:
+                    status = "regressed"
+
+        if regression_issues and not self._accept_regressions:
+            return reject(
+                regression_reasons + ["Use accept_regressions=True to override."],
+                regression_issues,
+            )
+        if timing_issues:
+            return reject([], [])
+
         # Serialize entry to dict format (speedup is computed fresh here)
         entry_dict = entry.to_dict()
 
@@ -872,10 +1182,16 @@ class ExpectationsStore:
         examples[example_key] = entry_dict
         self._changed = True
 
+        message = f"Entry {example_key} {status} ({goal}) score {float(new_score):.3f}"
+        if throughput_problems:
+            message += ". Accepted throughput changes: " + ", ".join(
+                issue.message for issue in throughput_problems
+            )
         return UpdateResult(
             status=status,
-            message=f"Entry {example_key} {status} ({goal}) score {float(new_score):.3f}",
+            message=message,
             entry=entry,
+            validation_issues=throughput_problems,
         )
 
     def get_entry(self, example_key: str) -> Optional[ExpectationEntry]:
@@ -901,6 +1217,9 @@ class ExpectationsStore:
         - Masked regression: best_speedup=1.0 but actual ratio < 1.0
         - Metadata drift: metadata speedup differs from metrics speedup
         - Missing provenance: required provenance fields are missing
+        - Timing outliers: a stored mean exceeds its p75 (or its median when
+          no p75 is stored) by more than MAX_MEAN_SKEW_RATIO, or a stored p75
+          or median is not a positive time
 
         Args:
             example_key: Key identifying the entry
@@ -1070,6 +1389,9 @@ class ExpectationsStore:
                         expected_value=required_prov_fields,
                     )
                 )
+
+        # Check 5: Stored timing dominated by slow outliers
+        issues.extend(_timing_outlier_issues(example_key, metrics))
 
         return issues
 

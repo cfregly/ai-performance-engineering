@@ -1,4 +1,4 @@
-"""Optimized session-ranking path with vectorized PyTorch and Triton scoring."""
+"""Optimized session-ranking path with fused Triton pooling, a compiled user tower, and Triton scoring."""
 
 from __future__ import annotations
 
@@ -30,7 +30,7 @@ from labs.recsys_sequence_ranking.recsys_sequence_ranking_common import (
 
 
 class OptimizedSequenceRankingBenchmark(VerificationPayloadMixin, BaseBenchmark):
-    """Optimized sequence-ranking path using vectorized and compiled ops."""
+    """Optimized sequence-ranking path using fused Triton pooling, a compiled tower, and Triton scoring."""
 
     preferred_ncu_replay_mode = "application"
 

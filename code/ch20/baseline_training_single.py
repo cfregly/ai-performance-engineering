@@ -42,10 +42,10 @@ class BaselineTrainingSingleBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.hidden_dim = 8192
         self.train_steps = 6
         self._train_step_range = range(self.train_steps)
-        tokens = self.batch_size * self.hidden_dim
+        # Each input row is one token, and each train step passes every row through the model.
         self._workload = WorkloadMetadata(
             requests_per_iteration=float(self.batch_size),
-            tokens_per_iteration=float(tokens),
+            tokens_per_iteration=float(self.batch_size * self.train_steps),
         )
         self._payload_parameter_count = 0
     

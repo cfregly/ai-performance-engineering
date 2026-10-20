@@ -38,11 +38,16 @@ class OptimizedCudaGraphsBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._extension = load_cuda_graphs_extension()
         
         self.data = torch.linspace(0.0, 1.0, self.N, dtype=torch.float32, device=self.device)
-        # Warm up graph replay so capture/instantiation happens before measurement.
-        self._extension.graph_replay(self.data, self.iterations)
-        self.data = torch.linspace(0.0, 1.0, self.N, dtype=torch.float32, device=self.device)
         self._verify_input = self.data.detach().clone()
         self._verify_output_buffer = torch.empty_like(self.data)
+        # Capture and instantiate the graph on the buffer the timed loop replays. The
+        # extension caches the graph by data pointer, so this buffer must not be replaced.
+        # The extension launches on its own non-blocking stream, which does not wait for
+        # PyTorch's stream, so synchronize before the replay and after the restore.
+        torch.cuda.synchronize(self.device)
+        self._extension.graph_replay(self.data, self.iterations)
+        self.data.copy_(self._verify_input)
+        torch.cuda.synchronize(self.device)
     
     def benchmark_fn(self) -> None:
         """Benchmark: CUDA graph replay."""

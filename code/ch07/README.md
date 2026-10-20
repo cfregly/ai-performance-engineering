@@ -1,7 +1,7 @@
 # Chapter 7 - Memory Access Patterns
 
 ## Summary
-Teaches how memory layout drives performance: coalesced copies, tiled matmuls, async prefetch, TMA transfers, and shared-memory staging for lookup-heavy workloads.
+Teaches how memory layout drives performance: coalesced copies, tiled matmuls, async prefetch, TMA transfers, and table layout changes for lookup-heavy workloads.
 
 ## Problem
 Chapter 7 is where memory layout turns from a CUDA lecture into a measurable cost model. The useful question is not "is coalescing good?" but "which access-pattern changes actually move the runtime enough to justify changing the kernel or data layout?"
@@ -16,16 +16,20 @@ Chapter 7 is where memory layout turns from a CUDA lecture into a measurable cos
 - shared-memory tiling and TMA-backed staging where it helps
 - measured through the shared harness so the memory-layout wins are directly comparable to other chapter benchmarks
 
-## Measured Delta
-Representative validated results from `artifacts/runs/20260303_163946__bench__profile_minimal_targets_20/`:
+## Historical Delta (not requalified)
+Stored results from `artifacts/runs/20260303_163946__bench__profile_minimal_targets_20/`. The sources for every target below changed after that run, so these rows are history, not current evidence. Rerun them on a B200 before quoting them.
 
-| Target | Baseline | Optimized | Measured delta | What changed |
+| Target | Baseline | Optimized | Recorded delta | What changed |
 | --- | ---: | ---: | ---: | --- |
 | `tma_bulk_tensor_2d` | `0.029 ms` | `0.008 ms` | `3.44x` | real tensor-map TMA bulk copy instead of manual 2D staging |
-| `lookup` | `0.397 ms` | `0.009 ms` | `45.41x` | locality-aware lookup path |
+| `lookup` | `0.397 ms` | pending B200 rerun | pending | pretransposed path table, so each output reads its 64 values with coalesced loads |
 | `matmul` | `1.165 ms` | `0.367 ms` | `3.18x` | shared-memory tiled matmul instead of the naive layout |
 
-This chapter has some intentionally dramatic wins because memory access mistakes are expensive. `tma_copy` now means a strict tensor-map/TMA-capable run only, and unsupported hosts fail fast with `SKIPPED:` instead of publishing an async-pipeline fallback under the TMA name.
+The stored `lookup` optimized time of `0.009 ms` (`45.41x`) is withdrawn. It timed an earlier kernel that read one precomputed sum per output. Commit `b39acf103` replaced that kernel with the current `optimized_lookup.cu`, which reads all 64 path values per output. One launch now moves 260 MiB: 256 MiB of path reads and a 4 MiB output write. The path table is far larger than L2, so at the B200's 8 TB/s HBM peak a launch takes at least `0.034 ms`. The old time cannot describe the current kernel.
+
+Other source changes after that run include the following. `baseline_tma_bulk_tensor_2d.cu` now uses the optimized kernel's tile shape. `optimized_tma_bulk_tensor_2d.cu` fixed its TMA coordinate order and bounds its tail stores. `baseline_matmul.cu` changed its inner loop.
+
+`tma_copy` now means a strict tensor-map/TMA-capable run only, and unsupported hosts fail fast with `SKIPPED:` instead of publishing an async-pipeline fallback under the TMA name.
 
 ## Profiler Evidence
 Use deep-dive harness runs when you want to see whether the win came from less memory traffic, better staging, or fewer expensive accesses:
@@ -38,7 +42,7 @@ python -m cli.aisp bench run --targets ch07:matmul --profile deep_dive --single-
 
 These targets answer different chapter-level questions:
 - `tma_bulk_tensor_2d`: descriptor-backed TMA vs manual 2D staging
-- `tma_copy`: scalar baseline vs strict descriptor-backed tensor-map/TMA path
+- `tma_copy`: scalar global loads vs descriptor-backed 2D TMA staging for the same 64x64 tile-local transform on a 4096x4096 matrix. Audit W2-011 rewrote both binaries so they time this one transform. The rewrite has not yet been built or run on a B200, so the pair has no measured delta.
 - `lookup`: cache/locality sensitivity
 - `matmul`: memory-layout and tile-reuse payoff
 

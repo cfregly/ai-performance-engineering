@@ -200,6 +200,53 @@ def _exception_type_name(exc: BaseException) -> str:
     return "".join(chars)
 
 
+def _run_route(route: ApiRoute, params: dict[str, Any], started: float) -> dict[str, Any]:
+    """Run one registry handler and build its response envelope.
+
+    Call this through ``asyncio.to_thread``. Handlers may do filesystem,
+    subprocess, or GPU-driver work. ``build_response`` rebuilds its cached GPU
+    and software context, which runs ``nvidia-smi``, each time the cache
+    expires. Either step on the ASGI event loop would stall every route and
+    the GPU SSE stream.
+    """
+    if route.name == "optimization.campaign":
+        try:
+            params["workspace"] = str(
+                _resolve_campaign_workspace(str(params.get("workspace") or ""))
+            )
+        except PermissionError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except RuntimeError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+    include_context = _parse_bool(params.get("include_context"))
+    context_level = str(params.get("context_level", "summary"))
+
+    had_exception = False
+    try:
+        result = route.handler(params)
+    except Exception as exc:
+        had_exception = True
+        result = {
+            "success": False,
+            "error": str(exc),
+            "error_type": _exception_type_name(exc),
+        }
+    duration_ms = int((time.time() - started) * 1000)
+    return build_response(
+        route.name,
+        params,
+        result,
+        duration_ms,
+        had_exception=had_exception,
+        include_context=include_context,
+        context_level=context_level,
+    )
+
+
 def _make_endpoint(route: ApiRoute):
     async def _endpoint(request: Request) -> JSONResponse:
         started = time.time()
@@ -211,45 +258,7 @@ def _make_endpoint(route: ApiRoute):
             except Exception:
                 body = None
         params = _collect_params(request, body)
-        if route.name == "optimization.campaign":
-            try:
-                params["workspace"] = str(
-                    _resolve_campaign_workspace(str(params.get("workspace") or ""))
-                )
-            except PermissionError as exc:
-                raise HTTPException(status_code=403, detail=str(exc)) from exc
-            except FileNotFoundError as exc:
-                raise HTTPException(status_code=404, detail=str(exc)) from exc
-            except RuntimeError as exc:
-                raise HTTPException(status_code=503, detail=str(exc)) from exc
-            except ValueError as exc:
-                raise HTTPException(status_code=400, detail=str(exc)) from exc
-        include_context = _parse_bool(params.get("include_context"))
-        context_level = str(params.get("context_level", "summary"))
-
-        had_exception = False
-        try:
-            # Registry handlers are synchronous and may perform filesystem,
-            # subprocess, or GPU-driver work. Keep them off the ASGI event loop
-            # so one slow request cannot stall unrelated routes or the SSE feed.
-            result = await asyncio.to_thread(route.handler, params)
-        except Exception as exc:
-            had_exception = True
-            result = {
-                "success": False,
-                "error": str(exc),
-                "error_type": _exception_type_name(exc),
-            }
-        duration_ms = int((time.time() - started) * 1000)
-        payload = build_response(
-            route.name,
-            params,
-            result,
-            duration_ms,
-            had_exception=had_exception,
-            include_context=include_context,
-            context_level=context_level,
-        )
+        payload = await asyncio.to_thread(_run_route, route, params, started)
         return JSONResponse(payload)
 
     return _endpoint
@@ -268,15 +277,20 @@ def _register_routes() -> None:
 _register_routes()
 
 
+def _resolve_campaign_artifact_path(workspace: str, artifact: str) -> Path:
+    from core.optimization.campaign_dashboard import resolve_campaign_artifact
+
+    return resolve_campaign_artifact(_resolve_campaign_workspace(workspace), artifact)
+
+
 @fastapi_app.get("/api/optimization/campaign/artifact")
 async def campaign_artifact(workspace: str, artifact: str) -> FileResponse:
     """Serve one hash-valid artifact declared by a campaign ledger."""
 
-    from core.optimization.campaign_dashboard import resolve_campaign_artifact
-
     try:
-        resolved_workspace = _resolve_campaign_workspace(workspace)
-        path = resolve_campaign_artifact(resolved_workspace, artifact)
+        # Resolution reads the ledger and hashes the artifact file. Run it in
+        # a worker thread so a large artifact cannot stall the event loop.
+        path = await asyncio.to_thread(_resolve_campaign_artifact_path, workspace, artifact)
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except RuntimeError as exc:

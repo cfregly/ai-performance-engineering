@@ -1,0 +1,66 @@
+objective:
+  primary_kpi: effective_hbm_bandwidth_gbs
+  secondary_kpis: [bf16_tflops, timing_cv_pct]
+benchmark:
+  layer: micro
+  grade: realism
+  variable_under_test: active_b200_hardware_observation
+runtime_contract:
+  scope: lab_specific_isolated_environment
+  qualification_role: current_source_target
+  pytorch: "2.13.0+cu130_exact_readback_required"
+  pytorch_cuda: "13.0_exact_readback_required"
+  triton: optional_recorded_at_runtime_nonbinding
+  triton_role: unused_by_lab_source
+  global_repository_default_changed: false
+workload:
+  type: diagnostic
+  copy:
+    payload_mib: 4096
+    byte_accounting: read_plus_write
+    input_distribution: seeded_uniform_random_uint8
+  gemm:
+    dtype: bf16
+    beta: 0
+    shapes: [[1, 4096, 4096], [64, 4096, 4096], [8192, 8192, 8192]]
+    weight_rotation_mib: 512
+  constraints:
+    - named_b200_compute_capability_10_0
+    - strict_environment_validation
+    - repository_application_clock_lock
+    - full_actual_output_verification
+    - no_precision_fallback
+hot_path_model:
+  path: labs.arithmetic_intensity_b200.verification_tool
+  phase: steady_state
+  invocation_frequency: per_diagnostic_case
+  invocations_per_primary_unit: 1
+  estimated_costs:
+    copy_requested_bytes_per_iteration: 8589934592
+    gemm_m1_flops: 33554432
+    gemm_m1_logical_requested_bytes: 33570816
+    gemm_m64_flops: 2147483648
+    gemm_m64_logical_requested_bytes: 34603008
+    gemm_large_flops: 1099511627776
+    host_device_bytes: 0
+    synchronizations_or_locks: one_clock_lock_context_and_one_post_measurement_sync_per_case
+  operation_cost_source: exact_shape_and_dtype_counts_plus_cuda_event_measurements
+  expected_dominant_cost: HBM traffic for copy and small-M GEMM, tensor-core compute for large square GEMM
+  best_case_primary_kpi_improvement_pct: null
+evidence:
+  baseline_artifact: null
+  profile_artifacts: []
+  hardware_counter_artifacts: []
+  static_review_findings:
+    - The nominal B200 ridge is 281.25 FLOP per byte from the reviewed static profile.
+    - Logical GEMM bytes do not establish physical HBM traffic.
+    - The 4096-square BF16 weight matrix fits in B200 L2, so weight rotation is required.
+candidate_optimizations: []
+known_issues_or_hypotheses:
+  - Virtualized current-host results are noncanonical even when strict checks pass.
+  - Physical HBM traffic requires NCU dram read and write counters.
+risk_guardrails:
+  correctness_tests:
+    - tests/test_arithmetic_intensity_b200.py
+  change_windows:
+    - operator_owned_idle_gpu_lease

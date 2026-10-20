@@ -309,6 +309,12 @@ def _render_current_representative_deltas_body(history_source_root: Optional[Pat
             lines.append(
                 f"| `{target}` | `{baseline_ms:.3f} ms` | `{optimized_ms:.3f} ms` | `{speedup:.2f}x` | `{artifact}` |"
             )
+        lines.extend([
+            "",
+            "The `labs/real_world_models:llama_3_1_8b` row timed a retired workload: a four-layer stack "
+            "whose attention upcast to FP32. The current target times a 32-layer stack with 8 key/value "
+            "heads and changes only compilation, so this row does not describe it.",
+        ])
         return "\n".join(lines)
 
     root = Path(history_source_root or REPO_ROOT)
@@ -398,7 +404,7 @@ def _lab_run_commands(slug: str) -> RunSection:
     ]
     notes = [
         f"Targets follow the `{slug}:<workload>` naming convention listed by `list-targets`.",
-        f"Use `--target-extra-arg {slug}:<workload>=\"--flag value\"` to sweep schedule knobs.",
+        f"`--target-extra-arg {slug}:<workload>=\"--flag value\"` passes arguments to one target. The harness fails the target unless the benchmark defines `apply_target_overrides` or launches through torchrun.",
         "Benchmark validity profile defaults to strict. Virtualization is warning-only; use `--validity-profile portable` for broader compatibility on hardware-limited environments.",
         "Portable runs do not write expectation files unless `--allow-portable-expectations-update` is also provided.",
     ]
@@ -1197,9 +1203,10 @@ ENTRIES["ch02"] = chapter_entry(
 
                 | Target | Baseline | Optimized | Measured delta | What changed |
                 | --- | ---: | ---: | ---: | --- |
-                | `grace_coherent_memory` | `22468.299 ms` | `970.890 ms` | `23.14x` | coherent-memory placement stops fighting the platform |
                 | `memory_transfer` | `18.901 ms` | `3.637 ms` | `5.20x` | optimized transfer path fits the actual link behavior |
                 | `cublas` | `0.590 ms` | `0.114 ms` | `5.17x` | tuned cuBLAS settings match the hardware better |
+
+                `grace_coherent_memory` has no current measured delta. The same run reported `22468.299 ms` to `970.890 ms` (`23.14x`) for it, but that run predates the Grace host check and timed an older optimized path that staged copies through pinned memory. Both variants now do the same work each iteration: read the host buffer, compute `2x + 1`, and leave the result in host memory. The baseline stages that data through pageable H2D and D2H copies. The optimized variant has the GPU read and write a pinned host buffer in place over NVLink-C2C, with no copies. The pair needs a fresh GB200 or GB300 run before it can claim a speedup.
 
                 `grace_coherent_memory` is only valid on Grace-Blackwell coherent-memory hosts. On PCIe-only Blackwell or other non-Grace systems, the target fails fast with `SKIPPED:` instead of emitting fallback transfer numbers under the wrong benchmark name.
 
@@ -1221,7 +1228,7 @@ ENTRIES["ch02"] = chapter_entry(
                 The expected story is:
                 - `cublas`: better math-mode and launch configuration behavior
                 - `memory_transfer`: less time lost to the wrong host/device path
-                - `grace_coherent_memory`: on GB200/GB300 the placement choice dominates runtime; on non-Grace hosts the benchmark should fail fast with `SKIPPED:`"""
+                - `grace_coherent_memory`: on GB200/GB300 the baseline trace should show a pageable H2D copy, two elementwise kernels, and a pageable D2H copy per iteration, while the optimized trace shows one elementwise kernel that reads and writes host memory and no copies. On non-Grace hosts the benchmark should fail fast with `SKIPPED:`"""
             ),
         ),
         MarkdownSection(
@@ -1370,6 +1377,7 @@ ENTRIES["ch03"] = chapter_entry(
     notes=[
         "`cpu_gpu_numa_optimizations.sh` is safe to rerun after every reboot; it re-applies irqbalance pinning and governor settings.",
         "Kubernetes manifests document the necessary annotations for NVLink/NVSwitch affinity without pointing to external repos.",
+        "`rack_prep` accepts `--reserve N`, `--nic NAME` (repeatable) and `--apply` (root only), for example `--target-extra-arg ch03:rack_prep=\"--reserve 4 --nic eth0\"`. The baseline records them and stays topology-unaware. A missing `--nic`, or `--apply` without root, fails the target.",
     ],
 )
 
@@ -1715,7 +1723,7 @@ ENTRIES["ch07"] = chapter_entry(
     title="Chapter 7 - Memory Access Patterns",
     summary=dedent(
         """\
-        Teaches how memory layout drives performance: coalesced copies, tiled matmuls, async prefetch, TMA transfers, and shared-memory staging for lookup-heavy workloads."""
+        Teaches how memory layout drives performance: coalesced copies, tiled matmuls, async prefetch, TMA transfers, and table layout changes for lookup-heavy workloads."""
     ),
     lead_sections=[
         MarkdownSection(
@@ -1744,18 +1752,22 @@ ENTRIES["ch07"] = chapter_entry(
             ),
         ),
         MarkdownSection(
-            "Measured Delta",
+            "Historical Delta (not requalified)",
             dedent(
                 """\
-                Representative validated results from `artifacts/runs/20260303_163946__bench__profile_minimal_targets_20/`:
+                Stored results from `artifacts/runs/20260303_163946__bench__profile_minimal_targets_20/`. The sources for every target below changed after that run, so these rows are history, not current evidence. Rerun them on a B200 before quoting them.
 
-                | Target | Baseline | Optimized | Measured delta | What changed |
+                | Target | Baseline | Optimized | Recorded delta | What changed |
                 | --- | ---: | ---: | ---: | --- |
                 | `tma_bulk_tensor_2d` | `0.029 ms` | `0.008 ms` | `3.44x` | real tensor-map TMA bulk copy instead of manual 2D staging |
-                | `lookup` | `0.397 ms` | `0.009 ms` | `45.41x` | locality-aware lookup path |
+                | `lookup` | `0.397 ms` | pending B200 rerun | pending | pretransposed path table, so each output reads its 64 values with coalesced loads |
                 | `matmul` | `1.165 ms` | `0.367 ms` | `3.18x` | shared-memory tiled matmul instead of the naive layout |
 
-                This chapter has some intentionally dramatic wins because memory access mistakes are expensive. `tma_copy` now means a strict tensor-map/TMA-capable run only, and unsupported hosts fail fast with `SKIPPED:` instead of publishing an async-pipeline fallback under the TMA name."""
+                The stored `lookup` optimized time of `0.009 ms` (`45.41x`) is withdrawn. It timed an earlier kernel that read one precomputed sum per output. Commit `b39acf103` replaced that kernel with the current `optimized_lookup.cu`, which reads all 64 path values per output. One launch now moves 260 MiB: 256 MiB of path reads and a 4 MiB output write. The path table is far larger than L2, so at the B200's 8 TB/s HBM peak a launch takes at least `0.034 ms`. The old time cannot describe the current kernel.
+
+                Other source changes after that run include the following. `baseline_tma_bulk_tensor_2d.cu` now uses the optimized kernel's tile shape. `optimized_tma_bulk_tensor_2d.cu` fixed its TMA coordinate order and bounds its tail stores. `baseline_matmul.cu` changed its inner loop.
+
+                `tma_copy` now means a strict tensor-map/TMA-capable run only, and unsupported hosts fail fast with `SKIPPED:` instead of publishing an async-pipeline fallback under the TMA name."""
             ),
         ),
         MarkdownSection(
@@ -1772,7 +1784,7 @@ ENTRIES["ch07"] = chapter_entry(
 
                 These targets answer different chapter-level questions:
                 - `tma_bulk_tensor_2d`: descriptor-backed TMA vs manual 2D staging
-                - `tma_copy`: scalar baseline vs strict descriptor-backed tensor-map/TMA path
+                - `tma_copy`: scalar global loads vs descriptor-backed 2D TMA staging for the same 64x64 tile-local transform on a 4096x4096 matrix. Audit W2-011 rewrote both binaries so they time this one transform. The rewrite has not yet been built or run on a B200, so the pair has no measured delta.
                 - `lookup`: cache/locality sensitivity
                 - `matmul`: memory-layout and tile-reuse payoff"""
             ),
@@ -2033,8 +2045,8 @@ ENTRIES["ch09"] = chapter_entry(
         "Fuse reduction-heavy kernels (e.g., norm + activation) to eliminate redundant memory trips.",
     ],
     contents=[
-        ("`baseline_compute_bound.py`, `optimized_compute_bound.py`, `baseline_memory_bound.py`, `optimized_memory_bound.py`", "Reference kernels that isolate compute vs bandwidth ceilings and demonstrate tuning strategies."),
-        ("`baseline_micro_tiling_matmul.cu`, `baseline_micro_tiling_matmul.py`, `optimized_micro_tiling_matmul.cu`, `optimized_micro_tiling_matmul.py`", "Naive and 16x16 shared-memory tiled matmuls with per-thread scalar accumulation."),
+        ("`baseline_compute_bound.py`, `optimized_compute_bound.py`, `baseline_memory_bound.py`, `optimized_memory_bound.py`", "Roofline reference pairs. compute_bound is a batch-1 FP16 GEMV chain modeled at about 1 FLOP/byte in both arms, below the ridge point. memory_bound runs 64 FP32 multiply-add passes. Its baseline arm models 0.125 FLOP/byte, and its fused optimized arm models 16 FLOP/byte, which is above the FP32 ridge point on B200 but not on H100."),
+        ("`baseline_micro_tiling_matmul.cu`, `baseline_micro_tiling_matmul.py`, `optimized_micro_tiling_matmul.cu`, `optimized_micro_tiling_matmul.py`", "Naive matmul and a 128x128 shared-memory tiled matmul in which each thread accumulates an 8x8 register micro-tile."),
         ("`baseline_cublaslt_gemm.cu`, `baseline_cublaslt_gemm.py`, `optimized_cublaslt_gemm.cu`, `optimized_cublaslt_gemm.py`, `tcgen05_pipelined.cu`", "cuBLASLt-driven matmuls and tcgen05 pipeline kernels showcasing tcgen05 lowering and occupancy tuning."),
         ("`baseline_cublaslt_gemm_fp4.cu`, `baseline_cublaslt_gemm_fp4.py`, `optimized_cublaslt_gemm_fp4.cu`, `optimized_cublaslt_gemm_fp4.py`", "FP4 comparison path: naive block-scaled FP4 baseline vs native cuBLASLt NVFP4 when the driver/toolchain exposes the required heuristic."),
         ("`baseline_fused_l2norm.cu`, `baseline_fused_l2norm.py`, `optimized_fused_l2norm.cu`, `optimized_fused_l2norm.py`, `fusedL2Norm/`", "Fusion examples that merge L2 norm + scaling while staying numerically stable."),
@@ -2043,7 +2055,7 @@ ENTRIES["ch09"] = chapter_entry(
         ("`compare.py`, `requirements.txt`, `expectations_{hardware_key}.json`", "Harness hooks plus regression thresholds for every example."),
     ],
     validation=[
-        "`python -m cli.aisp bench run --targets ch09:compute_bound ch09:memory_bound --profile minimal` reports much higher arithmetic intensity for the compute-bound path than the memory-bound path, matching the roofline plots.",
+        "`python -m cli.aisp bench run --targets ch09:compute_bound ch09:memory_bound --profile minimal` reports `roofline.arithmetic_intensity` of about 1 FLOP/byte for both compute_bound arms, 0.125 for baseline_memory_bound and 16 for the fused optimized_memory_bound. Only the fused memory_bound arm crosses its ridge point, and only on B200 (`roofline.is_compute_bound` = 1).",
         "`python -m cli.aisp bench run --targets ch09:cublaslt_gemm --profile minimal` confirms the optimized path improving throughput over the baseline on the same device.",
         "`python -m ch09.compare --examples fused_l2norm` confirms numerically identical outputs before and after fusion.",
     ],
@@ -3322,7 +3334,7 @@ ENTRIES["ch19"] = chapter_entry(
         "Design allocator helpers to monitor and rebalance fragmented memory pools.",
     ],
     contents=[
-        ("`baseline_nvfp4_training.py`, `optimized_nvfp4_training.py`, `native_fp4_quantization.py`, `native_fp6_quantization.py`, `native_fp8_training.py`", "Training and quantization recipes that switch between FP8 and NVFP4 with automatic calibration."),
+        ("`baseline_nvfp4_training.py`, `optimized_nvfp4_training.py`, `native_fp4_quantization.py`, `native_fp6_quantization.py`, `native_fp8_training.py`", "Training and quantization recipes. The historical `native_fp6_quantization.py` path demonstrates packed symmetric INT6 weight storage with FP16/BF16 compute. It does not implement FP6 E3M2 or a native FP6 kernel."),
         ("`baseline_adaptive_parallelism.py`, `optimized_adaptive_parallelism.py`, `adaptive_parallelism_benchmark_common.py`, `adaptive_parallelism_strategy.py`, `adaptive_parallelism_worker_pool.py`", "Chapter-native adaptive parallelism benchmark pair plus the routing helpers that model tensor/pipeline/hybrid/data worker-pool selection on the same synthetic request stream."),
         ("`baseline_dynamic_precision.py`, `optimized_dynamic_precision.py`, `dynamic_precision_benchmark_common.py`, `dynamic_precision_switching.py`, `token_precision_switching.py`", "Chapter-native dynamic precision benchmark pair plus the confidence-driven precision helpers that keep decode outputs stable while switching precision modes."),
         ("`baseline_memory_double_buffering.py`, `optimized_memory_double_buffering.py`, `memory_allocator_with_monitoring.py`, `dynamic_memory_allocator.py`, `_allocator_worker.py`", "Memory-management helpers covering double buffering, instrumentation, and adaptive worker pools."),
@@ -3711,20 +3723,20 @@ ENTRIES["labs/cutlass_profiler_kernel_selector"] = lab_entry(
     ],
     run=RunSection(
         commands=[
-            "cd ai-performance-engineering",
+            "cd ai-performance-engineering/code",
             "python labs/cutlass_profiler_kernel_selector/run_cutlass_profiler_sweep.py --output-dir artifacts/cutlass_profiler",
             "python labs/cutlass_profiler_kernel_selector/run_triton_matmul.py --output-dir artifacts/cutlass_profiler",
             "python labs/cutlass_profiler_kernel_selector/compare_against_baselines.py --include-default-triton",
         ],
         notes=[
-            "Set `CUTLASS_PROFILER_BIN` to point at your `cutlass_profiler` binary after running `setup.sh` from the repo root.",
+            "`code/setup.sh` clones CUTLASS into `code/third_party/cutlass` but does not build `cutlass_profiler`. Build the `cutlass_profiler` CMake target in `code/third_party/cutlass/build_profiler`, where the sweep looks by default, or point `CUTLASS_PROFILER_BIN` or `--profiler-bin` at an existing binary.",
             "Add extra providers by writing JSON files matching the documented schema (see `compare_against_baselines.py`).",
         ],
     ),
     validation=[
-        "Profiler runs emit `artifacts/cutlass_profiler/cutlass_profiler_results.json` with per-shape winners; rerun when upgrading CUDA or GPUs.",
+        "Profiler runs emit `artifacts/cutlass_profiler/cutlass_profiler_results.json` with per-shape winners. Rerun the sweep when upgrading CUDA or GPUs.",
         "Triton baselines land in `artifacts/cutlass_profiler/triton_matmul_results.json` and should stay within a few percent of CUTLASS for supported shapes.",
-        "`compare_against_baselines.py` exits non-zero when provided result files are missing records, ensuring CI catches stale outputs.",
+        "`compare_against_baselines.py` exits non-zero when the baseline or a provider file is missing, or when any file lacks a positive TFLOP/s record for a shape in `shapes.py` (or the `--shapes` subset) or lists that shape as failed. CI therefore catches stale or partial outputs.",
     ],
     notes=[
         "Shapes can be overridden via CLI flags (e.g., `--shapes decode_mlp_m4096_n4096_k8192`).",
@@ -3745,7 +3757,7 @@ ENTRIES["labs/cudnn_sdpa_bench"] = lab_entry(
             'Baseline Path',
             dedent(
                 """\
-                - attention path with conservative backend selection
+                - pins the unfused math SDPA backend by default
                 - stable reference for correctness and shape coverage
                 - useful when fused paths are unavailable or unstable
                 """
@@ -3755,7 +3767,7 @@ ENTRIES["labs/cudnn_sdpa_bench"] = lab_entry(
             'Optimized Path',
             dedent(
                 """\
-                - fused SDPA backend path
+                - pins the fused Flash SDPA backend by default
                 - same shapes and validation contract
                 - tuned to answer "does backend choice alone move the result?" rather than mixing in unrelated changes
                 """
@@ -3771,7 +3783,7 @@ ENTRIES["labs/cudnn_sdpa_bench"] = lab_entry(
                 | --- | ---: | ---: | ---: |
                 | `flash_sdp` | `0.345 ms` | `0.282 ms` | `1.22x` |
 
-                The earlier implementation allowed a requested cuDNN run to fall back to Flash. This table therefore does not establish a cuDNN-versus-Flash delta. Explicit backend requests are now pinned and fail if unavailable; only `auto` permits fallback. Fresh GPU verification and profiler evidence are required before attributing a speedup to backend selection.
+                That run timed the default pair. The baseline used `auto`, which lets PyTorch choose among cuDNN, Flash, and efficient attention, and the run did not record which kernel it dispatched. The optimized side pinned Flash. The table therefore does not establish a cuDNN-versus-Flash delta or any other backend-specific delta. The b200 and 4x_gb200 expectation entries came from the same auto-versus-Flash default and were retired. A new entry needs a strict run in which both variants pin explicit, different backends. The default pair now pins math against Flash. A pinned backend fails if it is unavailable. Fresh GPU verification and profiler evidence are required before attributing a speedup to backend selection.
                 """
             ),
         ),
@@ -3780,11 +3792,11 @@ ENTRIES["labs/cudnn_sdpa_bench"] = lab_entry(
             dedent(
                 """\
                 ```bash
-                python -m cli.aisp bench run --targets labs/cudnn_sdpa_bench:flash_sdp --profile deep_dive --single-gpu --target-extra-arg labs/cudnn_sdpa_bench:flash_sdp="--backend cudnn"
-                python -m cli.aisp bench run --targets labs/cudnn_sdpa_bench:flash_sdp --profile deep_dive --single-gpu --target-extra-arg labs/cudnn_sdpa_bench:flash_sdp="--backend flash"
+                python -m cli.aisp bench run --targets labs/cudnn_sdpa_bench:flash_sdp --profile deep_dive --single-gpu
+                python -m cli.aisp bench run --targets labs/cudnn_sdpa_bench:flash_sdp --profile deep_dive --single-gpu --target-extra-arg labs/cudnn_sdpa_bench:flash_sdp="--baseline-backend cudnn --optimized-backend flash"
                 ```
 
-                Keep the backend fixed per run when you profile. The point is to attribute the gain to backend behavior, not to mixed runtime heuristics.
+                The first run profiles the default math-versus-Flash pair. The second profiles cuDNN against Flash. Pin a different explicit backend on each side when you profile. The point is to attribute the gain to backend behavior, not to mixed runtime heuristics.
                 """
             ),
         ),
@@ -3795,7 +3807,7 @@ ENTRIES["labs/cudnn_sdpa_bench"] = lab_entry(
                 ```bash
                 python -m cli.aisp bench list-targets --chapter labs/cudnn_sdpa_bench
                 python -m cli.aisp bench run --targets labs/cudnn_sdpa_bench:flash_sdp --profile minimal
-                python -m cli.aisp bench run --targets labs/cudnn_sdpa_bench:flash_sdp --profile minimal --target-extra-arg labs/cudnn_sdpa_bench:flash_sdp="--backend cudnn"
+                python -m cli.aisp bench run --targets labs/cudnn_sdpa_bench:flash_sdp --profile minimal --target-extra-arg labs/cudnn_sdpa_bench:flash_sdp="--baseline-backend cudnn --optimized-backend flash"
                 ```
                 """
             ),
@@ -3807,24 +3819,25 @@ ENTRIES["labs/cudnn_sdpa_bench"] = lab_entry(
         'Keep regression thresholds per architecture in `expectations_{hardware_key}.json`.',
     ],
     contents=[
-        ('`baseline_flash_sdp.py`, `optimized_flash_sdp.py`', 'Shared attention microbenchmarks; backend chosen via `--backend {auto,cudnn,flash,math}` passed with `--target-extra-arg`.'),
+        ('`baseline_flash_sdp.py`, `optimized_flash_sdp.py`', 'Shared attention microbenchmark. The baseline pins math and the optimized variant pins Flash. Override each side with `--baseline-backend` or `--optimized-backend` (`auto`, `cudnn`, `flash`, or `math`) passed with `--target-extra-arg`.'),
         ('`expectations_{hardware_key}.json`', 'Current golden timings for the active hardware key.'),
     ],
     run=RunSection(
         commands=['python -m cli.aisp bench list-targets --chapter labs/cudnn_sdpa_bench', 'python -m cli.aisp bench run --targets labs/cudnn_sdpa_bench --profile minimal'],
-        notes=['Targets follow the `labs/cudnn_sdpa_bench:<workload>` naming convention listed by `list-targets`.', 'Use `--target-extra-arg labs/cudnn_sdpa_bench:<workload>="--flag value"` to sweep schedule knobs.', 'Benchmark validity profile defaults to strict. Virtualization is warning-only; use `--validity-profile portable` for broader compatibility on hardware-limited environments.', 'Portable runs do not write expectation files unless `--allow-portable-expectations-update` is also provided.'],
+        notes=['Targets follow the `labs/cudnn_sdpa_bench:<workload>` naming convention listed by `list-targets`.', '`--target-extra-arg labs/cudnn_sdpa_bench:<workload>="--flag value"` passes arguments to one target. The harness fails the target unless the benchmark defines `apply_target_overrides` or launches through torchrun.', 'Benchmark validity profile defaults to strict. Virtualization is warning-only; use `--validity-profile portable` for broader compatibility on hardware-limited environments.', 'Portable runs do not write expectation files unless `--allow-portable-expectations-update` is also provided.'],
     ),
     run_heading='Running the Benchmarks',
     run_intro='Use the benchmark harness for quick comparisons or drive the Typer CLI when you need repeatable artifact capture.',
     validation=[
-        '`python -m cli.aisp bench run --targets labs/cudnn_sdpa_bench:flash_sdp --profile minimal --target-extra-arg labs/cudnn_sdpa_bench:flash_sdp="--backend cudnn"` captures cuDNN with Nsight traces.',
-        '`python -m cli.aisp bench run --targets labs/cudnn_sdpa_bench:flash_sdp --target-extra-arg labs/cudnn_sdpa_bench:flash_sdp="--backend flash"` compares the Flash path against cuDNN.',
-        '`python -m cli.aisp bench run --targets labs/cudnn_sdpa_bench:flash_sdp --target-extra-arg labs/cudnn_sdpa_bench:flash_sdp="--backend math"` sanity-checks the math backend where fused kernels are unsupported.',
+        '`python -m cli.aisp bench run --targets labs/cudnn_sdpa_bench:flash_sdp --profile minimal` times the default pair, math against Flash.',
+        '`python -m cli.aisp bench run --targets labs/cudnn_sdpa_bench:flash_sdp --target-extra-arg labs/cudnn_sdpa_bench:flash_sdp="--baseline-backend cudnn --optimized-backend flash"` times pinned cuDNN against pinned Flash.',
+        '`python -m cli.aisp bench run --targets labs/cudnn_sdpa_bench:flash_sdp --target-extra-arg labs/cudnn_sdpa_bench:flash_sdp="--baseline-backend math --optimized-backend cudnn"` times the math backend against pinned cuDNN.',
     ],
     extra_sections=[
     ],
     notes=[
-        'Backend selection is CLI-only; environment variables are intentionally ignored.',
+        'Backend selection comes only from `--baseline-backend` and `--optimized-backend`. Environment variables are ignored. Any other override argument, including a bare `--backend`, makes the lab raise an error. The harness then fails the target instead of running the default pair.',
+        '`auto` lets PyTorch choose the kernel. An expectation entry records the override arguments in `provenance.target_override_argv`, but not the backend each side ran. Do not write expectations from an `auto` run or from a run that pins the same backend on both sides.',
         'Profiling outputs are stored under `artifacts/runs/<run_id>/profiles/bench/labs_cudnn_sdpa_bench/` with harness artifacts in `artifacts/runs/<run_id>/`.',
     ],
 )
@@ -4191,7 +4204,7 @@ ENTRIES["labs/decode_optimization"] = lab_entry(
     ],
     run=RunSection(
         commands=['python -m cli.aisp bench list-targets --chapter labs/decode_optimization', 'python -m cli.aisp bench run --targets labs/decode_optimization --profile minimal'],
-        notes=['Targets follow the `labs/decode_optimization:<workload>` naming convention listed by `list-targets`.', 'Use `--target-extra-arg labs/decode_optimization:<workload>="--flag value"` to sweep schedule knobs.', 'Benchmark validity profile defaults to strict. Virtualization is warning-only; use `--validity-profile portable` for broader compatibility on hardware-limited environments.', 'Portable runs do not write expectation files unless `--allow-portable-expectations-update` is also provided.'],
+        notes=['Targets follow the `labs/decode_optimization:<workload>` naming convention listed by `list-targets`.', '`--target-extra-arg labs/decode_optimization:<workload>="--flag value"` passes arguments to one target. The harness fails the target unless the benchmark defines `apply_target_overrides` or launches through torchrun.', 'Benchmark validity profile defaults to strict. Virtualization is warning-only; use `--validity-profile portable` for broader compatibility on hardware-limited environments.', 'Portable runs do not write expectation files unless `--allow-portable-expectations-update` is also provided.'],
     ),
     run_heading='Running the Benchmarks',
     run_intro='Use the benchmark harness for quick comparisons or drive the Typer CLI when you need repeatable artifact capture.',
@@ -5143,7 +5156,7 @@ ENTRIES["labs/flashattention_gluon"] = lab_entry(
     ],
     run=RunSection(
         commands=['python -m cli.aisp bench list-targets --chapter labs/flashattention_gluon', 'python -m cli.aisp bench run --targets labs/flashattention_gluon --profile minimal'],
-        notes=['Targets follow the `labs/flashattention_gluon:<workload>` naming convention listed by `list-targets`.', 'Use `--target-extra-arg labs/flashattention_gluon:<workload>="--flag value"` to sweep schedule knobs.', 'Benchmark validity profile defaults to strict. Virtualization is warning-only; use `--validity-profile portable` for broader compatibility on hardware-limited environments.', 'Portable runs do not write expectation files unless `--allow-portable-expectations-update` is also provided.'],
+        notes=['Targets follow the `labs/flashattention_gluon:<workload>` naming convention listed by `list-targets`.', '`--target-extra-arg labs/flashattention_gluon:<workload>="--flag value"` passes arguments to one target. The harness fails the target unless the benchmark defines `apply_target_overrides` or launches through torchrun.', 'Benchmark validity profile defaults to strict. Virtualization is warning-only; use `--validity-profile portable` for broader compatibility on hardware-limited environments.', 'Portable runs do not write expectation files unless `--allow-portable-expectations-update` is also provided.'],
     ),
     run_heading='Running the Benchmarks',
     run_intro='Use the benchmark harness for quick comparisons or drive the Typer CLI when you need repeatable artifact capture.',
@@ -5363,7 +5376,7 @@ ENTRIES["labs/moe_optimization_journey"] = lab_entry(
     ],
     run=RunSection(
         commands=['python -m cli.aisp bench list-targets --chapter labs/moe_optimization_journey', 'python -m cli.aisp bench run --targets labs/moe_optimization_journey --profile minimal'],
-        notes=['Targets follow the `labs/moe_optimization_journey:<workload>` naming convention listed by `list-targets`.', 'Use `--target-extra-arg labs/moe_optimization_journey:<workload>="--flag value"` to sweep schedule knobs.', 'Benchmark validity profile defaults to strict. Virtualization is warning-only; use `--validity-profile portable` for broader compatibility on hardware-limited environments.', 'Portable runs do not write expectation files unless `--allow-portable-expectations-update` is also provided.'],
+        notes=['Targets follow the `labs/moe_optimization_journey:<workload>` naming convention listed by `list-targets`.', '`--target-extra-arg labs/moe_optimization_journey:<workload>="--flag value"` passes arguments to one target. The harness fails the target unless the benchmark defines `apply_target_overrides` or launches through torchrun.', 'Benchmark validity profile defaults to strict. Virtualization is warning-only; use `--validity-profile portable` for broader compatibility on hardware-limited environments.', 'Portable runs do not write expectation files unless `--allow-portable-expectations-update` is also provided.'],
     ),
     run_heading='Running the Benchmarks',
     run_intro='Use the benchmark harness for quick comparisons or drive the Typer CLI when you need repeatable artifact capture.',
@@ -6109,6 +6122,7 @@ ENTRIES["labs/trtllm_phi_3_5_moe"] = lab_entry(
     ],
     notes=[
         'This lab is one of the best repo examples for "serving-stack optimization" as opposed to pure kernel tuning.',
+        '`trtllm_phi_3_5_moe` accepts `--model-path`, `--engine-path`, `--prompt-len`, `--max-new-tokens`, `--batch-size` and `--vocab-slice`, for example `--target-extra-arg labs/trtllm_phi_3_5_moe:trtllm_phi_3_5_moe="--model-path /path/to/model"`. Any other argument fails the target.',
     ],
 )
 
@@ -6345,7 +6359,7 @@ ENTRIES["labs/flexattention"] = lab_entry(
     title="Lab - FlexAttention Harness",
     summary=dedent(
         """\
-        Mirrors the FlexAttention CuTe DSL walkthrough: run eager vs compiled FlexAttention, compare to the CuTe path, and experiment with block masks, score modifiers, and Triton-style compilation."""
+        Runs eager versus compiled FlexAttention with shared masks and score modifiers. A separate FlashAttention-4 CuTe tool checks the public FA4 path in its own pinned environment."""
     ),
     lead_sections=[
         MarkdownSection(
@@ -6392,10 +6406,30 @@ ENTRIES["labs/flexattention"] = lab_entry(
                 """\
                 ```bash
                 python -m cli.aisp bench run --targets labs/flexattention:flex_attention --profile deep_dive --single-gpu
-                python -m cli.aisp tools flex-attention-cute -- --batch 2 --seq-len 1024
                 ```
 
-                The harness run gives you the artifacted baseline/optimized pair. The CuTe tool is the useful fallback when you want to compare semantics on systems without working FlexAttention bindings."""
+                The harness run gives you the artifacted baseline and optimized pair. Run the CuTe tool from the dedicated environment below as a separate correctness and timing diagnostic. Its result is not part of the harness comparison."""
+            ),
+        ),
+        MarkdownSection(
+            "Dedicated FlashAttention-4 CuTe environment",
+            dedent(
+                """\
+                The repository's default environment intentionally keeps FlashAttention 2.8.3 for NanoChat and CUTLASS DSL 4.5.2 for the B200 and GB300 labs. FlashAttention 2 also ships legacy `flash_attn/cute` files that do not use the CUTLASS 4.5.2 API. Do not install FlashAttention-4 over that environment because both distributions own many of the same package paths.
+
+                Create a separate Python 3.12 CUDA 13 environment from `code/`. Do not run the repository-wide `setup.sh` in this environment. The dedicated requirements keep Torch 2.9.1+cu130, CUTLASS DSL 4.5.2, and the newest FA4 release declared compatible with that DSL version.
+
+                ```bash
+                python3.12 -m venv .venv-flexattention-cute
+                source .venv-flexattention-cute/bin/activate
+                python -m pip install -r labs/flexattention/requirements_cute.txt
+
+                # Run these commands only on an allocated CUDA 13 B200 host.
+                python -m labs.flexattention.flex_attention_cute --batch 2 --seq-len 1024
+                python -m pytest -q tests/test_audit_wave1_attention_regressions.py -k real_cute_layout_and_attention
+                ```
+
+                The tool checks the Torch, FlashAttention-4, CUTLASS DSL, and Quack pins. It rejects an environment that also contains the `flash-attn` distribution. It imports the supported `flash_attn.cute.flash_attn_func` API and fails before timing when the critical environment does not match."""
             ),
         ),
         MarkdownSection(
@@ -6412,23 +6446,24 @@ ENTRIES["labs/flexattention"] = lab_entry(
     ],
     goals=[
         "Benchmark FlexAttention eager mode against compiled variants using identical masks/score mods.",
-        "Validate CuTe-based FlashAttention fallbacks for platforms where FlexAttention is not available.",
+        "Validate the public FlashAttention-4 CuTe forward path in an isolated environment.",
         "Sweep sparsity knobs (block size, doc span) without editing source.",
         "Collect Nsight traces showing kernel fusion improvements after compiling.",
     ],
     contents=[
         ("`baseline_flex_attention.py`, `optimized_flex_attention.py`", "FlexAttention DSL workloads toggling `torch.compile` for fused kernels."),
-        ("`flex_attention_cute.py`", "CuTe/FlashAttention tool for hardware without FlexAttention bindings."),
+        ("`flex_attention_cute.py`, `requirements_cute.txt`", "Public FlashAttention-4 CuTe tool and its isolated CUDA 13 dependency lock."),
         ("`flexattention_common.py`, `expectations_{hardware_key}.json`", "Shared input builders, score modifiers, and regression thresholds."),
     ],
     validation=[
         "`python -m cli.aisp bench run --targets labs/flexattention:flex_attention --profile minimal` captures the eager vs compiled delta and stores artifacts.",
         "`BLOCK_SIZE=64 DOC_SPAN=128 python -m cli.aisp bench run --targets labs/flexattention:flex_attention` demonstrates masked sparsity sweeps.",
-        "`python -m cli.aisp tools flex-attention-cute -- --batch 2 --seq-len 1024` succeeds even on systems missing FlexAttention bindings.",
+        "In the dedicated environment, `python -m pytest -q tests/test_audit_wave1_attention_regressions.py -k real_cute_layout_and_attention` checks the public FA4 result against an independent full-output reference on CUDA.",
     ],
     notes=[
         "Environment variables such as `BLOCK_SIZE`, `DOC_SPAN`, and `TORCH_COMPILE_MODE` are read at runtime for quick experiments.",
-        "Artifacts include NVTX traces; feed them to `core/analysis/deep_profiling_report.py` for convenience.",
+        "Keep FlashAttention 2 in the default repository environment so NanoChat continues to use the `flash_attn_2_cuda` extension.",
+        "Artifacts include NVTX traces. Feed them to `core/analysis/deep_profiling_report.py` for convenience.",
     ],
 )
 
@@ -6850,7 +6885,7 @@ ENTRIES["labs/occupancy_tuning"] = lab_entry(
         ],
     ),
     notes=[
-        "Add new schedules to `triton_matmul_schedules.py` and regenerate the harness targets by rerunning the sweep script.",
+        "Add new schedules to `triton_matmul_schedules.py`. The sweep script only measures schedules and writes a CSV. To make a schedule a harness target, add an `optimized_proton_matmul_<schedule>.py` wrapper that binds it, as the existing optimized files do.",
         "`proton_matmul_bm64_bn64_bk32_nw2` is a supplementary local-contract schedule benchmark and supplementary comparison schedule benchmark; use the larger winning schedules when you want the lab's canonical speed claims.",
         "`expectations_{hardware_key}.json` records FLOP/s per schedule so improvements show up in CI.",
     ],
@@ -6997,12 +7032,12 @@ ENTRIES["labs/persistent_decode"] = lab_entry(
     ],
     run=RunSection(
         commands=['python -m cli.aisp bench list-targets --chapter labs/persistent_decode', 'python -m cli.aisp bench run --targets labs/persistent_decode --profile minimal'],
-        notes=['Targets follow the `labs/persistent_decode:<workload>` naming convention listed by `list-targets`.', 'Use `--target-extra-arg labs/persistent_decode:<workload>="--flag value"` to sweep schedule knobs.', 'Run only on an allocated, authorized target after its correctness gates pass. Canonical GPU measurements require bare metal; an explicitly approved virtualized run must preserve clock/provenance evidence and remain noncanonical.', 'Portable runs do not write expectation files unless `--allow-portable-expectations-update` is also provided.'],
+        notes=['Targets follow the `labs/persistent_decode:<workload>` naming convention listed by `list-targets`.', '`--target-extra-arg labs/persistent_decode:<workload>="--flag value"` passes arguments to one target. The harness fails the target unless the benchmark defines `apply_target_overrides` or launches through torchrun.', 'Run only on an allocated, authorized target after its correctness gates pass. Canonical GPU measurements require bare metal; an explicitly approved virtualized run must preserve clock/provenance evidence and remain noncanonical.', 'Portable runs do not write expectation files unless `--allow-portable-expectations-update` is also provided.'],
     ),
     run_heading='Running the Benchmarks',
     run_intro='Use the benchmark harness for quick comparisons or drive the Typer CLI when you need repeatable artifact capture.',
     validation=[
-        'Check every sequence and token, including `--tier large --num-programs 1` and `8`; grid-stride scheduling must not drop the final sequences.',
+        'Check every sequence and token of `right_sized_decode` with `--target-extra-arg labs/persistent_decode:right_sized_decode="--tier large --num-programs 1"`, then again with `--num-programs 8`. Grid-stride scheduling must not drop the final sequences.',
         'Run CUDA racecheck/synccheck for the shared reduction and repeated eager-versus-reference comparisons.',
         'Run `python -m pytest tests/test_audit_wave1_prefill_full_output.py -q` for complete payload controls and seven capability-gated actual CUDA cases. The CUDA cases change all inputs on a caller stream before each launch and cover full and piecewise graphs; CPU passes do not qualify GPU execution.',
         'For pinned staging, verify host-buffer reuse waits for DMA completion and device-buffer reuse waits for prior attention consumers; cover memmap, direct pinned views, both streams and host-worker modes.',
@@ -7016,6 +7051,7 @@ ENTRIES["labs/persistent_decode"] = lab_entry(
     notes=[
         '`tma_extension.py` exposes `load_async_copy()`; `load_native_tma()` and the old target filenames remain compatibility aliases. No TMA performance or capability claim follows from those names.',
         'Historical timings and expectation files predate these correctness fixes; requalify them on the target.',
+        '`right_sized_decode` accepts `--tier {small,medium,large}`, `--quantization {fp32,fp16,int4}`, `--block-k N` and `--num-programs N`. Any other argument fails the target. The CUDA graphs backend is the separate `persistent_decode_graphs` target.',
         'Set `TORCH_COMPILE_MODE` or `TMA_TILE_SIZE` via env vars before invoking the harness to sweep tile sizes.',
         '`tma_extension.py` caches builds under `~/.cache/torch_extensions`; clean the cache when switching CUDA versions.',
         "`nvlink_offload` remains a transport-comparison benchmark and `paged_kv_offload` stays a real speed benchmark with a small local contract; use `paged_kv_offload_prefetch` when you want the lab's canonical KV-offload overlap benchmark.",
@@ -7145,11 +7181,15 @@ ENTRIES["labs/real_world_models"] = lab_entry(
             ),
         ),
         MarkdownSection(
-            "Measured Delta (portable B200 observations)",
+            "Historical Delta (portable B200, earlier multi-head stack)",
             dedent(
                 """\
-                Wave 46 ran the actual factories with identical 32-layer,
-                7,784,890,368-parameter models at batch one and 2,048 tokens. Four
+                Wave 46 measured the earlier decoder stack, whose K and V
+                projections were full 4,096 x 4,096 matrices. It ran the actual
+                factories with identical 32-layer, 7,784,890,368-parameter models
+                at batch one and 2,048 tokens. The current stack uses 8 key/value
+                heads and has 6,979,584,000 decoder parameters, so these numbers
+                do not describe it. It needs a fresh B200 measurement. Four
                 ABBA blocks covered eight fresh inputs and eight observations per
                 arm. Every complete 8,388,608-element output matched bitwise.
                 CUDA-event medians were `30.3838 ms` eager and `28.1446 ms` compiled
@@ -7201,31 +7241,31 @@ ENTRIES["labs/real_world_models"] = lab_entry(
     ],
     contents=[
         ("`baseline_llama_3_1_8b.py`, `optimized_llama_3_1_8b.py`", "Compile-only Llama pair with shared preferred SDPA, FP32 residuals, stable RMSNorm, and complete-output verification."),
-        ("`llama_3_1_8b_optimization.py`", "Shared 32-layer model plus an explicit materialized-attention diagnostic mode."),
+        ("`llama_3_1_8b_optimization.py`", "Shared 32-layer Llama 3.1 8B decoder stack with 8 key/value heads (no token embedding, final norm, LM head, or RoPE) plus an explicit materialized-attention diagnostic mode."),
         ("`deepseek_r1_moe_optimization.py`", "64-expert top-6 routing demo with balance/Gini/entropy metrics and auxiliary loss."),
-        ("`gpt4_architecture_optimization.py`", "GPT-4-style MoE + context-parallel sketch with FP8 support and memory estimation."),
+        ("`gpt4_architecture_optimization.py`", "GPT-4-scale memory estimate that can assume stored MoE experts and FP8 weights and KV cache, plus a four-layer dense BF16 timing proxy. The proxy does not run MoE, FP8, or context parallelism."),
         ("`__init__.py`", "Exports harness targets for the CLI."),
     ],
     run=RunSection(
         commands=[
-            "cd ai-performance-engineering",
+            "cd ai-performance-engineering/code",
             "python -m cli.aisp bench list-targets --chapter labs/real_world_models",
             "python -m cli.aisp bench run --targets labs/real_world_models:llama_3_1_8b --profile minimal --single-gpu",
         ],
         notes=[
-            "Override per-model flags via `--target-extra-arg labs/real_world_models:<target>=\"--flag value\"` when using the harness.",
+            "These targets define no `apply_target_overrides` hook, so the harness rejects `--target-extra-arg` for them.",
         ],
     ),
     validation=[
-        "`llama_3_1_8b` preserves batch one, 2,048 tokens, 4,096 hidden size, and 32 layers; it compares every output value at `rtol=0.02`, `atol=0.02`.",
+        "`llama_3_1_8b` preserves batch one, 2,048 tokens, 4,096 hidden size, 32 layers, and 8 key/value heads. It compares every output value at `rtol=0.02`, `atol=0.02`.",
         "The normal source factories and profiler must pass on the target GPU before publishing a performance result from the compile-only pair.",
         "`deepseek_r1_moe_optimization.py` reports balanced experts (Gini < 0.2) and stable router entropy across batches.",
-        "`gpt4_architecture_optimization.py` runs the context-parallel path without OOM on appropriately sized clusters; memory estimates match the printed budget.",
+        "`gpt4_architecture_optimization.py` times only its dense BF16 proxy on one GPU and reports `use_moe`, `use_fp8`, and `use_context_parallel` as `0.0`. Its GPU count is a memory-only estimate at 192 GB per B200, not a tested multi-GPU run.",
         "Harness runs emit comparable baseline/optimized timings for every target without manual wiring.",
     ],
     notes=[
         "These are architecture-shaped random-weight benchmarks, not checkpoint-backed production models; validate production settings in the actual serving stack.",
-        "Hardware expectations: B200/GB200 for best results; GPT-4-scale examples assume 24+ GPUs with NVLink/NVL fabrics.",
+        "Hardware expectations: B200/GB200 for best results. The GPT-4 proxy needs one CUDA GPU, and no example here runs a GPT-4-scale model across GPUs.",
         "Metrics (balance loss, entropy, KV cache) are emitted alongside throughput so you can gate deployments with more than raw speed.",
     ],
 )

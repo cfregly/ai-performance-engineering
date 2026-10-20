@@ -38,7 +38,7 @@ export function StatsCard({
         <div className="flex-1">
           <p className="text-sm text-white/50 mb-1">{title}</p>
           <p className={cn(
-            'text-3xl font-bold bg-gradient-to-r bg-clip-text text-transparent',
+            'text-3xl font-bold bg-linear-to-r bg-clip-text text-transparent',
             variantStyles[variant]
           )}>
             {value}
@@ -59,7 +59,7 @@ export function StatsCard({
         </div>
         {Icon && (
           <div className={cn(
-            'p-3 rounded-xl bg-gradient-to-br',
+            'p-3 rounded-xl bg-linear-to-br',
             variantStyles[variant],
             'bg-opacity-20'
           )}>

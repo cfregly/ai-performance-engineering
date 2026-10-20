@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+import argparse
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional
 
 import torch
 
@@ -26,12 +27,6 @@ class BaselineTrtLlmPhi35MoeBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
     def __init__(self) -> None:
         super().__init__()
-        args = parse_trtllm_args()
-        self.model_path = Path(args.model_path)
-        self.prompt_len = args.prompt_len
-        self.max_new_tokens = args.max_new_tokens
-        self.batch_size = args.batch_size
-        self.vocab_slice = args.vocab_slice
         self.model = None
         self.tokenizer = None
         self.input_ids: Optional[torch.Tensor] = None
@@ -42,6 +37,19 @@ class BaselineTrtLlmPhi35MoeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.output: Optional[torch.Tensor] = None
         self._verify_output_buffer: Optional[torch.Tensor] = None
         self._payload_parameter_count = 0
+        self._apply_args(parse_trtllm_args([]))
+
+    def _apply_args(self, args: argparse.Namespace) -> None:
+        """Set every field the Phi-3.5-MoE flags control, including the workload metadata.
+
+        The baseline runs Hugging Face Transformers, so it accepts --engine-path
+        for the optimized variant and does not use it.
+        """
+        self.model_path = Path(args.model_path)
+        self.prompt_len = args.prompt_len
+        self.max_new_tokens = args.max_new_tokens
+        self.batch_size = args.batch_size
+        self.vocab_slice = args.vocab_slice
         tokens = float(self.prompt_len + self.max_new_tokens)
         self._workload = WorkloadMetadata(
             requests_per_iteration=float(self.batch_size),
@@ -51,6 +59,10 @@ class BaselineTrtLlmPhi35MoeBenchmark(VerificationPayloadMixin, BaseBenchmark):
             requests_per_iteration=float(self.batch_size),
             tokens_per_iteration=tokens,
         )
+
+    def apply_target_overrides(self, argv: List[str]) -> None:
+        """Apply --target-extra-arg flags. Unknown or invalid flags raise ValueError."""
+        self._apply_args(parse_trtllm_args(argv))
 
     def setup(self) -> None:
         if not torch.cuda.is_available():

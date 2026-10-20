@@ -214,7 +214,9 @@ Decode ladder technique headroom (from the live loop's `labs/decode_optimization
 strict run, best_speedup vs the lab's naive baseline): decode (main kernel opt)
 9.02x, decode_warp_specialized 5.43x, decode_fp4 1.73x, decode_fp8 1.29x,
 decode_pinned 1.19x, decode_streams 1.05x (below the 1.05x gate), decode_hf_cache /
-decode_double_buffer_tma skipped. The shape of this ladder IS the GB300 decode SoL
+decode_double_buffer_tma skipped. Correction (2026-10-13, audit W1-031): the decode_fp4 row ran
+the FP8 DelayedScaling path under the FP4 label, as every commit up to cc095aa18 did, so 1.73x is
+not an NVFP4 result. The quant-path range below inherits that error. The shape of this ladder IS the GB300 decode SoL
 story: the kernel-structure optimizations (the persistent/fused decode kernel and
 warp specialization) carry essentially all the headroom, the quant paths add a
 moderate 1.3-1.7x, and the host/memory-movement optimizations (pinned, streams) add
@@ -618,7 +620,7 @@ SoL framing (B), measured 2026-06-09:
   integer div/mod per element, which the compiler cannot strength-reduce). Fix: a full-tile fast path
   using the compile-time TILE_N (a power of two, so / and % fold to shift/mask; indices identical).
   Result: 39.2% -> 63.7% HBM SoL (3136 -> 5098 GB/s, 1.63x), ncu-confirmed (DRAM 25%->42%, SM
-  71%->52%, duration 43.6->25.6 us); the harness ch07:tma_copy target stays green. Next lever (banked):
+  71%->52%, duration 43.6->25.6 us); the harness ch07:tma_copy target passed at the time of this measurement. Correction (2026-10-13, audit W2-011): that pair timed different transforms in its two binaries. Both were rewritten to time the same 64x64 tile-local transform, so these numbers need a fresh GB300 run before they are quoted again. Next lever (banked):
   the residual gap to ~90% is the single-tile barrier serialization + Long Scoreboard smem latency; a
   double-buffered multi-tile TMA pipeline could close it but is smem-limited (32 KB/block -> 6
   blocks/SM, and double-buffering lowers occupancy), so the EV is uncertain. Phase-2 follow-up
@@ -1005,12 +1007,21 @@ SoL framing (B), measured 2026-06-09:
   coherent C2C, keep data GPU-resident and operate in-place; explicit host staging is the anti-pattern
   (cf. B22a prefetch-thread, and the marginal memory_transfer / pageable_copy near-misses are the same
   pattern, candidates for the same zero-copy fix).
+  Correction (2026-10-13, audit W2-006): the 17x is withdrawn. It came from removing the per-iteration
+  H2D and D2H work from the optimized variant only, so the two variants no longer did the same work and
+  the result was not an equivalent-workload win. Both variants now read the host buffer, compute 2x + 1,
+  and leave the result in host memory each iteration. The baseline stages that data through pageable
+  copies. The optimized variant maps a pinned host buffer into the GPU and updates it in place over
+  NVLink-C2C. Its speedup must be measured again on GB300.
 - BANK (B27b, ch02:memory_transfer 1.024x + ch03:pageable_copy 1.015x): NOT zero-copy candidates after
   all (correcting the B27 note). These are transfer-MEASUREMENT benchmarks: memory_transfer's benchmark_fn
   is a pure per-iter H2D copy (no compute), and pageable_copy copies a CONSTANT host tensor per-iter then
   sums it. The per-iter transfer IS the measured workload, so skipping/caching it via coherence would game
   the benchmark (unlike grace_coherent_memory, whose data CHANGES each iter via f(x)=2x+1 and is
-  legitimately kept GPU-resident -- the transfer there is incidental to an on-GPU compute pipeline). The
+  legitimately kept GPU-resident -- the transfer there is incidental to an on-GPU compute pipeline.
+  Correction 2026-10-13, audit W2-006: keeping that data GPU-resident was not legitimate either, because
+  the baseline still moved it to and from the host every iteration. The current pair leaves both results
+  in host memory). The
   legit lever here is only the copy TECHNIQUE (pinned vs pageable), which on coherent C2C is marginal
   (pinned ~= pageable) -> 1.01-1.02x is inherent. The distinction: zero-copy is a legit win when the
   transfer is incidental to a compute that can stay GPU-resident; it is gaming when the transfer itself is

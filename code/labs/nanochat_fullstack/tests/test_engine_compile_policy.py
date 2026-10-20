@@ -9,7 +9,12 @@ import torch
 from torch import nn
 
 import labs.nanochat_fullstack  # noqa: F401 - register the nanochat package alias
-from nanochat.engine import Engine, KVCache
+from nanochat.engine import (
+    Engine,
+    KVCache,
+    _read_triton_version,
+    _select_compile_mode,
+)
 from nanochat.gpt import GPT, GPTConfig
 
 
@@ -22,8 +27,7 @@ def _small_model(*, device: torch.device | str = "cpu", **config_overrides) -> G
         n_kv_head=2,
         n_embd=16,
         use_flash_sdp=False,
-        use_flash3=False,
-        use_cta_clustering=False,
+        use_flash_attn_varlen=False,
     )
     config_kwargs.update(config_overrides)
     config = GPTConfig(**config_kwargs)
@@ -67,6 +71,7 @@ def test_cpu_engine_reports_compile_as_unsupported_and_still_runs_decode(monkeyp
         "status": "unsupported_hardware",
         "reason": "model device cpu is not an available CUDA device",
         "mode": None,
+        "mode_reason": None,
         "device": "cpu",
         "fullgraph": None,
         "dynamic": None,
@@ -109,6 +114,130 @@ def test_compile_skip_reason_is_explicit(
 
     assert engine.compile_status == expected_status
     assert engine.get_compile_diagnostics()["runtime_observed"] is False
+
+
+def test_compile_mode_guard_matches_only_verified_runtime() -> None:
+    mode, reason = _select_compile_mode(
+        capability=(10, 0),
+        torch_version="2.9.1+cu130",
+        cuda_version="13.0",
+        triton_version="3.5.1",
+        default_mode="max-autotune",
+    )
+
+    assert mode == "max-autotune-no-cudagraphs"
+    assert reason == (
+        "verified cold-cache SM100 decode guard for torch 2.9.1+cu130, "
+        "CUDA 13.0, and Triton 3.5.1"
+    )
+
+
+@pytest.mark.parametrize(
+    ("capability", "torch_version", "cuda_version", "triton_version"),
+    [
+        ((10, 1), "2.9.1+cu130", "13.0", "3.5.1"),
+        ((10, 0), "2.9.1", "13.0", "3.5.1"),
+        ((10, 0), "2.9.1+cu130", "13.1", "3.5.1"),
+        ((10, 0), "2.9.1+cu130", "13.0", "3.5.2"),
+    ],
+)
+def test_compile_mode_guard_passes_through_near_misses(
+    capability,
+    torch_version,
+    cuda_version,
+    triton_version,
+) -> None:
+    mode, reason = _select_compile_mode(
+        capability=capability,
+        torch_version=torch_version,
+        cuda_version=cuda_version,
+        triton_version=triton_version,
+        default_mode="max-autotune",
+    )
+
+    assert mode == "max-autotune"
+    assert reason == "default Engine compile mode max-autotune"
+
+
+@pytest.mark.parametrize(
+    ("default_mode", "backend"),
+    [
+        ("custom-default", None),
+        ("max-autotune", "custom-backend"),
+    ],
+)
+def test_compile_mode_guard_preserves_explicit_compile_policy(
+    default_mode,
+    backend,
+) -> None:
+    mode, reason = _select_compile_mode(
+        capability=(10, 0),
+        torch_version="2.9.1+cu130",
+        cuda_version="13.0",
+        triton_version="3.5.1",
+        default_mode=default_mode,
+        backend=backend,
+    )
+
+    assert mode == default_mode
+    assert reason == f"default Engine compile mode {default_mode}"
+
+
+@pytest.mark.parametrize(
+    ("selected_mode", "selected_reason", "expected_mode", "expected_reason"),
+    [
+        (None, None, "subclass-mode", "default Engine compile mode subclass-mode"),
+        (
+            "max-autotune-no-cudagraphs",
+            "verified test selection",
+            "max-autotune-no-cudagraphs",
+            "verified test selection",
+        ),
+    ],
+)
+def test_compile_configuration_preserves_subclass_contract_and_selected_mode(
+    monkeypatch,
+    selected_mode,
+    selected_reason,
+    expected_mode,
+    expected_reason,
+) -> None:
+    backend = object()
+
+    class _CustomEngine(Engine):
+        _COMPILE_MODE = "subclass-mode"
+        _COMPILE_BACKEND = backend
+
+    engine = _CustomEngine(_small_model(), tokenizer=None)
+    original_model = engine.model
+    compiled_model = object()
+    calls = []
+
+    def fake_compile(model, **kwargs):
+        calls.append((model, kwargs))
+        return compiled_model
+
+    monkeypatch.setattr(torch, "compile", fake_compile)
+    engine._configure_compiled_model(
+        mode=selected_mode,
+        mode_reason=selected_reason,
+    )
+
+    assert calls == [
+        (
+            original_model,
+            {
+                "mode": expected_mode,
+                "fullgraph": True,
+                "dynamic": True,
+                "backend": backend,
+            },
+        )
+    ]
+    assert engine.model is compiled_model
+    assert engine.compile_mode == expected_mode
+    assert engine.compile_mode_reason == expected_reason
+    assert engine.compile_status == "configured"
 
 
 def test_compile_constructor_failure_is_not_swallowed() -> None:
@@ -173,6 +302,7 @@ def test_cpu_counting_backend_reports_observed_execution_and_graph_delta() -> No
         assert result.shape == (1, 2)
         assert backend_calls == 1
         assert diagnostics["status"] == "runtime_observed"
+        assert diagnostics["mode_reason"] == "default Engine compile mode default"
         assert diagnostics["runtime_observed"] is True
         assert diagnostics["dynamo_process_unique_graphs_since_config"] >= 1
     finally:
@@ -234,7 +364,17 @@ def test_blackwell_compiled_multitoken_decode_matches_eager_and_reports_graphs(
         compiled_source = _small_model(device=device, n_layer=n_layer)
         compiled_source.load_state_dict(eager_model.state_dict())
         engine = Engine(compiled_source, tokenizer=None)
+        expected_mode, expected_mode_reason = _select_compile_mode(
+            capability=torch.cuda.get_device_capability(device),
+            torch_version=torch.__version__,
+            cuda_version=torch.version.cuda,
+            triton_version=_read_triton_version(),
+            default_mode=engine._COMPILE_MODE,
+            backend=engine._COMPILE_BACKEND,
+        )
         assert engine.compile_status == "configured"
+        assert engine.compile_mode == expected_mode
+        assert engine.compile_mode_reason == expected_mode_reason
 
         eager_cache = KVCache(**engine._kv_cache_params(batch_size=1, seq_len=16))
         compiled_cache = _cache(engine)
@@ -285,6 +425,8 @@ def test_blackwell_compiled_multitoken_decode_matches_eager_and_reports_graphs(
 
         diagnostics = engine.get_compile_diagnostics()
         assert diagnostics["status"] == "runtime_observed"
+        assert diagnostics["mode"] == expected_mode
+        assert diagnostics["mode_reason"] == expected_mode_reason
         assert diagnostics["dynamo_process_unique_graphs_since_config"] == warmed_graphs
     finally:
         torch.compiler.reset()

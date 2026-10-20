@@ -18,10 +18,9 @@ Key Principles:
 
 from __future__ import annotations
 
-import math
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Tuple
 
 from .topology_detector import TopologyInfo
 from .model_analyzer import ModelArchitecture, ModelType
@@ -373,8 +372,9 @@ class StrategyOptimizer:
         # Compute time estimation (very rough)
         # Based on ~2 TFLOPs per parameter per token for transformer forward pass
         flops_per_token = model.active_params_billion * 1e9 * 2
-        # B200: ~2.5 PFLOPS FP16, per GPU
-        gpu_tflops = 2500 if "blackwell" in topology.gpus[0].architecture else 1000
+        # B200: ~2.5 PFLOPS FP16, per GPU. Only the exact "blackwell" label (SM 10.0
+        # and 10.3) gets this estimate. SM 12.x GPUs are labeled "blackwell_sm12x".
+        gpu_tflops = 2500 if topology.gpus[0].architecture == "blackwell" else 1000
         
         tokens_per_gpu = batch_size * seq_length / max(strategy.cp, 1)
         compute_ms = (flops_per_token * tokens_per_gpu) / (gpu_tflops * 1e12) * 1000

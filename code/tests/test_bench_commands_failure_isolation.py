@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from core.benchmark import bench_commands
-from core.benchmark.e2e_sweep import _E2EAbort, _benchmark_stage_details_from_output
+from core.benchmark.e2e_sweep import _benchmark_stage_details_from_output, _E2EAbort
 from core.harness import run_benchmarks as run_benchmarks_module
 
 
@@ -40,16 +40,22 @@ def test_continuation_records_one_target_preflight_and_attempts_the_next(
     _write_pair(chapter_dir, "later")
     _prepare_cuda_hidden_control(monkeypatch)
 
-    preflight_calls: list[set[str]] = []
+    preflight_calls: list[tuple[set[str], bool]] = []
 
-    def selective_preflight(_chapter_dirs, chapter_filters, **_kwargs):
+    def selective_preflight(
+        _chapter_dirs,
+        chapter_filters,
+        *,
+        validate_target_overrides=True,
+        **_kwargs,
+    ):
         examples = {
             example
             for selected in chapter_filters.values()
             for example in selected
         }
-        preflight_calls.append(examples)
-        if examples == {"blocked"}:
+        preflight_calls.append((examples, validate_target_overrides))
+        if not validate_target_overrides and examples == {"blocked"}:
             return ["ch01: synthetic target preflight failure"]
         return []
 
@@ -78,7 +84,11 @@ def test_continuation_records_one_target_preflight_and_attempts_the_next(
         exit_on_failure=False,
     )
 
-    assert preflight_calls == [{"blocked"}, {"later"}]
+    assert preflight_calls == [
+        ({"blocked", "later"}, True),
+        ({"blocked"}, False),
+        ({"later"}, False),
+    ]
     assert attempted_examples == [["later"]]
     assert result["total_failed"] == 1
     assert result["preflight_failed"] is True

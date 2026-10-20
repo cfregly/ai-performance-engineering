@@ -28,7 +28,11 @@ triton==3.5.1
 
 # Build tooling compatibility
 packaging==25.0
-ninja==1.13.0
+# setup.sh installs these CMake and ninja pins and puts the pip CMake first on
+# PATH. Keep cmake at or above the newest cmake_minimum_required in the
+# first-party CMakeLists.txt files. Ubuntu's apt CMake is older than that floor.
+cmake==4.4.4
+ninja==1.13.2
 nvidia-mathdx==25.6.0
 
 # Monitoring and system insight

@@ -2,13 +2,17 @@
 
 Simplified DDP-style training loop that blocks on gradient exchange and does
 not bucket or overlap communication. Uses two microbatches to show the cost
-of sequential reduce + compute. Falls back to single-GPU execution when
-additional GPUs are unavailable.
+of sequential reduce + compute. A blocking reduction averages each microbatch's
+gradients across replicas. Each iteration sums those averages over every
+microbatch and applies one update to every model, the same update math as
+ddp_nvlink_overlap.py.
+
+Requires at least two GPUs. setup() raises a SKIPPED: diagnostic otherwise.
 """
 
 from __future__ import annotations
 
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 import torch
 import torch.nn as nn
@@ -27,6 +31,8 @@ class BaselineDdpNvlinkNaiveBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._inputs: List[List[torch.Tensor]] = []
         self._micro_model_groups: list[list[tuple[int, nn.Linear, torch.Tensor]]] = []
         self._grad_slots: List[torch.Tensor] = []
+        self._accumulated_grads: List[torch.Tensor] = []
+        self._model_update_groups: List[Tuple[nn.Linear, torch.Tensor]] = []
         self._allreduce_buffer: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
         self.microbatches = 2
@@ -45,10 +51,12 @@ class BaselineDdpNvlinkNaiveBenchmark(VerificationPayloadMixin, BaseBenchmark):
         )
 
     def setup(self) -> None:
-        num = torch.cuda.device_count()
         skip_if_insufficient_gpus(2)
-        for rank in range(num):
-            device = f"cuda:{rank}"
+        self._build_replicas([f"cuda:{rank}" for rank in range(torch.cuda.device_count())])
+
+    def _build_replicas(self, devices: List[str]) -> None:
+        """Create one model replica per device and every buffer benchmark_fn reuses."""
+        for device in devices:
             self.models.append(nn.Linear(self.hidden, self.hidden).to(device))
         self._model_count = len(self.models)
         self._grad_scale = 1.0 / self._model_count
@@ -58,6 +66,8 @@ class BaselineDdpNvlinkNaiveBenchmark(VerificationPayloadMixin, BaseBenchmark):
             for model in self.models
         ]
         self._grad_slot_count = len(self._grad_slots)
+        self._accumulated_grads = [torch.empty_like(model.weight) for model in self.models]
+        self._model_update_groups = list(zip(self.models, self._accumulated_grads, strict=True))
         self._inputs = []
         self._verify_output_buffer = torch.empty(
             (8, 8),
@@ -79,8 +89,6 @@ class BaselineDdpNvlinkNaiveBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
     def _simulate_allreduce(self, grads: List[torch.Tensor]) -> None:
         """Simple blocking allreduce (sum + scatter) across model gradients."""
-        if self._model_count == 1:
-            return
         root = grads[0].device
         buf = self._allreduce_buffer
         if buf is None:
@@ -95,7 +103,7 @@ class BaselineDdpNvlinkNaiveBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def benchmark_fn(self) -> None:
         assert self.models
         with self._nvtx_range("baseline_ddp_multigpu_nvlink_naive"):
-            if self._grad_slot_count != self._model_count:
+            if self._grad_slot_count != self._model_count or not self._model_update_groups:
                 raise RuntimeError("Gradient slots not initialized")
             grads = self._grad_slots
             for micro in self._microbatch_range:
@@ -107,13 +115,21 @@ class BaselineDdpNvlinkNaiveBenchmark(VerificationPayloadMixin, BaseBenchmark):
                     if grad is None:
                         raise RuntimeError("Gradient missing after backward")
                     grads[model_idx] = grad
-                # Blocking gradient sync
+                # Blocking gradient sync. Each weight.grad now holds the replica average.
                 self._simulate_allreduce(grads)
-                for model in self.models:
-                    with torch.no_grad():
-                        model.weight.add_(-1e-3, model.weight.grad)
+                # Accumulate without stepping, so every microbatch sees the same weights.
+                with torch.no_grad():
+                    for model, accumulated in self._model_update_groups:
+                        if micro == 0:
+                            accumulated.copy_(model.weight.grad)
+                        else:
+                            accumulated.add_(model.weight.grad)
                         model.weight.grad.zero_()
                         model.bias.grad.zero_()
+            # One update per model, summed over every microbatch, as in ddp_nvlink_overlap.py.
+            with torch.no_grad():
+                for model, accumulated in self._model_update_groups:
+                    model.weight.add_(accumulated, alpha=-1e-3)
             self.output = self.models[0].weight
 
     def capture_verification_payload(self) -> None:
@@ -143,6 +159,8 @@ class BaselineDdpNvlinkNaiveBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._inputs = []
         self._micro_model_groups = []
         self._grad_slots = []
+        self._accumulated_grads = []
+        self._model_update_groups = []
         self._allreduce_buffer = None
         self._model_count = 0
         self._grad_slot_count = 0

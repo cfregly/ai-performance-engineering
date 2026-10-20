@@ -165,6 +165,7 @@ CODE_ROOT = _discover_code_root()
 
 from core.analysis.tool_router import DEFAULT_SUGGEST_RULES, suggest_tools_auto
 from core.api.redaction import redact_sensitive_data
+from core.benchmark.expectations import UPDATE_EXPECTATIONS_HELP_TEXT
 from core.harness.progress import ProgressEvent, ProgressRecorder
 from core.jobs import JobStore
 from core.profiling.profiler_config import (
@@ -2702,10 +2703,7 @@ def tool_clock_lock_check(params: Dict[str, Any]) -> Dict[str, Any]:
                 },
                 "update_expectations": {
                     "type": "boolean",
-                    "description": (
-                        "Force-write observed metrics into expectation files (overrides regressions). "
-                        "Useful for refreshing baselines on new hardware."
-                    ),
+                    "description": f"{UPDATE_EXPECTATIONS_HELP_TEXT} Useful for refreshing baselines on new hardware.",
                     "default": False,
                 },
                 "only_cuda": {
@@ -4008,10 +4006,59 @@ def _evaluate_cu_int_expression(expr: str, constants: Dict[str, int]) -> Optiona
         return None
 
 
-def _extract_workload_params_from_cu(cu_path: Path) -> Dict[str, int]:
+_CUDA_RAW_STRING_PREFIX = re.compile(r"(?<![A-Za-z0-9_])(?:u8|u|U|L)?R\Z")
+
+
+def _cuda_source_code_only(cu_path: Path) -> str:
+    """Return CUDA source with comments removed and string and character literals emptied.
+
+    Newlines inside block comments are kept so line-based parsing sees the
+    original line structure.
+    """
     text = cu_path.read_text(encoding="utf-8")
-    text = re.sub(r"/\*.*?\*/", "", text, flags=re.S)
-    lines = [line.split("//", 1)[0] for line in text.splitlines()]
+    pieces: List[str] = []
+    index = 0
+    length = len(text)
+    while index < length:
+        char = text[index]
+        next_char = text[index + 1] if index + 1 < length else ""
+        if char == "/" and next_char == "/":
+            line_end = text.find("\n", index)
+            index = length if line_end == -1 else line_end
+        elif char == "/" and next_char == "*":
+            comment_end = text.find("*/", index + 2)
+            if comment_end == -1:
+                raise ValueError(f"Unterminated block comment in {cu_path}")
+            pieces.append("\n" * text.count("\n", index, comment_end))
+            index = comment_end + 2
+        elif char == '"' and _CUDA_RAW_STRING_PREFIX.search(text, max(0, index - 4), index):
+            open_paren = text.find("(", index)
+            closing = ")" + text[index + 1 : open_paren] + '"' if open_paren != -1 else ""
+            literal_end = text.find(closing, open_paren) if closing else -1
+            if literal_end == -1:
+                raise ValueError(f"Unterminated raw string literal in {cu_path} at offset {index}")
+            pieces.append('""' + "\n" * text.count("\n", index, literal_end))
+            index = literal_end + len(closing)
+        elif char == '"' or (
+            # A quote after an identifier or digit character is a C++14 digit
+            # separator such as 1'000'000, not a character literal.
+            char == "'" and not (index > 0 and (text[index - 1].isalnum() or text[index - 1] == "_"))
+        ):
+            literal_end = index + 1
+            while literal_end < length and text[literal_end] not in (char, "\n"):
+                literal_end += 2 if text[literal_end] == "\\" else 1
+            if literal_end >= length or text[literal_end] != char:
+                raise ValueError(f"Unterminated literal in {cu_path} at offset {index}")
+            pieces.append(char * 2)
+            index = literal_end + 1
+        else:
+            pieces.append(char)
+            index += 1
+    return "".join(pieces)
+
+
+def _extract_workload_params_from_cu(cu_path: Path) -> Dict[str, int]:
+    lines = _cuda_source_code_only(cu_path).splitlines()
 
     const_pattern = re.compile(
         r"\b(?:static\s+)?(?:constexpr|const)\s+(?:unsigned\s+)?"
@@ -4048,7 +4095,7 @@ def _extract_workload_params_from_cu(cu_path: Path) -> Dict[str, int]:
 
 
 def _infer_dtype_from_cu(cu_path: Path) -> str:
-    text = cu_path.read_text(encoding="utf-8")
+    text = _cuda_source_code_only(cu_path)
     if re.search(r"\b(__nv_bfloat16|nv_bfloat16)\b", text):
         return "bfloat16"
     if re.search(r"\b(__half|half)\b", text):
@@ -4228,7 +4275,7 @@ def _resolve_baseline_wrapper_path(path: Path) -> Path:
                 },
                 "update_expectations": {
                     "type": "boolean",
-                    "description": "Force-write observed metrics into expectation files (recommended).",
+                    "description": f"{UPDATE_EXPECTATIONS_HELP_TEXT} (recommended)",
                     "default": True,
                 },
                 "validity_profile": {
@@ -5298,7 +5345,7 @@ def tool_benchmark_targets(params: Dict[str, Any]) -> Dict[str, Any]:
                 "update_expectations": {
                     "type": "boolean",
                     "default": False,
-                    "description": "Force-write observed metrics into expectation files",
+                    "description": f"{UPDATE_EXPECTATIONS_HELP_TEXT} Useful for refreshing baselines on new hardware.",
                 },
                 "allow_mixed_provenance": {
                     "type": "boolean",
@@ -5964,29 +6011,32 @@ def tool_benchmark_triage(params: Dict[str, Any]) -> Dict[str, Any]:
 @register_tool(
     "analyze_bottlenecks",
     "Tags: bottleneck, slow, latency, utilization, diagnosis, why-slow, root-cause, debug. "
-    "Identify performance bottlenecks: memory-bound, compute-bound, communication-bound, host-bound. "
-    "Returns: {bottleneck_type, confidence, profile_data, llm_analysis, recommendations, availability}. "
+    "Find rule-based bottlenecks in the newest Chrome trace under artifacts/runs/*/profiles, with an optional LLM explanation. "
+    "Capture a trace first with profile_torch. "
+    "Returns: {profile: {bottlenecks, total_time_us, trace_path, trace_event_count}, llm: {llm_response, focus, trace_path}, source, focus, availability}. "
+    "Each finding has a type: memory_transfer, cpu_overhead, hot_kernel, or profiler_overhead. "
     "⚡ FAST (~2-5s). USE FIRST when: Workload is slow and you don't know why. "
     'Example: "Why is my 7B model slow on 4xH100?" or "What\'s the bottleneck at batch 32, seq 4k?". '
     "mode='both' (default) combines profiling data with LLM analysis for best results. "
-    "WORKFLOW by bottleneck_type: "
-    "• memory-bound → profile_memory, analyze_whatif(max_vram_gb=X) "
-    "• compute-bound → profile_kernels, hw_tc "
-    "• communication-bound → distributed_nccl, hw_nccl "
-    "• host-bound → cpu_memory_analysis, data_loading NOT FOR: Kernel metrics (use profile_ncu).",
+    "WORKFLOW by finding type: "
+    "• memory_transfer → profile_nsys (copy and compute overlap), hw_pcie (host link bandwidth) "
+    "• cpu_overhead → profile_torch (operator CPU time), profile_compile_analysis "
+    "• hot_kernel → profile_ncu, profile_roofline "
+    "• profiler_overhead → informational only, because unprofiled runs do not pay it. "
+    "NOT FOR: Kernel metrics (use profile_ncu).",
     {
         "type": "object",
         "properties": with_context_params(
             {
                 "analysis_type": {
                     "type": "string",
-                    "description": "Focus area: bottleneck (general), memory, or compute",
+                    "description": "Focus area for the LLM analysis: bottleneck (general), memory, or compute. mode='profile' accepts only bottleneck.",
                     "enum": ["bottleneck", "memory", "compute"],
                     "default": "bottleneck",
                 },
                 "mode": {
                     "type": "string",
-                    "description": "Analysis mode: profile (data only), llm (AI analysis only), both (combined)",
+                    "description": "Analysis mode: profile (rule-based trace findings only), llm (LLM explanation of those findings only), both (combined)",
                     "enum": ["profile", "llm", "both"],
                     "default": "both",
                 },
@@ -6001,9 +6051,7 @@ def tool_analyze_bottlenecks(params: Dict[str, Any]) -> Dict[str, Any]:
     analysis_type = normalize_param("analysis_type", params.get("analysis_type"), "bottleneck")
     mode = normalize_param("mode", params.get("mode"), "both")
     include_context, context_level = extract_context_opts(params)
-    result = get_engine().analyze.bottlenecks(
-        "profile" if mode == "profile" else "llm" if mode == "llm" else analysis_type
-    )
+    result = get_engine().analyze.bottlenecks(mode=mode, focus=analysis_type)
     profile_available = bool(
         isinstance(result, dict)
         and isinstance(result.get("profile"), dict)
@@ -7147,7 +7195,7 @@ def tool_profile_compare(params: Dict[str, Any]) -> Dict[str, Any]:
                 "full_timeline": {
                     "type": "boolean",
                     "default": False,
-                    "description": "Trace cuda-hw, cublas, cusolver, cusparse, cudnn (richer timelines)",
+                    "description": "Trace CUDA libraries: cublas, cusolver, cusparse, cudnn",
                 },
                 "trace_forks": {
                     "type": "boolean",
@@ -7156,7 +7204,7 @@ def tool_profile_compare(params: Dict[str, Any]) -> Dict[str, Any]:
                 },
                 "preset": {
                     "type": "string",
-                    "description": "NSYS preset: light (default, smaller/faster) or full (adds cuda-hw/cublas/cusolver/cusparse/cudnn + fork tracing)",
+                    "description": "NSYS preset: light (default, smaller/faster) or full (adds cublas/cusolver/cusparse/cudnn and fork tracing)",
                     "enum": ["light", "full"],
                     "default": "light",
                 },

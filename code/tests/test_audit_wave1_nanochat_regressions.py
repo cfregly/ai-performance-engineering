@@ -13,7 +13,7 @@ def make_model(device="cpu", **flags):
     torch.manual_seed(718)
     flags.setdefault("use_flash_sdp", False)  # FP32/GQA oracle uses supported math SDPA
     config = GPTConfig(sequence_len=32, vocab_size=64, n_layer=2, n_head=2,
-                       n_kv_head=1, n_embd=16, use_flash3=False, **flags)
+                       n_kv_head=1, n_embd=16, use_flash_attn_varlen=False, **flags)
     # Constructor weights are nonzero; init_weights zeros the head/projections,
     # which would make a cache parity test vacuous.
     model = GPT(config).to(device).eval()
@@ -186,7 +186,7 @@ def _tiny_benchmark():
     benchmark.decode_len = 4
     benchmark.vocab_size = 64
     flags = dict(n_layer=1, n_head=2, n_kv_head=2, n_embd=16,
-                 use_flash3=False, use_flash_sdp=False)
+                 use_flash_attn_varlen=False, use_flash_sdp=False)
     return benchmark, flags
 
 

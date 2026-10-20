@@ -292,8 +292,10 @@ class OptimizedPipelineParallelismBenchmark(VerificationPayloadMixin, BaseBenchm
             or self._transfer_buffer_row_counts != self._expected_transfer_buffer_row_counts
         ):
             raise RuntimeError("Pipeline reuse slots not initialized")
-        if self._pending_stage_timings:
-            raise RuntimeError("Stage timings must be finalized before the next iteration")
+        # Harness warmup and the standalone runner call benchmark_fn() without
+        # finalize_iteration_metrics(). Each call re-records every timing event
+        # pair and drops any unread samples, so finalize reads only the latest
+        # iteration.
         for stage_idx in self._pipeline_stage_range:
             self._last_stage_durations_ms[stage_idx] = 0.0
         stage_buffers = self._stage_buffers
@@ -315,7 +317,9 @@ class OptimizedPipelineParallelismBenchmark(VerificationPayloadMixin, BaseBenchm
                                 stream.wait_event(self.stage_events[stage_idx - 1][chunk_idx])
                             x = stage_buffers[stage_idx][chunk_idx]
                             if x is None:
-                                continue
+                                raise RuntimeError(
+                                    f"Pipeline stage {stage_idx} microbatch {chunk_idx} has no input"
+                                )
                             if x.device != stage_devices[stage_idx]:
                                 raise RuntimeError("Pipeline stage input is on the wrong device")
                             stage_start, stage_end = self._stage_timing_events[stage_idx][chunk_idx]

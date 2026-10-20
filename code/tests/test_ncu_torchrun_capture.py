@@ -1,4 +1,4 @@
-"""Control-plane coverage for the explicit two-rank TCP NCU helper.
+"""Control-plane coverage for the explicit two-rank NCU helper.
 
 The fake NCU executable below only exercises argv transport and artifact
 receipts. These tests do not represent a GPU or profiler capture.
@@ -6,7 +6,12 @@ receipts. These tests do not represent a GPU or profiler capture.
 
 from __future__ import annotations
 
+import base64
+import csv
 import errno
+import functools
+import hashlib
+import io
 import json
 import math
 import os
@@ -20,23 +25,64 @@ from pathlib import Path
 
 import pytest
 
+from core.benchmark.run_manifest import capture_runtime_provenance
+from core.harness.torchrun_runtime_provenance import (
+    TORCHRUN_RUNTIME_PROVENANCE_PREFIX,
+    format_torchrun_runtime_provenance_frames,
+)
 from core.profiling.ncu_torchrun_capture import (
+    APPLICATION_CAPTURE_RECEIPT_SCHEMA,
+    CAPTURE_RECEIPT_SCHEMA,
+    RANK_APPLICATION_CAPTURE_RECEIPT_SCHEMA,
     _CAPTURE_OWNER_ENV,
+    _application_report_artifact,
     _cleanup_capture_processes,
     _drain_owned_process_group,
     _marked_pids,
+    _parse_application_replay_log,
+    _parse_rank_application_generations,
+    _parse_rank_application_log,
     _proc_cleanup_supported,
+    _rank_application_evidence,
     _snapshot_proc_identities,
     build_capture_plan,
 )
+from core.profiling.ncu_torchrun_generation import GENERATION_MARKER_PREFIX
 from core.profiling.ncu_torchrun_rank import (
+    RANK_APPLICATION_CONFIG_SCHEMA,
     RANK_CONFIG_SCHEMA,
     build_rank_command,
     load_rank_config,
 )
+from core.profiling.profiler_config import MINIMAL_METRICS
 
 CODE_ROOT = Path(__file__).resolve().parents[1]
 NCCL_RANGES = ("NCCL@ncclGroupEnd/", "NCCL@ncclAllReduce/")
+
+
+def test_two_rank_capture_docs_cover_each_explicit_replay_topology() -> None:
+    guide = (CODE_ROOT.parent / "docs" / "tooling-and-profiling.md").read_text(
+        encoding="utf-8"
+    )
+    section = guide.split("### Two-rank NCCL captures", 1)[1].split(
+        "## Framework traces", 1
+    )[0]
+
+    assert "kernel replay by default or explicit range replay" in section
+    assert "--replay-mode range" in section
+    assert "Range replay requires" in section
+    assert "does not provide per-kernel attribution" in section
+    assert "--application-topology parent" in section
+    assert "--application-topology rank-tcp" in section
+    assert "--expected-application-passes" in section
+    assert "--application-rdzv-port-base" in section
+    assert "TORCHELASTIC_USE_AGENT_STORE=False" in section
+    assert "KERNEL_NAME='regex:ncclDevKernel_AllReduce.*'" in section
+    assert "LAUNCH_SKIP=2" in section
+    assert "AISP_NCU_PROFILE_REQUESTS=4 AISP_NCU_PROFILE_CONTEXT=256" in section
+    assert "ch15.optimized_disaggregated_inference_multigpu" in section
+    assert "-- --iters 4 --warmup 5 --seed 42" in section
+    assert "requested_visible_devices: [0, 1]" in section
 
 
 def _free_port() -> int:
@@ -90,6 +136,336 @@ def _plan(tmp_path: Path, command: list[str] | None = None, **overrides):
     return build_capture_plan(**values)
 
 
+def _application_plan(tmp_path: Path, command: list[str] | None = None, **overrides):
+    values = {
+        "tcp_port": None,
+        "nccl_nvtx_includes": (),
+        "replay_mode": "application",
+        "target_visible_device": 1,
+        "kernel_name": "regex:ncclDevKernel_SendRecv.*",
+        "launch_skip": 22,
+        "launch_count": 1,
+    }
+    values.update(overrides)
+    return _plan(tmp_path, command, **values)
+
+
+def _rank_application_plan(
+    tmp_path: Path, command: list[str] | None = None, **overrides
+):
+    command = command or _torchrun_command(tmp_path / "target.py")
+    torchrun_port = int(command[command.index("--rdzv_endpoint") + 1].rsplit(":", 1)[1])
+    tcp_port = 31_001 if torchrun_port != 31_001 else 31_002
+    requested_passes = overrides.get("expected_application_passes", 2)
+    port_span = requested_passes if type(requested_passes) is int and requested_passes > 0 else 2
+    rdzv_port_base = next(
+        base
+        for base in (31_100, 31_200)
+        if torchrun_port not in range(base, base + port_span)
+        and tcp_port not in range(base, base + port_span)
+    )
+    values = {
+        "application_topology": "rank-tcp",
+        "tcp_port": tcp_port,
+        "nccl_nvtx_includes": (),
+        "replay_mode": "application",
+        "target_visible_device": None,
+        "kernel_name": "regex:ncclDevKernel_AllReduce.*",
+        "launch_skip": 22,
+        "launch_count": 1,
+        "expected_application_passes": 2,
+        "application_rdzv_port_base": rdzv_port_base,
+    }
+    values.update(overrides)
+    return _plan(tmp_path, command, **values)
+
+
+@functools.lru_cache(maxsize=1)
+def _runtime_snapshot_fixture():
+    return capture_runtime_provenance()
+
+
+def _synthetic_cuda_snapshot(process_id: int, **updates):
+    snapshot = _runtime_snapshot_fixture()
+    values = {
+        "process_id": process_id,
+        "cuda_available": True,
+        "driver_version": "test-driver",
+        "cuda_version": "test-cuda",
+        "cudnn_version": "test-cudnn",
+        "library_versions_complete": True,
+        "collection_warnings": [],
+    }
+    values.update(updates)
+    return snapshot.model_copy(update=values)
+
+
+def _application_generation(
+    pass_number: int,
+    *,
+    rank0_pid: int,
+    rank1_pid: int,
+    marker_pass: int | None = None,
+    include_ranks: tuple[int, ...] = (0, 1),
+    rank0_updates: dict[str, object] | None = None,
+    rank1_updates: dict[str, object] | None = None,
+) -> bytes:
+    chunks = [
+        (
+            '==PROF== Profiling on device 1 : "ncclDevKernel_SendRecv": '
+            f"Application replay pass {pass_number if marker_pass is None else marker_pass}\n"
+        ).encode("utf-8")
+    ]
+    for local_rank, process_id in ((0, rank0_pid), (1, rank1_pid)):
+        if local_rank not in include_ranks:
+            continue
+        updates = (
+            rank0_updates
+            if local_rank == 0 and rank0_updates is not None
+            else rank1_updates
+            if local_rank == 1 and rank1_updates is not None
+            else {}
+        )
+        snapshot = _synthetic_cuda_snapshot(process_id, **updates)
+        chunks.extend(
+            format_torchrun_runtime_provenance_frames(
+                snapshot,
+                local_rank=local_rank,
+                rank=local_rank,
+                world_size=2,
+                local_world_size=2,
+                pipe_buf=4096,
+            )
+        )
+    return b"".join(chunks)
+
+
+def _generation_marker(
+    event: str,
+    *,
+    generation: int,
+    master_port: int,
+    process_id: int,
+    rank: int,
+    returncode: int | None = None,
+) -> bytes:
+    payload = {
+        "event": event,
+        "generation": generation,
+        "master_port": master_port,
+        "pid": process_id,
+        "rank": rank,
+    }
+    if returncode is not None:
+        payload["returncode"] = returncode
+    return (
+        GENERATION_MARKER_PREFIX
+        + json.dumps(payload, allow_nan=False, separators=(",", ":"), sort_keys=True)
+        + "\n"
+    ).encode("utf-8")
+
+
+def _rank_application_generation(
+    generation: int,
+    *,
+    master_port_base: int,
+    rank0_bootstrap_pid: int,
+    rank1_bootstrap_pid: int,
+    rank0_worker_pid: int,
+    rank1_worker_pid: int,
+    rank0_updates: dict[str, object] | None = None,
+    rank1_updates: dict[str, object] | None = None,
+) -> bytes:
+    master_port = master_port_base + generation
+    chunks = [
+        _generation_marker(
+            "begin",
+            generation=generation,
+            master_port=master_port,
+            process_id=rank0_bootstrap_pid,
+            rank=0,
+        ),
+        _generation_marker(
+            "begin",
+            generation=generation,
+            master_port=master_port,
+            process_id=rank1_bootstrap_pid,
+            rank=1,
+        ),
+    ]
+    for local_rank, process_id, updates in (
+        (0, rank0_worker_pid, rank0_updates or {}),
+        (1, rank1_worker_pid, rank1_updates or {}),
+    ):
+        chunks.extend(
+            format_torchrun_runtime_provenance_frames(
+                _synthetic_cuda_snapshot(process_id, **updates),
+                local_rank=local_rank,
+                rank=local_rank,
+                world_size=2,
+                local_world_size=2,
+                pipe_buf=4096,
+            )
+        )
+    chunks.extend(
+        [
+            _generation_marker(
+                "end",
+                generation=generation,
+                master_port=master_port,
+                process_id=rank0_bootstrap_pid,
+                rank=0,
+                returncode=0,
+            ),
+            _generation_marker(
+                "end",
+                generation=generation,
+                master_port=master_port,
+                process_id=rank1_bootstrap_pid,
+                rank=1,
+                returncode=0,
+            ),
+        ]
+    )
+    return b"".join(chunks)
+
+
+def _rank_application_log(
+    *, local_rank: int, communicator_rank: int, pass_count: int
+) -> bytes:
+    kernel_name = "ncclDevKernel_AllReduce_Sum_f32_RING_LL"
+    lines = [
+        f"==PROF== [Comm rank {communicator_rank}]  Connected to process 1000\n"
+    ]
+    lines.extend(
+        "==PROF== "
+        f"[Comm rank {communicator_rank}]  Profiling on device {local_rank} : "
+        f'"{kernel_name}": Application replay pass {pass_number}\n'
+        for pass_number in range(1, pass_count + 1)
+    )
+    return "".join(lines).encode("utf-8")
+
+
+def _application_csv(
+    *,
+    process_id: int,
+    pass_count: int = 2,
+    device: int = 1,
+    kernel_name: str = "ncclDevKernel_SendRecv(int)",
+) -> str:
+    metrics = [
+        "gpu__time_duration.avg",
+        "sm__throughput.avg.pct_of_peak_sustained_elapsed",
+        "gpu__dram_throughput.avg.pct_of_peak_sustained_elapsed",
+        "lts__throughput.avg.pct_of_peak_sustained_elapsed",
+        "sm__warps_active.avg.pct_of_peak_sustained_active",
+    ]
+    header = [
+        "ID",
+        "Process ID",
+        "Device",
+        "device__attribute_device_index",
+        "Kernel Name",
+        "profiler__replayer_passes",
+        *metrics,
+    ]
+    units = ["", "", "", "", "", "", "ns", "%", "%", "%", "%"]
+    values = [
+        "1",
+        str(process_id),
+        str(device),
+        str(device),
+        kernel_name,
+        str(pass_count),
+        "1000",
+        "25",
+        "20",
+        "15",
+        "50",
+    ]
+    stream = io.StringIO()
+    writer = csv.writer(stream, lineterminator="\n")
+    writer.writerows((header, units, values))
+    return stream.getvalue()
+
+
+def _invalid_application_csv(case: str) -> str:
+    rows = list(csv.reader(io.StringIO(_application_csv(process_id=102))))
+    header, _, values = rows
+    if case == "wrong-device":
+        values[header.index("Device")] = "0"
+    elif case == "wrong-process":
+        values[header.index("Process ID")] = "999"
+    elif case == "wrong-pass-count":
+        values[header.index("profiler__replayer_passes")] = "3"
+    elif case == "missing-metric":
+        index = header.index("gpu__time_duration.avg")
+        for row in rows:
+            del row[index]
+    elif case == "nonfinite-metric":
+        values[header.index("gpu__time_duration.avg")] = "nan"
+    elif case == "duplicate-header":
+        header[header.index("gpu__time_duration.avg")] = "Device"
+    elif case == "multiple-data-rows":
+        rows.append(list(values))
+    elif case != "stale-report":
+        raise AssertionError(f"unsupported application CSV test case: {case}")
+    stream = io.StringIO()
+    csv.writer(stream, lineterminator="\n").writerows(rows)
+    return stream.getvalue()
+
+
+def _make_fake_application_ncu(
+    path: Path,
+    *,
+    combined_log: bytes,
+    raw_csv: str,
+) -> Path:
+    encoded_log = base64.b64encode(combined_log).decode("ascii")
+    path.write_text(
+        "#!/usr/bin/env python3\n"
+        "import base64, sys\n"
+        "from pathlib import Path\n"
+        f"combined_log = base64.b64decode({encoded_log!r})\n"
+        f"raw_csv = {raw_csv!r}\n"
+        "args = sys.argv[1:]\n"
+        "if args == ['--version']:\n"
+        "    print('Version 2026.2.1.0 (test control plane)')\n"
+        "    raise SystemExit(0)\n"
+        "if '--import' in args:\n"
+        "    sys.stdout.write(raw_csv)\n"
+        "    raise SystemExit(0)\n"
+        "export_index = args.index('--export')\n"
+        "Path(args[export_index + 1]).write_bytes(b'test application report\\n')\n"
+        "sys.stderr.buffer.write(combined_log)\n"
+        "sys.stderr.buffer.flush()\n",
+        encoding="utf-8",
+    )
+    path.chmod(0o755)
+    return path.resolve()
+
+
+def _make_fake_rank_application_ncu(
+    path: Path, *, rank0_csv: str, rank1_csv: str
+) -> Path:
+    path.write_text(
+        "#!/usr/bin/env python3\n"
+        "import sys\n"
+        "from pathlib import Path\n"
+        f"rank_csv = {{0: {rank0_csv!r}, 1: {rank1_csv!r}}}\n"
+        "args = sys.argv[1:]\n"
+        "if args == ['--version']:\n"
+        "    print('Version 2026.2.1.0 (test control plane)')\n"
+        "    raise SystemExit(0)\n"
+        "report = Path(args[args.index('--import') + 1])\n"
+        "rank = int(report.name.removeprefix('rank-').split('.', 1)[0])\n"
+        "sys.stdout.write(rank_csv[rank])\n",
+        encoding="utf-8",
+    )
+    path.chmod(0o755)
+    return path.resolve()
+
+
 def _make_git_repo(tmp_path: Path) -> tuple[Path, Path, str]:
     repo = tmp_path / "repo"
     code = repo / "code"
@@ -135,6 +511,9 @@ def _make_fake_ncu(path: Path, marker: Path | None = None) -> Path:
         "if sys.argv[1:] == ['--version']:\n"
         "    print('Version 2026.2.1.0 (test control plane)')\n"
         "    raise SystemExit(0)\n"
+        "if '--replay-mode' in sys.argv and sys.argv[sys.argv.index('--replay-mode') + 1] == 'range' and '--kernel-name' in sys.argv:\n"
+        "    print('Option kernel-name is not supported during range replay.', file=sys.stderr)\n"
+        "    raise SystemExit(2)\n"
         "export_index = sys.argv.index('--export')\n"
         "report = Path(sys.argv[export_index + 1])\n"
         "report.write_text('rank=' + os.environ['LOCAL_RANK'] + '\\n')\n"
@@ -210,12 +589,145 @@ def test_plan_exposes_exact_rank_commands_and_scoped_lockstep(tmp_path: Path) ->
     assert plan.ncu_prefix.count("--nvtx-include") == 2
     assert "--launch-count" in plan.ncu_prefix
     assert plan.ncu_prefix[plan.ncu_prefix.index("--launch-count") + 1] == "1"
+    assert plan.ncu_prefix[plan.ncu_prefix.index("--replay-mode") + 1] == "kernel"
+    assert plan.replay_mode == "kernel"
+    assert plan.ncu_prefix[plan.ncu_prefix.index("--kernel-name") + 1] == "regex:nccl.*"
     assert "compute_kernel" not in " ".join(plan.ncu_prefix)
     for rank in (0, 1):
         command = plan.expected_rank_argv(rank)
         assert command[command.index("--devices") + 1] == str(rank)
         assert command[command.index("--export") + 1] == str(plan.report_path(rank))
     assert plan.expected_rank_argv(0) != plan.expected_rank_argv(1)
+
+
+def test_application_plan_wraps_the_exact_full_torchrun_command(tmp_path: Path) -> None:
+    command = _torchrun_command(tmp_path / "target.py")
+    plan = _application_plan(tmp_path, command)
+
+    assert plan.launch_argv[-len(command) :] == tuple(command)
+    assert plan.launch_argv[:5] == (
+        str(tmp_path / "ncu"),
+        "--clock-control",
+        "none",
+        "--target-processes",
+        "all",
+    )
+    expected_options = {
+        "--devices": "1",
+        "--replay-mode": "application",
+        "--app-replay-mode": "strict",
+        "--app-replay-match": "grid",
+        "--filter-mode": "per-gpu",
+        "--kernel-name": "regex:ncclDevKernel_SendRecv.*",
+        "--launch-skip": "22",
+        "--launch-count": "1",
+        "--kill": "no",
+        "--check-exit-code": "yes",
+    }
+    for option, value in expected_options.items():
+        assert plan.launch_argv[plan.launch_argv.index(option) + 1] == value
+    assert plan.launch_argv[plan.launch_argv.index("--export") + 1] == str(
+        plan.application_report_path
+    )
+    assert "--communicator" not in plan.launch_argv
+    assert "--nvtx" not in plan.launch_argv
+    assert "core.profiling.ncu_torchrun_rank" not in plan.launch_argv
+    assert plan.nccl_nvtx_includes == ()
+    assert plan.application_topology == "parent"
+    assert plan.expected_application_passes is None
+    assert plan.application_rdzv_port_base is None
+
+
+def test_rank_tcp_application_plan_exposes_exact_rank_commands(tmp_path: Path) -> None:
+    command = _torchrun_command(tmp_path / "target.py")
+    plan = _rank_application_plan(tmp_path, command)
+    expected_prefix = (
+        str(tmp_path / "ncu"),
+        "--clock-control",
+        "none",
+        "--target-processes",
+        "all",
+        "--communicator",
+        "tcp",
+        "--communicator-tcp-hostname",
+        "127.0.0.1",
+        "--communicator-tcp-port",
+        str(plan.tcp_port),
+        "--communicator-tcp-num-peers",
+        "2",
+        "--lockstep-kernel-launch",
+        "--replay-mode",
+        "application",
+        "--app-replay-mode",
+        "strict",
+        "--app-replay-match",
+        "grid",
+        "--filter-mode",
+        "per-gpu",
+        "--kernel-name",
+        "regex:ncclDevKernel_AllReduce.*",
+        "--launch-skip",
+        "22",
+        "--launch-count",
+        "1",
+        "--kill",
+        "no",
+        "--check-exit-code",
+        "yes",
+        "--metrics",
+        ",".join(MINIMAL_METRICS),
+    )
+
+    assert plan.is_rank_application is True
+    assert (
+        RANK_APPLICATION_CAPTURE_RECEIPT_SCHEMA
+        == "aisp.ncu-torchrun-rank-application-capture.v1"
+    )
+    assert plan.ncu_prefix == expected_prefix
+    assert plan.launch_argv == (
+        *plan.launcher_argv,
+        "--no-python",
+        command[0],
+        "-m",
+        "core.profiling.ncu_torchrun_rank",
+        str(plan.rank_config_path),
+    )
+    assert plan.rank_config() == {
+        "schema": RANK_APPLICATION_CONFIG_SCHEMA,
+        "ncu_prefix": list(expected_prefix),
+        "worker_argv": [
+            command[0],
+            "-m",
+            "core.profiling.ncu_torchrun_generation",
+            str(plan.generation_config_path),
+        ],
+        "output_dir": str(plan.output_dir),
+        "world_size": 2,
+    }
+    assert plan.generation_config() == {
+        "schema": "aisp.ncu-torchrun-generation.v1",
+        "worker_argv": list(plan.worker_argv),
+        "output_dir": str(plan.output_dir),
+        "world_size": 2,
+        "expected_passes": 2,
+        "master_addr": "127.0.0.1",
+        "master_port_base": plan.application_rdzv_port_base,
+    }
+    for local_rank in (0, 1):
+        assert plan.expected_rank_argv(local_rank) == (
+            *expected_prefix,
+            "--log-file",
+            str(plan.rank_log_path(local_rank)),
+            "--devices",
+            str(local_rank),
+            "--export",
+            str(plan.report_path(local_rank)),
+            command[0],
+            "-m",
+            "core.profiling.ncu_torchrun_generation",
+            str(plan.generation_config_path),
+        )
+        assert "%q{LOCAL_RANK}" not in " ".join(plan.expected_rank_argv(local_rank))
 
 
 @pytest.mark.parametrize(
@@ -227,6 +739,7 @@ def test_plan_exposes_exact_rank_commands_and_scoped_lockstep(tmp_path: Path) ->
         ({"tcp_port": 80}, "tcp_port"),
         ({"timeout_seconds": math.nan}, "timeout_seconds"),
         ({"timeout_seconds": math.inf}, "timeout_seconds"),
+        ({"replay_mode": "range"}, "all_matching_kernels=True"),
     ],
 )
 def test_plan_rejects_unsupported_capture_options(
@@ -234,6 +747,107 @@ def test_plan_rejects_unsupported_capture_options(
 ) -> None:
     with pytest.raises(ValueError, match=match):
         _plan(tmp_path, **overrides)
+
+
+@pytest.mark.parametrize(
+    ("overrides", "match"),
+    [
+        ({"target_visible_device": None}, "target_visible_device"),
+        ({"target_visible_device": 2}, "target_visible_device"),
+        ({"kernel_name": None}, "kernel_name"),
+        ({"kernel_name": "ncclDevKernel_SendRecv"}, "explicit nonempty regex"),
+        ({"kernel_name": "regex:["}, "regular expression"),
+        ({"launch_skip": -1}, "launch_skip"),
+        ({"launch_count": 2}, "exactly 1"),
+        ({"tcp_port": _free_port()}, "rejects tcp_port"),
+        ({"nccl_nvtx_includes": NCCL_RANGES}, "rejects NCCL NVTX"),
+        ({"all_matching_kernels": True}, "rejects all_matching_kernels"),
+        ({"expected_application_passes": 2}, "rejects expected_application_passes"),
+        ({"application_rdzv_port_base": 31_100}, "rejects application_rdzv_port_base"),
+    ],
+)
+def test_application_plan_rejects_missing_or_cross_mode_options(
+    tmp_path: Path, overrides: dict[str, object], match: str
+) -> None:
+    with pytest.raises(ValueError, match=match):
+        _application_plan(tmp_path, **overrides)
+
+
+@pytest.mark.parametrize(
+    ("overrides", "match"),
+    [
+        ({"tcp_port": None}, "requires tcp_port"),
+        ({"target_visible_device": 1}, "rejects target_visible_device"),
+        ({"expected_application_passes": None}, "expected_application_passes > 0"),
+        ({"expected_application_passes": 0}, "expected_application_passes > 0"),
+        ({"application_rdzv_port_base": None}, "ports must stay within"),
+        ({"application_rdzv_port_base": 1023}, "ports must stay within"),
+        (
+            {
+                "application_rdzv_port_base": 65_535,
+                "expected_application_passes": 2,
+            },
+            "ports must stay within",
+        ),
+        ({"nccl_nvtx_includes": NCCL_RANGES}, "rejects NCCL NVTX"),
+        ({"all_matching_kernels": True}, "rejects all_matching_kernels"),
+    ],
+)
+def test_rank_tcp_application_plan_rejects_missing_or_cross_mode_options(
+    tmp_path: Path, overrides: dict[str, object], match: str
+) -> None:
+    with pytest.raises(ValueError, match=match):
+        _rank_application_plan(tmp_path, **overrides)
+
+
+def test_rank_tcp_application_plan_rejects_all_port_collisions(tmp_path: Path) -> None:
+    command = _torchrun_command(tmp_path / "target.py")
+    torchrun_port = int(command[command.index("--rdzv_endpoint") + 1].rsplit(":", 1)[1])
+
+    with pytest.raises(ValueError, match="communicator port must differ"):
+        _rank_application_plan(tmp_path, command, tcp_port=torchrun_port)
+    with pytest.raises(ValueError, match="generation ports must differ"):
+        _rank_application_plan(
+            tmp_path,
+            command,
+            application_rdzv_port_base=torchrun_port,
+        )
+    plan = _rank_application_plan(tmp_path, command)
+    with pytest.raises(ValueError, match="generation ports must differ"):
+        _rank_application_plan(
+            tmp_path,
+            command,
+            application_rdzv_port_base=plan.tcp_port,
+        )
+
+
+@pytest.mark.parametrize(
+    "replay_mode",
+    ["kernel", "range"],
+)
+def test_rank_local_modes_reject_application_selectors(
+    tmp_path: Path, replay_mode: str
+) -> None:
+    with pytest.raises(ValueError, match="rejects application options"):
+        _plan(
+            tmp_path,
+            replay_mode=replay_mode,
+            all_matching_kernels=replay_mode == "range",
+            target_visible_device=1,
+        )
+
+
+@pytest.mark.parametrize("replay_mode", ["kernel", "range"])
+def test_rank_local_modes_reject_rank_application_topology(
+    tmp_path: Path, replay_mode: str
+) -> None:
+    with pytest.raises(ValueError, match="rejects application_topology"):
+        _plan(
+            tmp_path,
+            replay_mode=replay_mode,
+            all_matching_kernels=replay_mode == "range",
+            application_topology="rank-tcp",
+        )
 
 
 @pytest.mark.parametrize(
@@ -261,6 +875,557 @@ def test_all_matching_kernels_omits_only_the_launch_limit(tmp_path: Path) -> Non
     del first_without_limit[limit_index : limit_index + 2]
     assert first_without_limit == list(all_matching.ncu_prefix)
     assert all_matching.all_matching_kernels is True
+
+
+def test_range_replay_omits_per_kernel_filter_and_launch_limit(
+    tmp_path: Path,
+) -> None:
+    tcp_port = _free_port()
+    command = _torchrun_command(tmp_path / "target.py")
+    kernel = _plan(
+        tmp_path,
+        command,
+        tcp_port=tcp_port,
+        all_matching_kernels=True,
+    )
+    range_replay = _plan(
+        tmp_path,
+        command,
+        tcp_port=tcp_port,
+        all_matching_kernels=True,
+        replay_mode="range",
+    )
+
+    kernel_prefix = list(kernel.ncu_prefix)
+    range_prefix = list(range_replay.ncu_prefix)
+    filter_index = kernel_prefix.index("--kernel-name")
+    assert kernel_prefix[filter_index + 1] == "regex:nccl.*"
+    del kernel_prefix[filter_index : filter_index + 2]
+    replay_value = kernel_prefix.index("--replay-mode") + 1
+    assert kernel_prefix[replay_value] == "kernel"
+    assert range_prefix[replay_value] == "range"
+    range_prefix[replay_value] = "kernel"
+    assert range_prefix == kernel_prefix
+    assert "--kernel-name" not in range_replay.ncu_prefix
+    assert "--launch-count" not in range_replay.ncu_prefix
+    assert range_replay.ncu_prefix.count("--nvtx-include") == 2
+    assert range_replay.ncu_prefix.count("--lockstep-nvtx-include") == 2
+    assert range_replay.replay_mode == "range"
+
+
+@pytest.mark.parametrize("pass_count", [2, 9])
+def test_application_log_retains_each_complete_two_rank_generation(
+    tmp_path: Path, pass_count: int
+) -> None:
+    plan = _application_plan(tmp_path)
+    plan.output_dir.mkdir()
+    plan.combined_path.write_bytes(
+        b"".join(
+            _application_generation(
+                pass_number,
+                rank0_pid=10_000 + pass_number * 2,
+                rank1_pid=10_001 + pass_number * 2,
+            )
+            for pass_number in range(1, pass_count + 1)
+        )
+    )
+
+    generations, log_artifact = _parse_application_replay_log(plan)
+
+    assert [item["application_replay_pass"] for item in generations] == list(
+        range(1, pass_count + 1)
+    )
+    assert all(item["both_post_main_receipts"] is True for item in generations)
+    assert all(item["cuda_runtime_parity"] is True for item in generations)
+    assert len(
+        {
+            pid
+            for item in generations
+            for pid in item["execution_process_ids"].values()
+        }
+    ) == pass_count * 2
+    assert generations[0]["marker_start_byte"] == 0
+    assert generations[-1]["payload_end_byte"] == log_artifact["bytes"]
+    assert log_artifact["stream_mode"] == (
+        "stdout-and-stderr-shared-open-file-description-at-launch"
+    )
+
+
+@pytest.mark.parametrize(
+    ("raw_log", "match"),
+    [
+        (
+            lambda: _application_generation(1, rank0_pid=101, rank1_pid=102)
+            + _application_generation(2, marker_pass=3, rank0_pid=103, rank1_pid=104),
+            "consecutive from one",
+        ),
+        (
+            lambda: _application_generation(1, rank0_pid=101, rank1_pid=102)
+            + _application_generation(2, marker_pass=1, rank0_pid=103, rank1_pid=104),
+            "consecutive from one",
+        ),
+        (
+            lambda: _application_generation(1, rank0_pid=101, rank1_pid=102).replace(
+                b"on device 1", b"on device 0", 1
+            ),
+            "different visible device",
+        ),
+        (
+            lambda: _application_generation(1, rank0_pid=101, rank1_pid=102).replace(
+                b"ncclDevKernel_SendRecv", b"unselected_kernel", 1
+            ),
+            "does not match selector",
+        ),
+        (
+            lambda: _application_generation(1, rank0_pid=101, rank1_pid=102).replace(
+                b"Application replay pass 1", b"Application replay pass zero", 1
+            ),
+            "Unexpected application replay marker",
+        ),
+        (
+            lambda: _application_generation(
+                1,
+                rank0_pid=101,
+                rank1_pid=102,
+                include_ranks=(0,),
+            ),
+            "rank set mismatch",
+        ),
+        (
+            lambda: _application_generation(1, rank0_pid=101, rank1_pid=102)
+            + _application_generation(2, rank0_pid=101, rank1_pid=104),
+            "reused worker process IDs",
+        ),
+        (
+            lambda: _application_generation(1, rank0_pid=101, rank1_pid=102)
+            + _application_generation(
+                2,
+                rank0_pid=103,
+                rank1_pid=104,
+                rank0_updates={"torch_version": "drifted-test-version"},
+                rank1_updates={"torch_version": "drifted-test-version"},
+            ),
+            "runtime provenance drifted",
+        ),
+        (
+            lambda: _application_generation(1, rank0_pid=101, rank1_pid=102)
+            + (TORCHRUN_RUNTIME_PROVENANCE_PREFIX + "{}").encode("utf-8"),
+            "Incomplete torchrun runtime provenance frame",
+        ),
+        (
+            lambda: _application_generation(1, rank0_pid=101, rank1_pid=102).split(
+                b"\n", 1
+            )[1],
+            "no recognized pass markers",
+        ),
+    ],
+)
+def test_application_log_rejects_ambiguous_replay_generations(
+    tmp_path: Path, raw_log, match: str
+) -> None:
+    plan = _application_plan(tmp_path)
+    plan.output_dir.mkdir()
+    plan.combined_path.write_bytes(raw_log())
+
+    with pytest.raises(RuntimeError, match=match):
+        _parse_application_replay_log(plan)
+
+
+def test_application_log_rejects_provenance_before_the_first_marker(tmp_path: Path) -> None:
+    plan = _application_plan(tmp_path)
+    plan.output_dir.mkdir()
+    complete = _application_generation(1, rank0_pid=101, rank1_pid=102)
+    marker_start = complete.index(b"\n") + 1
+    plan.combined_path.write_bytes(complete[marker_start:] + complete[:marker_start])
+
+    with pytest.raises(RuntimeError, match="before application replay pass 1"):
+        _parse_application_replay_log(plan)
+
+
+@pytest.mark.parametrize("pass_count", [2, 9])
+def test_rank_tcp_generations_retain_fresh_processes_and_runtime_parity(
+    tmp_path: Path, pass_count: int
+) -> None:
+    plan = _rank_application_plan(
+        tmp_path,
+        expected_application_passes=pass_count,
+    )
+    plan.output_dir.mkdir()
+    assert plan.application_rdzv_port_base is not None
+    raw = b"".join(
+        _rank_application_generation(
+            generation,
+            master_port_base=plan.application_rdzv_port_base,
+            rank0_bootstrap_pid=20_000 + generation * 4,
+            rank1_bootstrap_pid=20_001 + generation * 4,
+            rank0_worker_pid=30_000 + generation * 4,
+            rank1_worker_pid=30_001 + generation * 4,
+        )
+        for generation in range(pass_count)
+    )
+    plan.stdout_path.write_bytes(raw)
+
+    generations, stdout_artifact = _parse_rank_application_generations(plan)
+
+    assert [item["generation"] for item in generations] == list(range(pass_count))
+    assert [item["master_port"] for item in generations] == [
+        plan.application_rdzv_port_base + generation
+        for generation in range(pass_count)
+    ]
+    assert all(item["both_post_main_receipts"] is True for item in generations)
+    assert all(item["cuda_runtime_parity"] is True for item in generations)
+    assert len(
+        {
+            process_id
+            for item in generations
+            for process_id in (
+                *item["bootstrap_process_ids"].values(),
+                *item["execution_process_ids"].values(),
+            )
+        }
+    ) == pass_count * 4
+    assert stdout_artifact["generation_marker_count"] == pass_count * 4
+    assert stdout_artifact["generation_pair_count"] == pass_count * 2
+    assert stdout_artifact["sha256"] == hashlib.sha256(raw).hexdigest()
+
+
+def test_rank_tcp_generation_log_rejects_malformed_or_ambiguous_state(
+    tmp_path: Path,
+) -> None:
+    plan = _rank_application_plan(tmp_path)
+    plan.output_dir.mkdir()
+    assert plan.application_rdzv_port_base is not None
+    first = _rank_application_generation(
+        0,
+        master_port_base=plan.application_rdzv_port_base,
+        rank0_bootstrap_pid=201,
+        rank1_bootstrap_pid=202,
+        rank0_worker_pid=301,
+        rank1_worker_pid=302,
+    )
+
+    cases = [
+        (
+            first.replace(
+                (GENERATION_MARKER_PREFIX + '{"event":"begin"').encode("utf-8"),
+                (GENERATION_MARKER_PREFIX + "{broken").encode("utf-8"),
+                1,
+            ),
+            "Malformed rank application generation JSON",
+        ),
+        (
+            first
+            + _rank_application_generation(
+                1,
+                master_port_base=plan.application_rdzv_port_base,
+                rank0_bootstrap_pid=201,
+                rank1_bootstrap_pid=204,
+                rank0_worker_pid=303,
+                rank1_worker_pid=304,
+            ),
+            "reused generation process IDs",
+        ),
+        (
+            first
+            + _rank_application_generation(
+                1,
+                master_port_base=plan.application_rdzv_port_base,
+                rank0_bootstrap_pid=203,
+                rank1_bootstrap_pid=204,
+                rank0_worker_pid=301,
+                rank1_worker_pid=304,
+            ),
+            "reused worker process IDs",
+        ),
+        (
+            first
+            + _rank_application_generation(
+                1,
+                master_port_base=plan.application_rdzv_port_base,
+                rank0_bootstrap_pid=203,
+                rank1_bootstrap_pid=204,
+                rank0_worker_pid=303,
+                rank1_worker_pid=304,
+                rank0_updates={"torch_version": "drifted-test-version"},
+            ),
+            "runtime provenance is incomplete or inconsistent",
+        ),
+    ]
+
+    for raw, match in cases:
+        plan.stdout_path.write_bytes(raw)
+        with pytest.raises(RuntimeError, match=match):
+            _parse_rank_application_generations(plan)
+
+
+def test_rank_tcp_logs_accept_real_communicator_prefix_independent_of_local_rank(
+    tmp_path: Path,
+) -> None:
+    plan = _rank_application_plan(tmp_path)
+    plan.output_dir.mkdir()
+    plan.rank_log_path(0).write_bytes(
+        _rank_application_log(local_rank=0, communicator_rank=1, pass_count=2)
+    )
+    plan.rank_log_path(1).write_bytes(
+        _rank_application_log(local_rank=1, communicator_rank=0, pass_count=2)
+    )
+
+    rank_logs = [
+        _parse_rank_application_log(plan, local_rank) for local_rank in (0, 1)
+    ]
+
+    assert [
+        [marker["communicator_rank"] for marker in item["markers"]]
+        for item in rank_logs
+    ] == [[1, 1], [0, 0]]
+    assert [
+        [marker["visible_device"] for marker in item["markers"]]
+        for item in rank_logs
+    ] == [[0, 0], [1, 1]]
+    assert all(
+        marker["kernel_name"] == "ncclDevKernel_AllReduce_Sum_f32_RING_LL"
+        for item in rank_logs
+        for marker in item["markers"]
+    )
+
+
+@pytest.mark.parametrize(
+    ("raw_log", "local_rank", "match"),
+    [
+        (
+            _rank_application_log(
+                local_rank=0, communicator_rank=0, pass_count=1
+            ),
+            0,
+            "replay passes differ",
+        ),
+        (
+            _rank_application_log(
+                local_rank=0, communicator_rank=2, pass_count=2
+            ),
+            0,
+            "invalid communicator rank",
+        ),
+        (
+            _rank_application_log(
+                local_rank=0, communicator_rank=0, pass_count=2
+            ).replace(b"on device 0", b"on device 1"),
+            0,
+            "selected the wrong visible device",
+        ),
+    ],
+)
+def test_rank_tcp_logs_reject_invalid_rank_or_pass_identity(
+    tmp_path: Path, raw_log: bytes, local_rank: int, match: str
+) -> None:
+    plan = _rank_application_plan(tmp_path)
+    plan.output_dir.mkdir()
+    plan.rank_log_path(local_rank).write_bytes(raw_log)
+
+    with pytest.raises(ValueError, match=match):
+        _parse_rank_application_log(plan, local_rank)
+
+
+def test_rank_tcp_evidence_gates_then_validates_both_native_reports(
+    tmp_path: Path,
+) -> None:
+    pass_count = 9
+    kernel_name = (
+        "ncclDevKernel_AllReduce_Sum_f32_RING_LL"
+        "(ncclDevKernelArgsStorage<4096>)"
+    )
+    fake_ncu = _make_fake_rank_application_ncu(
+        tmp_path / "ncu",
+        rank0_csv=_application_csv(
+            process_id=30_000,
+            pass_count=pass_count,
+            device=0,
+            kernel_name=kernel_name,
+        ),
+        rank1_csv=_application_csv(
+            process_id=30_001,
+            pass_count=pass_count,
+            device=1,
+            kernel_name=kernel_name,
+        ),
+    )
+    plan = _rank_application_plan(
+        tmp_path,
+        ncu_path=fake_ncu,
+        expected_application_passes=pass_count,
+    )
+    plan.output_dir.mkdir()
+    assert plan.application_rdzv_port_base is not None
+    start_ns = time.time_ns()
+    plan.stdout_path.write_bytes(
+        b"".join(
+            _rank_application_generation(
+                generation,
+                master_port_base=plan.application_rdzv_port_base,
+                rank0_bootstrap_pid=20_000 + generation * 4,
+                rank1_bootstrap_pid=20_001 + generation * 4,
+                rank0_worker_pid=30_000 + generation * 4,
+                rank1_worker_pid=30_001 + generation * 4,
+            )
+            for generation in range(pass_count)
+        )
+    )
+    for local_rank, communicator_rank in ((0, 1), (1, 0)):
+        plan.rank_log_path(local_rank).write_bytes(
+            _rank_application_log(
+                local_rank=local_rank,
+                communicator_rank=communicator_rank,
+                pass_count=pass_count,
+            )
+        )
+        (plan.output_dir / f"rank-{local_rank}-generation.counter").write_text(
+            f"{pass_count}\n", encoding="ascii"
+        )
+        plan.rank_argv_path(local_rank).write_text(
+            json.dumps(list(plan.expected_rank_argv(local_rank))),
+            encoding="utf-8",
+        )
+        plan.report_path(local_rank).write_bytes(
+            f"rank {local_rank} native report\n".encode("ascii")
+        )
+    freshness_paths = [
+        path
+        for local_rank in (0, 1)
+        for path in (
+            plan.report_path(local_rank),
+            plan.rank_argv_path(local_rank),
+            plan.output_dir / f"rank-{local_rank}-generation.counter",
+        )
+    ]
+    fresh_mtime_ns = start_ns + 1_000_000_000
+    for path in freshness_paths:
+        os.utime(path, ns=(fresh_mtime_ns, fresh_mtime_ns))
+
+    _, blocked_generations, _, blocked_imports, blocked_errors = (
+        _rank_application_evidence(
+            plan,
+            start_ns=start_ns,
+            allow_report_import=False,
+        )
+    )
+
+    assert len(blocked_generations) == pass_count
+    assert blocked_imports is False
+    assert any("reports were not imported" in error for error in blocked_errors)
+    assert not plan.rank_csv_path(0).exists()
+    assert not plan.rank_csv_path(1).exists()
+
+    artifacts, generations, _, imports_attempted, errors = _rank_application_evidence(
+        plan,
+        start_ns=start_ns,
+        allow_report_import=True,
+    )
+
+    assert errors == []
+    assert imports_attempted is True
+    assert len(generations) == pass_count
+    assert [artifact["local_rank"] for artifact in artifacts] == [0, 1]
+    assert [
+        artifact["application_report"]["row"]["visible_device"]
+        for artifact in artifacts
+    ] == [0, 1]
+    assert [
+        artifact["application_report"]["row"]["process_id"]
+        for artifact in artifacts
+    ] == [30_000, 30_001]
+    assert all(
+        artifact["application_report"]["row"]["profiler_pass_count"]
+        == pass_count
+        for artifact in artifacts
+    )
+    assert all(
+        artifact["application_report"]["row"]["kernel_name"] == kernel_name
+        for artifact in artifacts
+    )
+    assert all(
+        len(artifact["application_report"]["row"]["metrics"]) == 5
+        and all(
+            value > 0
+            for value in artifact["application_report"]["row"]["metrics"].values()
+        )
+        for artifact in artifacts
+    )
+
+
+def test_application_report_import_validates_one_selected_row(tmp_path: Path) -> None:
+    fake_ncu = _make_fake_application_ncu(
+        tmp_path / "ncu",
+        combined_log=b"",
+        raw_csv=_application_csv(process_id=102),
+    )
+    plan = _application_plan(tmp_path, ncu_path=fake_ncu)
+    plan.output_dir.mkdir()
+    plan.combined_path.write_bytes(
+        _application_generation(1, rank0_pid=101, rank1_pid=102)
+        + _application_generation(2, rank0_pid=103, rank1_pid=104)
+    )
+    generations, _ = _parse_application_replay_log(plan)
+    plan.application_report_path.write_bytes(b"fresh report\n")
+    start_ns = plan.application_report_path.stat().st_mtime_ns
+
+    artifact, errors = _application_report_artifact(
+        plan,
+        start_ns=start_ns,
+        generations=generations,
+    )
+
+    assert errors == []
+    assert artifact["row"]["visible_device"] == 1
+    assert artifact["row"]["process_id"] == 102
+    assert artifact["row"]["profiler_pass_count"] == 2
+    assert set(artifact["row"]["metrics"]) == {
+        "gpu__time_duration.avg",
+        "sm__throughput.avg.pct_of_peak_sustained_elapsed",
+        "gpu__dram_throughput.avg.pct_of_peak_sustained_elapsed",
+        "lts__throughput.avg.pct_of_peak_sustained_elapsed",
+        "sm__warps_active.avg.pct_of_peak_sustained_active",
+    }
+
+
+@pytest.mark.parametrize(
+    ("case", "match"),
+    [
+        ("wrong-device", "selected the wrong visible device"),
+        ("wrong-process", "process does not match"),
+        ("wrong-pass-count", "pass count differs"),
+        ("missing-metric", "missing fields"),
+        ("nonfinite-metric", "not finite and positive"),
+        ("duplicate-header", "header is empty or contains duplicates"),
+        ("multiple-data-rows", "must contain one header"),
+        ("stale-report", "empty or stale"),
+    ],
+)
+def test_application_report_import_rejects_invalid_artifacts(
+    tmp_path: Path, case: str, match: str
+) -> None:
+    fake_ncu = _make_fake_application_ncu(
+        tmp_path / "ncu",
+        combined_log=b"",
+        raw_csv=_invalid_application_csv(case),
+    )
+    plan = _application_plan(tmp_path, ncu_path=fake_ncu)
+    plan.output_dir.mkdir()
+    plan.combined_path.write_bytes(
+        _application_generation(1, rank0_pid=101, rank1_pid=102)
+        + _application_generation(2, rank0_pid=103, rank1_pid=104)
+    )
+    generations, _ = _parse_application_replay_log(plan)
+    plan.application_report_path.write_bytes(b"report\n")
+    report_mtime_ns = plan.application_report_path.stat().st_mtime_ns
+    start_ns = report_mtime_ns + 1 if case == "stale-report" else report_mtime_ns
+
+    _, errors = _application_report_artifact(
+        plan,
+        start_ns=start_ns,
+        generations=generations,
+    )
+
+    assert any(match in error for error in errors)
 
 
 def test_rank_entrypoint_executes_the_recorded_command(tmp_path: Path) -> None:
@@ -585,6 +1750,8 @@ def test_cli_records_real_control_plane_subprocess_receipts(tmp_path: Path) -> N
     )
     assert result.returncode == (0 if _proc_cleanup_supported() else 1), result.stderr
     assert receipt["status"] == expected_status
+    assert receipt["schema"] == CAPTURE_RECEIPT_SCHEMA
+    assert CAPTURE_RECEIPT_SCHEMA == "aisp.ncu-torchrun-capture.v1"
     assert receipt["returncode"] == 0
     assert receipt["timed_out"] is False
     assert receipt["source"] == source
@@ -594,6 +1761,150 @@ def test_cli_records_real_control_plane_subprocess_receipts(tmp_path: Path) -> N
     assert [item["local_rank"] for item in receipt["rank_artifacts"]] == [0, 1]
     assert all(item["observed_argv"] == item["expected_argv"] for item in receipt["rank_artifacts"])
     assert len({item["report_sha256"] for item in receipt["rank_artifacts"]}) == 2
+
+
+def test_application_cli_retains_repeated_post_main_receipts_and_one_report(
+    tmp_path: Path,
+) -> None:
+    repo, target, source = _make_git_repo(tmp_path)
+    combined_log = (
+        _application_generation(1, rank0_pid=201, rank1_pid=202)
+        + _application_generation(2, rank0_pid=203, rank1_pid=204)
+    )
+    fake_ncu = _make_fake_application_ncu(
+        tmp_path / "ncu",
+        combined_log=combined_log,
+        raw_csv=_application_csv(process_id=202),
+    )
+    output = tmp_path / "capture"
+    command = _torchrun_command(target)
+    cli = [
+        sys.executable,
+        "-m",
+        "core.profiling.ncu_torchrun_capture",
+        "--label",
+        "application-control-plane-test",
+        "--repo-root",
+        str(repo),
+        "--source",
+        source,
+        "--output-dir",
+        str(output),
+        "--ncu",
+        str(fake_ncu),
+        "--timeout-seconds",
+        "45",
+        "--replay-mode",
+        "application",
+        "--target-visible-device",
+        "1",
+        "--kernel-name",
+        "regex:ncclDevKernel_SendRecv.*",
+        "--launch-skip",
+        "22",
+        "--launch-count",
+        "1",
+        "--",
+        *command,
+    ]
+
+    result = subprocess.run(
+        cli,
+        cwd=CODE_ROOT,
+        env=_capture_environment(repo),
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    )
+
+    receipt = json.loads((output / "receipt.json").read_text(encoding="utf-8"))
+    expected_status = (
+        "CAPTURE_ARTIFACTS_PRESENT" if _proc_cleanup_supported() else "CLEANUP_UNVERIFIED"
+    )
+    assert result.returncode == (0 if _proc_cleanup_supported() else 1), result.stderr
+    assert receipt["status"] == expected_status
+    assert receipt["schema"] == APPLICATION_CAPTURE_RECEIPT_SCHEMA
+    assert (
+        APPLICATION_CAPTURE_RECEIPT_SCHEMA
+        == "aisp.ncu-torchrun-application-capture.v1"
+    )
+    assert receipt["capture_topology"] == "parent-application-replay"
+    assert receipt["torchrun_argv"] == command
+    assert receipt["argv"][-len(command) :] == command
+    assert receipt["profiler_pass_count"] == 2
+    assert len(receipt["replay_generations"]) == 2
+    assert receipt["application_artifact"]["row"]["visible_device"] == 1
+    assert receipt["application_artifact"]["row"]["profiler_pass_count"] == 2
+    assert receipt["application_artifact"]["report_sha256"]
+    assert receipt["combined_log"]["sha256"] == hashlib.sha256(combined_log).hexdigest()
+    assert receipt["artifact_errors"] == []
+    assert receipt["numerical_output_qualified"] is False
+    assert receipt["performance_qualified"] is False
+    assert receipt["all_matching_launches_covered"] is False
+    assert receipt["full_coverage_qualified"] is False
+    assert not (output / "rank-config.json").exists()
+    assert list(output.glob("*.ncu-rep")) == [output / "application.ncu-rep"]
+
+
+def test_range_replay_cli_propagates_exact_argv_and_receipt(tmp_path: Path) -> None:
+    repo, target, source = _make_git_repo(tmp_path)
+    fake_ncu = _make_fake_ncu(tmp_path / "ncu")
+    fake_python = _make_fake_python_launcher(tmp_path / "python")
+    output = tmp_path / "capture"
+    tcp_port = _free_port()
+    command = _torchrun_command(target, interpreter=str(fake_python))
+    cli = [
+        sys.executable,
+        "-m",
+        "core.profiling.ncu_torchrun_capture",
+        "--label",
+        "range-replay-control-plane-test",
+        "--repo-root",
+        str(repo),
+        "--source",
+        source,
+        "--output-dir",
+        str(output),
+        "--ncu",
+        str(fake_ncu),
+        "--tcp-port",
+        str(tcp_port),
+        "--timeout-seconds",
+        "45",
+        "--all-matching-kernels",
+        "--replay-mode",
+        "range",
+    ]
+    for include in NCCL_RANGES:
+        cli.extend(["--nvtx-include", include])
+    cli.extend(["--", *command])
+
+    result = subprocess.run(
+        cli,
+        cwd=CODE_ROOT,
+        env=_capture_environment(repo),
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    )
+
+    receipt = json.loads((output / "receipt.json").read_text(encoding="utf-8"))
+    expected_status = (
+        "CAPTURE_ARTIFACTS_PRESENT" if _proc_cleanup_supported() else "CLEANUP_UNVERIFIED"
+    )
+    assert result.returncode == (0 if _proc_cleanup_supported() else 1), result.stderr
+    assert receipt["status"] == expected_status
+    assert receipt["schema"] == CAPTURE_RECEIPT_SCHEMA
+    assert receipt["replay_mode"] == "range"
+    assert receipt["all_matching_kernels"] is True
+    for artifact in receipt["rank_artifacts"]:
+        observed = artifact["observed_argv"]
+        assert observed == artifact["expected_argv"]
+        assert observed[observed.index("--replay-mode") + 1] == "range"
+        assert "--kernel-name" not in observed
+        assert "--launch-count" not in observed
 
 
 def test_zero_return_with_reports_and_forced_cleanup_is_not_success(tmp_path: Path) -> None:

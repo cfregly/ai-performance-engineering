@@ -117,18 +117,17 @@ __global__ void nvfp4_gemm_manual(
         return;
     }
 
+    // A is row-major [M, K] and B is stored as row-major B^T [N, K]. Both
+    // operands are packed and block-scaled along K, the same K-major storage
+    // the optimized cuBLASLt variant reads.
     const int packed_K = K_dim / 2;
-    const int packed_N = N_dim / 2;
-    const int scale_cols_A = K_dim / FP4_BLOCK_SIZE;
-    const int scale_cols_B = N_dim / FP4_BLOCK_SIZE;
+    const int scale_cols_K = K_dim / FP4_BLOCK_SIZE;
 
     float sum = 0.0f;
     for (int k = 0; k < K_dim; ++k) {
         uint8_t a_byte = A_packed[row * packed_K + (k / 2)];
-        // cuBLASLt configuration for NVFP4 uses transa=T (and fixed layouts),
-        // which effectively computes A * B^T for our packed row-major inputs.
-        // Match that here so baseline/optimized outputs are comparable.
-        uint8_t b_byte = B_packed[col * packed_N + (k / 2)];
+        // Row col of B^T holds column col of B.
+        uint8_t b_byte = B_packed[col * packed_K + (k / 2)];
 
         __nv_fp4_storage_t a_raw =
             (k % 2 == 0) ? static_cast<__nv_fp4_storage_t>(a_byte & 0x0F)
@@ -137,8 +136,8 @@ __global__ void nvfp4_gemm_manual(
             (k % 2 == 0) ? static_cast<__nv_fp4_storage_t>(b_byte & 0x0F)
                          : static_cast<__nv_fp4_storage_t>((b_byte >> 4) & 0x0F);
 
-        float a_scale = fp8_to_float(A_scales[row * scale_cols_A + (k / FP4_BLOCK_SIZE)]);
-        float b_scale = fp8_to_float(B_scales[col * scale_cols_B + (k / FP4_BLOCK_SIZE)]);
+        float a_scale = fp8_to_float(A_scales[row * scale_cols_K + (k / FP4_BLOCK_SIZE)]);
+        float b_scale = fp8_to_float(B_scales[col * scale_cols_K + (k / FP4_BLOCK_SIZE)]);
 
         float a_val = fp4_to_float(a_raw) * a_scale;
         float b_val = fp4_to_float(b_raw) * b_scale;
@@ -174,16 +173,19 @@ int main(int argc, char** argv) {
         const int N = 1024;
         const int K = 1024;
 
+        // Both operands are K-major: A is [M, K] and B^T is [N, K], matching
+        // the optimized cuBLASLt variant.
         const int packed_K = K / 2;
-        const int packed_N = N / 2;
         const size_t elements_A_packed = static_cast<size_t>(M) * packed_K;
-        const size_t elements_B_packed = static_cast<size_t>(K) * packed_N;
+        const size_t elements_B_packed = static_cast<size_t>(N) * packed_K;
         const size_t elements_C = static_cast<size_t>(M) * N;
         const size_t num_scales_A = static_cast<size_t>(M) * (K / FP4_BLOCK_SIZE);
-        const size_t num_scales_B = static_cast<size_t>(K) * (N / FP4_BLOCK_SIZE);
+        const size_t num_scales_B = static_cast<size_t>(N) * (K / FP4_BLOCK_SIZE);
 
+        // h_B_fp32 holds B^T as row-major [N, K]. The seed and fill order (A,
+        // then B^T) match the optimized variant, so both quantize the same values.
         std::vector<float> h_A_fp32(static_cast<size_t>(M) * K);
-        std::vector<float> h_B_fp32(static_cast<size_t>(K) * N);
+        std::vector<float> h_B_fp32(static_cast<size_t>(N) * K);
         std::vector<uint8_t> h_A_packed(elements_A_packed);
         std::vector<uint8_t> h_B_packed(elements_B_packed);
         std::vector<__nv_fp8_e4m3> h_A_scales(num_scales_A);
@@ -200,8 +202,9 @@ int main(int argc, char** argv) {
             v = dis(gen);
         }
 
+        // Quantize both operands along K, the reduction dimension.
         quantize_to_nvfp4(h_A_fp32.data(), h_A_packed.data(), h_A_scales.data(), M, K);
-        quantize_to_nvfp4(h_B_fp32.data(), h_B_packed.data(), h_B_scales.data(), K, N);
+        quantize_to_nvfp4(h_B_fp32.data(), h_B_packed.data(), h_B_scales.data(), N, K);
 
         uint8_t* d_A = nullptr;
         uint8_t* d_B = nullptr;

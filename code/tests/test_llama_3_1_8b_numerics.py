@@ -23,6 +23,7 @@ from labs.real_world_models.llama_3_1_8b_optimization import (
 def test_llama_layers_use_the_declared_rms_norm_epsilon(monkeypatch) -> None:
     monkeypatch.setattr(Llama31_8B_Optimization, "HIDDEN_SIZE", 16)
     monkeypatch.setattr(Llama31_8B_Optimization, "NUM_HEADS", 2)
+    monkeypatch.setattr(Llama31_8B_Optimization, "NUM_KEY_VALUE_HEADS", 1)
     monkeypatch.setattr(Llama31_8B_Optimization, "NUM_LAYERS", 2)
     monkeypatch.setattr(Llama31_8B_Optimization, "INTERMEDIATE_SIZE", 32)
 
@@ -47,6 +48,7 @@ def test_llama_layers_use_the_declared_rms_norm_epsilon(monkeypatch) -> None:
 def test_compiled_llama_scopes_eager_bf16_rounding_to_compile_options(monkeypatch) -> None:
     monkeypatch.setattr(Llama31_8B_Optimization, "HIDDEN_SIZE", 16)
     monkeypatch.setattr(Llama31_8B_Optimization, "NUM_HEADS", 2)
+    monkeypatch.setattr(Llama31_8B_Optimization, "NUM_KEY_VALUE_HEADS", 1)
     monkeypatch.setattr(Llama31_8B_Optimization, "NUM_LAYERS", 2)
     monkeypatch.setattr(Llama31_8B_Optimization, "INTERMEDIATE_SIZE", 32)
     monkeypatch.setattr(inductor_config, "emulate_precision_casts", False)
@@ -130,6 +132,7 @@ def test_stable_llama_rms_norm_matches_explicit_fp32_math() -> None:
 def test_eager_sdpa_full_output_changes_with_input_and_caller_seed(monkeypatch) -> None:
     monkeypatch.setattr(Llama31_8B_Optimization, "HIDDEN_SIZE", 32)
     monkeypatch.setattr(Llama31_8B_Optimization, "NUM_HEADS", 4)
+    monkeypatch.setattr(Llama31_8B_Optimization, "NUM_KEY_VALUE_HEADS", 2)
     monkeypatch.setattr(Llama31_8B_Optimization, "NUM_LAYERS", 2)
     monkeypatch.setattr(Llama31_8B_Optimization, "INTERMEDIATE_SIZE", 64)
 
@@ -212,6 +215,7 @@ def _check_cuda_compiled_sdpa_outputs(monkeypatch) -> list[dict]:
     assert torch.cuda.is_available(), "The isolated numerical worker requires CUDA"
     monkeypatch.setattr(Llama31_8B_Optimization, "HIDDEN_SIZE", 128)
     monkeypatch.setattr(Llama31_8B_Optimization, "NUM_HEADS", 4)
+    monkeypatch.setattr(Llama31_8B_Optimization, "NUM_KEY_VALUE_HEADS", 2)
     monkeypatch.setattr(Llama31_8B_Optimization, "NUM_LAYERS", 2)
     monkeypatch.setattr(Llama31_8B_Optimization, "INTERMEDIATE_SIZE", 256)
     device = torch.device("cuda")
