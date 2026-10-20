@@ -311,6 +311,7 @@ NCU_TCP_PORT=29641
 INPUT_RDZV_PORT=29642
 APPLICATION_RDZV_PORT_BASE=29650
 EXPECTED_APPLICATION_PASSES=9
+NCU_TIMEOUT_SECONDS=1800
 OUTPUT_DIR=/tmp/disagg-rank-tcp-all-attempt-01
 
 AISP_LOCK_GPU_CLOCKS=1 AISP_RAMP_GPU_CLOCKS=1 \
@@ -320,7 +321,7 @@ CUDA_VISIBLE_DEVICES=0,1 PYTHONPATH="$PWD" \
 python -m core.profiling.ncu_torchrun_capture \
   --label disagg-rank-tcp-all --repo-root .. \
   --source "$(git rev-parse HEAD)" --output-dir "$OUTPUT_DIR" --ncu "$NCU" \
-  --timeout-seconds 300 --replay-mode application \
+  --timeout-seconds "$NCU_TIMEOUT_SECONDS" --replay-mode application \
   --application-topology rank-tcp --tcp-port "$NCU_TCP_PORT" \
   --expected-application-passes "$EXPECTED_APPLICATION_PASSES" \
   --application-rdzv-port-base "$APPLICATION_RDZV_PORT_BASE" \
@@ -337,6 +338,12 @@ python -m core.profiling.ncu_torchrun_capture \
   -- --iters 4 --warmup 5 --seed 42
 ```
 
+The timeout includes worker startup, all replay generations, and native report
+creation. The 1,800-second budget above is for this profiling workload. Set a
+budget for each workload and retain enough time for report creation after the
+last replay generation. After an interrupted capture, use a new output directory
+and available ports.
+
 The helper requires the imported NCU CSV to contain exactly that many rows for
 each rank. It rejects missing, extra, duplicate, or gapped row IDs and any PID,
 device, replay-pass, or kernel-selector mismatch. Duration and active-warps
@@ -349,11 +356,11 @@ Bind each report to its own worker PID and physical device. Worker PIDs differ
 between the Nsys and NCU executions. Compare the stable rank and device mapping,
 kernel order, launch geometry, selector, and workload phase across captures, then
 use native NCCL API events from Nsight Systems for direction. The full mode also
-records NVTX context in NCU so its kernel ranges can be checked independently. The all-matching
-receipt records the expected and observed row counts, marker policy, and zero
-metric counts. Its coverage and qualification fields remain false until this
-external reconciliation, numerical validation, clock review, and cleanup review
-are complete.
+records NVTX context in NCU so its kernel ranges can be checked independently.
+The all-matching receipt records the expected and observed row counts, marker
+policy, and zero metric counts. The helper leaves its coverage and qualification
+fields false. Record the external reconciliation, numerical validation, clock
+review, and cleanup review separately before claiming complete coverage.
 
 Kernel and range modes retain exact arguments, source and tool hashes, logs,
 rank reports, and the owned process-group cleanup result.
