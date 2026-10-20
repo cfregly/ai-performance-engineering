@@ -104,7 +104,8 @@ Collectives that require concurrent ranks can stall under process-tree replay.
 The explicit `core.profiling.ncu_torchrun_capture` command launches one profiler
 per rank, with TCP coordination and lockstep limited to named NCCL NVTX ranges.
 That kernel and range topology supports one Linux host, two visible GPUs,
-Nsight Compute 2026.2.1, and the repository's five minimal metrics. The command
+Nsight Compute 2026.2.1, and the repository's five minimal metrics. It uses
+kernel replay by default or explicit range replay. The command
 also has an explicit application replay topology in which one parent NCU process
 wraps the original full two-rank `torchrun` command. It runs without Slurm.
 

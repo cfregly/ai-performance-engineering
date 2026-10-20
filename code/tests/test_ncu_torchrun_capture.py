@@ -229,6 +229,32 @@ def _application_csv(*, process_id: int, pass_count: int = 2, device: int = 1) -
     return stream.getvalue()
 
 
+def _invalid_application_csv(case: str) -> str:
+    rows = list(csv.reader(io.StringIO(_application_csv(process_id=102))))
+    header, _, values = rows
+    if case == "wrong-device":
+        values[header.index("Device")] = "0"
+    elif case == "wrong-process":
+        values[header.index("Process ID")] = "999"
+    elif case == "wrong-pass-count":
+        values[header.index("profiler__replayer_passes")] = "3"
+    elif case == "missing-metric":
+        index = header.index("gpu__time_duration.avg")
+        for row in rows:
+            del row[index]
+    elif case == "nonfinite-metric":
+        values[header.index("gpu__time_duration.avg")] = "nan"
+    elif case == "duplicate-header":
+        header[header.index("gpu__time_duration.avg")] = "Device"
+    elif case == "multiple-data-rows":
+        rows.append(list(values))
+    elif case != "stale-report":
+        raise AssertionError(f"unsupported application CSV test case: {case}")
+    stream = io.StringIO()
+    csv.writer(stream, lineterminator="\n").writerows(rows)
+    return stream.getvalue()
+
+
 def _make_fake_application_ncu(
     path: Path,
     *,
@@ -690,8 +716,8 @@ def test_application_report_import_validates_one_selected_row(tmp_path: Path) ->
         + _application_generation(2, rank0_pid=103, rank1_pid=104)
     )
     generations, _ = _parse_application_replay_log(plan)
-    start_ns = time.time_ns()
     plan.application_report_path.write_bytes(b"fresh report\n")
+    start_ns = plan.application_report_path.stat().st_mtime_ns
 
     artifact, errors = _application_report_artifact(
         plan,
@@ -710,6 +736,47 @@ def test_application_report_import_validates_one_selected_row(tmp_path: Path) ->
         "lts__throughput.avg.pct_of_peak_sustained_elapsed",
         "sm__warps_active.avg.pct_of_peak_sustained_active",
     }
+
+
+@pytest.mark.parametrize(
+    ("case", "match"),
+    [
+        ("wrong-device", "selected the wrong visible device"),
+        ("wrong-process", "process does not match"),
+        ("wrong-pass-count", "pass count differs"),
+        ("missing-metric", "missing fields"),
+        ("nonfinite-metric", "not finite and positive"),
+        ("duplicate-header", "header is empty or contains duplicates"),
+        ("multiple-data-rows", "must contain one header"),
+        ("stale-report", "empty or stale"),
+    ],
+)
+def test_application_report_import_rejects_invalid_artifacts(
+    tmp_path: Path, case: str, match: str
+) -> None:
+    fake_ncu = _make_fake_application_ncu(
+        tmp_path / "ncu",
+        combined_log=b"",
+        raw_csv=_invalid_application_csv(case),
+    )
+    plan = _application_plan(tmp_path, ncu_path=fake_ncu)
+    plan.output_dir.mkdir()
+    plan.combined_path.write_bytes(
+        _application_generation(1, rank0_pid=101, rank1_pid=102)
+        + _application_generation(2, rank0_pid=103, rank1_pid=104)
+    )
+    generations, _ = _parse_application_replay_log(plan)
+    plan.application_report_path.write_bytes(b"report\n")
+    report_mtime_ns = plan.application_report_path.stat().st_mtime_ns
+    start_ns = report_mtime_ns + 1 if case == "stale-report" else report_mtime_ns
+
+    _, errors = _application_report_artifact(
+        plan,
+        start_ns=start_ns,
+        generations=generations,
+    )
+
+    assert any(match in error for error in errors)
 
 
 def test_rank_entrypoint_executes_the_recorded_command(tmp_path: Path) -> None:
