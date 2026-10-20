@@ -2,12 +2,13 @@
 
 Kernel and range replay use the existing per-rank TCP/lockstep topology.
 Application replay either profiles one caller-selected visible device around
-the full torchrun command or runs one coordinated NCU process per rank. All
-modes use NCU 2026.2.1 and the repository's five minimal metrics. Receipts prove
-source and argument custody plus bounded artifact checks. They do not qualify
-numerical output, complete coverage, or performance. Full process-tree cleanup
-proof requires Linux procfs and the inherited owner marker. Unsupported hosts
-can run only to an explicitly rejected receipt.
+the full torchrun command or runs one coordinated NCU process per rank. The
+rank-local path can capture one selected launch or explicitly request every
+matching launch. All modes use NCU 2026.2.1 and the repository's five minimal
+metrics. Receipts prove source and argument custody plus bounded artifact checks.
+They do not qualify numerical output, complete coverage, or performance. Full
+process-tree cleanup proof requires Linux procfs and the inherited owner marker.
+Unsupported hosts can run only to an explicitly rejected receipt.
 """
 
 from __future__ import annotations
@@ -56,6 +57,9 @@ APPLICATION_CAPTURE_RECEIPT_SCHEMA = "aisp.ncu-torchrun-application-capture.v1"
 RANK_APPLICATION_CAPTURE_RECEIPT_SCHEMA = (
     "aisp.ncu-torchrun-rank-application-capture.v1"
 )
+RANK_APPLICATION_ALL_MATCHING_CAPTURE_RECEIPT_SCHEMA = (
+    "aisp.ncu-torchrun-rank-application-all-matching-capture.v1"
+)
 SUPPORTED_NCU_VERSION = "2026.2.1"
 WORLD_SIZE = 2
 CLAIM_LIMIT = (
@@ -91,6 +95,14 @@ def _rank(value: int) -> int:
     return value
 
 
+def _positive_kernel_count(value: str) -> int:
+    """Parse one positive expected all-matching kernel count."""
+
+    if not isinstance(value, str) or not re.fullmatch(r"[1-9][0-9]*", value):
+        raise argparse.ArgumentTypeError("expected kernel counts must be positive integers")
+    return int(value)
+
+
 @dataclass(frozen=True)
 class NcuTorchrunCapturePlan:
     """Inspectable launch plan used by the CLI and external validators."""
@@ -116,6 +128,7 @@ class NcuTorchrunCapturePlan:
     application_topology: str = "parent"
     expected_application_passes: int | None = None
     application_rdzv_port_base: int | None = None
+    expected_kernel_counts: tuple[int, int] | None = None
 
     @property
     def is_rank_application(self) -> bool:
@@ -373,6 +386,7 @@ def build_capture_plan(
     application_topology: str = "parent",
     expected_application_passes: int | None = None,
     application_rdzv_port_base: int | None = None,
+    expected_kernel_counts: tuple[int, int] | None = None,
 ) -> NcuTorchrunCapturePlan:
     """Validate the supported command contract and build exact rank argv."""
 
@@ -389,6 +403,14 @@ def build_capture_plan(
         raise ValueError(f"timeout_seconds must be positive and finite: {timeout_seconds!r}")
     if type(all_matching_kernels) is not bool:
         raise ValueError("all_matching_kernels must be a boolean")
+    if expected_kernel_counts is not None and (
+        type(expected_kernel_counts) is not tuple
+        or len(expected_kernel_counts) != WORLD_SIZE
+        or any(type(value) is not int or value <= 0 for value in expected_kernel_counts)
+    ):
+        raise ValueError(
+            "expected_kernel_counts must be a tuple of two positive integers"
+        )
     if type(replay_mode) is not str or replay_mode not in {"application", "kernel", "range"}:
         raise ValueError("replay_mode must be 'application', 'kernel' or 'range'")
     if type(application_topology) is not str or application_topology not in {
@@ -415,12 +437,11 @@ def build_capture_plan(
         "launch_count": launch_count,
         "expected_application_passes": expected_application_passes,
         "application_rdzv_port_base": application_rdzv_port_base,
+        "expected_kernel_counts": expected_kernel_counts,
     }
     if replay_mode == "application":
         if nccl_nvtx_includes:
             raise ValueError("application replay rejects NCCL NVTX includes")
-        if all_matching_kernels:
-            raise ValueError("application replay rejects all_matching_kernels")
         if (
             type(kernel_name) is not str
             or not kernel_name.startswith("regex:")
@@ -434,10 +455,38 @@ def build_capture_plan(
             re.compile(kernel_name.removeprefix("regex:"))
         except re.error as exc:
             raise ValueError(f"kernel_name contains an invalid regular expression: {exc}") from exc
-        if type(launch_skip) is not int or launch_skip < 0:
-            raise ValueError("launch_skip must be a nonnegative integer")
-        if type(launch_count) is not int or launch_count != 1:
-            raise ValueError("launch_count must be exactly 1 for bounded application replay")
+        if all_matching_kernels:
+            if application_topology != "rank-tcp":
+                raise ValueError(
+                    "application all-matching capture requires rank-tcp topology"
+                )
+            if type(launch_skip) is not int or launch_skip != 0:
+                raise ValueError(
+                    "application all-matching capture requires launch_skip=0"
+                )
+            if launch_count is not None:
+                raise ValueError(
+                    "application all-matching capture rejects launch_count"
+                )
+            if expected_kernel_counts is None:
+                raise ValueError(
+                    "application all-matching capture requires expected_kernel_counts"
+                )
+            if expected_application_passes != 9:
+                raise ValueError(
+                    "application all-matching capture requires exactly 9 replay passes"
+                )
+        else:
+            if expected_kernel_counts is not None:
+                raise ValueError(
+                    "selected application replay rejects expected_kernel_counts"
+                )
+            if type(launch_skip) is not int or launch_skip < 0:
+                raise ValueError("launch_skip must be a nonnegative integer")
+            if type(launch_count) is not int or launch_count != 1:
+                raise ValueError(
+                    "launch_count must be exactly 1 for bounded application replay"
+                )
         includes: tuple[str, ...] = ()
         if application_topology == "parent":
             if tcp_port is not None:
@@ -537,17 +586,22 @@ def build_capture_plan(
                 "per-gpu",
                 "--kernel-name",
                 kernel_name,
-                "--launch-skip",
-                str(launch_skip),
-                "--launch-count",
-                str(launch_count),
-                "--kill",
-                "no",
-                "--check-exit-code",
-                "yes",
-                "--metrics",
-                ",".join(metrics),
             ]
+            prefix.extend(["--launch-skip", str(launch_skip)])
+            if all_matching_kernels:
+                prefix.append("--nvtx")
+            if not all_matching_kernels:
+                prefix.extend(["--launch-count", str(launch_count)])
+            prefix.extend(
+                [
+                    "--kill",
+                    "no",
+                    "--check-exit-code",
+                    "yes",
+                    "--metrics",
+                    ",".join(metrics),
+                ]
+            )
     else:
         supplied_application_options = [
             name for name, value in application_values.items() if value is not None
@@ -611,6 +665,7 @@ def build_capture_plan(
         application_topology,
         expected_application_passes,
         application_rdzv_port_base,
+        expected_kernel_counts,
     )
 
 
@@ -1497,17 +1552,291 @@ def _parse_rank_application_log(
         )
     expected_passes = list(range(1, plan.expected_application_passes + 1))
     observed_passes = [marker["application_replay_pass"] for marker in markers]
-    if observed_passes != expected_passes:
+    if not plan.all_matching_kernels:
+        if observed_passes != expected_passes:
+            raise ValueError(
+                f"Rank {local_rank} NCU replay passes differ: "
+                f"expected {expected_passes}, observed {observed_passes}"
+            )
+        return {
+            "path": str(path),
+            "bytes": len(raw),
+            "sha256": hashlib.sha256(raw).hexdigest(),
+            "markers": markers,
+        }
+
+    assert plan.expected_kernel_counts is not None
+    expected_kernel_count = plan.expected_kernel_counts[local_rank]
+    communicator_ranks = [marker["communicator_rank"] for marker in markers]
+    if any(communicator_rank is None for communicator_rank in communicator_ranks):
         raise ValueError(
-            f"Rank {local_rank} NCU replay passes differ: "
-            f"expected {expected_passes}, observed {observed_passes}"
+            f"Rank {local_rank} NCU replay marker is missing a communicator rank"
         )
+    if len(set(communicator_ranks)) != 1:
+        raise ValueError(
+            f"Rank {local_rank} NCU communicator rank changed across replay markers"
+        )
+    if len(markers) == plan.expected_application_passes:
+        markers_per_pass = 1
+        marker_policy = "one-global-marker-per-pass"
+    elif len(markers) == plan.expected_application_passes * expected_kernel_count:
+        markers_per_pass = expected_kernel_count
+        marker_policy = "one-marker-per-matching-kernel-per-pass"
+    else:
+        raise ValueError(
+            f"Rank {local_rank} NCU replay marker count differs: expected either "
+            f"{plan.expected_application_passes} global markers or "
+            f"{plan.expected_application_passes * expected_kernel_count} per-kernel "
+            f"markers, observed {len(markers)}"
+        )
+
+    expected_observed_passes = [
+        pass_number
+        for pass_number in expected_passes
+        for _ in range(markers_per_pass)
+    ]
+    if observed_passes != expected_observed_passes:
+        raise ValueError(
+            f"Rank {local_rank} NCU replay pass groups differ: "
+            f"expected {expected_observed_passes}, observed {observed_passes}"
+        )
+    first_kernel_order = [
+        marker["kernel_name"] for marker in markers[:markers_per_pass]
+    ]
+    for pass_index in range(plan.expected_application_passes):
+        start = pass_index * markers_per_pass
+        observed_kernel_order = [
+            marker["kernel_name"]
+            for marker in markers[start : start + markers_per_pass]
+        ]
+        if observed_kernel_order != first_kernel_order:
+            raise ValueError(
+                f"Rank {local_rank} NCU kernel marker order drifted in replay pass "
+                f"{pass_index + 1}"
+            )
     return {
         "path": str(path),
         "bytes": len(raw),
         "sha256": hashlib.sha256(raw).hexdigest(),
         "markers": markers,
+        "marker_policy": marker_policy,
+        "markers_per_pass": markers_per_pass,
+        "expected_matching_kernel_count": expected_kernel_count,
+        "communicator_rank": communicator_ranks[0],
+        "stable_kernel_order": True,
+        "kernel_order": first_kernel_order,
     }
+
+
+def _all_matching_application_rows(
+    plan: NcuTorchrunCapturePlan,
+    rows: Sequence[Sequence[str]],
+    *,
+    expected_device: int,
+    expected_process_id: int,
+    expected_pass_count: int,
+    pass_count_source: str,
+) -> tuple[dict[str, Any], list[str]]:
+    """Validate every native row in one rank's all-matching report."""
+
+    assert plan.is_rank_application
+    assert plan.all_matching_kernels
+    assert plan.kernel_name is not None
+    assert plan.expected_kernel_counts is not None
+    expected_row_count = plan.expected_kernel_counts[expected_device]
+    artifact: dict[str, Any] = {
+        "expected_row_count": expected_row_count,
+        "observed_row_count": max(0, len(rows) - 2),
+    }
+    errors: list[str] = []
+    if len(rows) != expected_row_count + 2:
+        errors.append(
+            "application replay raw CSV row count differs: "
+            f"expected {expected_row_count} data rows, observed {max(0, len(rows) - 2)}"
+        )
+    if len(rows) < 2 or len({len(row) for row in rows}) != 1:
+        errors.append(
+            "application replay raw CSV must contain one header, one units row, "
+            "and equal-width data rows"
+        )
+        return artifact, errors
+
+    header, units, *data_rows = rows
+    if not header or len(set(header)) != len(header):
+        errors.append("application replay raw CSV header is empty or contains duplicates")
+        return artifact, errors
+    required_fields = {
+        "ID",
+        "Device",
+        "Kernel Name",
+        "Process ID",
+        "profiler__replayer_passes",
+        *MINIMAL_METRICS,
+    }
+    missing_fields = sorted(required_fields - set(header))
+    if missing_fields:
+        errors.append(f"application replay raw CSV is missing fields: {missing_fields}")
+        return artifact, errors
+
+    unit_fields = dict(zip(header, units, strict=True))
+    parsed_rows: list[dict[str, Any]] = []
+    observed_ids: list[int] = []
+    zero_metric_counts = {metric: 0 for metric in MINIMAL_METRICS}
+    rows_with_zero_metrics: list[int] = []
+    positive_metrics = {
+        "gpu__time_duration.avg",
+        "sm__warps_active.avg.pct_of_peak_sustained_active",
+    }
+    percentage_metrics = {
+        metric
+        for metric in MINIMAL_METRICS
+        if metric.endswith(
+            ("pct_of_peak_sustained_elapsed", "pct_of_peak_sustained_active")
+        )
+    }
+    geometry_names = (
+        "Grid Size",
+        "Block Size",
+        "Grid X",
+        "Grid Y",
+        "Grid Z",
+        "Block X",
+        "Block Y",
+        "Block Z",
+    )
+    for data_index, values in enumerate(data_rows):
+        fields = dict(zip(header, values, strict=True))
+        row_errors: list[str] = []
+        row_id: int | None = None
+        observed_device: int | None = None
+        process_id: int | None = None
+        profiler_pass_count: int | None = None
+        try:
+            row_id = int(fields["ID"])
+            observed_ids.append(row_id)
+        except ValueError:
+            row_errors.append("ID is not an integer")
+        try:
+            observed_device = int(fields["Device"])
+        except ValueError:
+            row_errors.append("Device is not an integer")
+        else:
+            if observed_device != expected_device:
+                row_errors.append(
+                    f"Device differs: expected {expected_device}, observed {observed_device}"
+                )
+        try:
+            process_id = int(fields["Process ID"])
+        except ValueError:
+            row_errors.append("Process ID is not an integer")
+        else:
+            if process_id != expected_process_id:
+                row_errors.append(
+                    "Process ID does not match the selected local rank in generation 0"
+                )
+
+        device_attribute = fields.get("device__attribute_device_index")
+        if device_attribute not in (None, ""):
+            try:
+                parsed_device_attribute = int(device_attribute)
+            except ValueError:
+                row_errors.append("device attribute is not an integer")
+            else:
+                if parsed_device_attribute != expected_device:
+                    row_errors.append("device attribute differs from the selector")
+
+        kernel_name = fields["Kernel Name"].strip()
+        if not _kernel_selector_matches(plan.kernel_name, kernel_name):
+            row_errors.append(
+                f"kernel {kernel_name!r} does not match selector {plan.kernel_name!r}"
+            )
+
+        try:
+            raw_pass_count = float(
+                fields["profiler__replayer_passes"].replace(",", "")
+            )
+        except ValueError:
+            row_errors.append("profiler pass count is not numeric")
+        else:
+            if (
+                not math.isfinite(raw_pass_count)
+                or raw_pass_count < 1
+                or not raw_pass_count.is_integer()
+            ):
+                row_errors.append("profiler pass count is not a positive integer")
+            else:
+                profiler_pass_count = int(raw_pass_count)
+                if profiler_pass_count != expected_pass_count:
+                    row_errors.append(
+                        "profiler pass count differs from "
+                        f"{pass_count_source}: CSV={profiler_pass_count}, "
+                        f"expected={expected_pass_count}"
+                    )
+
+        metric_values: dict[str, float] = {}
+        zero_metrics: list[str] = []
+        for metric in MINIMAL_METRICS:
+            try:
+                value = float(fields[metric].replace(",", ""))
+            except ValueError:
+                row_errors.append(f"metric is not numeric: {metric}")
+                continue
+            if not math.isfinite(value) or value < 0:
+                row_errors.append(f"metric is not finite and nonnegative: {metric}")
+                continue
+            if metric in positive_metrics and value <= 0:
+                row_errors.append(f"metric must be positive: {metric}")
+                continue
+            if metric in percentage_metrics and value > 100:
+                row_errors.append(f"percentage metric exceeds 100: {metric}")
+                continue
+            metric_values[metric] = value
+            if value == 0:
+                zero_metrics.append(metric)
+                zero_metric_counts[metric] += 1
+        launch_geometry = {
+            name: fields[name]
+            for name in geometry_names
+            if name in fields and fields[name] != ""
+        }
+        if zero_metrics:
+            rows_with_zero_metrics.append(data_index)
+        parsed_rows.append(
+            {
+                "id": row_id,
+                "visible_device": observed_device,
+                "kernel_name": kernel_name,
+                "process_id": process_id,
+                "profiler_pass_count": profiler_pass_count,
+                "launch_geometry": launch_geometry,
+                "metrics": metric_values,
+                "zero_metrics": zero_metrics,
+            }
+        )
+        errors.extend(
+            f"application replay raw CSV data row {data_index}: {error}"
+            for error in row_errors
+        )
+
+    if len(observed_ids) != len(data_rows):
+        errors.append("application replay raw CSV does not have an integer ID for every row")
+    elif len(set(observed_ids)) != len(observed_ids):
+        errors.append("application replay raw CSV IDs contain duplicates")
+    elif sorted(observed_ids) != list(range(expected_row_count)):
+        errors.append(
+            "application replay raw CSV IDs are not contiguous from 0 through "
+            f"{expected_row_count - 1}"
+        )
+
+    artifact.update(
+        rows=parsed_rows,
+        metric_units={metric: unit_fields[metric] for metric in MINIMAL_METRICS},
+        zero_metric_counts=zero_metric_counts,
+        rows_with_zero_metrics=rows_with_zero_metrics,
+        zero_metric_row_count=len(rows_with_zero_metrics),
+        all_rows_validated=not errors,
+    )
+    return artifact, errors
 
 
 def _application_report_artifact_for(
@@ -1583,6 +1912,17 @@ def _application_report_artifact_for(
     except UnicodeDecodeError as exc:
         return artifact, [f"application replay raw CSV is not valid UTF-8: {exc}"]
     rows = list(csv.reader(io.StringIO(csv_text)))
+    if plan.all_matching_kernels:
+        row_artifact, row_errors = _all_matching_application_rows(
+            plan,
+            rows,
+            expected_device=expected_device,
+            expected_process_id=expected_process_id,
+            expected_pass_count=expected_pass_count,
+            pass_count_source=pass_count_source,
+        )
+        artifact.update(row_artifact)
+        return artifact, row_errors
     if len(rows) != 3 or len({len(row) for row in rows}) != 1:
         return artifact, [
             "application replay raw CSV must contain one header, one units row, "
@@ -1993,8 +2333,13 @@ def run_capture(
     _write_json(plan.rank_config_path, plan.rank_config())
     if plan.is_rank_application:
         assert plan.kernel_name is not None
-        assert plan.launch_skip is not None
-        assert plan.launch_count == 1
+        if plan.all_matching_kernels:
+            assert plan.launch_skip == 0
+            assert plan.launch_count is None
+            assert plan.expected_kernel_counts is not None
+        else:
+            assert plan.launch_skip is not None
+            assert plan.launch_count == 1
         assert plan.expected_application_passes is not None
         assert plan.application_rdzv_port_base is not None
         receipt = {
@@ -2052,6 +2397,19 @@ def run_capture(
             "capture_owner": {"environment": _CAPTURE_OWNER_ENV, "id": capture_marker},
             **preflight,
         }
+        if plan.all_matching_kernels:
+            receipt["schema"] = RANK_APPLICATION_ALL_MATCHING_CAPTURE_RECEIPT_SCHEMA
+            receipt.pop("selected_matching_launches_per_device")
+            receipt.update(
+                capture_scope="all-matching-kernels-requested",
+                all_matching_kernels=True,
+                nvtx_capture_enabled=True,
+                expected_kernel_counts=list(plan.expected_kernel_counts),
+                ncu_launch_count_argument_present=(
+                    "--launch-count" in plan.ncu_prefix
+                ),
+                all_matching_ncu_rows_validated=False,
+            )
     else:
         receipt = {
             "schema": CAPTURE_RECEIPT_SCHEMA,
@@ -2187,6 +2545,40 @@ def run_capture(
                 for artifact in artifacts
             },
         )
+        if plan.all_matching_kernels:
+            receipt.update(
+                all_matching_ncu_rows_validated=(
+                    imports_attempted and not artifact_errors
+                ),
+                observed_kernel_counts=[
+                    artifact.get("application_report", {}).get(
+                        "observed_row_count"
+                    )
+                    for artifact in artifacts
+                ],
+                profiler_pass_count_by_rank={
+                    str(artifact["local_rank"]): (
+                        artifact.get("application_report", {}).get("rows", [{}])[0].get(
+                            "profiler_pass_count"
+                        )
+                        if artifact.get("application_report", {}).get("rows")
+                        else None
+                    )
+                    for artifact in artifacts
+                },
+                log_marker_policy_by_rank={
+                    str(artifact["local_rank"]): artifact.get("ncu_log", {}).get(
+                        "marker_policy"
+                    )
+                    for artifact in artifacts
+                },
+                zero_metric_counts_by_rank={
+                    str(artifact["local_rank"]): artifact.get(
+                        "application_report", {}
+                    ).get("zero_metric_counts")
+                    for artifact in artifacts
+                },
+            )
     _write_json(plan.receipt_path, receipt)
     return NcuTorchrunCaptureResult(
         status,
@@ -2221,6 +2613,12 @@ def _args(argv: Sequence[str] | None) -> argparse.Namespace:
     )
     parser.add_argument("--expected-application-passes", type=int)
     parser.add_argument("--application-rdzv-port-base", type=int)
+    parser.add_argument(
+        "--expected-kernel-counts",
+        nargs=WORLD_SIZE,
+        type=_positive_kernel_count,
+        metavar=("RANK0", "RANK1"),
+    )
     parser.add_argument("--nvtx-include", action="append", dest="includes")
     parser.add_argument("--target-visible-device", type=int)
     parser.add_argument("--kernel-name")
@@ -2257,6 +2655,11 @@ def main(argv: Sequence[str] | None = None) -> int:
             application_topology=args.application_topology,
             expected_application_passes=args.expected_application_passes,
             application_rdzv_port_base=args.application_rdzv_port_base,
+            expected_kernel_counts=(
+                tuple(args.expected_kernel_counts)
+                if args.expected_kernel_counts is not None
+                else None
+            ),
         )
         result = run_capture(plan)
     except (OSError, RuntimeError, ValueError, subprocess.SubprocessError) as exc:

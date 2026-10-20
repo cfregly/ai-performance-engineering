@@ -266,8 +266,9 @@ python -m core.profiling.ncu_torchrun_capture \
   -- --iters 4 --warmup 5 --seed 42
 ```
 
-Do not pass `--target-visible-device`, `--all-matching-kernels`, or
-`--nvtx-include` with `rank-tcp`. The helper writes explicit
+For the selected-launch command above, do not pass `--target-visible-device`,
+`--all-matching-kernels`, `--expected-kernel-counts`, or `--nvtx-include`.
+The helper writes explicit
 `rank-0.ncu.log` and `rank-1.ncu.log` paths because NCU does not expand
 `%q{LOCAL_RANK}` in `--log-file`. Validate the `[Comm rank X]` prefix in each
 log independently of `LOCAL_RANK` because communicator rank and local rank are
@@ -286,6 +287,73 @@ The running receipt records `requested_visible_devices: [0, 1]` and keeps
 `both_devices_covered_by_this_receipt` false. The final receipt sets the coverage
 field true only after both native reports were imported and validated without an
 artifact error.
+
+#### Full all-matching rank-local application replay
+
+Use the full mode only after a fresh Nsight Systems trace establishes the exact
+number of kernels that match the same selector for each worker rank. Collect the
+trace from the same source, workload arguments, warmup count, visible-device
+order, and software environment intended for NCU. The trace must retain native
+NCCL API activity and CUDA GPU activity so the review can map each matching
+kernel to its worker PID, device, workload phase, and NCCL `send`, `recv`, or
+collective call. Count setup kernels too when they match the selector. A kernel
+name such as `ncclDevKernel_SendRecv` does not establish API direction.
+
+Set the two positive counts from that frozen trace inventory. Do not estimate
+them and do not copy them between workloads. The full mode requires nine replay
+passes, `--launch-skip 0`, and no `--launch-count` argument:
+
+```bash
+KERNEL_NAME='regex:ncclDevKernel.*'
+EXPECTED_RANK0_KERNELS="$NSYS_RANK0_MATCHING_KERNEL_COUNT"
+EXPECTED_RANK1_KERNELS="$NSYS_RANK1_MATCHING_KERNEL_COUNT"
+NCU_TCP_PORT=29641
+INPUT_RDZV_PORT=29642
+APPLICATION_RDZV_PORT_BASE=29650
+EXPECTED_APPLICATION_PASSES=9
+OUTPUT_DIR=/tmp/disagg-rank-tcp-all-attempt-01
+
+AISP_LOCK_GPU_CLOCKS=1 AISP_RAMP_GPU_CLOCKS=1 \
+AISP_NCU_PROFILE_REQUESTS=4 AISP_NCU_PROFILE_CONTEXT=256 \
+AISP_NCU_PROFILE_DECODE=8 AISP_NCU_PROFILE_BATCH=1 \
+CUDA_VISIBLE_DEVICES=0,1 PYTHONPATH="$PWD" \
+python -m core.profiling.ncu_torchrun_capture \
+  --label disagg-rank-tcp-all --repo-root .. \
+  --source "$(git rev-parse HEAD)" --output-dir "$OUTPUT_DIR" --ncu "$NCU" \
+  --timeout-seconds 300 --replay-mode application \
+  --application-topology rank-tcp --tcp-port "$NCU_TCP_PORT" \
+  --expected-application-passes "$EXPECTED_APPLICATION_PASSES" \
+  --application-rdzv-port-base "$APPLICATION_RDZV_PORT_BASE" \
+  --all-matching-kernels \
+  --expected-kernel-counts "$EXPECTED_RANK0_KERNELS" "$EXPECTED_RANK1_KERNELS" \
+  --kernel-name "$KERNEL_NAME" --launch-skip 0 \
+  -- python -m torch.distributed.run --nproc_per_node 2 --nnodes 1 \
+  --rdzv_backend c10d --rdzv_endpoint "127.0.0.1:$INPUT_RDZV_PORT" \
+  --max_restarts 0 \
+  -m core.harness.torchrun_wrapper --aisp-emit-runtime-provenance \
+  --aisp-target-module core.harness.benchmark_worker \
+  --aisp-expected-torch-seed 42 --aisp-expected-cuda-seed 42 \
+  --module ch15.optimized_disaggregated_inference_multigpu --callable main \
+  -- --iters 4 --warmup 5 --seed 42
+```
+
+The helper requires the imported NCU CSV to contain exactly that many rows for
+each rank. It rejects missing, extra, duplicate, or gapped row IDs and any PID,
+device, replay-pass, or kernel-selector mismatch. Duration and active-warps
+metrics must be positive. Other finite throughput percentages may be zero and
+are recorded in the receipt for review. Percentage metrics above 100 are
+rejected.
+
+After capture, reconcile every NCU row with the frozen Nsight Systems inventory.
+Bind each report to its own worker PID and physical device. Worker PIDs differ
+between the Nsys and NCU executions. Compare the stable rank and device mapping,
+kernel order, launch geometry, selector, and workload phase across captures, then
+use native NCCL API events from Nsight Systems for direction. The full mode also
+records NVTX context in NCU so its kernel ranges can be checked independently. The all-matching
+receipt records the expected and observed row counts, marker policy, and zero
+metric counts. Its coverage and qualification fields remain false until this
+external reconciliation, numerical validation, clock review, and cleanup review
+are complete.
 
 Kernel and range modes retain exact arguments, source and tool hashes, logs,
 rank reports, and the owned process-group cleanup result.

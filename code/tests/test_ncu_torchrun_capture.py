@@ -33,9 +33,12 @@ from core.harness.torchrun_runtime_provenance import (
 from core.profiling.ncu_torchrun_capture import (
     APPLICATION_CAPTURE_RECEIPT_SCHEMA,
     CAPTURE_RECEIPT_SCHEMA,
+    RANK_APPLICATION_ALL_MATCHING_CAPTURE_RECEIPT_SCHEMA,
     RANK_APPLICATION_CAPTURE_RECEIPT_SCHEMA,
     _CAPTURE_OWNER_ENV,
+    _all_matching_application_rows,
     _application_report_artifact,
+    _args,
     _cleanup_capture_processes,
     _drain_owned_process_group,
     _marked_pids,
@@ -76,6 +79,9 @@ def test_two_rank_capture_docs_cover_each_explicit_replay_topology() -> None:
     assert "--application-topology rank-tcp" in section
     assert "--expected-application-passes" in section
     assert "--application-rdzv-port-base" in section
+    assert "--expected-kernel-counts" in section
+    assert "--all-matching-kernels" in section
+    assert "--kernel-name \"$KERNEL_NAME\" --launch-skip 0" in section
     assert "TORCHELASTIC_USE_AGENT_STORE=False" in section
     assert "KERNEL_NAME='regex:ncclDevKernel_AllReduce.*'" in section
     assert "LAUNCH_SKIP=2" in section
@@ -83,6 +89,9 @@ def test_two_rank_capture_docs_cover_each_explicit_replay_topology() -> None:
     assert "ch15.optimized_disaggregated_inference_multigpu" in section
     assert "-- --iters 4 --warmup 5 --seed 42" in section
     assert "requested_visible_devices: [0, 1]" in section
+    assert "fresh Nsight Systems trace" in section
+    assert "native NCCL API activity" in section
+    assert "does not establish API direction" in section
 
 
 def _free_port() -> int:
@@ -178,6 +187,22 @@ def _rank_application_plan(
     }
     values.update(overrides)
     return _plan(tmp_path, command, **values)
+
+
+def _all_matching_rank_application_plan(
+    tmp_path: Path,
+    command: list[str] | None = None,
+    **overrides,
+):
+    values = {
+        "all_matching_kernels": True,
+        "launch_skip": 0,
+        "launch_count": None,
+        "expected_application_passes": 9,
+        "expected_kernel_counts": (2, 3),
+    }
+    values.update(overrides)
+    return _rank_application_plan(tmp_path, command, **values)
 
 
 @functools.lru_cache(maxsize=1)
@@ -331,9 +356,12 @@ def _rank_application_generation(
 
 
 def _rank_application_log(
-    *, local_rank: int, communicator_rank: int, pass_count: int
+    *,
+    local_rank: int,
+    communicator_rank: int,
+    pass_count: int,
+    kernel_names: tuple[str, ...] = ("ncclDevKernel_AllReduce_Sum_f32_RING_LL",),
 ) -> bytes:
-    kernel_name = "ncclDevKernel_AllReduce_Sum_f32_RING_LL"
     lines = [
         f"==PROF== [Comm rank {communicator_rank}]  Connected to process 1000\n"
     ]
@@ -342,6 +370,7 @@ def _rank_application_log(
         f"[Comm rank {communicator_rank}]  Profiling on device {local_rank} : "
         f'"{kernel_name}": Application replay pass {pass_number}\n'
         for pass_number in range(1, pass_count + 1)
+        for kernel_name in kernel_names
     )
     return "".join(lines).encode("utf-8")
 
@@ -389,6 +418,94 @@ def _application_csv(
     return stream.getvalue()
 
 
+def _all_matching_application_csv(
+    *,
+    process_id: int,
+    row_ids: tuple[int, ...],
+    pass_count: int = 9,
+    device: int = 0,
+    row_updates: dict[int, dict[str, str]] | None = None,
+) -> str:
+    metrics = [
+        "gpu__time_duration.avg",
+        "sm__throughput.avg.pct_of_peak_sustained_elapsed",
+        "gpu__dram_throughput.avg.pct_of_peak_sustained_elapsed",
+        "lts__throughput.avg.pct_of_peak_sustained_elapsed",
+        "sm__warps_active.avg.pct_of_peak_sustained_active",
+    ]
+    header = [
+        "ID",
+        "Process ID",
+        "Device",
+        "device__attribute_device_index",
+        "Kernel Name",
+        "profiler__replayer_passes",
+        *metrics,
+    ]
+    units = ["", "", "", "", "", "", "ns", "%", "%", "%", "%"]
+    data_rows: list[list[str]] = []
+    for data_index, row_id in enumerate(row_ids):
+        fields = {
+            "ID": str(row_id),
+            "Process ID": str(process_id),
+            "Device": str(device),
+            "device__attribute_device_index": str(device),
+            "Kernel Name": f"ncclDevKernel_AllReduce_Sum_f32_RING_LL_{data_index}",
+            "profiler__replayer_passes": str(pass_count),
+            "gpu__time_duration.avg": "1000",
+            "sm__throughput.avg.pct_of_peak_sustained_elapsed": "25",
+            "gpu__dram_throughput.avg.pct_of_peak_sustained_elapsed": "20",
+            "lts__throughput.avg.pct_of_peak_sustained_elapsed": "15",
+            "sm__warps_active.avg.pct_of_peak_sustained_active": "50",
+        }
+        fields.update((row_updates or {}).get(data_index, {}))
+        data_rows.append([fields[column] for column in header])
+    stream = io.StringIO()
+    writer = csv.writer(stream, lineterminator="\n")
+    writer.writerows((header, units, *data_rows))
+    return stream.getvalue()
+
+
+def _invalid_all_matching_application_csv(case: str) -> str:
+    row_ids = (0, 1, 2)
+    row_updates: dict[int, dict[str, str]] = {}
+    if case == "missing-row":
+        row_ids = (0, 1)
+    elif case == "extra-row":
+        row_ids = (0, 1, 2, 3)
+    elif case == "duplicate-row-id":
+        row_ids = (0, 1, 1)
+    elif case == "gapped-row-id":
+        row_ids = (0, 1, 3)
+    elif case == "wrong-process":
+        row_updates = {1: {"Process ID": "999"}}
+    elif case == "wrong-device":
+        row_updates = {1: {"Device": "1"}}
+    elif case == "wrong-pass-count":
+        row_updates = {1: {"profiler__replayer_passes": "8"}}
+    elif case == "nonfinite-metric":
+        row_updates = {
+            1: {"gpu__dram_throughput.avg.pct_of_peak_sustained_elapsed": "nan"}
+        }
+    elif case == "percentage-over-100":
+        row_updates = {
+            1: {"sm__throughput.avg.pct_of_peak_sustained_elapsed": "101"}
+        }
+    elif case == "zero-duration":
+        row_updates = {1: {"gpu__time_duration.avg": "0"}}
+    elif case == "zero-active-warps":
+        row_updates = {
+            1: {"sm__warps_active.avg.pct_of_peak_sustained_active": "0"}
+        }
+    else:
+        raise AssertionError(f"unsupported all-matching CSV test case: {case}")
+    return _all_matching_application_csv(
+        process_id=30_000,
+        row_ids=row_ids,
+        row_updates=row_updates,
+    )
+
+
 def _invalid_application_csv(case: str) -> str:
     rows = list(csv.reader(io.StringIO(_application_csv(process_id=102))))
     header, _, values = rows
@@ -404,6 +521,14 @@ def _invalid_application_csv(case: str) -> str:
             del row[index]
     elif case == "nonfinite-metric":
         values[header.index("gpu__time_duration.avg")] = "nan"
+    elif case == "zero-metric":
+        values[
+            header.index("sm__throughput.avg.pct_of_peak_sustained_elapsed")
+        ] = "0"
+    elif case == "percentage-over-100":
+        values[
+            header.index("sm__throughput.avg.pct_of_peak_sustained_elapsed")
+        ] = "101"
     elif case == "duplicate-header":
         header[header.index("gpu__time_duration.avg")] = "Device"
     elif case == "multiple-data-rows":
@@ -730,6 +855,73 @@ def test_rank_tcp_application_plan_exposes_exact_rank_commands(tmp_path: Path) -
         assert "%q{LOCAL_RANK}" not in " ".join(plan.expected_rank_argv(local_rank))
 
 
+def test_all_matching_application_control_plane_plan_has_no_launch_cutoff(
+    tmp_path: Path,
+) -> None:
+    plan = _all_matching_rank_application_plan(tmp_path)
+
+    assert plan.all_matching_kernels is True
+    assert plan.expected_kernel_counts == (2, 3)
+    assert plan.launch_skip == 0
+    assert plan.launch_count is None
+    assert plan.expected_application_passes == 9
+    assert (
+        RANK_APPLICATION_ALL_MATCHING_CAPTURE_RECEIPT_SCHEMA
+        == "aisp.ncu-torchrun-rank-application-all-matching-capture.v1"
+    )
+    assert plan.ncu_prefix[plan.ncu_prefix.index("--launch-skip") + 1] == "0"
+    assert "--launch-count" not in plan.ncu_prefix
+    assert all(
+        "--launch-count" not in plan.expected_rank_argv(local_rank)
+        for local_rank in (0, 1)
+    )
+
+
+def test_all_matching_application_control_plane_cli_parses_two_rank_counts(
+    tmp_path: Path,
+) -> None:
+    args = _args(
+        [
+            "--label",
+            "all-matching-control-plane",
+            "--repo-root",
+            str(tmp_path),
+            "--source",
+            "a" * 40,
+            "--output-dir",
+            str(tmp_path / "capture"),
+            "--ncu",
+            str(tmp_path / "ncu"),
+            "--tcp-port",
+            "31001",
+            "--timeout-seconds",
+            "30",
+            "--all-matching-kernels",
+            "--replay-mode",
+            "application",
+            "--application-topology",
+            "rank-tcp",
+            "--expected-application-passes",
+            "9",
+            "--application-rdzv-port-base",
+            "31100",
+            "--expected-kernel-counts",
+            "2",
+            "3",
+            "--kernel-name",
+            "regex:ncclDevKernel.*",
+            "--launch-skip",
+            "0",
+            "--",
+            *_torchrun_command(tmp_path / "target.py"),
+        ]
+    )
+
+    assert args.expected_kernel_counts == [2, 3]
+    assert args.launch_count is None
+    assert args.all_matching_kernels is True
+
+
 @pytest.mark.parametrize(
     ("overrides", "match"),
     [
@@ -761,7 +953,7 @@ def test_plan_rejects_unsupported_capture_options(
         ({"launch_count": 2}, "exactly 1"),
         ({"tcp_port": _free_port()}, "rejects tcp_port"),
         ({"nccl_nvtx_includes": NCCL_RANGES}, "rejects NCCL NVTX"),
-        ({"all_matching_kernels": True}, "rejects all_matching_kernels"),
+        ({"all_matching_kernels": True}, "requires rank-tcp topology"),
         ({"expected_application_passes": 2}, "rejects expected_application_passes"),
         ({"application_rdzv_port_base": 31_100}, "rejects application_rdzv_port_base"),
     ],
@@ -790,7 +982,11 @@ def test_application_plan_rejects_missing_or_cross_mode_options(
             "ports must stay within",
         ),
         ({"nccl_nvtx_includes": NCCL_RANGES}, "rejects NCCL NVTX"),
-        ({"all_matching_kernels": True}, "rejects all_matching_kernels"),
+        ({"all_matching_kernels": True}, "requires launch_skip=0"),
+        (
+            {"expected_kernel_counts": (1, 1)},
+            "selected application replay rejects expected_kernel_counts",
+        ),
     ],
 )
 def test_rank_tcp_application_plan_rejects_missing_or_cross_mode_options(
@@ -798,6 +994,45 @@ def test_rank_tcp_application_plan_rejects_missing_or_cross_mode_options(
 ) -> None:
     with pytest.raises(ValueError, match=match):
         _rank_application_plan(tmp_path, **overrides)
+
+
+@pytest.mark.parametrize(
+    ("overrides", "match"),
+    [
+        ({"expected_kernel_counts": None}, "requires expected_kernel_counts"),
+        ({"launch_skip": 1}, "requires launch_skip=0"),
+        ({"launch_count": 1}, "rejects launch_count"),
+        ({"expected_application_passes": 8}, "requires exactly 9 replay passes"),
+    ],
+)
+def test_all_matching_application_control_plane_rejects_unbounded_contracts(
+    tmp_path: Path, overrides: dict[str, object], match: str
+) -> None:
+    with pytest.raises(ValueError, match=match):
+        _all_matching_rank_application_plan(tmp_path, **overrides)
+
+
+@pytest.mark.parametrize(
+    "expected_kernel_counts",
+    [
+        [],
+        (),
+        (1,),
+        (1, 2, 3),
+        (0, 2),
+        (-1, 2),
+        (True, 2),
+        (1, 2.0),
+    ],
+)
+def test_all_matching_application_control_plane_requires_two_positive_exact_counts(
+    tmp_path: Path, expected_kernel_counts: object
+) -> None:
+    with pytest.raises(ValueError, match="tuple of two positive integers"):
+        _all_matching_rank_application_plan(
+            tmp_path,
+            expected_kernel_counts=expected_kernel_counts,
+        )
 
 
 def test_rank_tcp_application_plan_rejects_all_port_collisions(tmp_path: Path) -> None:
@@ -1190,6 +1425,94 @@ def test_rank_tcp_logs_accept_real_communicator_prefix_independent_of_local_rank
 
 
 @pytest.mark.parametrize(
+    ("local_rank", "communicator_rank", "kernel_count"),
+    [(0, 1, 2), (1, 0, 3)],
+)
+def test_all_matching_application_control_plane_log_groups_nine_passes(
+    tmp_path: Path,
+    local_rank: int,
+    communicator_rank: int,
+    kernel_count: int,
+) -> None:
+    plan = _all_matching_rank_application_plan(tmp_path)
+    plan.output_dir.mkdir()
+    kernel_names = tuple(
+        f"ncclDevKernel_AllReduce_Sum_f32_RING_LL_{index}"
+        for index in range(kernel_count)
+    )
+    plan.rank_log_path(local_rank).write_bytes(
+        _rank_application_log(
+            local_rank=local_rank,
+            communicator_rank=communicator_rank,
+            pass_count=9,
+            kernel_names=kernel_names,
+        )
+    )
+
+    artifact = _parse_rank_application_log(plan, local_rank)
+
+    assert artifact["marker_policy"] == "one-marker-per-matching-kernel-per-pass"
+    assert artifact["markers_per_pass"] == kernel_count
+    assert artifact["expected_matching_kernel_count"] == kernel_count
+    assert artifact["communicator_rank"] == communicator_rank
+    assert artifact["stable_kernel_order"] is True
+    assert artifact["kernel_order"] == list(kernel_names)
+    assert [marker["application_replay_pass"] for marker in artifact["markers"]] == [
+        pass_number
+        for pass_number in range(1, 10)
+        for _ in range(kernel_count)
+    ]
+
+
+def test_all_matching_application_control_plane_log_rejects_pass_or_order_drift(
+    tmp_path: Path,
+) -> None:
+    plan = _all_matching_rank_application_plan(tmp_path)
+    plan.output_dir.mkdir()
+    raw = _rank_application_log(
+        local_rank=0,
+        communicator_rank=1,
+        pass_count=9,
+        kernel_names=(
+            "ncclDevKernel_AllReduce_Sum_f32_RING_LL_0",
+            "ncclDevKernel_AllReduce_Sum_f32_RING_LL_1",
+        ),
+    )
+    wrong_pass_group = raw.replace(
+        b"Application replay pass 9",
+        b"Application replay pass 8",
+        1,
+    )
+    missing_communicator_rank = raw.replace(
+        b"==PROF== [Comm rank 1]  Profiling",
+        b"==PROF== Profiling",
+        1,
+    )
+    drifting_communicator_rank = raw.replace(
+        b"==PROF== [Comm rank 1]  Profiling",
+        b"==PROF== [Comm rank 0]  Profiling",
+        1,
+    )
+    wrong_order_lines = raw.splitlines(keepends=True)
+    pass_five_start = 1 + 4 * 2
+    wrong_order_lines[pass_five_start], wrong_order_lines[pass_five_start + 1] = (
+        wrong_order_lines[pass_five_start + 1],
+        wrong_order_lines[pass_five_start],
+    )
+    wrong_order = b"".join(wrong_order_lines)
+
+    for invalid_log, match in (
+        (wrong_pass_group, "replay pass groups differ"),
+        (wrong_order, "kernel marker order drifted"),
+        (missing_communicator_rank, "missing a communicator rank"),
+        (drifting_communicator_rank, "communicator rank changed"),
+    ):
+        plan.rank_log_path(0).write_bytes(invalid_log)
+        with pytest.raises(ValueError, match=match):
+            _parse_rank_application_log(plan, 0)
+
+
+@pytest.mark.parametrize(
     ("raw_log", "local_rank", "match"),
     [
         (
@@ -1352,6 +1675,199 @@ def test_rank_tcp_evidence_gates_then_validates_both_native_reports(
     )
 
 
+def test_all_matching_application_control_plane_evidence_validates_exact_rank_rows(
+    tmp_path: Path,
+) -> None:
+    pass_count = 9
+    expected_kernel_counts = (2, 3)
+    fake_ncu = _make_fake_rank_application_ncu(
+        tmp_path / "ncu",
+        rank0_csv=_all_matching_application_csv(
+            process_id=30_000,
+            row_ids=(0, 1),
+            device=0,
+        ),
+        rank1_csv=_all_matching_application_csv(
+            process_id=30_001,
+            row_ids=(0, 1, 2),
+            device=1,
+        ),
+    )
+    plan = _all_matching_rank_application_plan(
+        tmp_path,
+        ncu_path=fake_ncu,
+        expected_kernel_counts=expected_kernel_counts,
+    )
+    plan.output_dir.mkdir()
+    assert plan.application_rdzv_port_base is not None
+    start_ns = time.time_ns()
+    plan.stdout_path.write_bytes(
+        b"".join(
+            _rank_application_generation(
+                generation,
+                master_port_base=plan.application_rdzv_port_base,
+                rank0_bootstrap_pid=20_000 + generation * 4,
+                rank1_bootstrap_pid=20_001 + generation * 4,
+                rank0_worker_pid=30_000 + generation * 4,
+                rank1_worker_pid=30_001 + generation * 4,
+            )
+            for generation in range(pass_count)
+        )
+    )
+    for local_rank, communicator_rank in ((0, 1), (1, 0)):
+        kernel_names = tuple(
+            f"ncclDevKernel_AllReduce_Sum_f32_RING_LL_{index}"
+            for index in range(expected_kernel_counts[local_rank])
+        )
+        plan.rank_log_path(local_rank).write_bytes(
+            _rank_application_log(
+                local_rank=local_rank,
+                communicator_rank=communicator_rank,
+                pass_count=pass_count,
+                kernel_names=kernel_names,
+            )
+        )
+        (plan.output_dir / f"rank-{local_rank}-generation.counter").write_text(
+            f"{pass_count}\n", encoding="ascii"
+        )
+        plan.rank_argv_path(local_rank).write_text(
+            json.dumps(list(plan.expected_rank_argv(local_rank))),
+            encoding="utf-8",
+        )
+        plan.report_path(local_rank).write_bytes(
+            f"rank {local_rank} synthetic control-plane report\n".encode("ascii")
+        )
+    fresh_mtime_ns = start_ns + 1_000_000_000
+    for local_rank in (0, 1):
+        for path in (
+            plan.report_path(local_rank),
+            plan.rank_argv_path(local_rank),
+            plan.output_dir / f"rank-{local_rank}-generation.counter",
+        ):
+            os.utime(path, ns=(fresh_mtime_ns, fresh_mtime_ns))
+
+    artifacts, generations, _, imports_attempted, errors = _rank_application_evidence(
+        plan,
+        start_ns=start_ns,
+        allow_report_import=True,
+    )
+
+    assert errors == []
+    assert imports_attempted is True
+    assert len(generations) == pass_count
+    for local_rank, expected_count in enumerate(expected_kernel_counts):
+        report = artifacts[local_rank]["application_report"]
+        assert "row" not in report
+        assert report["expected_row_count"] == expected_count
+        assert report["observed_row_count"] == expected_count
+        assert report["all_rows_validated"] is True
+        assert [row["id"] for row in report["rows"]] == list(
+            range(expected_count)
+        )
+
+
+# These synthetic CSV cases exercise the all-matching control-plane parser.
+# They do not represent a GPU execution or a successful Nsight Compute capture.
+def test_all_matching_application_control_plane_accepts_bounded_zero_metrics(
+    tmp_path: Path,
+) -> None:
+    plan = _all_matching_rank_application_plan(
+        tmp_path,
+        expected_kernel_counts=(3, 2),
+    )
+    rows = list(
+        csv.reader(
+            io.StringIO(
+                _all_matching_application_csv(
+                    process_id=30_000,
+                    row_ids=(0, 1, 2),
+                    row_updates={
+                        0: {
+                            "sm__throughput.avg.pct_of_peak_sustained_elapsed": "0"
+                        },
+                        1: {
+                            "gpu__dram_throughput.avg.pct_of_peak_sustained_elapsed": "0"
+                        },
+                        2: {
+                            "lts__throughput.avg.pct_of_peak_sustained_elapsed": "0"
+                        },
+                    },
+                )
+            )
+        )
+    )
+
+    artifact, errors = _all_matching_application_rows(
+        plan,
+        rows,
+        expected_device=0,
+        expected_process_id=30_000,
+        expected_pass_count=9,
+        pass_count_source="the generation ledger",
+    )
+
+    assert errors == []
+    assert artifact["expected_row_count"] == 3
+    assert artifact["observed_row_count"] == 3
+    assert artifact["all_rows_validated"] is True
+    assert "row" not in artifact
+    assert [row["id"] for row in artifact["rows"]] == [0, 1, 2]
+    assert artifact["rows_with_zero_metrics"] == [0, 1, 2]
+    assert artifact["zero_metric_counts"] == {
+        "gpu__time_duration.avg": 0,
+        "sm__throughput.avg.pct_of_peak_sustained_elapsed": 1,
+        "gpu__dram_throughput.avg.pct_of_peak_sustained_elapsed": 1,
+        "lts__throughput.avg.pct_of_peak_sustained_elapsed": 1,
+        "sm__warps_active.avg.pct_of_peak_sustained_active": 0,
+    }
+    assert all(
+        row["metrics"]["gpu__time_duration.avg"] > 0
+        and row["metrics"]["sm__warps_active.avg.pct_of_peak_sustained_active"]
+        > 0
+        for row in artifact["rows"]
+    )
+
+
+@pytest.mark.parametrize(
+    ("case", "match"),
+    [
+        ("missing-row", "row count differs"),
+        ("extra-row", "row count differs"),
+        ("duplicate-row-id", "IDs contain duplicates"),
+        ("gapped-row-id", "IDs are not contiguous"),
+        ("wrong-process", "Process ID does not match"),
+        ("wrong-device", "Device differs"),
+        ("wrong-pass-count", "profiler pass count differs"),
+        ("nonfinite-metric", "metric is not finite and nonnegative"),
+        ("percentage-over-100", "percentage metric exceeds 100"),
+        ("zero-duration", "metric must be positive"),
+        ("zero-active-warps", "metric must be positive"),
+    ],
+)
+def test_all_matching_application_control_plane_rejects_invalid_rows(
+    tmp_path: Path, case: str, match: str
+) -> None:
+    plan = _all_matching_rank_application_plan(
+        tmp_path,
+        expected_kernel_counts=(3, 2),
+    )
+    rows = list(
+        csv.reader(io.StringIO(_invalid_all_matching_application_csv(case)))
+    )
+
+    artifact, errors = _all_matching_application_rows(
+        plan,
+        rows,
+        expected_device=0,
+        expected_process_id=30_000,
+        expected_pass_count=9,
+        pass_count_source="the generation ledger",
+    )
+
+    assert any(match in error for error in errors)
+    assert artifact.get("all_rows_validated") is not True
+
+
 def test_application_report_import_validates_one_selected_row(tmp_path: Path) -> None:
     fake_ncu = _make_fake_application_ncu(
         tmp_path / "ncu",
@@ -1395,6 +1911,8 @@ def test_application_report_import_validates_one_selected_row(tmp_path: Path) ->
         ("wrong-pass-count", "pass count differs"),
         ("missing-metric", "missing fields"),
         ("nonfinite-metric", "not finite and positive"),
+        ("zero-metric", "not finite and positive"),
+        ("percentage-over-100", "percentage metric exceeds 100"),
         ("duplicate-header", "header is empty or contains duplicates"),
         ("multiple-data-rows", "must contain one header"),
         ("stale-report", "empty or stale"),
