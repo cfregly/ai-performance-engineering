@@ -3,12 +3,13 @@
 Kernel and range replay use the existing per-rank TCP/lockstep topology.
 Application replay either profiles one caller-selected visible device around
 the full torchrun command or runs one coordinated NCU process per rank. The
-rank-local path can capture one selected launch or explicitly request every
-matching launch. All modes use NCU 2026.2.1 and the repository's five minimal
-metrics. Receipts prove source and argument custody plus bounded artifact checks.
-They do not qualify numerical output, complete coverage, or performance. Full
-process-tree cleanup proof requires Linux procfs and the inherited owner marker.
-Unsupported hosts can run only to an explicitly rejected receipt.
+rank-local path can capture one selected launch, a caller-declared contiguous
+window, or explicitly request every matching launch. All modes use NCU 2026.2.1
+and the repository's five minimal metrics. Receipts prove source and argument
+custody plus bounded artifact checks. They do not qualify numerical output,
+complete coverage, or performance. Full process-tree cleanup proof requires
+Linux procfs and the inherited owner marker. Unsupported hosts can run only to
+an explicitly rejected receipt.
 """
 
 from __future__ import annotations
@@ -60,8 +61,12 @@ RANK_APPLICATION_CAPTURE_RECEIPT_SCHEMA = (
 RANK_APPLICATION_ALL_MATCHING_CAPTURE_RECEIPT_SCHEMA = (
     "aisp.ncu-torchrun-rank-application-all-matching-capture.v1"
 )
+RANK_APPLICATION_KERNEL_WINDOW_CAPTURE_RECEIPT_SCHEMA = (
+    "aisp.ncu-torchrun-rank-application-kernel-window-capture.v1"
+)
 SUPPORTED_NCU_VERSION = "2026.2.1"
 WORLD_SIZE = 2
+MAX_KERNEL_WINDOW_COUNT = 64
 CLAIM_LIMIT = (
     "Artifact presence, hashes, and a clean process return do not validate counter values, "
     "kernel/range attribution, workload correctness, or performance."
@@ -130,10 +135,30 @@ class NcuTorchrunCapturePlan:
     application_rdzv_port_base: int | None = None
     expected_kernel_counts: tuple[int, int] | None = None
     report_import_timeout_seconds: float = 60.0
+    kernel_window: tuple[int, int] | None = None
 
     @property
     def is_rank_application(self) -> bool:
         return self.replay_mode == "application" and self.application_topology == "rank-tcp"
+
+    @property
+    def is_multirow_rank_application(self) -> bool:
+        """Whether rank application replay captures a declared row set."""
+
+        return self.is_rank_application and (
+            self.all_matching_kernels or self.kernel_window is not None
+        )
+
+    @property
+    def expected_captured_kernel_counts(self) -> tuple[int, int] | None:
+        """Return rank-local row counts for a full or windowed capture."""
+
+        if not self.is_multirow_rank_application:
+            return None
+        if self.kernel_window is not None:
+            return (self.kernel_window[1],) * WORLD_SIZE
+        assert self.expected_kernel_counts is not None
+        return self.expected_kernel_counts
 
     @property
     def rank_config_path(self) -> Path:
@@ -395,6 +420,7 @@ def build_capture_plan(
     nccl_nvtx_includes: Sequence[str] | None,
     torchrun_argv: Sequence[str],
     all_matching_kernels: bool = False,
+    kernel_window: tuple[int, int] | None = None,
     replay_mode: str = "kernel",
     target_visible_device: int | None = None,
     kernel_name: str | None = None,
@@ -421,6 +447,22 @@ def build_capture_plan(
         raise ValueError(f"timeout_seconds must be positive and finite: {timeout_seconds!r}")
     if type(all_matching_kernels) is not bool:
         raise ValueError("all_matching_kernels must be a boolean")
+    if kernel_window is not None:
+        if type(kernel_window) is not tuple or len(kernel_window) != 2:
+            raise ValueError("kernel_window must be a tuple of two integers")
+        window_start, window_count = kernel_window
+        if type(window_start) is not int or window_start < 0:
+            raise ValueError("kernel_window start must be a nonnegative integer")
+        if type(window_count) is not int or window_count <= 0:
+            raise ValueError("kernel_window count must be a positive integer")
+        if window_count > MAX_KERNEL_WINDOW_COUNT:
+            raise ValueError(
+                f"kernel_window count must be at most {MAX_KERNEL_WINDOW_COUNT}"
+            )
+    if all_matching_kernels and kernel_window is not None:
+        raise ValueError(
+            "kernel_window is mutually exclusive with all_matching_kernels=True"
+        )
     if (
         type(report_import_timeout_seconds) not in (int, float)
         or not math.isfinite(float(report_import_timeout_seconds))
@@ -452,11 +494,11 @@ def build_capture_plan(
     if float(report_import_timeout_seconds) != 60.0 and not (
         replay_mode == "application"
         and application_topology == "rank-tcp"
-        and all_matching_kernels
+        and (all_matching_kernels or kernel_window is not None)
     ):
         raise ValueError(
-            "nondefault report_import_timeout_seconds requires all-matching "
-            "rank-tcp application replay"
+            "nondefault report_import_timeout_seconds requires all-matching or "
+            "kernel-window rank-tcp application replay"
         )
     launcher, worker = _split_torchrun(torchrun_argv)
     torchrun_port = int(
@@ -474,6 +516,7 @@ def build_capture_plan(
         "expected_application_passes": expected_application_passes,
         "application_rdzv_port_base": application_rdzv_port_base,
         "expected_kernel_counts": expected_kernel_counts,
+        "kernel_window": kernel_window,
     }
     if replay_mode == "application":
         if nccl_nvtx_includes:
@@ -512,6 +555,34 @@ def build_capture_plan(
                 raise ValueError(
                     "application all-matching capture requires exactly 9 replay passes"
                 )
+        elif kernel_window is not None:
+            if application_topology != "rank-tcp":
+                raise ValueError(
+                    "application kernel-window capture requires rank-tcp topology"
+                )
+            if launch_skip is not None or launch_count is not None:
+                raise ValueError(
+                    "application kernel-window capture rejects separately supplied "
+                    "launch_skip or launch_count"
+                )
+            if expected_kernel_counts is None:
+                raise ValueError(
+                    "application kernel-window capture requires expected_kernel_counts"
+                )
+            if expected_application_passes != 9:
+                raise ValueError(
+                    "application kernel-window capture requires exactly 9 replay passes"
+                )
+            window_start, window_count = kernel_window
+            window_end = window_start + window_count
+            for rank, full_count in enumerate(expected_kernel_counts):
+                if window_end > full_count:
+                    raise ValueError(
+                        f"kernel_window end {window_end} exceeds expected kernel count "
+                        f"{full_count} for rank {rank}"
+                    )
+            launch_skip = window_start
+            launch_count = window_count
         else:
             if expected_kernel_counts is not None:
                 raise ValueError(
@@ -623,8 +694,10 @@ def build_capture_plan(
                 "--kernel-name",
                 kernel_name,
             ]
+            if kernel_window is not None:
+                prefix.extend(["--app-replay-buffer", "file"])
             prefix.extend(["--launch-skip", str(launch_skip)])
-            if all_matching_kernels:
+            if all_matching_kernels or kernel_window is not None:
                 prefix.append("--nvtx")
             if not all_matching_kernels:
                 prefix.extend(["--launch-count", str(launch_count)])
@@ -703,6 +776,7 @@ def build_capture_plan(
         application_rdzv_port_base,
         expected_kernel_counts,
         float(report_import_timeout_seconds),
+        kernel_window,
     )
 
 
@@ -1702,7 +1776,7 @@ def _parse_rank_application_log(
         )
     expected_passes = list(range(1, plan.expected_application_passes + 1))
     observed_passes = [marker["application_replay_pass"] for marker in markers]
-    if not plan.all_matching_kernels:
+    if not plan.is_multirow_rank_application:
         if observed_passes != expected_passes:
             raise ValueError(
                 f"Rank {local_rank} NCU replay passes differ: "
@@ -1715,8 +1789,9 @@ def _parse_rank_application_log(
             "markers": markers,
         }
 
-    assert plan.expected_kernel_counts is not None
-    expected_kernel_count = plan.expected_kernel_counts[local_rank]
+    expected_captured_counts = plan.expected_captured_kernel_counts
+    assert expected_captured_counts is not None
+    expected_kernel_count = expected_captured_counts[local_rank]
     communicator_ranks = [marker["communicator_rank"] for marker in markers]
     if any(communicator_rank is None for communicator_rank in communicator_ranks):
         raise ValueError(
@@ -1787,17 +1862,33 @@ def _all_matching_application_rows(
     expected_pass_count: int,
     pass_count_source: str,
 ) -> tuple[dict[str, Any], list[str]]:
-    """Validate every native row in one rank's all-matching report."""
+    """Validate every native row in one rank's full or windowed report."""
 
     assert plan.is_rank_application
-    assert plan.all_matching_kernels
+    assert plan.is_multirow_rank_application
     assert plan.kernel_name is not None
     assert plan.expected_kernel_counts is not None
-    expected_row_count = plan.expected_kernel_counts[expected_device]
+    expected_captured_counts = plan.expected_captured_kernel_counts
+    assert expected_captured_counts is not None
+    expected_row_count = expected_captured_counts[expected_device]
     artifact: dict[str, Any] = {
         "expected_row_count": expected_row_count,
         "observed_row_count": max(0, len(rows) - 2),
     }
+    if plan.kernel_window is not None:
+        window_start, window_count = plan.kernel_window
+        artifact.update(
+            kernel_window={
+                "start": window_start,
+                "count": window_count,
+                "end_exclusive": window_start + window_count,
+            },
+            requested_global_ordinal_mapping={
+                "basis": "kernel_window.start + raw_csv.ID",
+                "status": "DECLARED_PENDING_EXTERNAL_NSYS_AUDIT",
+                "nsys_reconciled": False,
+            },
+        )
     errors: list[str] = []
     if len(rows) != expected_row_count + 2:
         errors.append(
@@ -1951,18 +2042,21 @@ def _all_matching_application_rows(
         }
         if zero_metrics:
             rows_with_zero_metrics.append(data_index)
-        parsed_rows.append(
-            {
-                "id": row_id,
-                "visible_device": observed_device,
-                "kernel_name": kernel_name,
-                "process_id": process_id,
-                "profiler_pass_count": profiler_pass_count,
-                "launch_geometry": launch_geometry,
-                "metrics": metric_values,
-                "zero_metrics": zero_metrics,
-            }
-        )
+        parsed_row = {
+            "id": row_id,
+            "visible_device": observed_device,
+            "kernel_name": kernel_name,
+            "process_id": process_id,
+            "profiler_pass_count": profiler_pass_count,
+            "launch_geometry": launch_geometry,
+            "metrics": metric_values,
+            "zero_metrics": zero_metrics,
+        }
+        if plan.kernel_window is not None:
+            parsed_row["requested_global_ordinal"] = (
+                plan.kernel_window[0] + row_id if row_id is not None else None
+            )
+        parsed_rows.append(parsed_row)
         errors.extend(
             f"application replay raw CSV data row {data_index}: {error}"
             for error in row_errors
@@ -2029,7 +2123,7 @@ def _application_report_artifact_for(
         "--csv",
     )
     artifact["import_argv"] = list(import_argv)
-    if plan.all_matching_kernels:
+    if plan.is_multirow_rank_application:
         completed_import = _run_all_matching_report_import(
             import_argv,
             timeout_seconds=plan.report_import_timeout_seconds,
@@ -2152,7 +2246,7 @@ def _application_report_artifact_for(
     except UnicodeDecodeError as exc:
         return artifact, [f"application replay raw CSV is not valid UTF-8: {exc}"]
     rows = list(csv.reader(io.StringIO(csv_text)))
-    if plan.all_matching_kernels:
+    if plan.is_multirow_rank_application:
         row_artifact, row_errors = _all_matching_application_rows(
             plan,
             rows,
@@ -2577,6 +2671,10 @@ def run_capture(
             assert plan.launch_skip == 0
             assert plan.launch_count is None
             assert plan.expected_kernel_counts is not None
+        elif plan.kernel_window is not None:
+            assert plan.expected_kernel_counts is not None
+            assert plan.launch_skip == plan.kernel_window[0]
+            assert plan.launch_count == plan.kernel_window[1]
         else:
             assert plan.launch_skip is not None
             assert plan.launch_count == 1
@@ -2652,6 +2750,35 @@ def run_capture(
                     "--launch-count" in plan.ncu_prefix
                 ),
                 all_matching_ncu_rows_validated=False,
+            )
+        elif plan.kernel_window is not None:
+            window_start, window_count = plan.kernel_window
+            expected_captured_counts = plan.expected_captured_kernel_counts
+            assert expected_captured_counts is not None
+            receipt["schema"] = RANK_APPLICATION_KERNEL_WINDOW_CAPTURE_RECEIPT_SCHEMA
+            receipt.pop("selected_matching_launches_per_device")
+            receipt["application_replay"]["buffer"] = "file"
+            receipt.update(
+                capture_scope="kernel-window-requested",
+                all_matching_kernels=False,
+                nvtx_capture_enabled=True,
+                kernel_window={
+                    "start": window_start,
+                    "count": window_count,
+                    "end_exclusive": window_start + window_count,
+                },
+                expected_kernel_counts=list(plan.expected_kernel_counts),
+                captured_expected_kernel_counts=list(expected_captured_counts),
+                report_import_timeout_seconds=plan.report_import_timeout_seconds,
+                ncu_launch_count_argument_present=(
+                    "--launch-count" in plan.ncu_prefix
+                ),
+                window_ncu_rows_validated=False,
+                requested_global_ordinal_mapping={
+                    "basis": "kernel_window.start + raw_csv.ID",
+                    "status": "DECLARED_PENDING_EXTERNAL_NSYS_AUDIT",
+                    "nsys_reconciled": False,
+                },
             )
     else:
         receipt = {
@@ -2788,11 +2915,8 @@ def run_capture(
                 for artifact in artifacts
             },
         )
-        if plan.all_matching_kernels:
+        if plan.is_multirow_rank_application:
             receipt.update(
-                all_matching_ncu_rows_validated=(
-                    imports_attempted and not artifact_errors
-                ),
                 observed_kernel_counts=[
                     artifact.get("application_report", {}).get(
                         "observed_row_count"
@@ -2822,6 +2946,11 @@ def run_capture(
                     for artifact in artifacts
                 },
             )
+            rows_validated = imports_attempted and not artifact_errors
+            if plan.all_matching_kernels:
+                receipt["all_matching_ncu_rows_validated"] = rows_validated
+            else:
+                receipt["window_ncu_rows_validated"] = rows_validated
     _write_json(plan.receipt_path, receipt)
     return NcuTorchrunCaptureResult(
         status,
@@ -2849,6 +2978,16 @@ def _args(argv: Sequence[str] | None) -> argparse.Namespace:
     parser.add_argument("--timeout-seconds", required=True, type=float)
     parser.add_argument("--all-matching-kernels", action="store_true")
     parser.add_argument(
+        "--kernel-window",
+        nargs=2,
+        type=int,
+        metavar=("START", "COUNT"),
+        help=(
+            "Capture one contiguous zero-based window after kernel-name filtering. "
+            "COUNT must be between 1 and 64. Only rank-tcp application replay is supported."
+        ),
+    )
+    parser.add_argument(
         "--replay-mode", choices=("application", "kernel", "range"), default="kernel"
     )
     parser.add_argument(
@@ -2867,8 +3006,8 @@ def _args(argv: Sequence[str] | None) -> argparse.Namespace:
         type=float,
         default=60.0,
         help=(
-            "Per-report import timeout for all-matching rank-tcp application replay. "
-            "The default is 60 seconds."
+            "Per-report import timeout for all-matching or kernel-window rank-tcp "
+            "application replay. The default is 60 seconds."
         ),
     )
     parser.add_argument("--nvtx-include", action="append", dest="includes")
@@ -2899,6 +3038,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             nccl_nvtx_includes=args.includes,
             torchrun_argv=args.torchrun_argv,
             all_matching_kernels=args.all_matching_kernels,
+            kernel_window=(
+                tuple(args.kernel_window) if args.kernel_window is not None else None
+            ),
             replay_mode=args.replay_mode,
             target_visible_device=args.target_visible_device,
             kernel_name=args.kernel_name,

@@ -370,6 +370,110 @@ policy, and zero metric counts. The helper leaves its coverage and qualification
 fields false. Record the external reconciliation, numerical validation, clock
 review, and cleanup review separately before claiming complete coverage.
 
+#### Windowed rank-local application replay
+
+Use explicit kernel windows when a full all-matching native report exceeds host
+resources. A full tensor-baseline attempt on a 334 GiB host reached 172 matching
+kernels in its first pass before Linux killed one NCU process at about 159 GB
+RSS. The attempt used NCU 2026.2.1 Application Replay with the default file
+buffer. NVIDIA documents the file buffer as the more scalable replay buffer, but
+it did not bound the observed resident memory for this capture. The retained
+evidence does not identify which NCU component held that memory.
+
+NVIDIA documents that [`--launch-skip` and `--launch-count` count only launches
+that match the kernel filters](https://docs.nvidia.com/nsight-compute/NsightComputeCli/index.html#profile).
+The public helper exposes that selection as `--kernel-window START COUNT` for
+rank-local TCP Application Replay. `START` is the zero-based ordinal among
+kernels matching the unchanged `--kernel-name` expression. `COUNT` is the
+number of matching launches to capture. The helper derives the NCU launch skip
+and count. Do not pass `--launch-skip` or `--launch-count` with a window, and do
+not combine a window with `--all-matching-kernels`.
+
+Window mode still requires `--expected-kernel-counts RANK0 RANK1` with the two
+full counts from the fresh, frozen Nsys inventory. Both values must be positive,
+and `START + COUNT` must fit within both full rank counts. The helper limits
+`COUNT` to 64 and requires the rank-local TCP topology and exactly nine replay
+passes. For this acquisition, keep the all-NCCL kernel expression and the same
+report-import budget as full mode. The generated NCU command records
+`--app-replay-buffer file`, `--nvtx`, and `--kill no` without an NVTX include or
+exclude filter. Every window therefore runs the full unchanged workload through
+all nine fresh worker generations while collecting the same five metrics only
+for its selected matching launches.
+
+Use no more than 64 matching launches per window for the retained tensor pair.
+The 481-kernel baseline requires eight windows, and the 241-kernel optimized arm
+requires four:
+
+| Arm | Complete `(START, COUNT)` schedule |
+|---|---|
+| Tensor baseline, 481 per rank | `(0, 64)`, `(64, 64)`, `(128, 64)`, `(192, 64)`, `(256, 64)`, `(320, 64)`, `(384, 64)`, `(448, 33)` |
+| Tensor optimized, 241 per rank | `(0, 64)`, `(64, 64)`, `(128, 64)`, `(192, 49)` |
+
+Run these 12 two-rank captures serially. Give each window a new output
+directory, communicator port, input rendezvous port, and nine-port generated
+rendezvous range. This example runs the nonzero baseline interval `[64,128)`
+from `code/`. Use its 481-row totals only with the matching frozen Nsys trace
+and the same tensor workload:
+
+```bash
+WINDOW_START=64
+WINDOW_COUNT=64
+FULL_RANK0_KERNELS=481
+FULL_RANK1_KERNELS=481
+NCU_TCP_PORT=29681
+INPUT_RDZV_PORT=29682
+APPLICATION_RDZV_PORT_BASE=29690
+OUTPUT_DIR=/tmp/tensor-rank-tcp-window-64-attempt-01
+
+AISP_LOCK_GPU_CLOCKS=1 AISP_RAMP_GPU_CLOCKS=1 \
+CUDA_VISIBLE_DEVICES=0,1 PYTHONPATH="$PWD" \
+python -m core.profiling.ncu_torchrun_capture \
+  --label tensor-rank-tcp-window-64 --repo-root .. \
+  --source "$(git rev-parse HEAD)" --output-dir "$OUTPUT_DIR" --ncu "$NCU" \
+  --timeout-seconds 1800 --report-import-timeout-seconds 600 \
+  --replay-mode application --application-topology rank-tcp \
+  --tcp-port "$NCU_TCP_PORT" --expected-application-passes 9 \
+  --application-rdzv-port-base "$APPLICATION_RDZV_PORT_BASE" \
+  --kernel-window "$WINDOW_START" "$WINDOW_COUNT" \
+  --expected-kernel-counts "$FULL_RANK0_KERNELS" "$FULL_RANK1_KERNELS" \
+  --kernel-name 'regex:nccl.*' \
+  -- python -m torch.distributed.run --nproc_per_node 2 --nnodes 1 \
+  --rdzv_backend c10d --rdzv_endpoint "127.0.0.1:$INPUT_RDZV_PORT" \
+  --max_restarts 0 \
+  -m core.harness.torchrun_wrapper --aisp-emit-runtime-provenance \
+  --aisp-target-module core.harness.benchmark_worker \
+  --aisp-expected-torch-seed 42 --aisp-expected-cuda-seed 42 \
+  --module ch04.baseline_tensor_parallel_multigpu --callable main \
+  -- --iters 50 --warmup 10 --seed 42
+```
+
+Each native report and raw CSV must contain exactly `COUNT` rows. Raw CSV IDs
+restart at zero for every window and must be exactly `0` through `COUNT - 1`.
+They are window-local identifiers, not global NCCL ordinals. The window receipt
+uses schema `aisp.ncu-torchrun-rank-application-kernel-window-capture.v1` and
+records `capture_scope: kernel-window-requested`. It stores the full counts in
+`expected_kernel_counts`, the two window row counts in
+`captured_expected_kernel_counts`, and the half-open bounds in `kernel_window`.
+The declared `kernel_window.start + raw_csv.ID` mapping remains
+`DECLARED_PENDING_EXTERNAL_NSYS_AUDIT` with `nsys_reconciled: false`. The
+receipt keeps `all_matching_launches_covered`, `full_coverage_qualified`,
+`numerical_output_qualified`, and `performance_qualified` false.
+
+Do not claim full launch coverage from a successful window or from row counts
+alone. Before combining windows, reconcile native action order for each rank to
+the exact global Nsys slice by kernel name, logical device, launch geometry, and
+NVTX stack. Require all five metric names, units, values, and nine replay passes
+for every row. Then prove that the window bounds form a gap-free,
+nonoverlapping union of `[0, 481)` or `[0, 241)`. Preserve the native report,
+raw CSV, exact argv, logs, hashes, and reconciliation result for every window.
+
+NVIDIA's [Range and Precision guidance](https://docs.nvidia.com/nsight-compute/ProfilingGuide/index.html#range-and-precision)
+explains that multi-pass variation, including spin-loop behavior, can produce
+values outside a metric's logical range. NCU deliberately leaves those values
+unclamped so the report stays internally consistent. This public capture
+contract is stricter. It rejects percentage values above 100 rather than
+clamping or qualifying them. Retain the raw value and rejection for diagnosis.
+
 Kernel and range modes retain exact arguments, source and tool hashes, logs,
 rank reports, and the owned process-group cleanup result.
 `CAPTURE_ARTIFACTS_PRESENT` establishes artifact creation only. Import both rank
