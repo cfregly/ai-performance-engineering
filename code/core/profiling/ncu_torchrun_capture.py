@@ -4,12 +4,12 @@ Kernel and range replay use the existing per-rank TCP/lockstep topology.
 Application replay either profiles one caller-selected visible device around
 the full torchrun command or runs one coordinated NCU process per rank. The
 rank-local path can capture one selected launch, a caller-declared contiguous
-window, or explicitly request every matching launch. All modes use NCU 2026.2.1
-and the repository's five minimal metrics. Receipts prove source and argument
-custody plus bounded artifact checks. They do not qualify numerical output,
-complete coverage, or performance. Full process-tree cleanup proof requires
-Linux procfs and the inherited owner marker. Unsupported hosts can run only to
-an explicitly rejected receipt.
+window, or explicitly request every matching launch. The version gate recognizes
+NCU 2026.2.1.0 and NCU 2026.3.1.0. All modes request the repository's five
+minimal metrics. Receipts prove source and argument custody plus bounded artifact
+checks. They do not qualify numerical output, complete coverage, or performance.
+Full process-tree cleanup proof requires Linux procfs and the inherited owner
+marker. Unsupported hosts can run only to an explicitly rejected receipt.
 """
 
 from __future__ import annotations
@@ -65,6 +65,7 @@ RANK_APPLICATION_KERNEL_WINDOW_CAPTURE_RECEIPT_SCHEMA = (
     "aisp.ncu-torchrun-rank-application-kernel-window-capture.v1"
 )
 SUPPORTED_NCU_VERSION = "2026.2.1"
+SUPPORTED_NCU_VERSIONS = ("2026.2.1.0", "2026.3.1.0")
 WORLD_SIZE = 2
 MAX_KERNEL_WINDOW_COUNT = 64
 CLAIM_LIMIT = (
@@ -76,6 +77,7 @@ CLEANUP_LIMIT = (
     "launch's inherited owner marker. Clearing that marker is unsupported."
 )
 _NCCL_RANGE = re.compile(r"^NCCL@[A-Za-z][A-Za-z0-9_.:-]*/$")
+_NCU_VERSION = re.compile(r"\bVersion[ \t]+(\S+)")
 _RANK_MODULE = "core.profiling.ncu_torchrun_rank"
 _GENERATION_MODULE = "core.profiling.ncu_torchrun_generation"
 _TORCHRUN_MODULE = "torch.distributed.run"
@@ -859,8 +861,12 @@ def _preflight(plan: NcuTorchrunCapturePlan, env: Mapping[str, str]) -> dict[str
     version = subprocess.check_output(
         [str(ncu), "--version"], text=True, stderr=subprocess.STDOUT, timeout=15
     ).strip()
-    if f"Version {SUPPORTED_NCU_VERSION}" not in version:
-        raise ValueError(f"Qualified only for NCU {SUPPORTED_NCU_VERSION}. Observed {version!r}")
+    observed_versions = _NCU_VERSION.findall(version)
+    if len(observed_versions) != 1 or observed_versions[0] not in SUPPORTED_NCU_VERSIONS:
+        supported_versions = " and ".join(SUPPORTED_NCU_VERSIONS)
+        raise ValueError(
+            f"Supported NCU versions are {supported_versions}. Observed {version!r}"
+        )
     result = {
         "observed_source": observed_source,
         "ncu_version": version,

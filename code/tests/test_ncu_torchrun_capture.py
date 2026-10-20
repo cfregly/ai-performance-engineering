@@ -652,16 +652,22 @@ def _make_git_repo(tmp_path: Path) -> tuple[Path, Path, str]:
     return repo, target, source
 
 
-def _make_fake_ncu(path: Path, marker: Path | None = None) -> Path:
+def _make_fake_ncu(
+    path: Path,
+    marker: Path | None = None,
+    *,
+    version_output: str = "Version 2026.2.1.0 (test control plane)",
+) -> Path:
     path.write_text(
         "#!/usr/bin/env python3\n"
         "import os, sys\n"
         "from pathlib import Path\n"
         f"marker = Path({str(marker)!r}) if {marker is not None!r} else None\n"
+        f"version_output = {version_output!r}\n"
         "if marker is not None:\n"
         "    marker.write_text('invoked\\n')\n"
         "if sys.argv[1:] == ['--version']:\n"
-        "    print('Version 2026.2.1.0 (test control plane)')\n"
+        "    print(version_output)\n"
         "    raise SystemExit(0)\n"
         "if '--replay-mode' in sys.argv and sys.argv[sys.argv.index('--replay-mode') + 1] == 'range' and '--kernel-name' in sys.argv:\n"
         "    print('Option kernel-name is not supported during range replay.', file=sys.stderr)\n"
@@ -726,6 +732,89 @@ def _capture_environment(repo: Path) -> dict[str, str]:
         }
     )
     return environment
+
+
+def _preflight_for_ncu_version(tmp_path: Path, version_output: str) -> dict[str, object]:
+    repo, target, source = _make_git_repo(tmp_path)
+    fake_ncu = _make_fake_ncu(
+        tmp_path / "ncu",
+        version_output=version_output,
+    )
+    plan = _plan(
+        repo,
+        command=_torchrun_command(target),
+        source=source,
+        ncu_path=fake_ncu,
+    )
+    return ncu_capture._preflight(plan, _capture_environment(repo))
+
+
+@pytest.mark.parametrize(
+    "version_output",
+    (
+        "Version 2026.2.1.0 (build 38283040) (public-release)",
+        "Version 2026.3.1.0 (build 38829034) (public-release)",
+    ),
+)
+def test_preflight_accepts_exact_supported_ncu_version_tokens(
+    tmp_path: Path,
+    version_output: str,
+) -> None:
+    metadata = _preflight_for_ncu_version(tmp_path, version_output)
+
+    assert ncu_capture.SUPPORTED_NCU_VERSIONS == ("2026.2.1.0", "2026.3.1.0")
+    assert metadata["ncu_version"] == version_output
+
+
+@pytest.mark.parametrize(
+    "version_output",
+    (
+        "Version 2026.3.2.0 (unsupported numeric version)",
+        "Version 2026.2.10.0 (unsupported numeric prefix)",
+        "Version 2026.3.1 (prefix only)",
+        "Version 2026.3.1.0-extra (malformed token)",
+        "NCU version is unavailable",
+        "Version 2026.2.1.0\nVersion 2026.3.1.0",
+        "Version 2026.3.1.0\nVersion unavailable",
+    ),
+)
+def test_preflight_rejects_unrecognized_or_ambiguous_ncu_versions(
+    tmp_path: Path,
+    version_output: str,
+) -> None:
+    with pytest.raises(
+        ValueError,
+        match=(
+            r"Supported NCU versions are 2026\.2\.1\.0 and 2026\.3\.1\.0\. "
+            r"Observed"
+        ),
+    ):
+        _preflight_for_ncu_version(tmp_path, version_output)
+
+
+def test_new_supported_ncu_version_does_not_bypass_existing_clock_gate(
+    tmp_path: Path,
+) -> None:
+    repo, target, source = _make_git_repo(tmp_path)
+    marker = tmp_path / "ncu-invoked"
+    fake_ncu = _make_fake_ncu(
+        tmp_path / "ncu",
+        marker=marker,
+        version_output="Version 2026.3.1.0 (build 38829034) (public-release)",
+    )
+    plan = _plan(
+        repo,
+        command=_torchrun_command(target),
+        source=source,
+        ncu_path=fake_ncu,
+    )
+    environment = _capture_environment(repo)
+    environment["AISP_RAMP_GPU_CLOCKS"] = "0"
+
+    with pytest.raises(ValueError, match="AISP_RAMP_GPU_CLOCKS=1 is required"):
+        ncu_capture._preflight(plan, environment)
+
+    assert not marker.exists()
 
 
 def test_plan_exposes_exact_rank_commands_and_scoped_lockstep(tmp_path: Path) -> None:

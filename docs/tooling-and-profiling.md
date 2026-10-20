@@ -120,17 +120,25 @@ substitute profiled duration for a separately measured end-to-end baseline.
 Collectives that require concurrent ranks can stall under process-tree replay.
 The explicit `core.profiling.ncu_torchrun_capture` command launches one profiler
 per rank, with TCP coordination and lockstep limited to named NCCL NVTX ranges.
-That kernel and range topology supports one Linux host, two visible GPUs,
-Nsight Compute 2026.2.1, and the repository's five minimal metrics. It uses
-kernel replay by default or explicit range replay. Application replay has two
-explicit topologies. The default `parent` topology wraps the original full
-two-rank `torchrun` command with one NCU process. The `rank-tcp` topology launches
-one NCU process per local rank and uses TCP coordination for the selected
-concurrent kernels. Both run without Slurm.
+That kernel and range topology supports one Linux host, two visible GPUs, and
+the repository's five minimal metrics. The preflight gate recognizes the exact
+NCU version tokens `2026.2.1.0` and `2026.3.1.0`, which correspond to Nsight
+Compute 2026.2.1 and 2026.3.1. It rejects every other version token. Version
+recognition changes only tool admission. The same source, topology, metric,
+replay, process, device, artifact, cleanup, and reconciliation gates still
+apply. Recognizing NCU 2026.3.1 does not establish that a hardware capture
+passed or that shutdown behavior differs from NCU 2026.2.1.
+
+The helper uses kernel replay by default or explicit range replay. Application
+replay has two explicit topologies. The default `parent` topology wraps the
+original full two-rank `torchrun` command with one NCU process. The `rank-tcp`
+topology launches one NCU process per local rank and uses TCP coordination for
+the selected concurrent kernels. Both run without Slurm.
 
 From a clean checkout's `code/` directory, use the Python environment for the
-workload and set `NCU` to the absolute path of the 2026.2.1 executable. Choose
-unused loopback ports and a new output directory for each attempt:
+workload and set `NCU` to the absolute path of a recognized 2026.2.1 or 2026.3.1
+executable. Choose unused loopback ports and a new output directory for each
+attempt:
 
 ```bash
 AISP_LOCK_GPU_CLOCKS=1 AISP_RAMP_GPU_CLOCKS=1 \
@@ -232,8 +240,10 @@ rendezvous base plus the zero-based generation number, and
 
 Keep the input torchrun rendezvous port, NCU communicator port, and generated
 rendezvous port range disjoint. The example below expects nine
-application-replay generations. That count is scoped to this exact two-B200
-workload and NCU 2026.2.1:
+application-replay generations. The retained result established that count for
+this exact two-B200 workload with NCU 2026.2.1. Using the recognized NCU 2026.3.1
+version does not qualify the same outcome. Require the observed pass count and
+every other capture gate to pass independently:
 
 ```bash
 KERNEL_NAME='regex:ncclDevKernel_AllReduce.*'
