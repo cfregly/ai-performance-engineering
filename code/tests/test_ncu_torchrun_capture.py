@@ -64,8 +64,9 @@ def test_two_rank_capture_docs_cover_each_explicit_replay_topology() -> None:
     guide = (CODE_ROOT.parent / "docs" / "tooling-and-profiling.md").read_text(
         encoding="utf-8"
     )
+    normalized_guide = " ".join(guide.split())
     assert "distributed CUDA and NCCL timeline" in guide
-    assert "Ordinary GDB does not debug a running CUDA kernel" in guide
+    assert "Ordinary GDB does not debug a running CUDA kernel" in normalized_guide
     assert "`strace` shows host system calls" in guide
     assert "`py-spy` shows Python stacks" in guide
     assert "Zymtrace can provide supplemental observations" in guide
@@ -1156,7 +1157,7 @@ def test_rank_tcp_generation_log_rejects_malformed_or_ambiguous_state(
                 rank1_worker_pid=304,
                 rank0_updates={"torch_version": "drifted-test-version"},
             ),
-            "runtime provenance drifted",
+            "runtime provenance is incomplete or inconsistent",
         ),
     ]
 
@@ -1296,6 +1297,18 @@ def test_rank_tcp_evidence_gates_then_validates_both_native_reports(
         plan.report_path(local_rank).write_bytes(
             f"rank {local_rank} native report\n".encode("ascii")
         )
+    freshness_paths = [
+        path
+        for local_rank in (0, 1)
+        for path in (
+            plan.report_path(local_rank),
+            plan.rank_argv_path(local_rank),
+            plan.output_dir / f"rank-{local_rank}-generation.counter",
+        )
+    ]
+    fresh_mtime_ns = start_ns + 1_000_000_000
+    for path in freshness_paths:
+        os.utime(path, ns=(fresh_mtime_ns, fresh_mtime_ns))
 
     _, blocked_generations, _, blocked_imports, blocked_errors = (
         _rank_application_evidence(

@@ -19,10 +19,10 @@ from core.profiling.ncu_torchrun_generation import (
 CODE_ROOT = Path(__file__).resolve().parents[1]
 
 
-def _generation_payload(output_dir: Path, worker_argv: list[str], **updates):
+def _generation_payload(output_dir: Path, default_worker_argv: list[str], **updates):
     payload = {
         "schema": GENERATION_CONFIG_SCHEMA,
-        "worker_argv": worker_argv,
+        "worker_argv": default_worker_argv,
         "output_dir": str(output_dir),
         "world_size": 2,
         "expected_passes": 2,
