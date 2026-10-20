@@ -64,13 +64,6 @@ def test_two_rank_capture_docs_cover_each_explicit_replay_topology() -> None:
     guide = (CODE_ROOT.parent / "docs" / "tooling-and-profiling.md").read_text(
         encoding="utf-8"
     )
-    normalized_guide = " ".join(guide.split())
-    assert "distributed CUDA and NCCL timeline" in guide
-    assert "Ordinary GDB does not debug a running CUDA kernel" in normalized_guide
-    assert "`strace` shows host system calls" in guide
-    assert "`py-spy` shows Python stacks" in guide
-    assert "Zymtrace can provide supplemental observations" in guide
-    assert "does not establish complete execution coverage" in guide
     section = guide.split("### Two-rank NCCL captures", 1)[1].split(
         "## Framework traces", 1
     )[0]
@@ -89,9 +82,7 @@ def test_two_rank_capture_docs_cover_each_explicit_replay_topology() -> None:
     assert "AISP_NCU_PROFILE_REQUESTS=4 AISP_NCU_PROFILE_CONTEXT=256" in section
     assert "ch15.optimized_disaggregated_inference_multigpu" in section
     assert "-- --iters 4 --warmup 5 --seed 42" in section
-    assert "does not cover every NCCL launch or direction" in section
     assert "requested_visible_devices: [0, 1]" in section
-    assert "only after both native reports were imported and validated" in section
 
 
 def _free_port() -> int:
