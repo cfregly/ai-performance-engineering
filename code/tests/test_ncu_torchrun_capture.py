@@ -33,30 +33,43 @@ from core.harness.torchrun_runtime_provenance import (
 from core.profiling.ncu_torchrun_capture import (
     APPLICATION_CAPTURE_RECEIPT_SCHEMA,
     CAPTURE_RECEIPT_SCHEMA,
+    RANK_APPLICATION_CAPTURE_RECEIPT_SCHEMA,
     _CAPTURE_OWNER_ENV,
     _application_report_artifact,
     _cleanup_capture_processes,
     _drain_owned_process_group,
     _marked_pids,
     _parse_application_replay_log,
+    _parse_rank_application_generations,
+    _parse_rank_application_log,
     _proc_cleanup_supported,
+    _rank_application_evidence,
     _snapshot_proc_identities,
     build_capture_plan,
 )
+from core.profiling.ncu_torchrun_generation import GENERATION_MARKER_PREFIX
 from core.profiling.ncu_torchrun_rank import (
+    RANK_APPLICATION_CONFIG_SCHEMA,
     RANK_CONFIG_SCHEMA,
     build_rank_command,
     load_rank_config,
 )
+from core.profiling.profiler_config import MINIMAL_METRICS
 
 CODE_ROOT = Path(__file__).resolve().parents[1]
 NCCL_RANGES = ("NCCL@ncclGroupEnd/", "NCCL@ncclAllReduce/")
 
 
-def test_two_rank_capture_docs_cover_both_rank_local_replay_modes() -> None:
+def test_two_rank_capture_docs_cover_each_explicit_replay_topology() -> None:
     guide = (CODE_ROOT.parent / "docs" / "tooling-and-profiling.md").read_text(
         encoding="utf-8"
     )
+    assert "distributed CUDA and NCCL timeline" in guide
+    assert "Ordinary GDB does not debug a running CUDA kernel" in guide
+    assert "`strace` shows host system calls" in guide
+    assert "`py-spy` shows Python stacks" in guide
+    assert "Zymtrace can provide supplemental observations" in guide
+    assert "does not establish complete execution coverage" in guide
     section = guide.split("### Two-rank NCCL captures", 1)[1].split(
         "## Framework traces", 1
     )[0]
@@ -65,6 +78,19 @@ def test_two_rank_capture_docs_cover_both_rank_local_replay_modes() -> None:
     assert "--replay-mode range" in section
     assert "Range replay requires" in section
     assert "does not provide per-kernel attribution" in section
+    assert "--application-topology parent" in section
+    assert "--application-topology rank-tcp" in section
+    assert "--expected-application-passes" in section
+    assert "--application-rdzv-port-base" in section
+    assert "TORCHELASTIC_USE_AGENT_STORE=False" in section
+    assert "KERNEL_NAME='regex:ncclDevKernel_AllReduce.*'" in section
+    assert "LAUNCH_SKIP=2" in section
+    assert "AISP_NCU_PROFILE_REQUESTS=4 AISP_NCU_PROFILE_CONTEXT=256" in section
+    assert "ch15.optimized_disaggregated_inference_multigpu" in section
+    assert "-- --iters 4 --warmup 5 --seed 42" in section
+    assert "does not cover every NCCL launch or direction" in section
+    assert "requested_visible_devices: [0, 1]" in section
+    assert "only after both native reports were imported and validated" in section
 
 
 def _free_port() -> int:
@@ -132,6 +158,36 @@ def _application_plan(tmp_path: Path, command: list[str] | None = None, **overri
     return _plan(tmp_path, command, **values)
 
 
+def _rank_application_plan(
+    tmp_path: Path, command: list[str] | None = None, **overrides
+):
+    command = command or _torchrun_command(tmp_path / "target.py")
+    torchrun_port = int(command[command.index("--rdzv_endpoint") + 1].rsplit(":", 1)[1])
+    tcp_port = 31_001 if torchrun_port != 31_001 else 31_002
+    requested_passes = overrides.get("expected_application_passes", 2)
+    port_span = requested_passes if type(requested_passes) is int and requested_passes > 0 else 2
+    rdzv_port_base = next(
+        base
+        for base in (31_100, 31_200)
+        if torchrun_port not in range(base, base + port_span)
+        and tcp_port not in range(base, base + port_span)
+    )
+    values = {
+        "application_topology": "rank-tcp",
+        "tcp_port": tcp_port,
+        "nccl_nvtx_includes": (),
+        "replay_mode": "application",
+        "target_visible_device": None,
+        "kernel_name": "regex:ncclDevKernel_AllReduce.*",
+        "launch_skip": 22,
+        "launch_count": 1,
+        "expected_application_passes": 2,
+        "application_rdzv_port_base": rdzv_port_base,
+    }
+    values.update(overrides)
+    return _plan(tmp_path, command, **values)
+
+
 @functools.lru_cache(maxsize=1)
 def _runtime_snapshot_fixture():
     return capture_runtime_provenance()
@@ -192,7 +248,119 @@ def _application_generation(
     return b"".join(chunks)
 
 
-def _application_csv(*, process_id: int, pass_count: int = 2, device: int = 1) -> str:
+def _generation_marker(
+    event: str,
+    *,
+    generation: int,
+    master_port: int,
+    process_id: int,
+    rank: int,
+    returncode: int | None = None,
+) -> bytes:
+    payload = {
+        "event": event,
+        "generation": generation,
+        "master_port": master_port,
+        "pid": process_id,
+        "rank": rank,
+    }
+    if returncode is not None:
+        payload["returncode"] = returncode
+    return (
+        GENERATION_MARKER_PREFIX
+        + json.dumps(payload, allow_nan=False, separators=(",", ":"), sort_keys=True)
+        + "\n"
+    ).encode("utf-8")
+
+
+def _rank_application_generation(
+    generation: int,
+    *,
+    master_port_base: int,
+    rank0_bootstrap_pid: int,
+    rank1_bootstrap_pid: int,
+    rank0_worker_pid: int,
+    rank1_worker_pid: int,
+    rank0_updates: dict[str, object] | None = None,
+    rank1_updates: dict[str, object] | None = None,
+) -> bytes:
+    master_port = master_port_base + generation
+    chunks = [
+        _generation_marker(
+            "begin",
+            generation=generation,
+            master_port=master_port,
+            process_id=rank0_bootstrap_pid,
+            rank=0,
+        ),
+        _generation_marker(
+            "begin",
+            generation=generation,
+            master_port=master_port,
+            process_id=rank1_bootstrap_pid,
+            rank=1,
+        ),
+    ]
+    for local_rank, process_id, updates in (
+        (0, rank0_worker_pid, rank0_updates or {}),
+        (1, rank1_worker_pid, rank1_updates or {}),
+    ):
+        chunks.extend(
+            format_torchrun_runtime_provenance_frames(
+                _synthetic_cuda_snapshot(process_id, **updates),
+                local_rank=local_rank,
+                rank=local_rank,
+                world_size=2,
+                local_world_size=2,
+                pipe_buf=4096,
+            )
+        )
+    chunks.extend(
+        [
+            _generation_marker(
+                "end",
+                generation=generation,
+                master_port=master_port,
+                process_id=rank0_bootstrap_pid,
+                rank=0,
+                returncode=0,
+            ),
+            _generation_marker(
+                "end",
+                generation=generation,
+                master_port=master_port,
+                process_id=rank1_bootstrap_pid,
+                rank=1,
+                returncode=0,
+            ),
+        ]
+    )
+    return b"".join(chunks)
+
+
+def _rank_application_log(
+    *, local_rank: int, communicator_rank: int, pass_count: int
+) -> bytes:
+    kernel_name = "ncclDevKernel_AllReduce_Sum_f32_RING_LL"
+    lines = [
+        f"==PROF== [Comm rank {communicator_rank}]  Connected to process 1000\n"
+    ]
+    lines.extend(
+        "==PROF== "
+        f"[Comm rank {communicator_rank}]  Profiling on device {local_rank} : "
+        f'"{kernel_name}": Application replay pass {pass_number}\n'
+        for pass_number in range(1, pass_count + 1)
+    )
+    return "".join(lines).encode("utf-8")
+
+
+def _application_csv(
+    *,
+    process_id: int,
+    pass_count: int = 2,
+    device: int = 1,
+    kernel_name: str = "ncclDevKernel_SendRecv(int)",
+) -> str:
     metrics = [
         "gpu__time_duration.avg",
         "sm__throughput.avg.pct_of_peak_sustained_elapsed",
@@ -215,7 +383,7 @@ def _application_csv(*, process_id: int, pass_count: int = 2, device: int = 1) -
         str(process_id),
         str(device),
         str(device),
-        "ncclDevKernel_SendRecv(int)",
+        kernel_name,
         str(pass_count),
         "1000",
         "25",
@@ -279,6 +447,27 @@ def _make_fake_application_ncu(
         "Path(args[export_index + 1]).write_bytes(b'test application report\\n')\n"
         "sys.stderr.buffer.write(combined_log)\n"
         "sys.stderr.buffer.flush()\n",
+        encoding="utf-8",
+    )
+    path.chmod(0o755)
+    return path.resolve()
+
+
+def _make_fake_rank_application_ncu(
+    path: Path, *, rank0_csv: str, rank1_csv: str
+) -> Path:
+    path.write_text(
+        "#!/usr/bin/env python3\n"
+        "import sys\n"
+        "from pathlib import Path\n"
+        f"rank_csv = {{0: {rank0_csv!r}, 1: {rank1_csv!r}}}\n"
+        "args = sys.argv[1:]\n"
+        "if args == ['--version']:\n"
+        "    print('Version 2026.2.1.0 (test control plane)')\n"
+        "    raise SystemExit(0)\n"
+        "report = Path(args[args.index('--import') + 1])\n"
+        "rank = int(report.name.removeprefix('rank-').split('.', 1)[0])\n"
+        "sys.stdout.write(rank_csv[rank])\n",
         encoding="utf-8",
     )
     path.chmod(0o755)
@@ -452,6 +641,101 @@ def test_application_plan_wraps_the_exact_full_torchrun_command(tmp_path: Path) 
     assert "--nvtx" not in plan.launch_argv
     assert "core.profiling.ncu_torchrun_rank" not in plan.launch_argv
     assert plan.nccl_nvtx_includes == ()
+    assert plan.application_topology == "parent"
+    assert plan.expected_application_passes is None
+    assert plan.application_rdzv_port_base is None
+
+
+def test_rank_tcp_application_plan_exposes_exact_rank_commands(tmp_path: Path) -> None:
+    command = _torchrun_command(tmp_path / "target.py")
+    plan = _rank_application_plan(tmp_path, command)
+    expected_prefix = (
+        str(tmp_path / "ncu"),
+        "--clock-control",
+        "none",
+        "--target-processes",
+        "all",
+        "--communicator",
+        "tcp",
+        "--communicator-tcp-hostname",
+        "127.0.0.1",
+        "--communicator-tcp-port",
+        str(plan.tcp_port),
+        "--communicator-tcp-num-peers",
+        "2",
+        "--lockstep-kernel-launch",
+        "--replay-mode",
+        "application",
+        "--app-replay-mode",
+        "strict",
+        "--app-replay-match",
+        "grid",
+        "--filter-mode",
+        "per-gpu",
+        "--kernel-name",
+        "regex:ncclDevKernel_AllReduce.*",
+        "--launch-skip",
+        "22",
+        "--launch-count",
+        "1",
+        "--kill",
+        "no",
+        "--check-exit-code",
+        "yes",
+        "--metrics",
+        ",".join(MINIMAL_METRICS),
+    )
+
+    assert plan.is_rank_application is True
+    assert (
+        RANK_APPLICATION_CAPTURE_RECEIPT_SCHEMA
+        == "aisp.ncu-torchrun-rank-application-capture.v1"
+    )
+    assert plan.ncu_prefix == expected_prefix
+    assert plan.launch_argv == (
+        *plan.launcher_argv,
+        "--no-python",
+        command[0],
+        "-m",
+        "core.profiling.ncu_torchrun_rank",
+        str(plan.rank_config_path),
+    )
+    assert plan.rank_config() == {
+        "schema": RANK_APPLICATION_CONFIG_SCHEMA,
+        "ncu_prefix": list(expected_prefix),
+        "worker_argv": [
+            command[0],
+            "-m",
+            "core.profiling.ncu_torchrun_generation",
+            str(plan.generation_config_path),
+        ],
+        "output_dir": str(plan.output_dir),
+        "world_size": 2,
+    }
+    assert plan.generation_config() == {
+        "schema": "aisp.ncu-torchrun-generation.v1",
+        "worker_argv": list(plan.worker_argv),
+        "output_dir": str(plan.output_dir),
+        "world_size": 2,
+        "expected_passes": 2,
+        "master_addr": "127.0.0.1",
+        "master_port_base": plan.application_rdzv_port_base,
+    }
+    for local_rank in (0, 1):
+        assert plan.expected_rank_argv(local_rank) == (
+            *expected_prefix,
+            "--log-file",
+            str(plan.rank_log_path(local_rank)),
+            "--devices",
+            str(local_rank),
+            "--export",
+            str(plan.report_path(local_rank)),
+            command[0],
+            "-m",
+            "core.profiling.ncu_torchrun_generation",
+            str(plan.generation_config_path),
+        )
+        assert "%q{LOCAL_RANK}" not in " ".join(plan.expected_rank_argv(local_rank))
 
 
 @pytest.mark.parametrize(
@@ -486,6 +770,8 @@ def test_plan_rejects_unsupported_capture_options(
         ({"tcp_port": _free_port()}, "rejects tcp_port"),
         ({"nccl_nvtx_includes": NCCL_RANGES}, "rejects NCCL NVTX"),
         ({"all_matching_kernels": True}, "rejects all_matching_kernels"),
+        ({"expected_application_passes": 2}, "rejects expected_application_passes"),
+        ({"application_rdzv_port_base": 31_100}, "rejects application_rdzv_port_base"),
     ],
 )
 def test_application_plan_rejects_missing_or_cross_mode_options(
@@ -493,6 +779,54 @@ def test_application_plan_rejects_missing_or_cross_mode_options(
 ) -> None:
     with pytest.raises(ValueError, match=match):
         _application_plan(tmp_path, **overrides)
+
+
+@pytest.mark.parametrize(
+    ("overrides", "match"),
+    [
+        ({"tcp_port": None}, "requires tcp_port"),
+        ({"target_visible_device": 1}, "rejects target_visible_device"),
+        ({"expected_application_passes": None}, "expected_application_passes > 0"),
+        ({"expected_application_passes": 0}, "expected_application_passes > 0"),
+        ({"application_rdzv_port_base": None}, "ports must stay within"),
+        ({"application_rdzv_port_base": 1023}, "ports must stay within"),
+        (
+            {
+                "application_rdzv_port_base": 65_535,
+                "expected_application_passes": 2,
+            },
+            "ports must stay within",
+        ),
+        ({"nccl_nvtx_includes": NCCL_RANGES}, "rejects NCCL NVTX"),
+        ({"all_matching_kernels": True}, "rejects all_matching_kernels"),
+    ],
+)
+def test_rank_tcp_application_plan_rejects_missing_or_cross_mode_options(
+    tmp_path: Path, overrides: dict[str, object], match: str
+) -> None:
+    with pytest.raises(ValueError, match=match):
+        _rank_application_plan(tmp_path, **overrides)
+
+
+def test_rank_tcp_application_plan_rejects_all_port_collisions(tmp_path: Path) -> None:
+    command = _torchrun_command(tmp_path / "target.py")
+    torchrun_port = int(command[command.index("--rdzv_endpoint") + 1].rsplit(":", 1)[1])
+
+    with pytest.raises(ValueError, match="communicator port must differ"):
+        _rank_application_plan(tmp_path, command, tcp_port=torchrun_port)
+    with pytest.raises(ValueError, match="generation ports must differ"):
+        _rank_application_plan(
+            tmp_path,
+            command,
+            application_rdzv_port_base=torchrun_port,
+        )
+    plan = _rank_application_plan(tmp_path, command)
+    with pytest.raises(ValueError, match="generation ports must differ"):
+        _rank_application_plan(
+            tmp_path,
+            command,
+            application_rdzv_port_base=plan.tcp_port,
+        )
 
 
 @pytest.mark.parametrize(
@@ -508,6 +842,19 @@ def test_rank_local_modes_reject_application_selectors(
             replay_mode=replay_mode,
             all_matching_kernels=replay_mode == "range",
             target_visible_device=1,
+        )
+
+
+@pytest.mark.parametrize("replay_mode", ["kernel", "range"])
+def test_rank_local_modes_reject_rank_application_topology(
+    tmp_path: Path, replay_mode: str
+) -> None:
+    with pytest.raises(ValueError, match="rejects application_topology"):
+        _plan(
+            tmp_path,
+            replay_mode=replay_mode,
+            all_matching_kernels=replay_mode == "range",
+            application_topology="rank-tcp",
         )
 
 
@@ -701,6 +1048,304 @@ def test_application_log_rejects_provenance_before_the_first_marker(tmp_path: Pa
 
     with pytest.raises(RuntimeError, match="before application replay pass 1"):
         _parse_application_replay_log(plan)
+
+
+@pytest.mark.parametrize("pass_count", [2, 9])
+def test_rank_tcp_generations_retain_fresh_processes_and_runtime_parity(
+    tmp_path: Path, pass_count: int
+) -> None:
+    plan = _rank_application_plan(
+        tmp_path,
+        expected_application_passes=pass_count,
+    )
+    plan.output_dir.mkdir()
+    assert plan.application_rdzv_port_base is not None
+    raw = b"".join(
+        _rank_application_generation(
+            generation,
+            master_port_base=plan.application_rdzv_port_base,
+            rank0_bootstrap_pid=20_000 + generation * 4,
+            rank1_bootstrap_pid=20_001 + generation * 4,
+            rank0_worker_pid=30_000 + generation * 4,
+            rank1_worker_pid=30_001 + generation * 4,
+        )
+        for generation in range(pass_count)
+    )
+    plan.stdout_path.write_bytes(raw)
+
+    generations, stdout_artifact = _parse_rank_application_generations(plan)
+
+    assert [item["generation"] for item in generations] == list(range(pass_count))
+    assert [item["master_port"] for item in generations] == [
+        plan.application_rdzv_port_base + generation
+        for generation in range(pass_count)
+    ]
+    assert all(item["both_post_main_receipts"] is True for item in generations)
+    assert all(item["cuda_runtime_parity"] is True for item in generations)
+    assert len(
+        {
+            process_id
+            for item in generations
+            for process_id in (
+                *item["bootstrap_process_ids"].values(),
+                *item["execution_process_ids"].values(),
+            )
+        }
+    ) == pass_count * 4
+    assert stdout_artifact["generation_marker_count"] == pass_count * 4
+    assert stdout_artifact["generation_pair_count"] == pass_count * 2
+    assert stdout_artifact["sha256"] == hashlib.sha256(raw).hexdigest()
+
+
+def test_rank_tcp_generation_log_rejects_malformed_or_ambiguous_state(
+    tmp_path: Path,
+) -> None:
+    plan = _rank_application_plan(tmp_path)
+    plan.output_dir.mkdir()
+    assert plan.application_rdzv_port_base is not None
+    first = _rank_application_generation(
+        0,
+        master_port_base=plan.application_rdzv_port_base,
+        rank0_bootstrap_pid=201,
+        rank1_bootstrap_pid=202,
+        rank0_worker_pid=301,
+        rank1_worker_pid=302,
+    )
+
+    cases = [
+        (
+            first.replace(
+                (GENERATION_MARKER_PREFIX + '{"event":"begin"').encode("utf-8"),
+                (GENERATION_MARKER_PREFIX + "{broken").encode("utf-8"),
+                1,
+            ),
+            "Malformed rank application generation JSON",
+        ),
+        (
+            first
+            + _rank_application_generation(
+                1,
+                master_port_base=plan.application_rdzv_port_base,
+                rank0_bootstrap_pid=201,
+                rank1_bootstrap_pid=204,
+                rank0_worker_pid=303,
+                rank1_worker_pid=304,
+            ),
+            "reused generation process IDs",
+        ),
+        (
+            first
+            + _rank_application_generation(
+                1,
+                master_port_base=plan.application_rdzv_port_base,
+                rank0_bootstrap_pid=203,
+                rank1_bootstrap_pid=204,
+                rank0_worker_pid=301,
+                rank1_worker_pid=304,
+            ),
+            "reused worker process IDs",
+        ),
+        (
+            first
+            + _rank_application_generation(
+                1,
+                master_port_base=plan.application_rdzv_port_base,
+                rank0_bootstrap_pid=203,
+                rank1_bootstrap_pid=204,
+                rank0_worker_pid=303,
+                rank1_worker_pid=304,
+                rank0_updates={"torch_version": "drifted-test-version"},
+            ),
+            "runtime provenance drifted",
+        ),
+    ]
+
+    for raw, match in cases:
+        plan.stdout_path.write_bytes(raw)
+        with pytest.raises(RuntimeError, match=match):
+            _parse_rank_application_generations(plan)
+
+
+def test_rank_tcp_logs_accept_real_communicator_prefix_independent_of_local_rank(
+    tmp_path: Path,
+) -> None:
+    plan = _rank_application_plan(tmp_path)
+    plan.output_dir.mkdir()
+    plan.rank_log_path(0).write_bytes(
+        _rank_application_log(local_rank=0, communicator_rank=1, pass_count=2)
+    )
+    plan.rank_log_path(1).write_bytes(
+        _rank_application_log(local_rank=1, communicator_rank=0, pass_count=2)
+    )
+
+    rank_logs = [
+        _parse_rank_application_log(plan, local_rank) for local_rank in (0, 1)
+    ]
+
+    assert [
+        [marker["communicator_rank"] for marker in item["markers"]]
+        for item in rank_logs
+    ] == [[1, 1], [0, 0]]
+    assert [
+        [marker["visible_device"] for marker in item["markers"]]
+        for item in rank_logs
+    ] == [[0, 0], [1, 1]]
+    assert all(
+        marker["kernel_name"] == "ncclDevKernel_AllReduce_Sum_f32_RING_LL"
+        for item in rank_logs
+        for marker in item["markers"]
+    )
+
+
+@pytest.mark.parametrize(
+    ("raw_log", "local_rank", "match"),
+    [
+        (
+            _rank_application_log(
+                local_rank=0, communicator_rank=0, pass_count=1
+            ),
+            0,
+            "replay passes differ",
+        ),
+        (
+            _rank_application_log(
+                local_rank=0, communicator_rank=2, pass_count=2
+            ),
+            0,
+            "invalid communicator rank",
+        ),
+        (
+            _rank_application_log(
+                local_rank=0, communicator_rank=0, pass_count=2
+            ).replace(b"on device 0", b"on device 1"),
+            0,
+            "selected the wrong visible device",
+        ),
+    ],
+)
+def test_rank_tcp_logs_reject_invalid_rank_or_pass_identity(
+    tmp_path: Path, raw_log: bytes, local_rank: int, match: str
+) -> None:
+    plan = _rank_application_plan(tmp_path)
+    plan.output_dir.mkdir()
+    plan.rank_log_path(local_rank).write_bytes(raw_log)
+
+    with pytest.raises(ValueError, match=match):
+        _parse_rank_application_log(plan, local_rank)
+
+
+def test_rank_tcp_evidence_gates_then_validates_both_native_reports(
+    tmp_path: Path,
+) -> None:
+    pass_count = 9
+    kernel_name = (
+        "ncclDevKernel_AllReduce_Sum_f32_RING_LL"
+        "(ncclDevKernelArgsStorage<4096>)"
+    )
+    fake_ncu = _make_fake_rank_application_ncu(
+        tmp_path / "ncu",
+        rank0_csv=_application_csv(
+            process_id=30_000,
+            pass_count=pass_count,
+            device=0,
+            kernel_name=kernel_name,
+        ),
+        rank1_csv=_application_csv(
+            process_id=30_001,
+            pass_count=pass_count,
+            device=1,
+            kernel_name=kernel_name,
+        ),
+    )
+    plan = _rank_application_plan(
+        tmp_path,
+        ncu_path=fake_ncu,
+        expected_application_passes=pass_count,
+    )
+    plan.output_dir.mkdir()
+    assert plan.application_rdzv_port_base is not None
+    start_ns = time.time_ns()
+    plan.stdout_path.write_bytes(
+        b"".join(
+            _rank_application_generation(
+                generation,
+                master_port_base=plan.application_rdzv_port_base,
+                rank0_bootstrap_pid=20_000 + generation * 4,
+                rank1_bootstrap_pid=20_001 + generation * 4,
+                rank0_worker_pid=30_000 + generation * 4,
+                rank1_worker_pid=30_001 + generation * 4,
+            )
+            for generation in range(pass_count)
+        )
+    )
+    for local_rank, communicator_rank in ((0, 1), (1, 0)):
+        plan.rank_log_path(local_rank).write_bytes(
+            _rank_application_log(
+                local_rank=local_rank,
+                communicator_rank=communicator_rank,
+                pass_count=pass_count,
+            )
+        )
+        (plan.output_dir / f"rank-{local_rank}-generation.counter").write_text(
+            f"{pass_count}\n", encoding="ascii"
+        )
+        plan.rank_argv_path(local_rank).write_text(
+            json.dumps(list(plan.expected_rank_argv(local_rank))),
+            encoding="utf-8",
+        )
+        plan.report_path(local_rank).write_bytes(
+            f"rank {local_rank} native report\n".encode("ascii")
+        )
+
+    _, blocked_generations, _, blocked_imports, blocked_errors = (
+        _rank_application_evidence(
+            plan,
+            start_ns=start_ns,
+            allow_report_import=False,
+        )
+    )
+
+    assert len(blocked_generations) == pass_count
+    assert blocked_imports is False
+    assert any("reports were not imported" in error for error in blocked_errors)
+    assert not plan.rank_csv_path(0).exists()
+    assert not plan.rank_csv_path(1).exists()
+
+    artifacts, generations, _, imports_attempted, errors = _rank_application_evidence(
+        plan,
+        start_ns=start_ns,
+        allow_report_import=True,
+    )
+
+    assert errors == []
+    assert imports_attempted is True
+    assert len(generations) == pass_count
+    assert [artifact["local_rank"] for artifact in artifacts] == [0, 1]
+    assert [
+        artifact["application_report"]["row"]["visible_device"]
+        for artifact in artifacts
+    ] == [0, 1]
+    assert [
+        artifact["application_report"]["row"]["process_id"]
+        for artifact in artifacts
+    ] == [30_000, 30_001]
+    assert all(
+        artifact["application_report"]["row"]["profiler_pass_count"]
+        == pass_count
+        for artifact in artifacts
+    )
+    assert all(
+        artifact["application_report"]["row"]["kernel_name"] == kernel_name
+        for artifact in artifacts
+    )
+    assert all(
+        len(artifact["application_report"]["row"]["metrics"]) == 5
+        and all(
+            value > 0
+            for value in artifact["application_report"]["row"]["metrics"].values()
+        )
+        for artifact in artifacts
+    )
 
 
 def test_application_report_import_validates_one_selected_row(tmp_path: Path) -> None:

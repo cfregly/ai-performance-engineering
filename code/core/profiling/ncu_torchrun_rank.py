@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 RANK_CONFIG_SCHEMA = "aisp.ncu-torchrun-rank.v1"
+RANK_APPLICATION_CONFIG_SCHEMA = "aisp.ncu-torchrun-rank-application.v1"
 _CONFIG_KEYS = frozenset({"schema", "ncu_prefix", "worker_argv", "output_dir", "world_size"})
 
 
@@ -36,10 +37,10 @@ def load_rank_config(path: Path) -> dict[str, Any]:
     keys = frozenset(payload)
     if keys != _CONFIG_KEYS:
         raise ValueError(
-            "Rank config fields differ from schema; "
+            "Rank config fields differ from schema. "
             f"missing={sorted(_CONFIG_KEYS - keys)}, unexpected={sorted(keys - _CONFIG_KEYS)}"
         )
-    if payload["schema"] != RANK_CONFIG_SCHEMA:
+    if payload["schema"] not in {RANK_CONFIG_SCHEMA, RANK_APPLICATION_CONFIG_SCHEMA}:
         raise ValueError(f"Unsupported rank config schema: {payload['schema']!r}")
     if type(payload["world_size"]) is not int or payload["world_size"] != 2:
         raise ValueError("Rank config world_size must be exactly 2")
@@ -93,11 +94,20 @@ def build_rank_command(
     output_dir = Path(config["output_dir"])
     report_path = output_dir / f"rank-{local_rank}.ncu-rep"
     argv_path = output_dir / f"rank-{local_rank}-argv.json"
-    for path in (report_path, argv_path):
+    log_path = output_dir / f"rank-{local_rank}.ncu.log"
+    paths = [report_path, argv_path]
+    if config["schema"] == RANK_APPLICATION_CONFIG_SCHEMA:
+        paths.append(log_path)
+    for path in paths:
         if path.exists() or path.is_symlink():
             raise FileExistsError(f"Refusing to overwrite rank artifact: {path}")
     command = [
         *config["ncu_prefix"],
+        *(
+            ("--log-file", str(log_path))
+            if config["schema"] == RANK_APPLICATION_CONFIG_SCHEMA
+            else ()
+        ),
         "--devices",
         str(local_rank),
         "--export",

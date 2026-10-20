@@ -49,6 +49,23 @@ actual forward/backward or serving work in the capture, with warmup and capture
 boundaries documented. Profiling overhead must not be reported as ordinary
 benchmark latency.
 
+For an attached B200 hang investigation, use each diagnostic for its own
+evidence:
+
+- Nsight Systems shows the distributed CUDA and NCCL timeline, including which
+  ranks reach a collective and where the streams stop making progress.
+- Nsight Compute records selected kernel counters. When the selected kernels
+  must execute concurrently, use the rank-local TCP topology described below.
+  Its application replay starts every generation with a fresh distributed store.
+- GDB shows host-native process and thread stacks. Ordinary GDB does not debug a
+  running CUDA kernel.
+- `strace` shows host system calls and waits. `py-spy` shows Python stacks.
+
+Attach the applicable tools to the actual B200 workload before using their output
+as hang evidence. Each attachment is a bounded observation and does not establish
+complete execution coverage. Zymtrace can provide supplemental observations, but
+it is not the sole diagnostic path.
+
 ## NVIDIA Nsight Systems
 
 Check the installed binary and supported trace options on the target:
@@ -105,9 +122,11 @@ The explicit `core.profiling.ncu_torchrun_capture` command launches one profiler
 per rank, with TCP coordination and lockstep limited to named NCCL NVTX ranges.
 That kernel and range topology supports one Linux host, two visible GPUs,
 Nsight Compute 2026.2.1, and the repository's five minimal metrics. It uses
-kernel replay by default or explicit range replay. The command
-also has an explicit application replay topology in which one parent NCU process
-wraps the original full two-rank `torchrun` command. It runs without Slurm.
+kernel replay by default or explicit range replay. Application replay has two
+explicit topologies. The default `parent` topology wraps the original full
+two-rank `torchrun` command with one NCU process. The `rank-tcp` topology launches
+one NCU process per local rank and uses TCP coordination for the selected
+concurrent kernels. Both run without Slurm.
 
 From a clean checkout's `code/` directory, use the Python environment for the
 workload and set `NCU` to the absolute path of the 2026.2.1 executable. Choose
@@ -165,7 +184,7 @@ CUDA_VISIBLE_DEVICES=0,1 PYTHONPATH="$PWD" \
 python -m core.profiling.ncu_torchrun_capture \
   --label pipeline-app-device-0 --repo-root .. \
   --source "$(git rev-parse HEAD)" --output-dir "$OUTPUT_DIR" --ncu "$NCU" \
-  --timeout-seconds 300 --replay-mode application \
+  --timeout-seconds 300 --replay-mode application --application-topology parent \
   --target-visible-device "$TARGET_VISIBLE_DEVICE" \
   --kernel-name "$KERNEL_NAME" --launch-skip "$LAUNCH_SKIP" --launch-count 1 \
   -- python -m torch.distributed.run --nproc_per_node 2 --nnodes 1 \
@@ -199,6 +218,74 @@ Qualify full-tensor numerical outputs separately because the runtime receipts
 prove post-main completion and environment parity, not tensor equality. Run
 the public command on the target hardware and review its report, rank receipts,
 device mapping, clocks, and cleanup before accepting the capture.
+
+#### Bounded rank-local TCP application replay
+
+Use rank-local TCP application replay when both selected rank kernels must run
+concurrently. This topology uses strict application replay, grid matching,
+per-GPU filtering, two TCP peers, lockstep coordination, and the repository's
+five minimal metrics. Set the exact expected pass count from the selected metric
+set, tool version, and workload. Each pass launches the original worker command
+in a fresh two-rank worker generation and store. `MASTER_PORT` equals the
+rendezvous base plus the zero-based generation number, and
+`TORCHELASTIC_USE_AGENT_STORE=False`.
+
+Keep the input torchrun rendezvous port, NCU communicator port, and generated
+rendezvous port range disjoint. The example below expects nine
+application-replay generations. That count is scoped to this exact two-B200
+workload and NCU 2026.2.1:
+
+```bash
+KERNEL_NAME='regex:ncclDevKernel_AllReduce.*'
+LAUNCH_SKIP=2
+NCU_TCP_PORT=29621
+INPUT_RDZV_PORT=29622
+APPLICATION_RDZV_PORT_BASE=29630
+EXPECTED_APPLICATION_PASSES=9
+OUTPUT_DIR=/tmp/pipeline-rank-tcp-attempt-01
+
+AISP_LOCK_GPU_CLOCKS=1 AISP_RAMP_GPU_CLOCKS=1 \
+AISP_NCU_PROFILE_REQUESTS=4 AISP_NCU_PROFILE_CONTEXT=256 \
+AISP_NCU_PROFILE_DECODE=8 AISP_NCU_PROFILE_BATCH=1 \
+CUDA_VISIBLE_DEVICES=0,1 PYTHONPATH="$PWD" \
+python -m core.profiling.ncu_torchrun_capture \
+  --label disagg-rank-tcp --repo-root .. \
+  --source "$(git rev-parse HEAD)" --output-dir "$OUTPUT_DIR" --ncu "$NCU" \
+  --timeout-seconds 300 --replay-mode application \
+  --application-topology rank-tcp --tcp-port "$NCU_TCP_PORT" \
+  --expected-application-passes "$EXPECTED_APPLICATION_PASSES" \
+  --application-rdzv-port-base "$APPLICATION_RDZV_PORT_BASE" \
+  --kernel-name "$KERNEL_NAME" --launch-skip "$LAUNCH_SKIP" --launch-count 1 \
+  -- python -m torch.distributed.run --nproc_per_node 2 --nnodes 1 \
+  --rdzv_backend c10d --rdzv_endpoint "127.0.0.1:$INPUT_RDZV_PORT" \
+  --max_restarts 0 \
+  -m core.harness.torchrun_wrapper --aisp-emit-runtime-provenance \
+  --aisp-target-module core.harness.benchmark_worker \
+  --aisp-expected-torch-seed 42 --aisp-expected-cuda-seed 42 \
+  --module ch15.optimized_disaggregated_inference_multigpu --callable main \
+  -- --iters 4 --warmup 5 --seed 42
+```
+
+Do not pass `--target-visible-device`, `--all-matching-kernels`, or
+`--nvtx-include` with `rank-tcp`. The helper writes explicit
+`rank-0.ncu.log` and `rank-1.ncu.log` paths because NCU does not expand
+`%q{LOCAL_RANK}` in `--log-file`. Validate the `[Comm rank X]` prefix in each
+log independently of `LOCAL_RANK` because communicator rank and local rank are
+different identities.
+
+A successful receipt requires the declared number of complete two-rank
+generations, fresh worker process IDs, runtime-provenance parity, two fresh NCU
+reports, and one validated raw CSV row per report. Each row must identify the
+expected visible device and that local rank's first-generation worker PID,
+report the expected replay-pass count, and contain finite positive values for
+all five metrics. This proves that the bounded selected kernels produced
+auditable counter rows. It does not cover every NCCL launch or direction,
+establish numerical correctness, or replace ordinary workload timing.
+
+The running receipt records `requested_visible_devices: [0, 1]` and keeps
+`both_devices_covered_by_this_receipt` false. The final receipt sets the coverage
+field true only after both native reports were imported and validated without an
+artifact error.
 
 Kernel and range modes retain exact arguments, source and tool hashes, logs,
 rank reports, and the owned process-group cleanup result.
