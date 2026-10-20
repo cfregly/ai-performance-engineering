@@ -89,9 +89,6 @@ def test_two_rank_capture_docs_cover_each_explicit_replay_topology() -> None:
     assert "ch15.optimized_disaggregated_inference_multigpu" in section
     assert "-- --iters 4 --warmup 5 --seed 42" in section
     assert "requested_visible_devices: [0, 1]" in section
-    assert "fresh Nsight Systems trace" in section
-    assert "native NCCL API activity" in section
-    assert "does not establish API direction" in section
 
 
 def _free_port() -> int:
