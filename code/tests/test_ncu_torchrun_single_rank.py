@@ -12,6 +12,7 @@ import hashlib
 import io
 import json
 import os
+import signal
 import socket
 import subprocess
 import sys
@@ -796,6 +797,7 @@ def _make_fake_single_rank_ncu(
 def test_gated_entrypoint_runs_nine_fresh_paired_generations_without_overlap(
     tmp_path: Path,
 ) -> None:
+    fixture_timeout_seconds = 30.0
     output_dir = tmp_path / "capture"
     output_dir.mkdir()
     master_port_base = 31_400
@@ -820,7 +822,7 @@ def test_gated_entrypoint_runs_nine_fresh_paired_generations_without_overlap(
         "rank = int(os.environ['LOCAL_RANK'])\n"
         "port = int(os.environ['MASTER_PORT'])\n"
         "if rank == 1 and port == first_port:\n"
-        "    deadline = time.monotonic() + 10\n"
+        f"    deadline = time.monotonic() + {fixture_timeout_seconds!r}\n"
         "    while not release.exists():\n"
         "        if time.monotonic() >= deadline:\n"
         "            raise RuntimeError('timed out waiting for test release')\n"
@@ -853,35 +855,59 @@ def test_gated_entrypoint_runs_nine_fresh_paired_generations_without_overlap(
         master_port_base=master_port_base,
     )
     combined_stdout: list[str] = []
+    active_processes: list[subprocess.Popen[str]] = []
 
-    for generation in range(EXPECTED_APPLICATION_PASSES):
-        processes = [
-            subprocess.Popen(
-                [
-                    sys.executable,
-                    "-m",
-                    "core.profiling.ncu_torchrun_single_rank",
-                    "--generation",
-                    str(config_path),
-                ],
-                cwd=CODE_ROOT,
-                env=_rank_environment(rank),
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-            )
-            for rank in (0, 1)
-        ]
-        if generation == 0:
-            _wait_for_path(
-                output_dir / "application-generation-gate-0-rank-0.json"
-            )
-            assert processes[0].poll() is None
-            release_path.write_text("release\n", encoding="ascii")
-        completed = [process.communicate(timeout=30) for process in processes]
-        for rank, (stdout, stderr) in enumerate(completed):
-            assert processes[rank].returncode == 0, stderr
-            combined_stdout.append(stdout)
+    try:
+        for generation in range(EXPECTED_APPLICATION_PASSES):
+            active_processes = []
+            for rank in (0, 1):
+                active_processes.append(
+                    subprocess.Popen(
+                        [
+                            sys.executable,
+                            "-m",
+                            "core.profiling.ncu_torchrun_single_rank",
+                            "--generation",
+                            str(config_path),
+                        ],
+                        cwd=CODE_ROOT,
+                        env=_rank_environment(rank),
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                        text=True,
+                        start_new_session=True,
+                    )
+                )
+            if generation == 0:
+                _wait_for_path(
+                    output_dir / "application-generation-gate-0-rank-0.json",
+                    timeout_seconds=fixture_timeout_seconds,
+                )
+                assert active_processes[0].poll() is None
+                release_path.write_text("release\n", encoding="ascii")
+            completed = [
+                process.communicate(timeout=fixture_timeout_seconds)
+                for process in active_processes
+            ]
+            for rank, (stdout, stderr) in enumerate(completed):
+                assert active_processes[rank].returncode == 0, stderr
+                combined_stdout.append(stdout)
+            active_processes = []
+    finally:
+        for process in active_processes:
+            try:
+                os.killpg(process.pid, signal.SIGTERM)
+            except ProcessLookupError:
+                pass
+        for process in active_processes:
+            try:
+                process.communicate(timeout=5)
+            except subprocess.TimeoutExpired:
+                try:
+                    os.killpg(process.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+                process.communicate(timeout=5)
 
     assert (output_dir / "rank-0-generation.counter").read_text(
         encoding="ascii"
