@@ -1,13 +1,15 @@
 """Explicit two-rank Nsight Compute capture for torchrun.
 
 Kernel and range replay use the existing per-rank TCP/lockstep topology.
-Application replay either profiles one caller-selected visible device around
-the full torchrun command or runs one coordinated NCU process per rank. All
-modes use NCU 2026.2.1 and the repository's five minimal metrics. Receipts prove
-source and argument custody plus bounded artifact checks. They do not qualify
-numerical output, complete coverage, or performance. Full process-tree cleanup
-proof requires Linux procfs and the inherited owner marker. Unsupported hosts
-can run only to an explicitly rejected receipt.
+Application replay can profile one visible device around the full torchrun
+command, coordinate one NCU process per rank over TCP, or profile one rank while
+its peer runs outside the NCU process tree. Rank-local paths can capture one
+selected launch, a caller-declared contiguous window, or every matching launch.
+The version gate recognizes NCU 2026.2.1.0 and NCU 2026.3.1.0. All modes request
+the repository's five minimal metrics. Receipts prove source and argument custody
+plus bounded artifact checks. They do not qualify complete coverage or performance.
+Full process-tree cleanup proof requires Linux procfs and the inherited owner
+marker. Unsupported hosts can run only to an explicitly rejected receipt.
 """
 
 from __future__ import annotations
@@ -49,6 +51,13 @@ from core.profiling.ncu_torchrun_rank import (
     RANK_APPLICATION_CONFIG_SCHEMA,
     RANK_CONFIG_SCHEMA,
 )
+from core.profiling.ncu_torchrun_single_rank import (
+    EXPECTED_APPLICATION_PASSES as SINGLE_RANK_EXPECTED_APPLICATION_PASSES,
+    SINGLE_RANK_APPLICATION_CONFIG_SCHEMA,
+    expected_target_command,
+    validate_generation_gate_artifacts,
+    validate_peer_dispatch_artifact,
+)
 from core.profiling.profiler_config import MINIMAL_METRICS
 
 CAPTURE_RECEIPT_SCHEMA = "aisp.ncu-torchrun-capture.v1"
@@ -56,8 +65,25 @@ APPLICATION_CAPTURE_RECEIPT_SCHEMA = "aisp.ncu-torchrun-application-capture.v1"
 RANK_APPLICATION_CAPTURE_RECEIPT_SCHEMA = (
     "aisp.ncu-torchrun-rank-application-capture.v1"
 )
+RANK_APPLICATION_ALL_MATCHING_CAPTURE_RECEIPT_SCHEMA = (
+    "aisp.ncu-torchrun-rank-application-all-matching-capture.v1"
+)
+RANK_APPLICATION_KERNEL_WINDOW_CAPTURE_RECEIPT_SCHEMA = (
+    "aisp.ncu-torchrun-rank-application-kernel-window-capture.v1"
+)
+SINGLE_RANK_APPLICATION_CAPTURE_RECEIPT_SCHEMA = (
+    "aisp.ncu-torchrun-single-rank-application-capture.v1"
+)
+SINGLE_RANK_APPLICATION_ALL_MATCHING_CAPTURE_RECEIPT_SCHEMA = (
+    "aisp.ncu-torchrun-single-rank-application-all-matching-capture.v1"
+)
+SINGLE_RANK_APPLICATION_KERNEL_WINDOW_CAPTURE_RECEIPT_SCHEMA = (
+    "aisp.ncu-torchrun-single-rank-application-kernel-window-capture.v1"
+)
 SUPPORTED_NCU_VERSION = "2026.2.1"
+SUPPORTED_NCU_VERSIONS = ("2026.2.1.0", "2026.3.1.0")
 WORLD_SIZE = 2
+MAX_KERNEL_WINDOW_COUNT = 64
 CLAIM_LIMIT = (
     "Artifact presence, hashes, and a clean process return do not validate counter values, "
     "kernel/range attribution, workload correctness, or performance."
@@ -66,9 +92,16 @@ CLEANUP_LIMIT = (
     "Full-tree drainage is proven only on Linux procfs for processes retaining this "
     "launch's inherited owner marker. Clearing that marker is unsupported."
 )
+SINGLE_RANK_CLAIM_LIMIT = (
+    "This receipt can validate native counter rows only for its profiled target rank. "
+    "It does not cover counter rows on the external peer, identify pipeline roles, "
+    "or qualify full coverage or performance."
+)
 _NCCL_RANGE = re.compile(r"^NCCL@[A-Za-z][A-Za-z0-9_.:-]*/$")
+_NCU_VERSION = re.compile(r"\bVersion[ \t]+(\S+)")
 _RANK_MODULE = "core.profiling.ncu_torchrun_rank"
 _GENERATION_MODULE = "core.profiling.ncu_torchrun_generation"
+_SINGLE_RANK_MODULE = "core.profiling.ncu_torchrun_single_rank"
 _TORCHRUN_MODULE = "torch.distributed.run"
 _WRAPPER_MODULE = "core.harness.torchrun_wrapper"
 _CAPTURE_OWNER_ENV = "AISP_NCU_TORCHRUN_CAPTURE_ID"
@@ -83,12 +116,21 @@ _APPLICATION_MARKER = re.compile(
 _COMM_RANK_PREFIX = re.compile(
     rb"^==PROF== \[Comm rank (?P<comm_rank>[0-9]+)\] (?P<body> .*)$"
 )
+_DURATION_TO_MILLISECONDS = {"ns": 1e-6, "us": 1e-3, "ms": 1.0, "s": 1000.0}
 
 
 def _rank(value: int) -> int:
     if type(value) is not int or value not in (0, 1):
         raise ValueError(f"local_rank must be 0 or 1, got {value!r}")
     return value
+
+
+def _positive_kernel_count(value: str) -> int:
+    """Parse one positive expected all-matching kernel count."""
+
+    if not isinstance(value, str) or not re.fullmatch(r"[1-9][0-9]*", value):
+        raise argparse.ArgumentTypeError("expected kernel counts must be positive integers")
+    return int(value)
 
 
 @dataclass(frozen=True)
@@ -116,10 +158,43 @@ class NcuTorchrunCapturePlan:
     application_topology: str = "parent"
     expected_application_passes: int | None = None
     application_rdzv_port_base: int | None = None
+    expected_kernel_counts: tuple[int, int] | None = None
+    report_import_timeout_seconds: float = 60.0
+    kernel_window: tuple[int, int] | None = None
 
     @property
     def is_rank_application(self) -> bool:
         return self.replay_mode == "application" and self.application_topology == "rank-tcp"
+
+    @property
+    def is_rank_single_application(self) -> bool:
+        return (
+            self.replay_mode == "application"
+            and self.application_topology == "rank-single"
+        )
+
+    @property
+    def is_rank_local_application(self) -> bool:
+        return self.is_rank_application or self.is_rank_single_application
+
+    @property
+    def is_multirow_rank_application(self) -> bool:
+        """Whether rank application replay captures a declared row set."""
+
+        return self.is_rank_local_application and (
+            self.all_matching_kernels or self.kernel_window is not None
+        )
+
+    @property
+    def expected_captured_kernel_counts(self) -> tuple[int, int] | None:
+        """Return rank-local row counts for a full or windowed capture."""
+
+        if not self.is_multirow_rank_application:
+            return None
+        if self.kernel_window is not None:
+            return (self.kernel_window[1],) * WORLD_SIZE
+        assert self.expected_kernel_counts is not None
+        return self.expected_kernel_counts
 
     @property
     def rank_config_path(self) -> Path:
@@ -174,8 +249,24 @@ class NcuTorchrunCapturePlan:
 
     @property
     def generation_worker_argv(self) -> tuple[str, ...]:
-        if not self.is_rank_application:
-            raise ValueError("Generation worker argv requires rank-tcp application replay")
+        if not self.is_rank_local_application:
+            raise ValueError("Generation worker argv requires rank-local application replay")
+        module_and_mode = (
+            (_SINGLE_RANK_MODULE, "--generation")
+            if self.is_rank_single_application
+            else (_GENERATION_MODULE,)
+        )
+        return (
+            self.worker_argv[0],
+            "-m",
+            *module_and_mode,
+            str(self.generation_config_path),
+        )
+
+    @property
+    def stock_generation_worker_argv(self) -> tuple[str, ...]:
+        if not self.is_rank_local_application:
+            raise ValueError("Stock generation argv requires rank-local application replay")
         return (
             self.worker_argv[0],
             "-m",
@@ -203,7 +294,7 @@ class NcuTorchrunCapturePlan:
 
     @property
     def launch_argv(self) -> tuple[str, ...]:
-        if self.replay_mode == "application" and not self.is_rank_application:
+        if self.replay_mode == "application" and self.application_topology == "parent":
             return (
                 *self.ncu_prefix,
                 "--export",
@@ -215,13 +306,26 @@ class NcuTorchrunCapturePlan:
             "--no-python",
             self.torchrun_argv[0],
             "-m",
-            _RANK_MODULE,
+            _SINGLE_RANK_MODULE if self.is_rank_single_application else _RANK_MODULE,
             str(self.rank_config_path),
         )
 
     def rank_config(self) -> dict[str, Any]:
         if self.replay_mode == "application" and not self.is_rank_application:
-            raise ValueError("Application replay does not use the rank-local configuration")
+            if not self.is_rank_single_application:
+                raise ValueError("Application replay does not use the rank-local configuration")
+            assert self.target_visible_device is not None
+            assert self.expected_application_passes is not None
+            return {
+                "schema": SINGLE_RANK_APPLICATION_CONFIG_SCHEMA,
+                "ncu_prefix": list(self.ncu_prefix),
+                "generation_worker_argv": list(self.generation_worker_argv),
+                "generation_config_path": str(self.generation_config_path),
+                "output_dir": str(self.output_dir),
+                "world_size": WORLD_SIZE,
+                "target_local_rank": self.target_visible_device,
+                "expected_application_passes": self.expected_application_passes,
+            }
         return {
             "schema": (
                 RANK_APPLICATION_CONFIG_SCHEMA if self.is_rank_application else RANK_CONFIG_SCHEMA
@@ -235,8 +339,8 @@ class NcuTorchrunCapturePlan:
         }
 
     def generation_config(self) -> dict[str, Any]:
-        if not self.is_rank_application:
-            raise ValueError("Generation config requires rank-tcp application replay")
+        if not self.is_rank_local_application:
+            raise ValueError("Generation config requires rank-local application replay")
         assert self.expected_application_passes is not None
         assert self.application_rdzv_port_base is not None
         return {
@@ -285,6 +389,22 @@ class _CleanupResult:
             "surviving_pids": list(self.surviving_pids),
             "errors": list(self.errors),
         }
+
+
+@dataclass(frozen=True)
+class _ReportImportResult:
+    started: bool
+    process_id: int | None
+    returncode: int | None
+    timed_out: bool
+    stdout: bytes
+    stderr: bytes
+    wall_seconds: float
+    start_error: str | None
+    communication_error: str | None
+    signals_sent: tuple[str, ...]
+    cleanup_drained: bool
+    cleanup_errors: tuple[str, ...]
 
 
 def _option(argv: Sequence[str], *names: str, required: bool = True) -> str | None:
@@ -365,6 +485,7 @@ def build_capture_plan(
     nccl_nvtx_includes: Sequence[str] | None,
     torchrun_argv: Sequence[str],
     all_matching_kernels: bool = False,
+    kernel_window: tuple[int, int] | None = None,
     replay_mode: str = "kernel",
     target_visible_device: int | None = None,
     kernel_name: str | None = None,
@@ -373,6 +494,8 @@ def build_capture_plan(
     application_topology: str = "parent",
     expected_application_passes: int | None = None,
     application_rdzv_port_base: int | None = None,
+    expected_kernel_counts: tuple[int, int] | None = None,
+    report_import_timeout_seconds: float = 60.0,
 ) -> NcuTorchrunCapturePlan:
     """Validate the supported command contract and build exact rank argv."""
 
@@ -389,17 +512,62 @@ def build_capture_plan(
         raise ValueError(f"timeout_seconds must be positive and finite: {timeout_seconds!r}")
     if type(all_matching_kernels) is not bool:
         raise ValueError("all_matching_kernels must be a boolean")
+    if kernel_window is not None:
+        if type(kernel_window) is not tuple or len(kernel_window) != 2:
+            raise ValueError("kernel_window must be a tuple of two integers")
+        window_start, window_count = kernel_window
+        if type(window_start) is not int or window_start < 0:
+            raise ValueError("kernel_window start must be a nonnegative integer")
+        if type(window_count) is not int or window_count <= 0:
+            raise ValueError("kernel_window count must be a positive integer")
+        if window_count > MAX_KERNEL_WINDOW_COUNT:
+            raise ValueError(
+                f"kernel_window count must be at most {MAX_KERNEL_WINDOW_COUNT}"
+            )
+    if all_matching_kernels and kernel_window is not None:
+        raise ValueError(
+            "kernel_window is mutually exclusive with all_matching_kernels=True"
+        )
+    if (
+        type(report_import_timeout_seconds) not in (int, float)
+        or not math.isfinite(float(report_import_timeout_seconds))
+        or report_import_timeout_seconds <= 0
+    ):
+        raise ValueError(
+            "report_import_timeout_seconds must be positive and finite: "
+            f"{report_import_timeout_seconds!r}"
+        )
+    if expected_kernel_counts is not None and (
+        type(expected_kernel_counts) is not tuple
+        or len(expected_kernel_counts) != WORLD_SIZE
+        or any(type(value) is not int or value <= 0 for value in expected_kernel_counts)
+    ):
+        raise ValueError(
+            "expected_kernel_counts must be a tuple of two positive integers"
+        )
     if type(replay_mode) is not str or replay_mode not in {"application", "kernel", "range"}:
         raise ValueError("replay_mode must be 'application', 'kernel' or 'range'")
     if type(application_topology) is not str or application_topology not in {
         "parent",
         "rank-tcp",
+        "rank-single",
     }:
-        raise ValueError("application_topology must be 'parent' or 'rank-tcp'")
+        raise ValueError(
+            "application_topology must be 'parent', 'rank-tcp' or 'rank-single'"
+        )
     if replay_mode != "application" and application_topology != "parent":
         raise ValueError(f"{replay_mode} replay rejects application_topology")
     if replay_mode == "range" and not all_matching_kernels:
         raise ValueError("range replay requires all_matching_kernels=True")
+    if float(report_import_timeout_seconds) != 60.0 and not (
+        replay_mode == "application"
+        and application_topology in {"rank-tcp", "rank-single"}
+        and (all_matching_kernels or kernel_window is not None)
+    ):
+        raise ValueError(
+            "nondefault report_import_timeout_seconds requires all-matching or "
+            "kernel-window rank-local application replay"
+        )
     launcher, worker = _split_torchrun(torchrun_argv)
     torchrun_port = int(
         str(_option(launcher, "--rdzv_endpoint", "--rdzv-endpoint")).rsplit(":", 1)[1]
@@ -415,12 +583,12 @@ def build_capture_plan(
         "launch_count": launch_count,
         "expected_application_passes": expected_application_passes,
         "application_rdzv_port_base": application_rdzv_port_base,
+        "expected_kernel_counts": expected_kernel_counts,
+        "kernel_window": kernel_window,
     }
     if replay_mode == "application":
         if nccl_nvtx_includes:
             raise ValueError("application replay rejects NCCL NVTX includes")
-        if all_matching_kernels:
-            raise ValueError("application replay rejects all_matching_kernels")
         if (
             type(kernel_name) is not str
             or not kernel_name.startswith("regex:")
@@ -434,10 +602,66 @@ def build_capture_plan(
             re.compile(kernel_name.removeprefix("regex:"))
         except re.error as exc:
             raise ValueError(f"kernel_name contains an invalid regular expression: {exc}") from exc
-        if type(launch_skip) is not int or launch_skip < 0:
-            raise ValueError("launch_skip must be a nonnegative integer")
-        if type(launch_count) is not int or launch_count != 1:
-            raise ValueError("launch_count must be exactly 1 for bounded application replay")
+        if all_matching_kernels:
+            if application_topology == "parent":
+                raise ValueError(
+                    "application all-matching capture requires rank-local topology"
+                )
+            if type(launch_skip) is not int or launch_skip != 0:
+                raise ValueError(
+                    "application all-matching capture requires launch_skip=0"
+                )
+            if launch_count is not None:
+                raise ValueError(
+                    "application all-matching capture rejects launch_count"
+                )
+            if expected_kernel_counts is None:
+                raise ValueError(
+                    "application all-matching capture requires expected_kernel_counts"
+                )
+            if expected_application_passes != 9:
+                raise ValueError(
+                    "application all-matching capture requires exactly 9 replay passes"
+                )
+        elif kernel_window is not None:
+            if application_topology == "parent":
+                raise ValueError(
+                    "application kernel-window capture requires rank-local topology"
+                )
+            if launch_skip is not None or launch_count is not None:
+                raise ValueError(
+                    "application kernel-window capture rejects separately supplied "
+                    "launch_skip or launch_count"
+                )
+            if expected_kernel_counts is None:
+                raise ValueError(
+                    "application kernel-window capture requires expected_kernel_counts"
+                )
+            if expected_application_passes != 9:
+                raise ValueError(
+                    "application kernel-window capture requires exactly 9 replay passes"
+                )
+            window_start, window_count = kernel_window
+            window_end = window_start + window_count
+            for rank, full_count in enumerate(expected_kernel_counts):
+                if window_end > full_count:
+                    raise ValueError(
+                        f"kernel_window end {window_end} exceeds expected kernel count "
+                        f"{full_count} for rank {rank}"
+                    )
+            launch_skip = window_start
+            launch_count = window_count
+        else:
+            if expected_kernel_counts is not None:
+                raise ValueError(
+                    "selected application replay rejects expected_kernel_counts"
+                )
+            if type(launch_skip) is not int or launch_skip < 0:
+                raise ValueError("launch_skip must be a nonnegative integer")
+            if type(launch_count) is not int or launch_count != 1:
+                raise ValueError(
+                    "launch_count must be exactly 1 for bounded application replay"
+                )
         includes: tuple[str, ...] = ()
         if application_topology == "parent":
             if tcp_port is not None:
@@ -477,7 +701,7 @@ def build_capture_plan(
                 "--metrics",
                 ",".join(metrics),
             ]
-        else:
+        elif application_topology == "rank-tcp":
             if target_visible_device is not None:
                 raise ValueError("rank-tcp application replay rejects target_visible_device")
             if type(tcp_port) is not int or not 1024 <= tcp_port <= 65535:
@@ -537,17 +761,89 @@ def build_capture_plan(
                 "per-gpu",
                 "--kernel-name",
                 kernel_name,
-                "--launch-skip",
-                str(launch_skip),
-                "--launch-count",
-                str(launch_count),
-                "--kill",
-                "no",
-                "--check-exit-code",
-                "yes",
-                "--metrics",
-                ",".join(metrics),
             ]
+            if kernel_window is not None:
+                prefix.extend(["--app-replay-buffer", "file"])
+            prefix.extend(["--launch-skip", str(launch_skip)])
+            if all_matching_kernels or kernel_window is not None:
+                prefix.append("--nvtx")
+            if not all_matching_kernels:
+                prefix.extend(["--launch-count", str(launch_count)])
+            prefix.extend(
+                [
+                    "--kill",
+                    "no",
+                    "--check-exit-code",
+                    "yes",
+                    "--metrics",
+                    ",".join(metrics),
+                ]
+            )
+        else:
+            if type(target_visible_device) is not int or target_visible_device not in (0, 1):
+                raise ValueError(
+                    "rank-single application replay requires target_visible_device 0 or 1"
+                )
+            if tcp_port is not None:
+                raise ValueError("rank-single application replay rejects tcp_port")
+            if expected_application_passes != SINGLE_RANK_EXPECTED_APPLICATION_PASSES:
+                raise ValueError(
+                    "rank-single application replay requires exactly "
+                    f"{SINGLE_RANK_EXPECTED_APPLICATION_PASSES} replay passes"
+                )
+            if (
+                type(application_rdzv_port_base) is not int
+                or application_rdzv_port_base < 1024
+                or application_rdzv_port_base + expected_application_passes - 1 > 65535
+            ):
+                raise ValueError(
+                    "rank-single application rendezvous ports must stay within 1024..65535"
+                )
+            generation_ports = set(
+                range(
+                    application_rdzv_port_base,
+                    application_rdzv_port_base + expected_application_passes,
+                )
+            )
+            if torchrun_port in generation_ports:
+                raise ValueError(
+                    "Application generation ports must differ from the torchrun port: "
+                    f"{torchrun_port}"
+                )
+            prefix = [
+                str(ncu_path),
+                "--clock-control",
+                "none",
+                "--target-processes",
+                "all",
+                "--replay-mode",
+                "application",
+                "--app-replay-mode",
+                "strict",
+                "--app-replay-match",
+                "grid",
+                "--filter-mode",
+                "per-gpu",
+                "--kernel-name",
+                kernel_name,
+            ]
+            if kernel_window is not None:
+                prefix.extend(["--app-replay-buffer", "file"])
+            prefix.extend(["--launch-skip", str(launch_skip)])
+            if all_matching_kernels or kernel_window is not None:
+                prefix.append("--nvtx")
+            if not all_matching_kernels:
+                prefix.extend(["--launch-count", str(launch_count)])
+            prefix.extend(
+                [
+                    "--kill",
+                    "no",
+                    "--check-exit-code",
+                    "yes",
+                    "--metrics",
+                    ",".join(metrics),
+                ]
+            )
     else:
         supplied_application_options = [
             name for name, value in application_values.items() if value is not None
@@ -611,6 +907,9 @@ def build_capture_plan(
         application_topology,
         expected_application_passes,
         application_rdzv_port_base,
+        expected_kernel_counts,
+        float(report_import_timeout_seconds),
+        kernel_window,
     )
 
 
@@ -676,7 +975,7 @@ def _preflight(plan: NcuTorchrunCapturePlan, env: Mapping[str, str]) -> dict[str
                 listener.bind(("127.0.0.1", plan.tcp_port))
             except OSError as exc:
                 raise ValueError(f"NCU TCP port is unavailable: {plan.tcp_port}") from exc
-    if plan.is_rank_application:
+    if plan.is_rank_local_application:
         assert plan.application_rdzv_port_base is not None
         assert plan.expected_application_passes is not None
         for port in range(
@@ -693,14 +992,24 @@ def _preflight(plan: NcuTorchrunCapturePlan, env: Mapping[str, str]) -> dict[str
     version = subprocess.check_output(
         [str(ncu), "--version"], text=True, stderr=subprocess.STDOUT, timeout=15
     ).strip()
-    if f"Version {SUPPORTED_NCU_VERSION}" not in version:
-        raise ValueError(f"Qualified only for NCU {SUPPORTED_NCU_VERSION}. Observed {version!r}")
+    observed_versions = _NCU_VERSION.findall(version)
+    if len(observed_versions) != 1 or observed_versions[0] not in SUPPORTED_NCU_VERSIONS:
+        supported_versions = " and ".join(SUPPORTED_NCU_VERSIONS)
+        raise ValueError(
+            f"Supported NCU versions are {supported_versions}. Observed {version!r}"
+        )
     result = {
         "observed_source": observed_source,
         "ncu_version": version,
         "ncu_binary_sha256": _sha256(ncu),
         "driver_sha256": _sha256(Path(__file__)),
-        "rank_helper_sha256": _sha256(Path(__file__).with_name("ncu_torchrun_rank.py")),
+        "rank_helper_sha256": _sha256(
+            Path(__file__).with_name(
+                "ncu_torchrun_single_rank.py"
+                if plan.is_rank_single_application
+                else "ncu_torchrun_rank.py"
+            )
+        ),
         "process_tree_cleanup_supported": _proc_cleanup_supported(),
         "visible_devices": list(devices),
         "clock_env": {
@@ -713,7 +1022,7 @@ def _preflight(plan: NcuTorchrunCapturePlan, env: Mapping[str, str]) -> dict[str
             )
         },
     }
-    if plan.is_rank_application:
+    if plan.is_rank_local_application:
         result["generation_helper_sha256"] = _sha256(
             Path(__file__).with_name("ncu_torchrun_generation.py")
         )
@@ -787,6 +1096,119 @@ def _drain_owned_process_group(
     if not drained and not errors:
         errors.append(f"process group {process.pid} survived SIGKILL")
     return sent, drained and not errors, errors
+
+
+def _captured_subprocess_bytes(value: bytes | None, *, label: str) -> bytes:
+    if value is None:
+        return b""
+    if not isinstance(value, bytes):
+        raise RuntimeError(f"{label} was not captured as bytes")
+    return value
+
+
+def _longer_capture(current: bytes, candidate: bytes | None, *, label: str) -> bytes:
+    captured = _captured_subprocess_bytes(candidate, label=label)
+    return captured if len(captured) >= len(current) else current
+
+
+def _run_all_matching_report_import(
+    argv: Sequence[str], *, timeout_seconds: float
+) -> _ReportImportResult:
+    """Run one report import in a dedicated group and drain every descendant."""
+
+    start_ns = time.time_ns()
+    try:
+        process = subprocess.Popen(
+            tuple(str(item) for item in argv),
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            start_new_session=True,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        return _ReportImportResult(
+            False,
+            None,
+            None,
+            False,
+            b"",
+            b"",
+            (time.time_ns() - start_ns) / 1e9,
+            f"{type(exc).__name__}: {exc}",
+            None,
+            (),
+            True,
+            (),
+        )
+
+    stdout = b""
+    stderr = b""
+    timed_out = False
+    communication_error: str | None = None
+    signals_sent: list[str] = []
+    cleanup_drained = False
+    cleanup_errors: list[str] = []
+    try:
+        try:
+            stdout_value, stderr_value = process.communicate(timeout=timeout_seconds)
+            stdout = _captured_subprocess_bytes(
+                stdout_value, label="report import stdout"
+            )
+            stderr = _captured_subprocess_bytes(
+                stderr_value, label="report import stderr"
+            )
+        except subprocess.TimeoutExpired as exc:
+            timed_out = True
+            stdout = _longer_capture(
+                stdout, exc.output, label="timed-out report import stdout"
+            )
+            stderr = _longer_capture(
+                stderr, exc.stderr, label="timed-out report import stderr"
+            )
+        except (OSError, subprocess.SubprocessError) as exc:
+            communication_error = f"{type(exc).__name__}: {exc}"
+    finally:
+        signals_sent, cleanup_drained, cleanup_errors = (
+            _drain_owned_process_group(process)
+        )
+    if timed_out or communication_error is not None:
+        try:
+            stdout_value, stderr_value = process.communicate(timeout=2.0)
+            stdout = _longer_capture(
+                stdout, stdout_value, label="final report import stdout"
+            )
+            stderr = _longer_capture(
+                stderr, stderr_value, label="final report import stderr"
+            )
+        except subprocess.TimeoutExpired as exc:
+            stdout = _longer_capture(
+                stdout, exc.output, label="final timed-out report import stdout"
+            )
+            stderr = _longer_capture(
+                stderr, exc.stderr, label="final timed-out report import stderr"
+            )
+            cleanup_errors.append("report import pipes remained open after cleanup")
+            cleanup_drained = False
+        except (OSError, subprocess.SubprocessError) as exc:
+            cleanup_errors.append(
+                f"final report import communication failed: {type(exc).__name__}: {exc}"
+            )
+            cleanup_drained = False
+
+    return _ReportImportResult(
+        True,
+        process.pid,
+        process.returncode,
+        timed_out,
+        stdout,
+        stderr,
+        (time.time_ns() - start_ns) / 1e9,
+        None,
+        communication_error,
+        tuple(signals_sent),
+        cleanup_drained,
+        tuple(cleanup_errors),
+    )
 
 
 def _proc_cleanup_supported(proc_root: Path = _PROC_ROOT) -> bool:
@@ -1222,8 +1644,8 @@ def _parse_rank_application_generations(
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     """Validate every rank-local generation and its post-main provenance."""
 
-    if not plan.is_rank_application:
-        raise ValueError("Rank application generation parsing requires rank-tcp topology")
+    if not plan.is_rank_local_application:
+        raise ValueError("Rank application generation parsing requires rank-local topology")
     assert plan.expected_application_passes is not None
     assert plan.application_rdzv_port_base is not None
     raw = plan.stdout_path.read_bytes()
@@ -1447,8 +1869,10 @@ def _parse_rank_application_log(
     """Validate one local rank's literal NCU log and replay pass markers."""
 
     local_rank = _rank(local_rank)
-    if not plan.is_rank_application:
-        raise ValueError("Rank application log parsing requires rank-tcp topology")
+    if not plan.is_rank_local_application:
+        raise ValueError("Rank application log parsing requires rank-local topology")
+    if plan.is_rank_single_application and local_rank != plan.target_visible_device:
+        raise ValueError("Rank-single log parsing requires the profiled target rank")
     assert plan.kernel_name is not None
     assert plan.expected_application_passes is not None
     path = plan.rank_log_path(local_rank)
@@ -1464,6 +1888,10 @@ def _parse_rank_application_log(
         normalized = line
         comm_match = _COMM_RANK_PREFIX.fullmatch(line)
         if comm_match is not None:
+            if plan.is_rank_single_application:
+                raise ValueError(
+                    f"Rank {local_rank} NCU log unexpectedly contains a communicator prefix"
+                )
             communicator_rank = int(comm_match.group("comm_rank"))
             if communicator_rank not in (0, 1):
                 raise ValueError(
@@ -1497,17 +1925,317 @@ def _parse_rank_application_log(
         )
     expected_passes = list(range(1, plan.expected_application_passes + 1))
     observed_passes = [marker["application_replay_pass"] for marker in markers]
-    if observed_passes != expected_passes:
+    if not plan.is_multirow_rank_application:
+        if observed_passes != expected_passes:
+            raise ValueError(
+                f"Rank {local_rank} NCU replay passes differ: "
+                f"expected {expected_passes}, observed {observed_passes}"
+            )
+        return {
+            "path": str(path),
+            "bytes": len(raw),
+            "sha256": hashlib.sha256(raw).hexdigest(),
+            "markers": markers,
+        }
+
+    expected_captured_counts = plan.expected_captured_kernel_counts
+    assert expected_captured_counts is not None
+    expected_kernel_count = expected_captured_counts[local_rank]
+    communicator_ranks = [marker["communicator_rank"] for marker in markers]
+    if plan.is_rank_single_application:
+        if any(communicator_rank is not None for communicator_rank in communicator_ranks):
+            raise ValueError(
+                f"Rank {local_rank} NCU replay marker unexpectedly names a communicator rank"
+            )
+    else:
+        if any(communicator_rank is None for communicator_rank in communicator_ranks):
+            raise ValueError(
+                f"Rank {local_rank} NCU replay marker is missing a communicator rank"
+            )
+        if len(set(communicator_ranks)) != 1:
+            raise ValueError(
+                f"Rank {local_rank} NCU communicator rank changed across replay markers"
+            )
+    if len(markers) == plan.expected_application_passes:
+        markers_per_pass = 1
+        marker_policy = "one-global-marker-per-pass"
+    elif len(markers) == plan.expected_application_passes * expected_kernel_count:
+        markers_per_pass = expected_kernel_count
+        marker_policy = "one-marker-per-matching-kernel-per-pass"
+    else:
         raise ValueError(
-            f"Rank {local_rank} NCU replay passes differ: "
-            f"expected {expected_passes}, observed {observed_passes}"
+            f"Rank {local_rank} NCU replay marker count differs: expected either "
+            f"{plan.expected_application_passes} global markers or "
+            f"{plan.expected_application_passes * expected_kernel_count} per-kernel "
+            f"markers, observed {len(markers)}"
         )
+
+    expected_observed_passes = [
+        pass_number
+        for pass_number in expected_passes
+        for _ in range(markers_per_pass)
+    ]
+    if observed_passes != expected_observed_passes:
+        raise ValueError(
+            f"Rank {local_rank} NCU replay pass groups differ: "
+            f"expected {expected_observed_passes}, observed {observed_passes}"
+        )
+    first_kernel_order = [
+        marker["kernel_name"] for marker in markers[:markers_per_pass]
+    ]
+    for pass_index in range(plan.expected_application_passes):
+        start = pass_index * markers_per_pass
+        observed_kernel_order = [
+            marker["kernel_name"]
+            for marker in markers[start : start + markers_per_pass]
+        ]
+        if observed_kernel_order != first_kernel_order:
+            raise ValueError(
+                f"Rank {local_rank} NCU kernel marker order drifted in replay pass "
+                f"{pass_index + 1}"
+            )
     return {
         "path": str(path),
         "bytes": len(raw),
         "sha256": hashlib.sha256(raw).hexdigest(),
         "markers": markers,
+        "marker_policy": marker_policy,
+        "markers_per_pass": markers_per_pass,
+        "expected_matching_kernel_count": expected_kernel_count,
+        "communicator_rank": communicator_ranks[0],
+        "stable_kernel_order": True,
+        "kernel_order": first_kernel_order,
     }
+
+
+def _all_matching_application_rows(
+    plan: NcuTorchrunCapturePlan,
+    rows: Sequence[Sequence[str]],
+    *,
+    expected_device: int,
+    expected_process_id: int,
+    expected_pass_count: int,
+    pass_count_source: str,
+) -> tuple[dict[str, Any], list[str]]:
+    """Validate every native row in one rank's full or windowed report."""
+
+    assert plan.is_rank_local_application
+    assert plan.is_multirow_rank_application
+    assert plan.kernel_name is not None
+    assert plan.expected_kernel_counts is not None
+    expected_captured_counts = plan.expected_captured_kernel_counts
+    assert expected_captured_counts is not None
+    expected_row_count = expected_captured_counts[expected_device]
+    artifact: dict[str, Any] = {
+        "expected_row_count": expected_row_count,
+        "observed_row_count": max(0, len(rows) - 2),
+    }
+    if plan.kernel_window is not None:
+        window_start, window_count = plan.kernel_window
+        artifact.update(
+            kernel_window={
+                "start": window_start,
+                "count": window_count,
+                "end_exclusive": window_start + window_count,
+            },
+            requested_global_ordinal_mapping={
+                "basis": "kernel_window.start + raw_csv.ID",
+                "status": "DECLARED_PENDING_EXTERNAL_NSYS_AUDIT",
+                "nsys_reconciled": False,
+            },
+        )
+    errors: list[str] = []
+    if len(rows) != expected_row_count + 2:
+        errors.append(
+            "application replay raw CSV row count differs: "
+            f"expected {expected_row_count} data rows, observed {max(0, len(rows) - 2)}"
+        )
+    if len(rows) < 2 or len({len(row) for row in rows}) != 1:
+        errors.append(
+            "application replay raw CSV must contain one header, one units row, "
+            "and equal-width data rows"
+        )
+        return artifact, errors
+
+    header, units, *data_rows = rows
+    if not header or len(set(header)) != len(header):
+        errors.append("application replay raw CSV header is empty or contains duplicates")
+        return artifact, errors
+    required_fields = {
+        "ID",
+        "Device",
+        "Kernel Name",
+        "Process ID",
+        "profiler__replayer_passes",
+        *MINIMAL_METRICS,
+    }
+    missing_fields = sorted(required_fields - set(header))
+    if missing_fields:
+        errors.append(f"application replay raw CSV is missing fields: {missing_fields}")
+        return artifact, errors
+
+    unit_fields = dict(zip(header, units, strict=True))
+    parsed_rows: list[dict[str, Any]] = []
+    observed_ids: list[int] = []
+    zero_metric_counts = {metric: 0 for metric in MINIMAL_METRICS}
+    rows_with_zero_metrics: list[int] = []
+    positive_metrics = {
+        "gpu__time_duration.avg",
+        "sm__warps_active.avg.pct_of_peak_sustained_active",
+    }
+    percentage_metrics = {
+        metric
+        for metric in MINIMAL_METRICS
+        if metric.endswith(
+            ("pct_of_peak_sustained_elapsed", "pct_of_peak_sustained_active")
+        )
+    }
+    geometry_names = (
+        "Grid Size",
+        "Block Size",
+        "Grid X",
+        "Grid Y",
+        "Grid Z",
+        "Block X",
+        "Block Y",
+        "Block Z",
+    )
+    for data_index, values in enumerate(data_rows):
+        fields = dict(zip(header, values, strict=True))
+        row_errors: list[str] = []
+        row_id: int | None = None
+        observed_device: int | None = None
+        process_id: int | None = None
+        profiler_pass_count: int | None = None
+        try:
+            row_id = int(fields["ID"])
+            observed_ids.append(row_id)
+        except ValueError:
+            row_errors.append("ID is not an integer")
+        try:
+            observed_device = int(fields["Device"])
+        except ValueError:
+            row_errors.append("Device is not an integer")
+        else:
+            if observed_device != expected_device:
+                row_errors.append(
+                    f"Device differs: expected {expected_device}, observed {observed_device}"
+                )
+        try:
+            process_id = int(fields["Process ID"])
+        except ValueError:
+            row_errors.append("Process ID is not an integer")
+        else:
+            if process_id != expected_process_id:
+                row_errors.append(
+                    "Process ID does not match the selected local rank in generation 0"
+                )
+
+        device_attribute = fields.get("device__attribute_device_index")
+        if device_attribute not in (None, ""):
+            try:
+                parsed_device_attribute = int(device_attribute)
+            except ValueError:
+                row_errors.append("device attribute is not an integer")
+            else:
+                if parsed_device_attribute != expected_device:
+                    row_errors.append("device attribute differs from the selector")
+
+        kernel_name = fields["Kernel Name"].strip()
+        if not _kernel_selector_matches(plan.kernel_name, kernel_name):
+            row_errors.append(
+                f"kernel {kernel_name!r} does not match selector {plan.kernel_name!r}"
+            )
+
+        try:
+            raw_pass_count = float(
+                fields["profiler__replayer_passes"].replace(",", "")
+            )
+        except ValueError:
+            row_errors.append("profiler pass count is not numeric")
+        else:
+            if (
+                not math.isfinite(raw_pass_count)
+                or raw_pass_count < 1
+                or not raw_pass_count.is_integer()
+            ):
+                row_errors.append("profiler pass count is not a positive integer")
+            else:
+                profiler_pass_count = int(raw_pass_count)
+                if profiler_pass_count != expected_pass_count:
+                    row_errors.append(
+                        "profiler pass count differs from "
+                        f"{pass_count_source}: CSV={profiler_pass_count}, "
+                        f"expected={expected_pass_count}"
+                    )
+
+        metric_values: dict[str, float] = {}
+        zero_metrics: list[str] = []
+        for metric in MINIMAL_METRICS:
+            try:
+                value = float(fields[metric].replace(",", ""))
+            except ValueError:
+                row_errors.append(f"metric is not numeric: {metric}")
+                continue
+            if not math.isfinite(value) or value < 0:
+                row_errors.append(f"metric is not finite and nonnegative: {metric}")
+                continue
+            if metric in positive_metrics and value <= 0:
+                row_errors.append(f"metric must be positive: {metric}")
+                continue
+            if metric in percentage_metrics and value > 100:
+                row_errors.append(f"percentage metric exceeds 100: {metric}")
+                continue
+            metric_values[metric] = value
+            if value == 0:
+                zero_metrics.append(metric)
+                zero_metric_counts[metric] += 1
+        launch_geometry = {
+            name: fields[name]
+            for name in geometry_names
+            if name in fields and fields[name] != ""
+        }
+        if zero_metrics:
+            rows_with_zero_metrics.append(data_index)
+        parsed_row = {
+            "id": row_id,
+            "visible_device": observed_device,
+            "kernel_name": kernel_name,
+            "process_id": process_id,
+            "profiler_pass_count": profiler_pass_count,
+            "launch_geometry": launch_geometry,
+            "metrics": metric_values,
+            "zero_metrics": zero_metrics,
+        }
+        if plan.kernel_window is not None:
+            parsed_row["requested_global_ordinal"] = (
+                plan.kernel_window[0] + row_id if row_id is not None else None
+            )
+        parsed_rows.append(parsed_row)
+        errors.extend(
+            f"application replay raw CSV data row {data_index}: {error}"
+            for error in row_errors
+        )
+
+    if len(observed_ids) != len(data_rows):
+        errors.append("application replay raw CSV does not have an integer ID for every row")
+    elif len(set(observed_ids)) != len(observed_ids):
+        errors.append("application replay raw CSV IDs contain duplicates")
+    elif sorted(observed_ids) != list(range(expected_row_count)):
+        errors.append(
+            "application replay raw CSV IDs are not contiguous from 0 through "
+            f"{expected_row_count - 1}"
+        )
+
+    artifact.update(
+        rows=parsed_rows,
+        metric_units={metric: unit_fields[metric] for metric in MINIMAL_METRICS},
+        zero_metric_counts=zero_metric_counts,
+        rows_with_zero_metrics=rows_with_zero_metrics,
+        zero_metric_row_count=len(rows_with_zero_metrics),
+        all_rows_validated=not errors,
+    )
+    return artifact, errors
 
 
 def _application_report_artifact_for(
@@ -1550,39 +2278,140 @@ def _application_report_artifact_for(
         "--csv",
     )
     artifact["import_argv"] = list(import_argv)
-    try:
-        completed = subprocess.run(
+    if plan.is_multirow_rank_application:
+        completed_import = _run_all_matching_report_import(
             import_argv,
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            timeout=min(60.0, plan.timeout_seconds),
-            check=False,
+            timeout_seconds=plan.report_import_timeout_seconds,
         )
-    except subprocess.TimeoutExpired:
-        return artifact, ["application replay report import timed out"]
-    except (OSError, subprocess.SubprocessError) as exc:
-        return artifact, [f"application replay report import failed: {exc}"]
-    csv_path.write_bytes(completed.stdout)
-    import_stderr_path.write_bytes(completed.stderr)
+        import_stdout = completed_import.stdout
+        import_stderr = completed_import.stderr
+        csv_path.write_bytes(import_stdout)
+        import_stderr_path.write_bytes(import_stderr)
+        partial_output = bool(
+            completed_import.timed_out
+            or completed_import.communication_error is not None
+            or completed_import.signals_sent
+            or not completed_import.cleanup_drained
+        )
+        artifact["report_import"] = {
+            "argv": list(import_argv),
+            "timeout_seconds": plan.report_import_timeout_seconds,
+            "process_started": completed_import.started,
+            "process_id": completed_import.process_id,
+            "returncode": completed_import.returncode,
+            "timed_out": completed_import.timed_out,
+            "wall_seconds": completed_import.wall_seconds,
+            "start_error": completed_import.start_error,
+            "communication_error": completed_import.communication_error,
+            "stdout": {
+                "path": str(csv_path),
+                "bytes": len(import_stdout),
+                "sha256": hashlib.sha256(import_stdout).hexdigest(),
+                "partial": partial_output,
+            },
+            "stderr": {
+                "path": str(import_stderr_path),
+                "bytes": len(import_stderr),
+                "sha256": hashlib.sha256(import_stderr).hexdigest(),
+                "partial": partial_output,
+            },
+            "cleanup": {
+                "mode": "dedicated-process-group",
+                "natural": (
+                    completed_import.started
+                    and not completed_import.signals_sent
+                    and completed_import.cleanup_drained
+                ),
+                "forced": bool(completed_import.signals_sent),
+                "signals_sent": list(completed_import.signals_sent),
+                "drained": completed_import.cleanup_drained,
+                "errors": list(completed_import.cleanup_errors),
+            },
+        }
+        import_errors: list[str] = []
+        if completed_import.start_error is not None:
+            import_errors.append(
+                "application replay report import failed to start: "
+                f"{completed_import.start_error}"
+            )
+        if completed_import.communication_error is not None:
+            import_errors.append(
+                "application replay report import communication failed: "
+                f"{completed_import.communication_error}"
+            )
+        if completed_import.timed_out:
+            import_errors.append(
+                "application replay report import timed out after "
+                f"{plan.report_import_timeout_seconds} seconds"
+            )
+        if completed_import.signals_sent and not completed_import.timed_out:
+            import_errors.append(
+                "application replay report import required process-group cleanup"
+            )
+        if not completed_import.cleanup_drained or completed_import.cleanup_errors:
+            import_errors.append(
+                "application replay report import process-group cleanup failed: "
+                f"{list(completed_import.cleanup_errors)}"
+            )
+        if (
+            completed_import.started
+            and not completed_import.timed_out
+            and completed_import.returncode != 0
+        ):
+            import_errors.append(
+                "application replay report import exited "
+                f"{completed_import.returncode}"
+            )
+        import_returncode = completed_import.returncode
+    else:
+        try:
+            completed = subprocess.run(
+                import_argv,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                timeout=min(60.0, plan.timeout_seconds),
+                check=False,
+            )
+        except subprocess.TimeoutExpired:
+            return artifact, ["application replay report import timed out"]
+        except (OSError, subprocess.SubprocessError) as exc:
+            return artifact, [f"application replay report import failed: {exc}"]
+        import_stdout = completed.stdout
+        import_stderr = completed.stderr
+        import_returncode = completed.returncode
+        import_errors = []
+        csv_path.write_bytes(import_stdout)
+        import_stderr_path.write_bytes(import_stderr)
     artifact.update(
-        import_returncode=completed.returncode,
-        raw_csv_bytes=len(completed.stdout),
-        raw_csv_sha256=hashlib.sha256(completed.stdout).hexdigest(),
-        import_stderr_bytes=len(completed.stderr),
-        import_stderr_sha256=hashlib.sha256(completed.stderr).hexdigest(),
+        import_returncode=import_returncode,
+        raw_csv_bytes=len(import_stdout),
+        raw_csv_sha256=hashlib.sha256(import_stdout).hexdigest(),
+        import_stderr_bytes=len(import_stderr),
+        import_stderr_sha256=hashlib.sha256(import_stderr).hexdigest(),
     )
-    if completed.returncode:
-        return artifact, [
-            f"application replay report import exited {completed.returncode}"
-        ]
+    if import_errors:
+        return artifact, import_errors
+    if import_returncode:
+        return artifact, [f"application replay report import exited {import_returncode}"]
     if _sha256(report) != artifact["report_sha256"]:
         return artifact, ["application replay report changed while it was imported"]
     try:
-        csv_text = completed.stdout.decode("utf-8")
+        csv_text = import_stdout.decode("utf-8")
     except UnicodeDecodeError as exc:
         return artifact, [f"application replay raw CSV is not valid UTF-8: {exc}"]
     rows = list(csv.reader(io.StringIO(csv_text)))
+    if plan.is_multirow_rank_application:
+        row_artifact, row_errors = _all_matching_application_rows(
+            plan,
+            rows,
+            expected_device=expected_device,
+            expected_process_id=expected_process_id,
+            expected_pass_count=expected_pass_count,
+            pass_count_source=pass_count_source,
+        )
+        artifact.update(row_artifact)
+        return artifact, row_errors
     if len(rows) != 3 or len({len(row) for row in rows}) != 1:
         return artifact, [
             "application replay raw CSV must contain one header, one units row, "
@@ -1780,6 +2609,325 @@ def _rank_application_evidence(
     return rank_artifacts, generations, stdout_artifact, import_reports, errors
 
 
+def _single_rank_unit_evidence(
+    plan: NcuTorchrunCapturePlan, report_artifact: dict[str, Any]
+) -> list[str]:
+    """Require native dimensions and retain explicit duration normalization."""
+
+    if plan.is_multirow_rank_application:
+        units = report_artifact.get("metric_units")
+        parsed_rows = report_artifact.get("rows")
+    else:
+        row = report_artifact.get("row")
+        units = row.get("metric_units") if isinstance(row, dict) else None
+        parsed_rows = [row] if isinstance(row, dict) else None
+    if not isinstance(units, dict):
+        return ["application replay raw CSV has no validated metric units"]
+
+    errors: list[str] = []
+    duration_metric = "gpu__time_duration.avg"
+    duration_unit = units.get(duration_metric)
+    duration_scale = _DURATION_TO_MILLISECONDS.get(duration_unit)
+    if duration_scale is None:
+        errors.append(
+            "application replay duration unit must be one of "
+            f"{sorted(_DURATION_TO_MILLISECONDS)}, got {duration_unit!r}"
+        )
+    for metric in MINIMAL_METRICS:
+        if metric == duration_metric:
+            continue
+        if units.get(metric) != "%":
+            errors.append(
+                f"application replay metric {metric!r} must use '%' units, "
+                f"got {units.get(metric)!r}"
+            )
+
+    if not isinstance(parsed_rows, list) or not parsed_rows:
+        errors.append("application replay raw CSV has no validated metric rows")
+    if errors:
+        return errors
+    assert duration_scale is not None
+    normalizations: list[dict[str, Any]] = []
+    for row_index, row in enumerate(parsed_rows):
+        if not isinstance(row, dict):
+            errors.append(
+                f"application replay raw CSV row {row_index} has no validated metric object"
+            )
+            continue
+        metrics = row.get("metrics")
+        if not isinstance(metrics, dict) or duration_metric not in metrics:
+            errors.append(
+                f"application replay raw CSV row {row_index} has no validated duration"
+            )
+            continue
+        raw_value = metrics[duration_metric]
+        normalized_value = raw_value * duration_scale
+        if not math.isfinite(normalized_value):
+            errors.append(
+                f"application replay raw CSV row {row_index} duration normalization "
+                "is not finite"
+            )
+            continue
+        normalization = {
+            "row_id": row.get("id", row_index),
+            "raw_value": raw_value,
+            "raw_unit": duration_unit,
+            "target_unit": "ms",
+            "scale": duration_scale,
+            "normalized_value": normalized_value,
+        }
+        row["duration_normalization"] = normalization
+        normalizations.append(normalization)
+    report_artifact["duration_normalization"] = normalizations
+    return errors
+
+
+def _single_rank_counter_artifact(
+    plan: NcuTorchrunCapturePlan, *, local_rank: int, start_ns: int
+) -> tuple[dict[str, Any], list[str]]:
+    path = plan.output_dir / f"rank-{local_rank}-generation.counter"
+    artifact: dict[str, Any] = {"path": str(path)}
+    errors: list[str] = []
+    if path.is_symlink() or not path.is_file():
+        return artifact, [f"rank {local_rank} generation counter is missing or symlinked"]
+    raw = path.read_bytes()
+    path_stat = path.stat()
+    artifact.update(
+        bytes=len(raw),
+        sha256=hashlib.sha256(raw).hexdigest(),
+        mtime_ns=path_stat.st_mtime_ns,
+    )
+    expected = f"{SINGLE_RANK_EXPECTED_APPLICATION_PASSES}\n".encode("ascii")
+    if re.fullmatch(rb"(?:0|[1-9][0-9]*)\n", raw) is not None:
+        artifact["observed_generation_counter"] = int(raw[:-1])
+    if raw != expected or path_stat.st_mtime_ns < start_ns:
+        errors.append(
+            f"rank {local_rank} generation counter is stale or differs from "
+            f"{SINGLE_RANK_EXPECTED_APPLICATION_PASSES}"
+        )
+    return artifact, errors
+
+
+def _single_rank_application_evidence(
+    plan: NcuTorchrunCapturePlan,
+    *,
+    start_ns: int,
+    capture_owner_id: str,
+    allow_report_import: bool,
+) -> tuple[
+    list[dict[str, Any]],
+    list[dict[str, Any]],
+    dict[str, Any],
+    list[dict[str, Any]],
+    bool,
+    list[str],
+]:
+    """Validate paired work while accepting an NCU report only for the target."""
+
+    assert plan.is_rank_single_application
+    assert plan.target_visible_device is not None
+    assert plan.expected_application_passes == SINGLE_RANK_EXPECTED_APPLICATION_PASSES
+    target_rank = plan.target_visible_device
+    peer_rank = 1 - target_rank
+    errors: list[str] = []
+    artifacts_by_rank: dict[int, dict[str, Any]] = {
+        target_rank: {
+            "local_rank": target_rank,
+            "role": "profiled_target",
+            "report_path": str(plan.report_path(target_rank)),
+            "log_path": str(plan.rank_log_path(target_rank)),
+            "argv_path": str(plan.rank_argv_path(target_rank)),
+        },
+        peer_rank: {
+            "local_rank": peer_rank,
+            "role": "unprofiled_peer",
+            "report_path": str(plan.report_path(peer_rank)),
+            "log_path": str(plan.rank_log_path(peer_rank)),
+            "argv_path": str(plan.rank_argv_path(peer_rank)),
+        },
+    }
+    target_artifact = artifacts_by_rank[target_rank]
+    peer_artifact = artifacts_by_rank[peer_rank]
+
+    expected_argv = expected_target_command(plan.rank_config())
+    target_artifact["expected_argv"] = expected_argv
+    target_argv_path = plan.rank_argv_path(target_rank)
+    if target_argv_path.is_symlink() or not target_argv_path.is_file():
+        errors.append("rank-single target argv receipt is missing or symlinked")
+    else:
+        target_argv_raw = target_argv_path.read_bytes()
+        target_argv_stat = target_argv_path.stat()
+        target_artifact.update(
+            argv_bytes=len(target_argv_raw),
+            argv_sha256=hashlib.sha256(target_argv_raw).hexdigest(),
+            argv_mtime_ns=target_argv_stat.st_mtime_ns,
+        )
+        try:
+            target_artifact["observed_argv"] = json.loads(
+                target_argv_raw.decode("utf-8")
+            )
+        except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+            errors.append(f"rank-single target argv receipt is unreadable: {exc}")
+        if target_artifact.get("observed_argv") != expected_argv:
+            errors.append("rank-single target argv differs from the plan")
+        if target_argv_stat.st_mtime_ns < start_ns:
+            errors.append("rank-single target argv receipt is stale")
+
+    forbidden_peer_paths = {
+        "report": plan.report_path(peer_rank),
+        "log": plan.rank_log_path(peer_rank),
+        "argv": plan.rank_argv_path(peer_rank),
+        "raw_csv": plan.rank_csv_path(peer_rank),
+        "import_stderr": plan.rank_import_stderr_path(peer_rank),
+    }
+    peer_artifact["forbidden_ncu_artifacts"] = {
+        name: str(path) for name, path in forbidden_peer_paths.items()
+    }
+    for name, path in forbidden_peer_paths.items():
+        if path.exists() or path.is_symlink():
+            errors.append(
+                f"unprofiled peer unexpectedly produced rank {peer_rank} {name}: {path}"
+            )
+    peer_artifact["ncu_artifacts_absent"] = not any(
+        path.exists() or path.is_symlink() for path in forbidden_peer_paths.values()
+    )
+
+    peer_dispatch_path = plan.output_dir / f"rank-{peer_rank}-peer-dispatch.json"
+    peer_artifact["peer_dispatch_path"] = str(peer_dispatch_path)
+    try:
+        peer_dispatch = validate_peer_dispatch_artifact(
+            peer_dispatch_path,
+            rank_config_path=plan.rank_config_path,
+            capture_owner_id=capture_owner_id,
+        )
+        peer_dispatch_raw = peer_dispatch_path.read_bytes()
+        peer_dispatch_stat = peer_dispatch_path.stat()
+        peer_artifact["peer_dispatch"] = {
+            "bytes": len(peer_dispatch_raw),
+            "sha256": hashlib.sha256(peer_dispatch_raw).hexdigest(),
+            "mtime_ns": peer_dispatch_stat.st_mtime_ns,
+            "payload": peer_dispatch,
+        }
+        if (
+            peer_dispatch_stat.st_mtime_ns < start_ns
+            or peer_dispatch["started_time_ns"] < start_ns
+            or peer_dispatch["completed_time_ns"] < start_ns
+        ):
+            errors.append("unprofiled peer dispatch receipt is stale")
+    except (OSError, UnicodeError, ValueError) as exc:
+        errors.append(f"unprofiled peer dispatch validation failed: {exc}")
+
+    generations: list[dict[str, Any]] = []
+    stdout_artifact: dict[str, Any] = {"path": str(plan.stdout_path)}
+    try:
+        generations, stdout_artifact = _parse_rank_application_generations(plan)
+    except (OSError, UnicodeError, ValueError, TorchrunRuntimeProvenanceError) as exc:
+        errors.append(f"rank-single generation validation failed: {exc}")
+
+    try:
+        target_artifact["ncu_log"] = _parse_rank_application_log(plan, target_rank)
+    except (OSError, UnicodeError, ValueError) as exc:
+        target_artifact["ncu_log"] = {"path": str(plan.rank_log_path(target_rank))}
+        errors.append(f"rank-single target replay log validation failed: {exc}")
+
+    for local_rank in (0, 1):
+        counter_artifact, counter_errors = _single_rank_counter_artifact(
+            plan,
+            local_rank=local_rank,
+            start_ns=start_ns,
+        )
+        artifacts_by_rank[local_rank]["generation_counter"] = counter_artifact
+        errors.extend(counter_errors)
+
+    gate_artifacts: list[dict[str, Any]] = []
+    try:
+        gate_artifacts = validate_generation_gate_artifacts(
+            output_dir=plan.output_dir,
+            capture_owner_id=capture_owner_id,
+            generation_config_path=plan.generation_config_path,
+        )
+        for gate in gate_artifacts:
+            if (
+                gate["mtime_ns"] < start_ns
+                or gate["payload"]["completed_time_ns"] < start_ns
+            ):
+                errors.append(f"generation gate marker is stale: {gate['path']}")
+    except (OSError, UnicodeError, ValueError) as exc:
+        errors.append(f"rank-single generation gate validation failed: {exc}")
+
+    generation_process_ids = {
+        process_id
+        for generation in generations
+        for process_id in (
+            *generation["bootstrap_process_ids"].values(),
+            *generation["execution_process_ids"].values(),
+        )
+    }
+    gate_wrapper_pids = {
+        gate["payload"]["wrapper_pid"] for gate in gate_artifacts
+    }
+    reused_process_ids = generation_process_ids.intersection(gate_wrapper_pids)
+    if reused_process_ids:
+        errors.append(
+            "rank-single reused gated-wrapper process IDs for stock helpers or workers: "
+            f"{sorted(reused_process_ids)}"
+        )
+
+    import_report = (
+        allow_report_import
+        and not errors
+        and len(generations) == SINGLE_RANK_EXPECTED_APPLICATION_PASSES
+        and len(gate_artifacts) == 2 * SINGLE_RANK_EXPECTED_APPLICATION_PASSES
+    )
+    if import_report:
+        try:
+            report_artifact, report_errors = _application_report_artifact_for(
+                plan,
+                report=plan.report_path(target_rank),
+                csv_path=plan.rank_csv_path(target_rank),
+                import_stderr_path=plan.rank_import_stderr_path(target_rank),
+                start_ns=start_ns,
+                expected_device=target_rank,
+                expected_process_id=generations[0]["execution_process_ids"][target_rank],
+                expected_pass_count=SINGLE_RANK_EXPECTED_APPLICATION_PASSES,
+                pass_count_source="the validated rank-single generations",
+            )
+            report_errors.extend(_single_rank_unit_evidence(plan, report_artifact))
+            target_artifact["application_report"] = report_artifact
+            errors.extend(f"rank {target_rank}: {error}" for error in report_errors)
+        except (OSError, UnicodeError, ValueError) as exc:
+            target_artifact["application_report"] = {
+                "report_path": str(plan.report_path(target_rank)),
+                "raw_csv_path": str(plan.rank_csv_path(target_rank)),
+            }
+            errors.append(f"rank-single target report validation failed: {exc}")
+    else:
+        errors.append(
+            "rank-single target report was not imported because capture completion or "
+            "pre-import evidence was invalid"
+        )
+
+    final_peer_artifacts_absent = True
+    for name, path in forbidden_peer_paths.items():
+        if path.exists() or path.is_symlink():
+            final_peer_artifacts_absent = False
+            message = (
+                f"unprofiled peer unexpectedly produced rank {peer_rank} {name}: {path}"
+            )
+            if message not in errors:
+                errors.append(message)
+    peer_artifact["ncu_artifacts_absent"] = final_peer_artifacts_absent
+
+    return (
+        [artifacts_by_rank[rank] for rank in range(WORLD_SIZE)],
+        generations,
+        stdout_artifact,
+        gate_artifacts,
+        import_report,
+        errors,
+    )
+
+
 def _capture_status(
     *,
     cleanup: _CleanupResult,
@@ -1972,6 +3120,162 @@ def _run_application_capture(
     )
 
 
+def _single_rank_configuration_errors(
+    plan: NcuTorchrunCapturePlan, receipt: Mapping[str, Any]
+) -> list[str]:
+    """Verify that both immutable rank-single configs retain their initial bytes."""
+
+    errors: list[str] = []
+    for description, path, receipt_field in (
+        ("rank config", plan.rank_config_path, "rank_config_sha256"),
+        (
+            "generation config",
+            plan.generation_config_path,
+            "generation_config_sha256",
+        ),
+    ):
+        if path.is_symlink() or not path.is_file():
+            errors.append(
+                f"rank-single {description} is missing or symlinked after capture"
+            )
+            continue
+        try:
+            observed_hash = _sha256(path)
+        except OSError as exc:
+            errors.append(
+                f"rank-single {description} could not be hashed after capture: {exc}"
+            )
+            continue
+        if observed_hash != receipt[receipt_field]:
+            errors.append(f"rank-single {description} changed during capture")
+    return errors
+
+
+def _single_rank_running_receipt(
+    plan: NcuTorchrunCapturePlan,
+    *,
+    capture_marker: str,
+    preflight: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Build the initial receipt for one profiled rank and one external peer."""
+
+    assert plan.is_rank_single_application
+    assert plan.target_visible_device is not None
+    assert plan.kernel_name is not None
+    assert plan.expected_application_passes == SINGLE_RANK_EXPECTED_APPLICATION_PASSES
+    assert plan.application_rdzv_port_base is not None
+    target_rank = plan.target_visible_device
+    peer_rank = 1 - target_rank
+    receipt: dict[str, Any] = {
+        "schema": SINGLE_RANK_APPLICATION_CAPTURE_RECEIPT_SCHEMA,
+        "status": "RUNNING",
+        "label": plan.label,
+        "source": plan.source,
+        "cwd": str((plan.repo_root / "code").resolve()),
+        "capture_topology": "single-profiled-rank-application-replay",
+        "torchrun_argv": list(plan.torchrun_argv),
+        "argv": list(plan.launch_argv),
+        "rank_config_path": str(plan.rank_config_path),
+        "rank_config_sha256": _sha256(plan.rank_config_path),
+        "generation_config_path": str(plan.generation_config_path),
+        "generation_config_sha256": _sha256(plan.generation_config_path),
+        "generation_worker_argv": list(plan.generation_worker_argv),
+        "stock_generation_worker_argv": list(plan.stock_generation_worker_argv),
+        "world_size": WORLD_SIZE,
+        "nnodes": 1,
+        "replay_mode": "application",
+        "application_topology": "rank-single",
+        "target_local_rank": target_rank,
+        "target_visible_device": target_rank,
+        "unprofiled_peer_local_rank": peer_rank,
+        "target_rank_mapping": {
+            "basis": "one-node local rank equals visible device ordinal",
+            "local_rank": target_rank,
+            "visible_device": target_rank,
+        },
+        "selector": {
+            "kernel_name": plan.kernel_name,
+            "launch_skip": plan.launch_skip,
+            "launch_count": plan.launch_count,
+        },
+        "application_replay": {
+            "mode": "strict",
+            "match": "grid",
+            "filter_mode": "per-gpu",
+            "expected_passes": plan.expected_application_passes,
+            "fresh_store_ports": list(
+                range(
+                    plan.application_rdzv_port_base,
+                    plan.application_rdzv_port_base
+                    + plan.expected_application_passes,
+                )
+            ),
+        },
+        "metrics": list(MINIMAL_METRICS),
+        "workload_local_ranks_executed": [0, 1],
+        "profiled_local_ranks": [target_rank],
+        "unprofiled_local_ranks": [peer_rank],
+        "requested_profiled_visible_devices": [target_rank],
+        "all_matching_launches_covered": False,
+        "full_coverage_qualified": False,
+        "both_devices_covered_by_this_receipt": False,
+        "target_native_report_validated": False,
+        "peer_ncu_artifacts_absent_validated": False,
+        "paired_generations_validated": False,
+        "pipeline_role_inferred": False,
+        "numerical_output_qualified": False,
+        "performance_qualified": False,
+        "claim_limit": SINGLE_RANK_CLAIM_LIMIT,
+        "cleanup_limit": CLEANUP_LIMIT,
+        "capture_owner": {"environment": _CAPTURE_OWNER_ENV, "id": capture_marker},
+        **preflight,
+    }
+    if plan.all_matching_kernels:
+        assert plan.expected_kernel_counts is not None
+        receipt["schema"] = SINGLE_RANK_APPLICATION_ALL_MATCHING_CAPTURE_RECEIPT_SCHEMA
+        receipt.update(
+            capture_scope="target-rank-all-matching-kernels-requested",
+            all_matching_kernels=True,
+            nvtx_capture_enabled=True,
+            expected_kernel_counts=list(plan.expected_kernel_counts),
+            target_expected_kernel_count=plan.expected_kernel_counts[target_rank],
+            report_import_timeout_seconds=plan.report_import_timeout_seconds,
+            ncu_launch_count_argument_present="--launch-count" in plan.ncu_prefix,
+            target_rank_all_matching_rows_validated=False,
+        )
+    elif plan.kernel_window is not None:
+        assert plan.expected_kernel_counts is not None
+        window_start, window_count = plan.kernel_window
+        receipt["schema"] = SINGLE_RANK_APPLICATION_KERNEL_WINDOW_CAPTURE_RECEIPT_SCHEMA
+        receipt["application_replay"]["buffer"] = "file"
+        receipt.update(
+            capture_scope="target-rank-kernel-window-requested",
+            all_matching_kernels=False,
+            nvtx_capture_enabled=True,
+            kernel_window={
+                "start": window_start,
+                "count": window_count,
+                "end_exclusive": window_start + window_count,
+            },
+            expected_kernel_counts=list(plan.expected_kernel_counts),
+            target_expected_kernel_count=window_count,
+            report_import_timeout_seconds=plan.report_import_timeout_seconds,
+            ncu_launch_count_argument_present="--launch-count" in plan.ncu_prefix,
+            target_rank_window_rows_validated=False,
+            requested_global_ordinal_mapping={
+                "basis": "kernel_window.start + raw_csv.ID",
+                "status": "DECLARED_PENDING_EXTERNAL_NSYS_AUDIT",
+                "nsys_reconciled": False,
+            },
+        )
+    else:
+        receipt.update(
+            capture_scope="one-selected-launch-on-target-rank",
+            selected_matching_launches_on_target_rank=1,
+        )
+    return receipt
+
+
 def run_capture(
     plan: NcuTorchrunCapturePlan, *, environment: Mapping[str, str] | None = None
 ) -> NcuTorchrunCaptureResult:
@@ -1979,7 +3283,7 @@ def run_capture(
 
     env = dict(os.environ if environment is None else environment)
     preflight = _preflight(plan, env)
-    if plan.replay_mode == "application" and not plan.is_rank_application:
+    if plan.replay_mode == "application" and plan.application_topology == "parent":
         return _run_application_capture(plan, env=env, preflight=preflight)
     plan.output_dir.mkdir(parents=True, exist_ok=False)
     capture_marker = uuid.uuid4().hex
@@ -1988,13 +3292,22 @@ def run_capture(
         AISP_PROFILE_NO_USER_SITE="1",
         **{_CAPTURE_OWNER_ENV: capture_marker},
     )
-    if plan.is_rank_application:
+    if plan.is_rank_local_application:
         _write_json(plan.generation_config_path, plan.generation_config())
     _write_json(plan.rank_config_path, plan.rank_config())
     if plan.is_rank_application:
         assert plan.kernel_name is not None
-        assert plan.launch_skip is not None
-        assert plan.launch_count == 1
+        if plan.all_matching_kernels:
+            assert plan.launch_skip == 0
+            assert plan.launch_count is None
+            assert plan.expected_kernel_counts is not None
+        elif plan.kernel_window is not None:
+            assert plan.expected_kernel_counts is not None
+            assert plan.launch_skip == plan.kernel_window[0]
+            assert plan.launch_count == plan.kernel_window[1]
+        else:
+            assert plan.launch_skip is not None
+            assert plan.launch_count == 1
         assert plan.expected_application_passes is not None
         assert plan.application_rdzv_port_base is not None
         receipt = {
@@ -2052,6 +3365,57 @@ def run_capture(
             "capture_owner": {"environment": _CAPTURE_OWNER_ENV, "id": capture_marker},
             **preflight,
         }
+        if plan.all_matching_kernels:
+            receipt["schema"] = RANK_APPLICATION_ALL_MATCHING_CAPTURE_RECEIPT_SCHEMA
+            receipt.pop("selected_matching_launches_per_device")
+            receipt.update(
+                capture_scope="all-matching-kernels-requested",
+                all_matching_kernels=True,
+                nvtx_capture_enabled=True,
+                expected_kernel_counts=list(plan.expected_kernel_counts),
+                report_import_timeout_seconds=(
+                    plan.report_import_timeout_seconds
+                ),
+                ncu_launch_count_argument_present=(
+                    "--launch-count" in plan.ncu_prefix
+                ),
+                all_matching_ncu_rows_validated=False,
+            )
+        elif plan.kernel_window is not None:
+            window_start, window_count = plan.kernel_window
+            expected_captured_counts = plan.expected_captured_kernel_counts
+            assert expected_captured_counts is not None
+            receipt["schema"] = RANK_APPLICATION_KERNEL_WINDOW_CAPTURE_RECEIPT_SCHEMA
+            receipt.pop("selected_matching_launches_per_device")
+            receipt["application_replay"]["buffer"] = "file"
+            receipt.update(
+                capture_scope="kernel-window-requested",
+                all_matching_kernels=False,
+                nvtx_capture_enabled=True,
+                kernel_window={
+                    "start": window_start,
+                    "count": window_count,
+                    "end_exclusive": window_start + window_count,
+                },
+                expected_kernel_counts=list(plan.expected_kernel_counts),
+                captured_expected_kernel_counts=list(expected_captured_counts),
+                report_import_timeout_seconds=plan.report_import_timeout_seconds,
+                ncu_launch_count_argument_present=(
+                    "--launch-count" in plan.ncu_prefix
+                ),
+                window_ncu_rows_validated=False,
+                requested_global_ordinal_mapping={
+                    "basis": "kernel_window.start + raw_csv.ID",
+                    "status": "DECLARED_PENDING_EXTERNAL_NSYS_AUDIT",
+                    "nsys_reconciled": False,
+                },
+            )
+    elif plan.is_rank_single_application:
+        receipt = _single_rank_running_receipt(
+            plan,
+            capture_marker=capture_marker,
+            preflight=preflight,
+        )
     else:
         receipt = {
             "schema": CAPTURE_RECEIPT_SCHEMA,
@@ -2128,6 +3492,11 @@ def run_capture(
         capture_marker,
         preexisting_identities=preexisting_identities,
     )
+    configuration_errors = (
+        _single_rank_configuration_errors(plan, receipt)
+        if plan.is_rank_single_application
+        else []
+    )
     if plan.is_rank_application:
         artifacts, generations, stdout_artifact, imports_attempted, artifact_errors = (
             _rank_application_evidence(
@@ -2142,11 +3511,42 @@ def run_capture(
                 ),
             )
         )
+        generation_gates: list[dict[str, Any]] = []
+    elif plan.is_rank_single_application:
+        (
+            artifacts,
+            generations,
+            stdout_artifact,
+            generation_gates,
+            imports_attempted,
+            artifact_errors,
+        ) = _single_rank_application_evidence(
+            plan,
+            start_ns=start_ns,
+            capture_owner_id=capture_marker,
+            allow_report_import=(
+                process.returncode == 0
+                and not timed_out
+                and cleanup.supported
+                and cleanup.natural
+                and cleanup.drained
+                and not configuration_errors
+            ),
+        )
+        artifact_errors = [*configuration_errors, *artifact_errors]
     else:
         artifacts, artifact_errors = _artifacts(plan, start_ns)
         generations = []
         stdout_artifact = {"path": str(plan.stdout_path)}
         imports_attempted = False
+        generation_gates = []
+    if plan.is_rank_single_application:
+        final_configuration_errors = _single_rank_configuration_errors(plan, receipt)
+        artifact_errors.extend(
+            error
+            for error in final_configuration_errors
+            if error not in artifact_errors
+        )
     status = _capture_status(
         cleanup=cleanup,
         returncode=process.returncode,
@@ -2187,6 +3587,135 @@ def run_capture(
                 for artifact in artifacts
             },
         )
+        if plan.is_multirow_rank_application:
+            receipt.update(
+                observed_kernel_counts=[
+                    artifact.get("application_report", {}).get(
+                        "observed_row_count"
+                    )
+                    for artifact in artifacts
+                ],
+                profiler_pass_count_by_rank={
+                    str(artifact["local_rank"]): (
+                        artifact.get("application_report", {}).get("rows", [{}])[0].get(
+                            "profiler_pass_count"
+                        )
+                        if artifact.get("application_report", {}).get("rows")
+                        else None
+                    )
+                    for artifact in artifacts
+                },
+                log_marker_policy_by_rank={
+                    str(artifact["local_rank"]): artifact.get("ncu_log", {}).get(
+                        "marker_policy"
+                    )
+                    for artifact in artifacts
+                },
+                zero_metric_counts_by_rank={
+                    str(artifact["local_rank"]): artifact.get(
+                        "application_report", {}
+                    ).get("zero_metric_counts")
+                    for artifact in artifacts
+                },
+            )
+            rows_validated = imports_attempted and not artifact_errors
+            if plan.all_matching_kernels:
+                receipt["all_matching_ncu_rows_validated"] = rows_validated
+            else:
+                receipt["window_ncu_rows_validated"] = rows_validated
+    elif plan.is_rank_single_application:
+        stderr_raw = plan.stderr_path.read_bytes()
+        target_rank = plan.target_visible_device
+        assert target_rank is not None
+        target_artifact = next(
+            artifact
+            for artifact in artifacts
+            if artifact["local_rank"] == target_rank
+        )
+        peer_artifact = next(
+            artifact
+            for artifact in artifacts
+            if artifact["local_rank"] == 1 - target_rank
+        )
+        target_report = target_artifact.get("application_report", {})
+        counters_validated = all(
+            artifact.get("generation_counter", {}).get(
+                "observed_generation_counter"
+            )
+            == SINGLE_RANK_EXPECTED_APPLICATION_PASSES
+            for artifact in artifacts
+        )
+        generation_process_ids = {
+            process_id
+            for generation in generations
+            for process_id in (
+                *generation["bootstrap_process_ids"].values(),
+                *generation["execution_process_ids"].values(),
+            )
+        }
+        gate_wrapper_pids = {
+            gate["payload"]["wrapper_pid"] for gate in generation_gates
+        }
+        generation_process_ids_disjoint = not generation_process_ids.intersection(
+            gate_wrapper_pids
+        )
+        paired_generations_validated = (
+            len(generations) == SINGLE_RANK_EXPECTED_APPLICATION_PASSES
+            and len(generation_gates)
+            == WORLD_SIZE * SINGLE_RANK_EXPECTED_APPLICATION_PASSES
+            and counters_validated
+            and isinstance(peer_artifact.get("peer_dispatch"), dict)
+            and generation_process_ids_disjoint
+        )
+        target_report_validated = imports_attempted and not artifact_errors
+        receipt.update(
+            stdout=stdout_artifact,
+            stderr={
+                "path": str(plan.stderr_path),
+                "bytes": len(stderr_raw),
+                "sha256": hashlib.sha256(stderr_raw).hexdigest(),
+            },
+            replay_generation_count=len(generations),
+            replay_generations=generations,
+            generation_gate_count=len(generation_gates),
+            generation_gates=generation_gates,
+            generation_process_ids_disjoint=generation_process_ids_disjoint,
+            paired_generations_validated=paired_generations_validated,
+            native_report_imports_attempted=imports_attempted,
+            target_native_report_validated=target_report_validated,
+            peer_ncu_artifacts_absent_validated=(
+                peer_artifact.get("ncu_artifacts_absent") is True
+            ),
+            both_devices_covered_by_this_receipt=False,
+            profiler_pass_count_by_rank={
+                str(target_rank): (
+                    target_report.get("rows", [{}])[0].get("profiler_pass_count")
+                    if plan.is_multirow_rank_application
+                    and target_report.get("rows")
+                    else target_report.get("row", {}).get("profiler_pass_count")
+                )
+            },
+        )
+        if plan.is_multirow_rank_application:
+            receipt.update(
+                observed_kernel_count_on_target_rank=target_report.get(
+                    "observed_row_count"
+                ),
+                log_marker_policy_on_target_rank=target_artifact.get(
+                    "ncu_log", {}
+                ).get("marker_policy"),
+                zero_metric_counts_on_target_rank=target_report.get(
+                    "zero_metric_counts"
+                ),
+            )
+            if plan.all_matching_kernels:
+                receipt["target_rank_all_matching_rows_validated"] = (
+                    target_report_validated
+                )
+            else:
+                receipt["target_rank_window_rows_validated"] = (
+                    target_report_validated
+                )
     _write_json(plan.receipt_path, receipt)
     return NcuTorchrunCaptureResult(
         status,
@@ -2202,7 +3731,8 @@ def _args(argv: Sequence[str] | None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
             "Two-rank NCU capture with TCP/lockstep kernel or range replay, or bounded "
-            "parent or rank-tcp application replay. Pass a torchrun-wrapper command after --."
+            "parent, rank-tcp, or rank-single application replay. Pass a "
+            "torchrun-wrapper command after --."
         )
     )
     parser.add_argument("--label", required=True)
@@ -2214,13 +3744,41 @@ def _args(argv: Sequence[str] | None) -> argparse.Namespace:
     parser.add_argument("--timeout-seconds", required=True, type=float)
     parser.add_argument("--all-matching-kernels", action="store_true")
     parser.add_argument(
+        "--kernel-window",
+        nargs=2,
+        type=int,
+        metavar=("START", "COUNT"),
+        help=(
+            "Capture one contiguous zero-based window after kernel-name filtering. "
+            "COUNT must be between 1 and 64. Rank-tcp and rank-single application "
+            "replay are supported."
+        ),
+    )
+    parser.add_argument(
         "--replay-mode", choices=("application", "kernel", "range"), default="kernel"
     )
     parser.add_argument(
-        "--application-topology", choices=("parent", "rank-tcp"), default="parent"
+        "--application-topology",
+        choices=("parent", "rank-tcp", "rank-single"),
+        default="parent",
     )
     parser.add_argument("--expected-application-passes", type=int)
     parser.add_argument("--application-rdzv-port-base", type=int)
+    parser.add_argument(
+        "--expected-kernel-counts",
+        nargs=WORLD_SIZE,
+        type=_positive_kernel_count,
+        metavar=("RANK0", "RANK1"),
+    )
+    parser.add_argument(
+        "--report-import-timeout-seconds",
+        type=float,
+        default=60.0,
+        help=(
+            "Per-report import timeout for all-matching or kernel-window rank-local "
+            "application replay. The default is 60 seconds."
+        ),
+    )
     parser.add_argument("--nvtx-include", action="append", dest="includes")
     parser.add_argument("--target-visible-device", type=int)
     parser.add_argument("--kernel-name")
@@ -2249,6 +3807,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             nccl_nvtx_includes=args.includes,
             torchrun_argv=args.torchrun_argv,
             all_matching_kernels=args.all_matching_kernels,
+            kernel_window=(
+                tuple(args.kernel_window) if args.kernel_window is not None else None
+            ),
             replay_mode=args.replay_mode,
             target_visible_device=args.target_visible_device,
             kernel_name=args.kernel_name,
@@ -2257,6 +3818,12 @@ def main(argv: Sequence[str] | None = None) -> int:
             application_topology=args.application_topology,
             expected_application_passes=args.expected_application_passes,
             application_rdzv_port_base=args.application_rdzv_port_base,
+            expected_kernel_counts=(
+                tuple(args.expected_kernel_counts)
+                if args.expected_kernel_counts is not None
+                else None
+            ),
+            report_import_timeout_seconds=args.report_import_timeout_seconds,
         )
         result = run_capture(plan)
     except (OSError, RuntimeError, ValueError, subprocess.SubprocessError) as exc:

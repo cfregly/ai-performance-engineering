@@ -15,6 +15,7 @@ import io
 import json
 import math
 import os
+import re
 import signal
 import socket
 import subprocess
@@ -22,9 +23,11 @@ import sys
 import time
 from contextlib import suppress
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
+import core.profiling.ncu_torchrun_capture as ncu_capture
 from core.benchmark.run_manifest import capture_runtime_provenance
 from core.harness.torchrun_runtime_provenance import (
     TORCHRUN_RUNTIME_PROVENANCE_PREFIX,
@@ -33,9 +36,13 @@ from core.harness.torchrun_runtime_provenance import (
 from core.profiling.ncu_torchrun_capture import (
     APPLICATION_CAPTURE_RECEIPT_SCHEMA,
     CAPTURE_RECEIPT_SCHEMA,
+    RANK_APPLICATION_ALL_MATCHING_CAPTURE_RECEIPT_SCHEMA,
     RANK_APPLICATION_CAPTURE_RECEIPT_SCHEMA,
+    RANK_APPLICATION_KERNEL_WINDOW_CAPTURE_RECEIPT_SCHEMA,
     _CAPTURE_OWNER_ENV,
+    _all_matching_application_rows,
     _application_report_artifact,
+    _args,
     _cleanup_capture_processes,
     _drain_owned_process_group,
     _marked_pids,
@@ -44,6 +51,7 @@ from core.profiling.ncu_torchrun_capture import (
     _parse_rank_application_log,
     _proc_cleanup_supported,
     _rank_application_evidence,
+    _run_all_matching_report_import,
     _snapshot_proc_identities,
     build_capture_plan,
 )
@@ -76,6 +84,17 @@ def test_two_rank_capture_docs_cover_each_explicit_replay_topology() -> None:
     assert "--application-topology rank-tcp" in section
     assert "--expected-application-passes" in section
     assert "--application-rdzv-port-base" in section
+    assert "--expected-kernel-counts" in section
+    assert "--all-matching-kernels" in section
+    assert "--kernel-window START COUNT" in section
+    assert "NCU_TIMEOUT_SECONDS=1800" in section
+    assert 'NCU_REPORT_IMPORT_TIMEOUT_SECONDS=600' in section
+    assert '--timeout-seconds "$NCU_TIMEOUT_SECONDS"' in section
+    assert (
+        '--report-import-timeout-seconds "$NCU_REPORT_IMPORT_TIMEOUT_SECONDS"'
+        in section
+    )
+    assert "--kernel-name \"$KERNEL_NAME\" --launch-skip 0" in section
     assert "TORCHELASTIC_USE_AGENT_STORE=False" in section
     assert "KERNEL_NAME='regex:ncclDevKernel_AllReduce.*'" in section
     assert "LAUNCH_SKIP=2" in section
@@ -178,6 +197,39 @@ def _rank_application_plan(
     }
     values.update(overrides)
     return _plan(tmp_path, command, **values)
+
+
+def _all_matching_rank_application_plan(
+    tmp_path: Path,
+    command: list[str] | None = None,
+    **overrides,
+):
+    values = {
+        "all_matching_kernels": True,
+        "launch_skip": 0,
+        "launch_count": None,
+        "expected_application_passes": 9,
+        "expected_kernel_counts": (2, 3),
+    }
+    values.update(overrides)
+    return _rank_application_plan(tmp_path, command, **values)
+
+
+def _kernel_window_rank_application_plan(
+    tmp_path: Path,
+    command: list[str] | None = None,
+    **overrides,
+):
+    values = {
+        "all_matching_kernels": False,
+        "launch_skip": None,
+        "launch_count": None,
+        "expected_application_passes": 9,
+        "expected_kernel_counts": (6, 7),
+        "kernel_window": (2, 3),
+    }
+    values.update(overrides)
+    return _rank_application_plan(tmp_path, command, **values)
 
 
 @functools.lru_cache(maxsize=1)
@@ -331,9 +383,12 @@ def _rank_application_generation(
 
 
 def _rank_application_log(
-    *, local_rank: int, communicator_rank: int, pass_count: int
+    *,
+    local_rank: int,
+    communicator_rank: int,
+    pass_count: int,
+    kernel_names: tuple[str, ...] = ("ncclDevKernel_AllReduce_Sum_f32_RING_LL",),
 ) -> bytes:
-    kernel_name = "ncclDevKernel_AllReduce_Sum_f32_RING_LL"
     lines = [
         f"==PROF== [Comm rank {communicator_rank}]  Connected to process 1000\n"
     ]
@@ -342,6 +397,7 @@ def _rank_application_log(
         f"[Comm rank {communicator_rank}]  Profiling on device {local_rank} : "
         f'"{kernel_name}": Application replay pass {pass_number}\n'
         for pass_number in range(1, pass_count + 1)
+        for kernel_name in kernel_names
     )
     return "".join(lines).encode("utf-8")
 
@@ -389,6 +445,94 @@ def _application_csv(
     return stream.getvalue()
 
 
+def _all_matching_application_csv(
+    *,
+    process_id: int,
+    row_ids: tuple[int, ...],
+    pass_count: int = 9,
+    device: int = 0,
+    row_updates: dict[int, dict[str, str]] | None = None,
+) -> str:
+    metrics = [
+        "gpu__time_duration.avg",
+        "sm__throughput.avg.pct_of_peak_sustained_elapsed",
+        "gpu__dram_throughput.avg.pct_of_peak_sustained_elapsed",
+        "lts__throughput.avg.pct_of_peak_sustained_elapsed",
+        "sm__warps_active.avg.pct_of_peak_sustained_active",
+    ]
+    header = [
+        "ID",
+        "Process ID",
+        "Device",
+        "device__attribute_device_index",
+        "Kernel Name",
+        "profiler__replayer_passes",
+        *metrics,
+    ]
+    units = ["", "", "", "", "", "", "ns", "%", "%", "%", "%"]
+    data_rows: list[list[str]] = []
+    for data_index, row_id in enumerate(row_ids):
+        fields = {
+            "ID": str(row_id),
+            "Process ID": str(process_id),
+            "Device": str(device),
+            "device__attribute_device_index": str(device),
+            "Kernel Name": f"ncclDevKernel_AllReduce_Sum_f32_RING_LL_{data_index}",
+            "profiler__replayer_passes": str(pass_count),
+            "gpu__time_duration.avg": "1000",
+            "sm__throughput.avg.pct_of_peak_sustained_elapsed": "25",
+            "gpu__dram_throughput.avg.pct_of_peak_sustained_elapsed": "20",
+            "lts__throughput.avg.pct_of_peak_sustained_elapsed": "15",
+            "sm__warps_active.avg.pct_of_peak_sustained_active": "50",
+        }
+        fields.update((row_updates or {}).get(data_index, {}))
+        data_rows.append([fields[column] for column in header])
+    stream = io.StringIO()
+    writer = csv.writer(stream, lineterminator="\n")
+    writer.writerows((header, units, *data_rows))
+    return stream.getvalue()
+
+
+def _invalid_all_matching_application_csv(case: str) -> str:
+    row_ids = (0, 1, 2)
+    row_updates: dict[int, dict[str, str]] = {}
+    if case == "missing-row":
+        row_ids = (0, 1)
+    elif case == "extra-row":
+        row_ids = (0, 1, 2, 3)
+    elif case == "duplicate-row-id":
+        row_ids = (0, 1, 1)
+    elif case == "gapped-row-id":
+        row_ids = (0, 1, 3)
+    elif case == "wrong-process":
+        row_updates = {1: {"Process ID": "999"}}
+    elif case == "wrong-device":
+        row_updates = {1: {"Device": "1"}}
+    elif case == "wrong-pass-count":
+        row_updates = {1: {"profiler__replayer_passes": "8"}}
+    elif case == "nonfinite-metric":
+        row_updates = {
+            1: {"gpu__dram_throughput.avg.pct_of_peak_sustained_elapsed": "nan"}
+        }
+    elif case == "percentage-over-100":
+        row_updates = {
+            1: {"sm__throughput.avg.pct_of_peak_sustained_elapsed": "101"}
+        }
+    elif case == "zero-duration":
+        row_updates = {1: {"gpu__time_duration.avg": "0"}}
+    elif case == "zero-active-warps":
+        row_updates = {
+            1: {"sm__warps_active.avg.pct_of_peak_sustained_active": "0"}
+        }
+    else:
+        raise AssertionError(f"unsupported all-matching CSV test case: {case}")
+    return _all_matching_application_csv(
+        process_id=30_000,
+        row_ids=row_ids,
+        row_updates=row_updates,
+    )
+
+
 def _invalid_application_csv(case: str) -> str:
     rows = list(csv.reader(io.StringIO(_application_csv(process_id=102))))
     header, _, values = rows
@@ -404,6 +548,14 @@ def _invalid_application_csv(case: str) -> str:
             del row[index]
     elif case == "nonfinite-metric":
         values[header.index("gpu__time_duration.avg")] = "nan"
+    elif case == "zero-metric":
+        values[
+            header.index("sm__throughput.avg.pct_of_peak_sustained_elapsed")
+        ] = "0"
+    elif case == "percentage-over-100":
+        values[
+            header.index("sm__throughput.avg.pct_of_peak_sustained_elapsed")
+        ] = "101"
     elif case == "duplicate-header":
         header[header.index("gpu__time_duration.avg")] = "Device"
     elif case == "multiple-data-rows":
@@ -500,16 +652,22 @@ def _make_git_repo(tmp_path: Path) -> tuple[Path, Path, str]:
     return repo, target, source
 
 
-def _make_fake_ncu(path: Path, marker: Path | None = None) -> Path:
+def _make_fake_ncu(
+    path: Path,
+    marker: Path | None = None,
+    *,
+    version_output: str = "Version 2026.2.1.0 (test control plane)",
+) -> Path:
     path.write_text(
         "#!/usr/bin/env python3\n"
         "import os, sys\n"
         "from pathlib import Path\n"
         f"marker = Path({str(marker)!r}) if {marker is not None!r} else None\n"
+        f"version_output = {version_output!r}\n"
         "if marker is not None:\n"
         "    marker.write_text('invoked\\n')\n"
         "if sys.argv[1:] == ['--version']:\n"
-        "    print('Version 2026.2.1.0 (test control plane)')\n"
+        "    print(version_output)\n"
         "    raise SystemExit(0)\n"
         "if '--replay-mode' in sys.argv and sys.argv[sys.argv.index('--replay-mode') + 1] == 'range' and '--kernel-name' in sys.argv:\n"
         "    print('Option kernel-name is not supported during range replay.', file=sys.stderr)\n"
@@ -574,6 +732,89 @@ def _capture_environment(repo: Path) -> dict[str, str]:
         }
     )
     return environment
+
+
+def _preflight_for_ncu_version(tmp_path: Path, version_output: str) -> dict[str, object]:
+    repo, target, source = _make_git_repo(tmp_path)
+    fake_ncu = _make_fake_ncu(
+        tmp_path / "ncu",
+        version_output=version_output,
+    )
+    plan = _plan(
+        repo,
+        command=_torchrun_command(target),
+        source=source,
+        ncu_path=fake_ncu,
+    )
+    return ncu_capture._preflight(plan, _capture_environment(repo))
+
+
+@pytest.mark.parametrize(
+    "version_output",
+    (
+        "Version 2026.2.1.0 (build 38283040) (public-release)",
+        "Version 2026.3.1.0 (build 38829034) (public-release)",
+    ),
+)
+def test_preflight_accepts_exact_supported_ncu_version_tokens(
+    tmp_path: Path,
+    version_output: str,
+) -> None:
+    metadata = _preflight_for_ncu_version(tmp_path, version_output)
+
+    assert ncu_capture.SUPPORTED_NCU_VERSIONS == ("2026.2.1.0", "2026.3.1.0")
+    assert metadata["ncu_version"] == version_output
+
+
+@pytest.mark.parametrize(
+    "version_output",
+    (
+        "Version 2026.3.2.0 (unsupported numeric version)",
+        "Version 2026.2.10.0 (unsupported numeric prefix)",
+        "Version 2026.3.1 (prefix only)",
+        "Version 2026.3.1.0-extra (malformed token)",
+        "NCU version is unavailable",
+        "Version 2026.2.1.0\nVersion 2026.3.1.0",
+        "Version 2026.3.1.0\nVersion unavailable",
+    ),
+)
+def test_preflight_rejects_unrecognized_or_ambiguous_ncu_versions(
+    tmp_path: Path,
+    version_output: str,
+) -> None:
+    with pytest.raises(
+        ValueError,
+        match=(
+            r"Supported NCU versions are 2026\.2\.1\.0 and 2026\.3\.1\.0\. "
+            r"Observed"
+        ),
+    ):
+        _preflight_for_ncu_version(tmp_path, version_output)
+
+
+def test_new_supported_ncu_version_does_not_bypass_existing_clock_gate(
+    tmp_path: Path,
+) -> None:
+    repo, target, source = _make_git_repo(tmp_path)
+    marker = tmp_path / "ncu-invoked"
+    fake_ncu = _make_fake_ncu(
+        tmp_path / "ncu",
+        marker=marker,
+        version_output="Version 2026.3.1.0 (build 38829034) (public-release)",
+    )
+    plan = _plan(
+        repo,
+        command=_torchrun_command(target),
+        source=source,
+        ncu_path=fake_ncu,
+    )
+    environment = _capture_environment(repo)
+    environment["AISP_RAMP_GPU_CLOCKS"] = "0"
+
+    with pytest.raises(ValueError, match="AISP_RAMP_GPU_CLOCKS=1 is required"):
+        ncu_capture._preflight(plan, environment)
+
+    assert not marker.exists()
 
 
 def test_plan_exposes_exact_rank_commands_and_scoped_lockstep(tmp_path: Path) -> None:
@@ -730,6 +971,386 @@ def test_rank_tcp_application_plan_exposes_exact_rank_commands(tmp_path: Path) -
         assert "%q{LOCAL_RANK}" not in " ".join(plan.expected_rank_argv(local_rank))
 
 
+def test_all_matching_application_control_plane_plan_has_no_launch_cutoff(
+    tmp_path: Path,
+) -> None:
+    plan = _all_matching_rank_application_plan(
+        tmp_path,
+        report_import_timeout_seconds=600.0,
+    )
+
+    assert plan.all_matching_kernels is True
+    assert plan.expected_kernel_counts == (2, 3)
+    assert plan.launch_skip == 0
+    assert plan.launch_count is None
+    assert plan.expected_application_passes == 9
+    assert plan.report_import_timeout_seconds == 600.0
+    assert (
+        RANK_APPLICATION_ALL_MATCHING_CAPTURE_RECEIPT_SCHEMA
+        == "aisp.ncu-torchrun-rank-application-all-matching-capture.v1"
+    )
+    assert plan.ncu_prefix[plan.ncu_prefix.index("--launch-skip") + 1] == "0"
+    assert "--launch-count" not in plan.ncu_prefix
+    assert all(
+        "--launch-count" not in plan.expected_rank_argv(local_rank)
+        for local_rank in (0, 1)
+    )
+
+
+def test_kernel_window_application_plan_derives_bounded_native_selector(
+    tmp_path: Path,
+) -> None:
+    plan = _kernel_window_rank_application_plan(
+        tmp_path,
+        report_import_timeout_seconds=600.0,
+    )
+
+    assert plan.kernel_window == (2, 3)
+    assert plan.expected_kernel_counts == (6, 7)
+    assert plan.expected_captured_kernel_counts == (3, 3)
+    assert plan.all_matching_kernels is False
+    assert plan.launch_skip == 2
+    assert plan.launch_count == 3
+    assert plan.expected_application_passes == 9
+    assert plan.report_import_timeout_seconds == 600.0
+    assert (
+        RANK_APPLICATION_KERNEL_WINDOW_CAPTURE_RECEIPT_SCHEMA
+        == "aisp.ncu-torchrun-rank-application-kernel-window-capture.v1"
+    )
+    assert plan.ncu_prefix[plan.ncu_prefix.index("--launch-skip") + 1] == "2"
+    assert plan.ncu_prefix[plan.ncu_prefix.index("--launch-count") + 1] == "3"
+    assert plan.ncu_prefix[plan.ncu_prefix.index("--app-replay-buffer") + 1] == "file"
+    assert "--nvtx" in plan.ncu_prefix
+    assert "--nvtx-include" not in plan.ncu_prefix
+    assert "--nvtx-exclude" not in plan.ncu_prefix
+    assert plan.ncu_prefix[plan.ncu_prefix.index("--kill") + 1] == "no"
+    for local_rank in (0, 1):
+        rank_argv = plan.expected_rank_argv(local_rank)
+        assert rank_argv[rank_argv.index("--launch-skip") + 1] == "2"
+        assert rank_argv[rank_argv.index("--launch-count") + 1] == "3"
+
+
+def test_kernel_window_application_cli_parses_start_count_and_full_counts(
+    tmp_path: Path,
+) -> None:
+    args = _args(
+        [
+            "--label",
+            "window-control-plane",
+            "--repo-root",
+            str(tmp_path),
+            "--source",
+            "a" * 40,
+            "--output-dir",
+            str(tmp_path / "capture"),
+            "--ncu",
+            str(tmp_path / "ncu"),
+            "--tcp-port",
+            "31001",
+            "--timeout-seconds",
+            "30",
+            "--report-import-timeout-seconds",
+            "600",
+            "--replay-mode",
+            "application",
+            "--application-topology",
+            "rank-tcp",
+            "--expected-application-passes",
+            "9",
+            "--application-rdzv-port-base",
+            "31100",
+            "--expected-kernel-counts",
+            "481",
+            "481",
+            "--kernel-window",
+            "64",
+            "64",
+            "--kernel-name",
+            "regex:ncclDevKernel.*",
+            "--",
+            *_torchrun_command(tmp_path / "target.py"),
+        ]
+    )
+
+    assert args.kernel_window == [64, 64]
+    assert args.expected_kernel_counts == [481, 481]
+    assert args.launch_skip is None
+    assert args.launch_count is None
+    assert args.all_matching_kernels is False
+    assert args.report_import_timeout_seconds == 600.0
+
+
+def test_all_matching_application_control_plane_cli_parses_two_rank_counts(
+    tmp_path: Path,
+) -> None:
+    args = _args(
+        [
+            "--label",
+            "all-matching-control-plane",
+            "--repo-root",
+            str(tmp_path),
+            "--source",
+            "a" * 40,
+            "--output-dir",
+            str(tmp_path / "capture"),
+            "--ncu",
+            str(tmp_path / "ncu"),
+            "--tcp-port",
+            "31001",
+            "--timeout-seconds",
+            "30",
+            "--report-import-timeout-seconds",
+            "600",
+            "--all-matching-kernels",
+            "--replay-mode",
+            "application",
+            "--application-topology",
+            "rank-tcp",
+            "--expected-application-passes",
+            "9",
+            "--application-rdzv-port-base",
+            "31100",
+            "--expected-kernel-counts",
+            "2",
+            "3",
+            "--kernel-name",
+            "regex:ncclDevKernel.*",
+            "--launch-skip",
+            "0",
+            "--",
+            *_torchrun_command(tmp_path / "target.py"),
+        ]
+    )
+
+    assert args.expected_kernel_counts == [2, 3]
+    assert args.launch_count is None
+    assert args.all_matching_kernels is True
+    assert args.report_import_timeout_seconds == 600.0
+
+
+def test_report_import_timeout_control_plane_keeps_legacy_default(
+    tmp_path: Path,
+) -> None:
+    plans = (
+        _plan(tmp_path),
+        _application_plan(tmp_path),
+        _rank_application_plan(tmp_path),
+        _all_matching_rank_application_plan(tmp_path),
+        _kernel_window_rank_application_plan(tmp_path),
+    )
+
+    assert all(plan.report_import_timeout_seconds == 60.0 for plan in plans)
+
+
+def test_report_import_timeout_control_plane_cli_propagates_budget(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify CLI wiring only. This does not represent a profiler capture."""
+
+    observed: dict[str, object] = {}
+    sentinel_plan = object()
+
+    def fake_build_capture_plan(**kwargs: object) -> object:
+        observed.update(kwargs)
+        return sentinel_plan
+
+    monkeypatch.setattr(ncu_capture, "build_capture_plan", fake_build_capture_plan)
+    monkeypatch.setattr(
+        ncu_capture,
+        "run_capture",
+        lambda _plan: SimpleNamespace(
+            status="CAPTURE_ARTIFACTS_PRESENT",
+            returncode=0,
+            timed_out=False,
+            receipt_path=tmp_path / "receipt.json",
+        ),
+    )
+    result = ncu_capture.main(
+        [
+            "--label",
+            "all-matching-control-plane",
+            "--repo-root",
+            str(tmp_path),
+            "--source",
+            "a" * 40,
+            "--output-dir",
+            str(tmp_path / "capture"),
+            "--ncu",
+            str(tmp_path / "ncu"),
+            "--tcp-port",
+            "31001",
+            "--timeout-seconds",
+            "1800",
+            "--report-import-timeout-seconds",
+            "600",
+            "--all-matching-kernels",
+            "--replay-mode",
+            "application",
+            "--application-topology",
+            "rank-tcp",
+            "--expected-application-passes",
+            "9",
+            "--application-rdzv-port-base",
+            "31100",
+            "--expected-kernel-counts",
+            "2",
+            "3",
+            "--kernel-name",
+            "regex:ncclDevKernel.*",
+            "--launch-skip",
+            "0",
+            "--",
+            *_torchrun_command(tmp_path / "target.py"),
+        ]
+    )
+
+    assert result == 0
+    assert observed["report_import_timeout_seconds"] == 600.0
+    assert observed["timeout_seconds"] == 1800.0
+    assert observed["expected_kernel_counts"] == (2, 3)
+
+
+def test_kernel_window_cli_propagates_public_tuple_without_fake_capture_success(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify CLI wiring only. This does not represent a profiler capture."""
+
+    observed: dict[str, object] = {}
+    sentinel_plan = object()
+
+    def fake_build_capture_plan(**kwargs: object) -> object:
+        observed.update(kwargs)
+        return sentinel_plan
+
+    monkeypatch.setattr(ncu_capture, "build_capture_plan", fake_build_capture_plan)
+    monkeypatch.setattr(
+        ncu_capture,
+        "run_capture",
+        lambda plan: SimpleNamespace(
+            status="CAPTURE_FAILED",
+            returncode=1,
+            timed_out=False,
+            receipt_path=tmp_path / "receipt.json",
+        ),
+    )
+    result = ncu_capture.main(
+        [
+            "--label",
+            "window-control-plane",
+            "--repo-root",
+            str(tmp_path),
+            "--source",
+            "a" * 40,
+            "--output-dir",
+            str(tmp_path / "capture"),
+            "--ncu",
+            str(tmp_path / "ncu"),
+            "--tcp-port",
+            "31001",
+            "--timeout-seconds",
+            "1800",
+            "--report-import-timeout-seconds",
+            "600",
+            "--replay-mode",
+            "application",
+            "--application-topology",
+            "rank-tcp",
+            "--expected-application-passes",
+            "9",
+            "--application-rdzv-port-base",
+            "31100",
+            "--expected-kernel-counts",
+            "481",
+            "481",
+            "--kernel-window",
+            "64",
+            "64",
+            "--kernel-name",
+            "regex:ncclDevKernel.*",
+            "--",
+            *_torchrun_command(tmp_path / "target.py"),
+        ]
+    )
+
+    assert result == 1
+    assert observed["kernel_window"] == (64, 64)
+    assert observed["expected_kernel_counts"] == (481, 481)
+    assert observed["launch_skip"] is None
+    assert observed["launch_count"] is None
+    assert observed["all_matching_kernels"] is False
+    assert observed["report_import_timeout_seconds"] == 600.0
+
+
+@pytest.mark.parametrize(
+    "report_import_timeout_seconds",
+    [
+        None,
+        "600",
+        [],
+        True,
+        False,
+        0,
+        -1,
+        math.nan,
+        math.inf,
+        -math.inf,
+    ],
+)
+def test_report_import_timeout_control_plane_requires_finite_positive_number(
+    tmp_path: Path,
+    report_import_timeout_seconds: object,
+) -> None:
+    with pytest.raises(ValueError, match="report_import_timeout_seconds"):
+        _all_matching_rank_application_plan(
+            tmp_path,
+            report_import_timeout_seconds=report_import_timeout_seconds,
+        )
+
+
+@pytest.mark.parametrize(
+    "mode",
+    ["kernel", "range", "application-parent", "application-rank-selected"],
+)
+def test_nondefault_report_import_timeout_rejects_non_multirow_modes(
+    tmp_path: Path,
+    mode: str,
+) -> None:
+    message = (
+        "nondefault report_import_timeout_seconds requires all-matching or "
+        "kernel-window rank-local application replay"
+    )
+    with pytest.raises(ValueError, match=f"^{re.escape(message)}$"):
+        if mode == "kernel":
+            _plan(tmp_path, report_import_timeout_seconds=600.0)
+        elif mode == "range":
+            _plan(
+                tmp_path,
+                replay_mode="range",
+                all_matching_kernels=True,
+                report_import_timeout_seconds=600.0,
+            )
+        elif mode == "application-parent":
+            _application_plan(tmp_path, report_import_timeout_seconds=600.0)
+        else:
+            _rank_application_plan(
+                tmp_path,
+                report_import_timeout_seconds=600.0,
+            )
+
+
+def test_nondefault_report_import_timeout_accepts_kernel_window(
+    tmp_path: Path,
+) -> None:
+    plan = _kernel_window_rank_application_plan(
+        tmp_path,
+        report_import_timeout_seconds=600.0,
+    )
+
+    assert plan.report_import_timeout_seconds == 600.0
+
+
 @pytest.mark.parametrize(
     ("overrides", "match"),
     [
@@ -761,7 +1382,7 @@ def test_plan_rejects_unsupported_capture_options(
         ({"launch_count": 2}, "exactly 1"),
         ({"tcp_port": _free_port()}, "rejects tcp_port"),
         ({"nccl_nvtx_includes": NCCL_RANGES}, "rejects NCCL NVTX"),
-        ({"all_matching_kernels": True}, "rejects all_matching_kernels"),
+        ({"all_matching_kernels": True}, "requires rank-local topology"),
         ({"expected_application_passes": 2}, "rejects expected_application_passes"),
         ({"application_rdzv_port_base": 31_100}, "rejects application_rdzv_port_base"),
     ],
@@ -790,7 +1411,11 @@ def test_application_plan_rejects_missing_or_cross_mode_options(
             "ports must stay within",
         ),
         ({"nccl_nvtx_includes": NCCL_RANGES}, "rejects NCCL NVTX"),
-        ({"all_matching_kernels": True}, "rejects all_matching_kernels"),
+        ({"all_matching_kernels": True}, "requires launch_skip=0"),
+        (
+            {"expected_kernel_counts": (1, 1)},
+            "selected application replay rejects expected_kernel_counts",
+        ),
     ],
 )
 def test_rank_tcp_application_plan_rejects_missing_or_cross_mode_options(
@@ -798,6 +1423,151 @@ def test_rank_tcp_application_plan_rejects_missing_or_cross_mode_options(
 ) -> None:
     with pytest.raises(ValueError, match=match):
         _rank_application_plan(tmp_path, **overrides)
+
+
+@pytest.mark.parametrize(
+    ("overrides", "match"),
+    [
+        ({"expected_kernel_counts": None}, "requires expected_kernel_counts"),
+        ({"launch_skip": 1}, "requires launch_skip=0"),
+        ({"launch_count": 1}, "rejects launch_count"),
+        ({"expected_application_passes": 8}, "requires exactly 9 replay passes"),
+    ],
+)
+def test_all_matching_application_control_plane_rejects_unbounded_contracts(
+    tmp_path: Path, overrides: dict[str, object], match: str
+) -> None:
+    with pytest.raises(ValueError, match=match):
+        _all_matching_rank_application_plan(tmp_path, **overrides)
+
+
+@pytest.mark.parametrize(
+    "expected_kernel_counts",
+    [
+        [],
+        (),
+        (1,),
+        (1, 2, 3),
+        (0, 2),
+        (-1, 2),
+        (True, 2),
+        (1, 2.0),
+    ],
+)
+def test_all_matching_application_control_plane_requires_two_positive_exact_counts(
+    tmp_path: Path, expected_kernel_counts: object
+) -> None:
+    with pytest.raises(ValueError, match="tuple of two positive integers"):
+        _all_matching_rank_application_plan(
+            tmp_path,
+            expected_kernel_counts=expected_kernel_counts,
+        )
+
+
+@pytest.mark.parametrize(
+    ("kernel_window", "message"),
+    [
+        ([], "kernel_window must be a tuple of two integers"),
+        ((), "kernel_window must be a tuple of two integers"),
+        ((1,), "kernel_window must be a tuple of two integers"),
+        ((1, 2, 3), "kernel_window must be a tuple of two integers"),
+        ((1.0, 1), "kernel_window start must be a nonnegative integer"),
+        ((-1, 1), "kernel_window start must be a nonnegative integer"),
+        ((True, 1), "kernel_window start must be a nonnegative integer"),
+        ((0, 0), "kernel_window count must be a positive integer"),
+        ((0, True), "kernel_window count must be a positive integer"),
+        ((0, 1.0), "kernel_window count must be a positive integer"),
+        ((0, 65), "kernel_window count must be at most 64"),
+    ],
+)
+def test_kernel_window_requires_strict_bounded_integer_pair(
+    tmp_path: Path,
+    kernel_window: object,
+    message: str,
+) -> None:
+    with pytest.raises(ValueError, match=f"^{re.escape(message)}$"):
+        _kernel_window_rank_application_plan(
+            tmp_path,
+            kernel_window=kernel_window,
+        )
+
+
+@pytest.mark.parametrize(
+    ("overrides", "message"),
+    [
+        (
+            {"expected_kernel_counts": None},
+            "application kernel-window capture requires expected_kernel_counts",
+        ),
+        (
+            {"launch_skip": 0},
+            "application kernel-window capture rejects separately supplied "
+            "launch_skip or launch_count",
+        ),
+        (
+            {"launch_count": 1},
+            "application kernel-window capture rejects separately supplied "
+            "launch_skip or launch_count",
+        ),
+        (
+            {"expected_application_passes": 8},
+            "application kernel-window capture requires exactly 9 replay passes",
+        ),
+        (
+            {"kernel_window": (4, 3), "expected_kernel_counts": (6, 7)},
+            "kernel_window end 7 exceeds expected kernel count 6 for rank 0",
+        ),
+        (
+            {"kernel_window": (5, 2), "expected_kernel_counts": (7, 6)},
+            "kernel_window end 7 exceeds expected kernel count 6 for rank 1",
+        ),
+        (
+            {"all_matching_kernels": True},
+            "kernel_window is mutually exclusive with all_matching_kernels=True",
+        ),
+        (
+            {"application_topology": "parent"},
+            "application kernel-window capture requires rank-local topology",
+        ),
+    ],
+)
+def test_kernel_window_rejects_cross_mode_and_incomplete_contracts(
+    tmp_path: Path,
+    overrides: dict[str, object],
+    message: str,
+) -> None:
+    with pytest.raises(ValueError, match=f"^{re.escape(message)}$"):
+        _kernel_window_rank_application_plan(tmp_path, **overrides)
+
+
+@pytest.mark.parametrize(
+    "expected_kernel_counts",
+    [
+        [],
+        (),
+        (1,),
+        (1, 2, 3),
+        (0, 2),
+        (-1, 2),
+        (True, 2),
+        (1, 2.0),
+    ],
+)
+def test_kernel_window_requires_two_positive_full_rank_counts(
+    tmp_path: Path,
+    expected_kernel_counts: object,
+) -> None:
+    message = "expected_kernel_counts must be a tuple of two positive integers"
+    with pytest.raises(ValueError, match=f"^{re.escape(message)}$"):
+        _kernel_window_rank_application_plan(
+            tmp_path,
+            expected_kernel_counts=expected_kernel_counts,
+        )
+
+
+def test_non_application_modes_reject_kernel_window(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="rejects application options"):
+        _plan(tmp_path, kernel_window=(0, 1))
 
 
 def test_rank_tcp_application_plan_rejects_all_port_collisions(tmp_path: Path) -> None:
@@ -875,6 +1645,29 @@ def test_all_matching_kernels_omits_only_the_launch_limit(tmp_path: Path) -> Non
     del first_without_limit[limit_index : limit_index + 2]
     assert first_without_limit == list(all_matching.ncu_prefix)
     assert all_matching.all_matching_kernels is True
+
+
+def test_kernel_window_keeps_selected_and_full_application_prefixes_stable(
+    tmp_path: Path,
+) -> None:
+    selected = _rank_application_plan(tmp_path)
+    full = _all_matching_rank_application_plan(tmp_path)
+    window = _kernel_window_rank_application_plan(tmp_path)
+
+    assert selected.kernel_window is None
+    assert selected.ncu_prefix[selected.ncu_prefix.index("--launch-skip") + 1] == "22"
+    assert selected.ncu_prefix[selected.ncu_prefix.index("--launch-count") + 1] == "1"
+    assert "--nvtx" not in selected.ncu_prefix
+    assert "--app-replay-buffer" not in selected.ncu_prefix
+
+    assert full.kernel_window is None
+    assert full.ncu_prefix[full.ncu_prefix.index("--launch-skip") + 1] == "0"
+    assert "--launch-count" not in full.ncu_prefix
+    assert "--nvtx" in full.ncu_prefix
+    assert "--app-replay-buffer" not in full.ncu_prefix
+
+    assert window.kernel_window == (2, 3)
+    assert window.ncu_prefix[window.ncu_prefix.index("--app-replay-buffer") + 1] == "file"
 
 
 def test_range_replay_omits_per_kernel_filter_and_launch_limit(
@@ -1190,6 +1983,131 @@ def test_rank_tcp_logs_accept_real_communicator_prefix_independent_of_local_rank
 
 
 @pytest.mark.parametrize(
+    ("local_rank", "communicator_rank", "kernel_count"),
+    [(0, 1, 2), (1, 0, 3)],
+)
+def test_all_matching_application_control_plane_log_groups_nine_passes(
+    tmp_path: Path,
+    local_rank: int,
+    communicator_rank: int,
+    kernel_count: int,
+) -> None:
+    plan = _all_matching_rank_application_plan(tmp_path)
+    plan.output_dir.mkdir()
+    kernel_names = tuple(
+        f"ncclDevKernel_AllReduce_Sum_f32_RING_LL_{index}"
+        for index in range(kernel_count)
+    )
+    plan.rank_log_path(local_rank).write_bytes(
+        _rank_application_log(
+            local_rank=local_rank,
+            communicator_rank=communicator_rank,
+            pass_count=9,
+            kernel_names=kernel_names,
+        )
+    )
+
+    artifact = _parse_rank_application_log(plan, local_rank)
+
+    assert artifact["marker_policy"] == "one-marker-per-matching-kernel-per-pass"
+    assert artifact["markers_per_pass"] == kernel_count
+    assert artifact["expected_matching_kernel_count"] == kernel_count
+    assert artifact["communicator_rank"] == communicator_rank
+    assert artifact["stable_kernel_order"] is True
+    assert artifact["kernel_order"] == list(kernel_names)
+    assert [marker["application_replay_pass"] for marker in artifact["markers"]] == [
+        pass_number
+        for pass_number in range(1, 10)
+        for _ in range(kernel_count)
+    ]
+
+
+@pytest.mark.parametrize(
+    ("local_rank", "communicator_rank"),
+    [(0, 1), (1, 0)],
+)
+def test_kernel_window_log_validates_captured_count_instead_of_full_count(
+    tmp_path: Path,
+    local_rank: int,
+    communicator_rank: int,
+) -> None:
+    plan = _kernel_window_rank_application_plan(
+        tmp_path,
+        expected_kernel_counts=(481, 481),
+        kernel_window=(64, 3),
+    )
+    plan.output_dir.mkdir()
+    kernel_names = tuple(
+        f"ncclDevKernel_AllReduce_Sum_f32_RING_LL_{index}"
+        for index in range(3)
+    )
+    plan.rank_log_path(local_rank).write_bytes(
+        _rank_application_log(
+            local_rank=local_rank,
+            communicator_rank=communicator_rank,
+            pass_count=9,
+            kernel_names=kernel_names,
+        )
+    )
+
+    artifact = _parse_rank_application_log(plan, local_rank)
+
+    assert artifact["marker_policy"] == "one-marker-per-matching-kernel-per-pass"
+    assert artifact["markers_per_pass"] == 3
+    assert artifact["expected_matching_kernel_count"] == 3
+    assert artifact["stable_kernel_order"] is True
+    assert artifact["kernel_order"] == list(kernel_names)
+
+
+def test_all_matching_application_control_plane_log_rejects_pass_or_order_drift(
+    tmp_path: Path,
+) -> None:
+    plan = _all_matching_rank_application_plan(tmp_path)
+    plan.output_dir.mkdir()
+    raw = _rank_application_log(
+        local_rank=0,
+        communicator_rank=1,
+        pass_count=9,
+        kernel_names=(
+            "ncclDevKernel_AllReduce_Sum_f32_RING_LL_0",
+            "ncclDevKernel_AllReduce_Sum_f32_RING_LL_1",
+        ),
+    )
+    wrong_pass_group = raw.replace(
+        b"Application replay pass 9",
+        b"Application replay pass 8",
+        1,
+    )
+    missing_communicator_rank = raw.replace(
+        b"==PROF== [Comm rank 1]  Profiling",
+        b"==PROF== Profiling",
+        1,
+    )
+    drifting_communicator_rank = raw.replace(
+        b"==PROF== [Comm rank 1]  Profiling",
+        b"==PROF== [Comm rank 0]  Profiling",
+        1,
+    )
+    wrong_order_lines = raw.splitlines(keepends=True)
+    pass_five_start = 1 + 4 * 2
+    wrong_order_lines[pass_five_start], wrong_order_lines[pass_five_start + 1] = (
+        wrong_order_lines[pass_five_start + 1],
+        wrong_order_lines[pass_five_start],
+    )
+    wrong_order = b"".join(wrong_order_lines)
+
+    for invalid_log, match in (
+        (wrong_pass_group, "replay pass groups differ"),
+        (wrong_order, "kernel marker order drifted"),
+        (missing_communicator_rank, "missing a communicator rank"),
+        (drifting_communicator_rank, "communicator rank changed"),
+    ):
+        plan.rank_log_path(0).write_bytes(invalid_log)
+        with pytest.raises(ValueError, match=match):
+            _parse_rank_application_log(plan, 0)
+
+
+@pytest.mark.parametrize(
     ("raw_log", "local_rank", "match"),
     [
         (
@@ -1352,13 +2270,458 @@ def test_rank_tcp_evidence_gates_then_validates_both_native_reports(
     )
 
 
-def test_application_report_import_validates_one_selected_row(tmp_path: Path) -> None:
+def test_all_matching_application_control_plane_evidence_validates_exact_rank_rows(
+    tmp_path: Path,
+) -> None:
+    pass_count = 9
+    expected_kernel_counts = (2, 3)
+    fake_ncu = _make_fake_rank_application_ncu(
+        tmp_path / "ncu",
+        rank0_csv=_all_matching_application_csv(
+            process_id=30_000,
+            row_ids=(0, 1),
+            device=0,
+        ),
+        rank1_csv=_all_matching_application_csv(
+            process_id=30_001,
+            row_ids=(0, 1, 2),
+            device=1,
+        ),
+    )
+    plan = _all_matching_rank_application_plan(
+        tmp_path,
+        ncu_path=fake_ncu,
+        expected_kernel_counts=expected_kernel_counts,
+        report_import_timeout_seconds=600.0,
+    )
+    plan.output_dir.mkdir()
+    assert plan.application_rdzv_port_base is not None
+    start_ns = time.time_ns()
+    plan.stdout_path.write_bytes(
+        b"".join(
+            _rank_application_generation(
+                generation,
+                master_port_base=plan.application_rdzv_port_base,
+                rank0_bootstrap_pid=20_000 + generation * 4,
+                rank1_bootstrap_pid=20_001 + generation * 4,
+                rank0_worker_pid=30_000 + generation * 4,
+                rank1_worker_pid=30_001 + generation * 4,
+            )
+            for generation in range(pass_count)
+        )
+    )
+    for local_rank, communicator_rank in ((0, 1), (1, 0)):
+        kernel_names = tuple(
+            f"ncclDevKernel_AllReduce_Sum_f32_RING_LL_{index}"
+            for index in range(expected_kernel_counts[local_rank])
+        )
+        plan.rank_log_path(local_rank).write_bytes(
+            _rank_application_log(
+                local_rank=local_rank,
+                communicator_rank=communicator_rank,
+                pass_count=pass_count,
+                kernel_names=kernel_names,
+            )
+        )
+        (plan.output_dir / f"rank-{local_rank}-generation.counter").write_text(
+            f"{pass_count}\n", encoding="ascii"
+        )
+        plan.rank_argv_path(local_rank).write_text(
+            json.dumps(list(plan.expected_rank_argv(local_rank))),
+            encoding="utf-8",
+        )
+        plan.report_path(local_rank).write_bytes(
+            f"rank {local_rank} synthetic control-plane report\n".encode("ascii")
+        )
+    fresh_mtime_ns = start_ns + 1_000_000_000
+    for local_rank in (0, 1):
+        for path in (
+            plan.report_path(local_rank),
+            plan.rank_argv_path(local_rank),
+            plan.output_dir / f"rank-{local_rank}-generation.counter",
+        ):
+            os.utime(path, ns=(fresh_mtime_ns, fresh_mtime_ns))
+
+    artifacts, generations, _, imports_attempted, errors = _rank_application_evidence(
+        plan,
+        start_ns=start_ns,
+        allow_report_import=True,
+    )
+
+    assert errors == []
+    assert imports_attempted is True
+    assert len(generations) == pass_count
+    for local_rank, expected_count in enumerate(expected_kernel_counts):
+        report = artifacts[local_rank]["application_report"]
+        assert "row" not in report
+        assert report["expected_row_count"] == expected_count
+        assert report["observed_row_count"] == expected_count
+        assert report["all_rows_validated"] is True
+        report_import = report["report_import"]
+        assert report_import["timeout_seconds"] == 600.0
+        assert report_import["timed_out"] is False
+        assert report_import["stdout"]["partial"] is False
+        assert report_import["stderr"]["partial"] is False
+        assert report_import["cleanup"] == {
+            "mode": "dedicated-process-group",
+            "natural": True,
+            "forced": False,
+            "signals_sent": [],
+            "drained": True,
+            "errors": [],
+        }
+        assert [row["id"] for row in report["rows"]] == list(
+            range(expected_count)
+        )
+
+
+def test_kernel_window_evidence_validates_exact_captured_rows_and_literal_argv(
+    tmp_path: Path,
+) -> None:
+    pass_count = 9
+    captured_count = 3
+    fake_ncu = _make_fake_rank_application_ncu(
+        tmp_path / "ncu",
+        rank0_csv=_all_matching_application_csv(
+            process_id=30_000,
+            row_ids=(0, 1, 2),
+            device=0,
+        ),
+        rank1_csv=_all_matching_application_csv(
+            process_id=30_001,
+            row_ids=(0, 1, 2),
+            device=1,
+        ),
+    )
+    plan = _kernel_window_rank_application_plan(
+        tmp_path,
+        ncu_path=fake_ncu,
+        expected_kernel_counts=(6, 7),
+        kernel_window=(2, captured_count),
+        report_import_timeout_seconds=600.0,
+    )
+    plan.output_dir.mkdir()
+    assert plan.application_rdzv_port_base is not None
+    start_ns = time.time_ns()
+    plan.stdout_path.write_bytes(
+        b"".join(
+            _rank_application_generation(
+                generation,
+                master_port_base=plan.application_rdzv_port_base,
+                rank0_bootstrap_pid=20_000 + generation * 4,
+                rank1_bootstrap_pid=20_001 + generation * 4,
+                rank0_worker_pid=30_000 + generation * 4,
+                rank1_worker_pid=30_001 + generation * 4,
+            )
+            for generation in range(pass_count)
+        )
+    )
+    for local_rank, communicator_rank in ((0, 1), (1, 0)):
+        kernel_names = tuple(
+            f"ncclDevKernel_AllReduce_Sum_f32_RING_LL_{index}"
+            for index in range(captured_count)
+        )
+        plan.rank_log_path(local_rank).write_bytes(
+            _rank_application_log(
+                local_rank=local_rank,
+                communicator_rank=communicator_rank,
+                pass_count=pass_count,
+                kernel_names=kernel_names,
+            )
+        )
+        (plan.output_dir / f"rank-{local_rank}-generation.counter").write_text(
+            f"{pass_count}\n", encoding="ascii"
+        )
+        plan.rank_argv_path(local_rank).write_text(
+            json.dumps(list(plan.expected_rank_argv(local_rank))),
+            encoding="utf-8",
+        )
+        plan.report_path(local_rank).write_bytes(
+            f"rank {local_rank} synthetic control-plane report\n".encode("ascii")
+        )
+    fresh_mtime_ns = start_ns + 1_000_000_000
+    for local_rank in (0, 1):
+        for path in (
+            plan.report_path(local_rank),
+            plan.rank_argv_path(local_rank),
+            plan.output_dir / f"rank-{local_rank}-generation.counter",
+        ):
+            os.utime(path, ns=(fresh_mtime_ns, fresh_mtime_ns))
+
+    artifacts, generations, _, imports_attempted, errors = _rank_application_evidence(
+        plan,
+        start_ns=start_ns,
+        allow_report_import=True,
+    )
+
+    assert errors == []
+    assert imports_attempted is True
+    assert len(generations) == pass_count
+    for local_rank in (0, 1):
+        assert artifacts[local_rank]["observed_argv"] == list(
+            plan.expected_rank_argv(local_rank)
+        )
+        report = artifacts[local_rank]["application_report"]
+        assert report["expected_row_count"] == captured_count
+        assert report["observed_row_count"] == captured_count
+        assert report["all_rows_validated"] is True
+        assert report["kernel_window"] == {
+            "start": 2,
+            "count": captured_count,
+            "end_exclusive": 5,
+        }
+        assert report["requested_global_ordinal_mapping"] == {
+            "basis": "kernel_window.start + raw_csv.ID",
+            "status": "DECLARED_PENDING_EXTERNAL_NSYS_AUDIT",
+            "nsys_reconciled": False,
+        }
+        assert report["import_argv"] == [
+            str(fake_ncu),
+            "--import",
+            str(plan.report_path(local_rank)),
+            "--page",
+            "raw",
+            "--csv",
+        ]
+        assert [row["id"] for row in report["rows"]] == [0, 1, 2]
+        assert [row["requested_global_ordinal"] for row in report["rows"]] == [
+            2,
+            3,
+            4,
+        ]
+        assert all(row["profiler_pass_count"] == 9 for row in report["rows"])
+
+
+def test_kernel_window_launch_failure_receipt_keeps_partial_claims_false(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Inspect the receipt boundary without representing a profiler capture."""
+
+    plan = _kernel_window_rank_application_plan(
+        tmp_path,
+        expected_kernel_counts=(481, 481),
+        kernel_window=(64, 64),
+        report_import_timeout_seconds=600.0,
+    )
+
+    def refuse_launch(*_args: object, **_kwargs: object) -> None:
+        raise OSError("synthetic launch refusal")
+
+    monkeypatch.setattr(ncu_capture, "_preflight", lambda _plan, _env: {})
+    monkeypatch.setattr(ncu_capture, "_proc_cleanup_supported", lambda: False)
+    monkeypatch.setattr(ncu_capture.subprocess, "Popen", refuse_launch)
+
+    with pytest.raises(OSError, match="synthetic launch refusal"):
+        ncu_capture.run_capture(plan, environment={})
+
+    receipt = json.loads(plan.receipt_path.read_text(encoding="utf-8"))
+    assert receipt["schema"] == RANK_APPLICATION_KERNEL_WINDOW_CAPTURE_RECEIPT_SCHEMA
+    assert receipt["status"] == "LAUNCH_FAILED"
+    assert receipt["error"] == "OSError: synthetic launch refusal"
+    assert receipt["cleanup"]["mode"] == "not-started"
+    assert receipt["cleanup"]["forced"] is False
+    assert receipt["cleanup"]["drained"] is True
+    assert receipt["capture_scope"] == "kernel-window-requested"
+    assert receipt["all_matching_kernels"] is False
+    assert receipt["nvtx_capture_enabled"] is True
+    assert receipt["kernel_window"] == {
+        "start": 64,
+        "count": 64,
+        "end_exclusive": 128,
+    }
+    assert receipt["expected_kernel_counts"] == [481, 481]
+    assert receipt["captured_expected_kernel_counts"] == [64, 64]
+    assert receipt["report_import_timeout_seconds"] == 600.0
+    assert receipt["ncu_launch_count_argument_present"] is True
+    assert receipt["window_ncu_rows_validated"] is False
+    assert receipt["requested_global_ordinal_mapping"] == {
+        "basis": "kernel_window.start + raw_csv.ID",
+        "status": "DECLARED_PENDING_EXTERNAL_NSYS_AUDIT",
+        "nsys_reconciled": False,
+    }
+    assert receipt["application_replay"]["buffer"] == "file"
+    assert receipt["all_matching_launches_covered"] is False
+    assert receipt["full_coverage_qualified"] is False
+    assert receipt["numerical_output_qualified"] is False
+    assert receipt["performance_qualified"] is False
+
+
+# These synthetic CSV cases exercise the all-matching control-plane parser.
+# They do not represent a GPU execution or a successful Nsight Compute capture.
+def test_all_matching_application_control_plane_accepts_bounded_zero_metrics(
+    tmp_path: Path,
+) -> None:
+    plan = _all_matching_rank_application_plan(
+        tmp_path,
+        expected_kernel_counts=(3, 2),
+    )
+    rows = list(
+        csv.reader(
+            io.StringIO(
+                _all_matching_application_csv(
+                    process_id=30_000,
+                    row_ids=(0, 1, 2),
+                    row_updates={
+                        0: {
+                            "sm__throughput.avg.pct_of_peak_sustained_elapsed": "0"
+                        },
+                        1: {
+                            "gpu__dram_throughput.avg.pct_of_peak_sustained_elapsed": "0"
+                        },
+                        2: {
+                            "lts__throughput.avg.pct_of_peak_sustained_elapsed": "0"
+                        },
+                    },
+                )
+            )
+        )
+    )
+
+    artifact, errors = _all_matching_application_rows(
+        plan,
+        rows,
+        expected_device=0,
+        expected_process_id=30_000,
+        expected_pass_count=9,
+        pass_count_source="the generation ledger",
+    )
+
+    assert errors == []
+    assert artifact["expected_row_count"] == 3
+    assert artifact["observed_row_count"] == 3
+    assert artifact["all_rows_validated"] is True
+    assert "row" not in artifact
+    assert [row["id"] for row in artifact["rows"]] == [0, 1, 2]
+    assert artifact["rows_with_zero_metrics"] == [0, 1, 2]
+    assert artifact["zero_metric_counts"] == {
+        "gpu__time_duration.avg": 0,
+        "sm__throughput.avg.pct_of_peak_sustained_elapsed": 1,
+        "gpu__dram_throughput.avg.pct_of_peak_sustained_elapsed": 1,
+        "lts__throughput.avg.pct_of_peak_sustained_elapsed": 1,
+        "sm__warps_active.avg.pct_of_peak_sustained_active": 0,
+    }
+    assert all(
+        row["metrics"]["gpu__time_duration.avg"] > 0
+        and row["metrics"]["sm__warps_active.avg.pct_of_peak_sustained_active"]
+        > 0
+        for row in artifact["rows"]
+    )
+
+
+@pytest.mark.parametrize(
+    ("case", "match"),
+    [
+        ("missing-row", "row count differs"),
+        ("extra-row", "row count differs"),
+        ("duplicate-row-id", "IDs contain duplicates"),
+        ("gapped-row-id", "IDs are not contiguous"),
+        ("wrong-process", "Process ID does not match"),
+        ("wrong-device", "Device differs"),
+        ("wrong-pass-count", "profiler pass count differs"),
+        ("nonfinite-metric", "metric is not finite and nonnegative"),
+        ("percentage-over-100", "percentage metric exceeds 100"),
+        ("zero-duration", "metric must be positive"),
+        ("zero-active-warps", "metric must be positive"),
+    ],
+)
+def test_all_matching_application_control_plane_rejects_invalid_rows(
+    tmp_path: Path, case: str, match: str
+) -> None:
+    plan = _all_matching_rank_application_plan(
+        tmp_path,
+        expected_kernel_counts=(3, 2),
+    )
+    rows = list(
+        csv.reader(io.StringIO(_invalid_all_matching_application_csv(case)))
+    )
+
+    artifact, errors = _all_matching_application_rows(
+        plan,
+        rows,
+        expected_device=0,
+        expected_process_id=30_000,
+        expected_pass_count=9,
+        pass_count_source="the generation ledger",
+    )
+
+    assert any(match in error for error in errors)
+    assert artifact.get("all_rows_validated") is not True
+
+
+@pytest.mark.parametrize(
+    ("case", "match"),
+    [
+        ("missing-row", "row count differs"),
+        ("extra-row", "row count differs"),
+        ("duplicate-row-id", "IDs contain duplicates"),
+        ("gapped-row-id", "IDs are not contiguous"),
+        ("wrong-process", "Process ID does not match"),
+        ("wrong-device", "Device differs"),
+        ("wrong-pass-count", "profiler pass count differs"),
+        ("nonfinite-metric", "metric is not finite and nonnegative"),
+        ("percentage-over-100", "percentage metric exceeds 100"),
+        ("zero-duration", "metric must be positive"),
+        ("zero-active-warps", "metric must be positive"),
+    ],
+)
+def test_kernel_window_rows_reuse_strict_multirow_validation(
+    tmp_path: Path,
+    case: str,
+    match: str,
+) -> None:
+    plan = _kernel_window_rank_application_plan(
+        tmp_path,
+        expected_kernel_counts=(6, 7),
+        kernel_window=(2, 3),
+    )
+    rows = list(
+        csv.reader(io.StringIO(_invalid_all_matching_application_csv(case)))
+    )
+
+    artifact, errors = _all_matching_application_rows(
+        plan,
+        rows,
+        expected_device=0,
+        expected_process_id=30_000,
+        expected_pass_count=9,
+        pass_count_source="the generation ledger",
+    )
+
+    assert any(match in error for error in errors)
+    assert artifact.get("all_rows_validated") is not True
+
+
+def test_application_report_import_validates_one_selected_row(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     fake_ncu = _make_fake_application_ncu(
         tmp_path / "ncu",
         combined_log=b"",
         raw_csv=_application_csv(process_id=102),
     )
-    plan = _application_plan(tmp_path, ncu_path=fake_ncu)
+    plan = _application_plan(
+        tmp_path,
+        ncu_path=fake_ncu,
+        timeout_seconds=120.0,
+    )
+    observed_timeouts: list[object] = []
+    real_subprocess_run = subprocess.run
+
+    def record_selected_import(*args: object, **kwargs: object):
+        observed_timeouts.append(kwargs.get("timeout"))
+        return real_subprocess_run(*args, **kwargs)
+
+    def reject_all_matching_import(*args: object, **kwargs: object) -> None:
+        raise AssertionError("selected import used the all-matching subprocess path")
+
+    monkeypatch.setattr(ncu_capture.subprocess, "run", record_selected_import)
+    monkeypatch.setattr(
+        ncu_capture,
+        "_run_all_matching_report_import",
+        reject_all_matching_import,
+    )
     plan.output_dir.mkdir()
     plan.combined_path.write_bytes(
         _application_generation(1, rank0_pid=101, rank1_pid=102)
@@ -1375,6 +2738,8 @@ def test_application_report_import_validates_one_selected_row(tmp_path: Path) ->
     )
 
     assert errors == []
+    assert plan.report_import_timeout_seconds == 60.0
+    assert observed_timeouts == [60.0]
     assert artifact["row"]["visible_device"] == 1
     assert artifact["row"]["process_id"] == 102
     assert artifact["row"]["profiler_pass_count"] == 2
@@ -1395,6 +2760,8 @@ def test_application_report_import_validates_one_selected_row(tmp_path: Path) ->
         ("wrong-pass-count", "pass count differs"),
         ("missing-metric", "missing fields"),
         ("nonfinite-metric", "not finite and positive"),
+        ("zero-metric", "not finite and positive"),
+        ("percentage-over-100", "percentage metric exceeds 100"),
         ("duplicate-header", "header is empty or contains duplicates"),
         ("multiple-data-rows", "must contain one header"),
         ("stale-report", "empty or stale"),
@@ -1505,6 +2872,60 @@ def test_cleanup_drains_child_that_outlives_parent_and_ignores_sigterm(tmp_path:
     assert errors == []
     with pytest.raises(ProcessLookupError):
         os.kill(child_pid, 0)
+
+
+def test_all_matching_report_import_timeout_preserves_output_and_drains_group(
+    tmp_path: Path,
+) -> None:
+    """Exercise the CPU subprocess control plane without representing NCU output."""
+
+    child_pid_path = tmp_path / "import-child.pid"
+    child_code = (
+        "import os,signal,time\n"
+        "from pathlib import Path\n"
+        "signal.signal(signal.SIGTERM, signal.SIG_IGN)\n"
+        f"Path({str(child_pid_path)!r}).write_text(str(os.getpid()))\n"
+        "time.sleep(60)\n"
+    )
+    importer_code = (
+        "import subprocess,sys,time\n"
+        "from pathlib import Path\n"
+        f"child = subprocess.Popen([sys.executable, '-c', {child_code!r}])\n"
+        f"child_pid_path = Path({str(child_pid_path)!r})\n"
+        "deadline = time.monotonic() + 10\n"
+        "while not child_pid_path.exists() and time.monotonic() < deadline:\n"
+        "    time.sleep(0.01)\n"
+        "sys.stdout.buffer.write(b'partial import stdout\\n')\n"
+        "sys.stdout.buffer.flush()\n"
+        "sys.stderr.buffer.write(b'partial import stderr\\n')\n"
+        "sys.stderr.buffer.flush()\n"
+        "time.sleep(60)\n"
+    )
+    child_pid = -1
+    try:
+        result = _run_all_matching_report_import(
+            [sys.executable, "-c", importer_code],
+            timeout_seconds=0.5,
+        )
+        assert child_pid_path.is_file()
+        child_pid = int(child_pid_path.read_text())
+
+        assert result.started is True
+        assert result.process_id is not None
+        assert result.timed_out is True
+        assert result.start_error is None
+        assert result.communication_error is None
+        assert b"partial import stdout" in result.stdout
+        assert b"partial import stderr" in result.stderr
+        assert result.signals_sent == ("SIGTERM", "SIGKILL")
+        assert result.cleanup_drained is True
+        assert result.cleanup_errors == ()
+        with pytest.raises(ProcessLookupError):
+            os.kill(child_pid, 0)
+    finally:
+        if child_pid > 0:
+            with suppress(ProcessLookupError):
+                os.kill(child_pid, signal.SIGKILL)
 
 
 def test_process_group_cleanup_reaps_running_timed_out_leader_after_kill(

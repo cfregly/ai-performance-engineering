@@ -120,17 +120,47 @@ substitute profiled duration for a separately measured end-to-end baseline.
 Collectives that require concurrent ranks can stall under process-tree replay.
 The explicit `core.profiling.ncu_torchrun_capture` command launches one profiler
 per rank, with TCP coordination and lockstep limited to named NCCL NVTX ranges.
-That kernel and range topology supports one Linux host, two visible GPUs,
-Nsight Compute 2026.2.1, and the repository's five minimal metrics. It uses
-kernel replay by default or explicit range replay. Application replay has two
-explicit topologies. The default `parent` topology wraps the original full
-two-rank `torchrun` command with one NCU process. The `rank-tcp` topology launches
-one NCU process per local rank and uses TCP coordination for the selected
-concurrent kernels. Both run without Slurm.
+That kernel and range topology supports one Linux host, two visible GPUs, and
+the repository's five minimal metrics. The preflight gate recognizes the exact
+NCU version tokens `2026.2.1.0` and `2026.3.1.0`, which correspond to Nsight
+Compute 2026.2.1 and 2026.3.1. It rejects every other version token. Version
+recognition changes only tool admission. The same source, topology, metric,
+replay, process, device, artifact, cleanup, and reconciliation gates still
+apply. Recognizing NCU 2026.3.1 does not establish that a hardware capture
+passed or that shutdown behavior differs from NCU 2026.2.1.
+
+The helper uses kernel replay by default or explicit range replay. Application
+replay has three explicit topologies. The default `parent` topology wraps the
+original full two-rank `torchrun` command with one NCU process. The `rank-tcp`
+topology launches one NCU process per local rank and uses TCP coordination for
+the selected concurrent kernels. The `rank-single` topology profiles one local
+rank beside an unprofiled peer. All three run without Slurm.
+
+Use `rank-single` to collect receive kernels whose counters fail under bilateral
+profiling. Its target rank runs NCU Application Replay. The peer runs outside
+NCU and restarts for every replay pass. Both execute the unchanged full workload
+nine times with fresh rendezvous stores. A bounded file handshake after each
+generation prevents either rank from starting its next generation before both
+workers have exited. Select the target with `--target-visible-device 0` or `1`,
+and run a separate capture for the other rank. Each capture contains counters
+for one rank and runtime provenance for both ranks.
+
+This distinction matters for receive and wait kernels. On the B200, percentages
+above 100 were present in native NCU reports and in raw CSV. They were not
+introduced by the parser. The failing values depended on the profiling layout.
+Receive and wait work can vary between replay passes, and NCU documents that
+this variation can combine incompatible counter components into an out-of-range
+percentage. The reports do not expose enough per-pass primitive counters to
+identify the exact internal numerator and normalizer. Selecting one device under a parent
+profiler also instruments the peer process and can serialize a mandatory
+concurrent launch. `rank-single` keeps that peer outside the profiler tree.
+Every capture still rejects invalid percentages. Never clamp the values,
+normalize them using a peer's duration, or accept a report by dropping a metric.
 
 From a clean checkout's `code/` directory, use the Python environment for the
-workload and set `NCU` to the absolute path of the 2026.2.1 executable. Choose
-unused loopback ports and a new output directory for each attempt:
+workload and set `NCU` to the absolute path of a recognized 2026.2.1 or 2026.3.1
+executable. Choose unused loopback ports and a new output directory for each
+attempt:
 
 ```bash
 AISP_LOCK_GPU_CLOCKS=1 AISP_RAMP_GPU_CLOCKS=1 \
@@ -232,8 +262,10 @@ rendezvous base plus the zero-based generation number, and
 
 Keep the input torchrun rendezvous port, NCU communicator port, and generated
 rendezvous port range disjoint. The example below expects nine
-application-replay generations. That count is scoped to this exact two-B200
-workload and NCU 2026.2.1:
+application-replay generations. The retained result established that count for
+this exact two-B200 workload with NCU 2026.2.1. Using the recognized NCU 2026.3.1
+version does not qualify the same outcome. Require the observed pass count and
+every other capture gate to pass independently:
 
 ```bash
 KERNEL_NAME='regex:ncclDevKernel_AllReduce.*'
@@ -266,8 +298,9 @@ python -m core.profiling.ncu_torchrun_capture \
   -- --iters 4 --warmup 5 --seed 42
 ```
 
-Do not pass `--target-visible-device`, `--all-matching-kernels`, or
-`--nvtx-include` with `rank-tcp`. The helper writes explicit
+For the selected-launch command above, do not pass `--target-visible-device`,
+`--all-matching-kernels`, `--expected-kernel-counts`, or `--nvtx-include`.
+The helper writes explicit
 `rank-0.ncu.log` and `rank-1.ncu.log` paths because NCU does not expand
 `%q{LOCAL_RANK}` in `--log-file`. Validate the `[Comm rank X]` prefix in each
 log independently of `LOCAL_RANK` because communicator rank and local rank are
@@ -286,6 +319,206 @@ The running receipt records `requested_visible_devices: [0, 1]` and keeps
 `both_devices_covered_by_this_receipt` false. The final receipt sets the coverage
 field true only after both native reports were imported and validated without an
 artifact error.
+
+#### Full all-matching rank-local application replay
+
+Use the full mode only after a fresh Nsight Systems trace establishes the exact
+number of kernels that match the same selector for each worker rank. Collect the
+trace from the same source, workload arguments, warmup count, visible-device
+order, and software environment intended for NCU. The trace must retain native
+NCCL API activity and CUDA GPU activity so the review can map each matching
+kernel to its worker PID, device, workload phase, and NCCL `send`, `recv`, or
+collective call. Count setup kernels too when they match the selector. A kernel
+name such as `ncclDevKernel_SendRecv` does not establish API direction.
+
+Set the two positive counts from that frozen trace inventory. Do not estimate
+them and do not copy them between workloads. The full mode requires nine replay
+passes, `--launch-skip 0`, and no `--launch-count` argument:
+
+```bash
+KERNEL_NAME='regex:ncclDevKernel.*'
+EXPECTED_RANK0_KERNELS="$NSYS_RANK0_MATCHING_KERNEL_COUNT"
+EXPECTED_RANK1_KERNELS="$NSYS_RANK1_MATCHING_KERNEL_COUNT"
+NCU_TCP_PORT=29641
+INPUT_RDZV_PORT=29642
+APPLICATION_RDZV_PORT_BASE=29650
+EXPECTED_APPLICATION_PASSES=9
+NCU_TIMEOUT_SECONDS=1800
+NCU_REPORT_IMPORT_TIMEOUT_SECONDS=600
+OUTPUT_DIR=/tmp/disagg-rank-tcp-all-attempt-01
+
+AISP_LOCK_GPU_CLOCKS=1 AISP_RAMP_GPU_CLOCKS=1 \
+AISP_NCU_PROFILE_REQUESTS=4 AISP_NCU_PROFILE_CONTEXT=256 \
+AISP_NCU_PROFILE_DECODE=8 AISP_NCU_PROFILE_BATCH=1 \
+CUDA_VISIBLE_DEVICES=0,1 PYTHONPATH="$PWD" \
+python -m core.profiling.ncu_torchrun_capture \
+  --label disagg-rank-tcp-all --repo-root .. \
+  --source "$(git rev-parse HEAD)" --output-dir "$OUTPUT_DIR" --ncu "$NCU" \
+  --timeout-seconds "$NCU_TIMEOUT_SECONDS" --replay-mode application \
+  --report-import-timeout-seconds "$NCU_REPORT_IMPORT_TIMEOUT_SECONDS" \
+  --application-topology rank-tcp --tcp-port "$NCU_TCP_PORT" \
+  --expected-application-passes "$EXPECTED_APPLICATION_PASSES" \
+  --application-rdzv-port-base "$APPLICATION_RDZV_PORT_BASE" \
+  --all-matching-kernels \
+  --expected-kernel-counts "$EXPECTED_RANK0_KERNELS" "$EXPECTED_RANK1_KERNELS" \
+  --kernel-name "$KERNEL_NAME" --launch-skip 0 \
+  -- python -m torch.distributed.run --nproc_per_node 2 --nnodes 1 \
+  --rdzv_backend c10d --rdzv_endpoint "127.0.0.1:$INPUT_RDZV_PORT" \
+  --max_restarts 0 \
+  -m core.harness.torchrun_wrapper --aisp-emit-runtime-provenance \
+  --aisp-target-module core.harness.benchmark_worker \
+  --aisp-expected-torch-seed 42 --aisp-expected-cuda-seed 42 \
+  --module ch15.optimized_disaggregated_inference_multigpu --callable main \
+  -- --iters 4 --warmup 5 --seed 42
+```
+
+The timeout includes worker startup, all replay generations, and native report
+creation. The 1,800-second budget above is for this profiling workload. Set a
+budget for each workload and retain enough time for report creation after the
+last replay generation. After an interrupted capture, use a new output directory
+and available ports.
+
+The report-import timeout is a separate per-report budget for each native
+`ncu --import` subprocess after capture. Importing the retained 68-row rank-0
+report completed naturally in 80.09 seconds, which exceeds the 60-second default
+kept for compatibility. The full example therefore allows 600 seconds for each
+rank import. Set both timeout budgets for the workload and report size.
+
+The helper requires the imported NCU CSV to contain exactly that many rows for
+each rank. It rejects missing, extra, duplicate, or gapped row IDs and any PID,
+device, replay-pass, or kernel-selector mismatch. Duration and active-warps
+metrics must be positive. Other finite throughput percentages may be zero and
+are recorded in the receipt for review. Percentage metrics above 100 are
+rejected.
+
+After capture, reconcile every NCU row with the frozen Nsight Systems inventory.
+Bind each report to its own worker PID and physical device. Worker PIDs differ
+between the Nsys and NCU executions. Compare the stable rank and device mapping,
+kernel order, launch geometry, selector, and workload phase across captures, then
+use native NCCL API events from Nsight Systems for direction. The full mode also
+records NVTX context in NCU so its kernel ranges can be checked independently.
+The all-matching receipt records the expected and observed row counts, marker
+policy, and zero metric counts. The helper leaves its coverage and qualification
+fields false. Record the external reconciliation, numerical validation, clock
+review, and cleanup review separately before claiming complete coverage.
+
+#### Windowed rank-local application replay
+
+Use explicit kernel windows when a full all-matching native report exceeds host
+resources. A full tensor-baseline attempt on a 334 GiB host reached 172 matching
+kernels in its first pass before Linux killed one NCU process at about 159 GB
+RSS. The attempt used NCU 2026.2.1 Application Replay with the default file
+buffer. NVIDIA documents the file buffer as the more scalable replay buffer, but
+it did not bound the observed resident memory for this capture. The retained
+evidence does not identify which NCU component held that memory.
+
+NVIDIA documents that [`--launch-skip` and `--launch-count` count only launches
+that match the kernel filters](https://docs.nvidia.com/nsight-compute/NsightComputeCli/index.html#profile).
+The public helper exposes that selection as `--kernel-window START COUNT` for
+`rank-tcp` and `rank-single` Application Replay. `START` is the zero-based ordinal among
+kernels matching the unchanged `--kernel-name` expression. `COUNT` is the
+number of matching launches to capture. The helper derives the NCU launch skip
+and count. Do not pass `--launch-skip` or `--launch-count` with a window, and do
+not combine a window with `--all-matching-kernels`.
+
+Window mode still requires `--expected-kernel-counts RANK0 RANK1` with the two
+full counts from the fresh, frozen Nsys inventory. Both values must be positive,
+and `START + COUNT` must fit within both full rank counts. The helper limits
+`COUNT` to 64 and requires a rank-local application topology and exactly nine replay
+passes. For this acquisition, keep the all-NCCL kernel expression and the same
+report-import budget as full mode. The generated NCU command records
+`--app-replay-buffer file`, `--nvtx`, and `--kill no` without an NVTX include or
+exclude filter. Every window therefore runs the full unchanged workload through
+all nine fresh worker generations while collecting the same five metrics only
+for its selected matching launches.
+
+Use no more than 64 matching launches per window for the retained tensor pair.
+The 481-kernel baseline requires eight windows, and the 241-kernel optimized arm
+requires four:
+
+| Arm | Complete `(START, COUNT)` schedule |
+|---|---|
+| Tensor baseline, 481 per rank | `(0, 64)`, `(64, 64)`, `(128, 64)`, `(192, 64)`, `(256, 64)`, `(320, 64)`, `(384, 64)`, `(448, 33)` |
+| Tensor optimized, 241 per rank | `(0, 64)`, `(64, 64)`, `(128, 64)`, `(192, 49)` |
+
+For `rank-single`, run each listed window twice, targeting rank 0 and then rank
+1. That produces 24 target-rank captures. Run them serially, with a new output
+directory, input rendezvous port, and nine-port generated rendezvous range for
+each attempt. The `rank-tcp` variant needs 12 captures and a fresh communicator
+port for each, but its receive counters can fail the strict percentage checks.
+This example collects the rank-0 baseline interval `[64,128)`
+from `code/`. Use its 481-row totals only with the matching frozen Nsys trace
+and the same tensor workload:
+
+```bash
+WINDOW_START=64
+WINDOW_COUNT=64
+FULL_RANK0_KERNELS=481
+FULL_RANK1_KERNELS=481
+TARGET_VISIBLE_DEVICE=0
+INPUT_RDZV_PORT=29682
+APPLICATION_RDZV_PORT_BASE=29690
+OUTPUT_DIR=/tmp/tensor-rank-single-0-window-64-attempt-01
+
+AISP_LOCK_GPU_CLOCKS=1 AISP_RAMP_GPU_CLOCKS=1 \
+CUDA_VISIBLE_DEVICES=0,1 PYTHONPATH="$PWD" \
+python -m core.profiling.ncu_torchrun_capture \
+  --label tensor-rank-single-0-window-64 --repo-root .. \
+  --source "$(git rev-parse HEAD)" --output-dir "$OUTPUT_DIR" --ncu "$NCU" \
+  --timeout-seconds 1800 --report-import-timeout-seconds 600 \
+  --replay-mode application --application-topology rank-single \
+  --target-visible-device "$TARGET_VISIBLE_DEVICE" --expected-application-passes 9 \
+  --application-rdzv-port-base "$APPLICATION_RDZV_PORT_BASE" \
+  --kernel-window "$WINDOW_START" "$WINDOW_COUNT" \
+  --expected-kernel-counts "$FULL_RANK0_KERNELS" "$FULL_RANK1_KERNELS" \
+  --kernel-name 'regex:nccl.*' \
+  -- python -m torch.distributed.run --nproc_per_node 2 --nnodes 1 \
+  --rdzv_backend c10d --rdzv_endpoint "127.0.0.1:$INPUT_RDZV_PORT" \
+  --max_restarts 0 \
+  -m core.harness.torchrun_wrapper --aisp-emit-runtime-provenance \
+  --aisp-target-module core.harness.benchmark_worker \
+  --aisp-expected-torch-seed 42 --aisp-expected-cuda-seed 42 \
+  --module ch04.baseline_tensor_parallel_multigpu --callable main \
+  -- --iters 50 --warmup 10 --seed 42
+```
+
+Repeat with target 1 and fresh ports and output paths. Each single-rank capture
+must contain exactly one target native report and raw CSV with `COUNT` rows.
+The peer must not produce an NCU report or log. Both rank counters must reach
+nine, and all 18 completion gates must match the active capture and generation
+config. The same strict parser checks both ranks' complete runtime provenance
+and rejects overlapping generation windows.
+
+Raw CSV IDs
+restart at zero for every window and must be exactly `0` through `COUNT - 1`.
+They are window-local identifiers, not global NCCL ordinals. The `rank-tcp` window receipt
+uses schema `aisp.ncu-torchrun-rank-application-kernel-window-capture.v1` and
+records `capture_scope: kernel-window-requested`. It stores the two declared
+window row counts in `captured_expected_kernel_counts`. Single-rank receipts
+identify the measured rank and external peer, and store the measured rank's
+expected row count in `target_expected_kernel_count`. Both forms retain the
+full counts in `expected_kernel_counts` and half-open bounds in `kernel_window`.
+The declared `kernel_window.start + raw_csv.ID` mapping remains
+`DECLARED_PENDING_EXTERNAL_NSYS_AUDIT` with `nsys_reconciled: false`. The
+receipt keeps `all_matching_launches_covered`, `full_coverage_qualified`,
+`numerical_output_qualified`, and `performance_qualified` false.
+
+Do not claim full launch coverage from a successful window or from row counts
+alone. Before combining windows, reconcile native action order for each rank to
+the exact global Nsys slice by kernel name, logical device, launch geometry, and
+NVTX stack. Require all five metric names, units, values, and nine replay passes
+for every row. Duration must use `ns`, `us`, `ms`, or `s`, with the raw value and
+conversion to milliseconds retained. All four percentage metrics must use `%`.
+Then prove that the window bounds form a gap-free,
+nonoverlapping union of `[0, 481)` or `[0, 241)`. Preserve the native report,
+raw CSV, exact argv, logs, hashes, and reconciliation result for every window.
+
+NVIDIA's [Range and Precision guidance](https://docs.nvidia.com/nsight-compute/ProfilingGuide/index.html#range-and-precision)
+explains that multi-pass variation, including spin-loop behavior, can produce
+values outside a metric's logical range. NCU deliberately leaves those values
+unclamped so the report stays internally consistent. This public capture
+contract is stricter. It rejects percentage values above 100 rather than
+clamping or qualifying them. Retain the raw value and rejection for diagnosis.
 
 Kernel and range modes retain exact arguments, source and tool hashes, logs,
 rank reports, and the owned process-group cleanup result.
