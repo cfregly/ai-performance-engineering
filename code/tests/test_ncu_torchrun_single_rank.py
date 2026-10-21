@@ -2,12 +2,14 @@
 
 The subprocess tests use fake workers and do not represent a GPU or profiler
 capture. They exercise the real rank dispatcher, generation helper, durable
-gate protocol, and capture validators.
+gate protocol, and capture validators. The synthetic capture tests isolate
+host process inspection. Dedicated tests cover production cleanup separately.
 """
 
 from __future__ import annotations
 
 import csv
+import errno
 import hashlib
 import io
 import json
@@ -21,6 +23,7 @@ from pathlib import Path
 
 import pytest
 
+from core.profiling import ncu_torchrun_capture as capture_module
 from core.profiling.ncu_torchrun_capture import (
     SINGLE_RANK_APPLICATION_KERNEL_WINDOW_CAPTURE_RECEIPT_SCHEMA,
     _all_matching_application_rows,
@@ -59,6 +62,165 @@ from tests.test_ncu_torchrun_capture import (
 CODE_ROOT = Path(__file__).resolve().parents[1]
 CAPTURE_OWNER_ID = "a" * 32
 KERNEL_SELECTOR = "regex:ncclDevKernel_AllReduce.*"
+
+
+def _fixture_marked_pids(
+    marker: str,
+    proc_root: Path = Path("/proc"),
+    *,
+    owned_candidates: set[int] | frozenset[int] = frozenset(),
+    preexisting_identities: frozenset[tuple[int, int]] = frozenset(),
+) -> tuple[set[int], str | None]:
+    """Isolate synthetic orchestration from inaccessible host processes.
+
+    This fixture view is not production cleanup proof. It still discovers
+    every readable exact owner token and rejects unreadable owned candidates.
+    """
+
+    del preexisting_identities
+    token = f"AISP_NCU_TORCHRUN_CAPTURE_ID={marker}".encode()
+    try:
+        entries = sorted(proc_root.iterdir(), key=lambda entry: entry.name)
+    except OSError as exc:
+        return set(), f"fixture process inspection failed: {exc}"
+    found: set[int] = set()
+    for entry in entries:
+        if not entry.name.isdigit():
+            continue
+        pid = int(entry.name)
+        try:
+            environment = (entry / "environ").read_bytes()
+        except (FileNotFoundError, ProcessLookupError):
+            continue
+        except OSError as exc:
+            if (
+                exc.errno in (errno.EACCES, errno.EPERM)
+                and pid not in owned_candidates
+            ):
+                continue
+            return found, f"fixture process inspection failed for pid {pid}: {exc}"
+        if token in environment.split(b"\0") and pid != os.getpid():
+            found.add(pid)
+    return found, None
+
+
+@pytest.fixture
+def isolated_marker_scan(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(capture_module, "_marked_pids", _fixture_marked_pids)
+
+
+def test_fixture_marker_scan_continues_after_inaccessible_host_entry(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    proc_root = tmp_path / "proc"
+    for pid, token in (
+        (100, "host"),
+        (101, "owned"),
+        (102, "owned"),
+        (103, "owned-prefix"),
+        (104, "other"),
+    ):
+        entry = proc_root / str(pid)
+        entry.mkdir(parents=True)
+        (entry / "environ").write_bytes(
+            f"AISP_NCU_TORCHRUN_CAPTURE_ID={token}\0".encode()
+        )
+    original_read_bytes = Path.read_bytes
+
+    def read_bytes(path: Path) -> bytes:
+        if path == proc_root / "100" / "environ":
+            raise PermissionError(errno.EACCES, "Permission denied", str(path))
+        return original_read_bytes(path)
+
+    monkeypatch.setattr(Path, "read_bytes", read_bytes)
+
+    assert _fixture_marked_pids("owned", proc_root) == ({101, 102}, None)
+
+
+@pytest.mark.parametrize("error_number", (errno.EACCES, errno.EPERM, errno.EIO))
+def test_fixture_marker_scan_rejects_unreadable_owned_candidate(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, error_number: int
+) -> None:
+    entry = tmp_path / "4242"
+    entry.mkdir()
+    environment = entry / "environ"
+    environment.write_bytes(b"AISP_NCU_TORCHRUN_CAPTURE_ID=owned\0")
+    original_read_bytes = Path.read_bytes
+
+    def read_bytes(path: Path) -> bytes:
+        if path == environment:
+            raise OSError(error_number, "unreadable fixture process", str(path))
+        return original_read_bytes(path)
+
+    monkeypatch.setattr(Path, "read_bytes", read_bytes)
+
+    pids, error = _fixture_marked_pids("owned", tmp_path, owned_candidates={4242})
+
+    assert pids == set()
+    assert error is not None
+    assert "pid 4242" in error
+
+
+def test_fixture_marker_scan_rejects_unclassified_io_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    entry = tmp_path / "4242"
+    entry.mkdir()
+    environment = entry / "environ"
+    environment.write_bytes(b"AISP_NCU_TORCHRUN_CAPTURE_ID=other\0")
+    original_read_bytes = Path.read_bytes
+
+    def read_bytes(path: Path) -> bytes:
+        if path == environment:
+            raise OSError(errno.EIO, "fixture I/O failure", str(path))
+        return original_read_bytes(path)
+
+    monkeypatch.setattr(Path, "read_bytes", read_bytes)
+
+    pids, error = _fixture_marked_pids("owned", tmp_path)
+
+    assert pids == set()
+    assert error is not None
+
+
+def test_production_marker_scan_rejects_new_unreadable_foreign_inode(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    entry = tmp_path / "4243"
+    entry.mkdir()
+    environment = entry / "environ"
+    environment.write_bytes(b"AISP_NCU_TORCHRUN_CAPTURE_ID=owned\0")
+    stat_fields = ["S", *(["0"] * 18), "200"]
+    (entry / "stat").write_text(
+        f"4243 (new-child) {' '.join(stat_fields)}\n", encoding="utf-8"
+    )
+    original_read_bytes = Path.read_bytes
+    original_stat = Path.stat
+
+    def read_bytes(path: Path) -> bytes:
+        if path == environment:
+            raise PermissionError(errno.EACCES, "Permission denied", str(path))
+        return original_read_bytes(path)
+
+    def stat(path: Path, *, follow_symlinks: bool = True) -> os.stat_result:
+        result = original_stat(path, follow_symlinks=follow_symlinks)
+        if path == entry:
+            values = list(result)
+            values[4] = os.geteuid() + 1
+            return os.stat_result(values)
+        return result
+
+    monkeypatch.setattr(Path, "read_bytes", read_bytes)
+    monkeypatch.setattr(Path, "stat", stat)
+    assert entry.stat().st_uid != os.geteuid()
+
+    pids, error = capture_module._marked_pids(
+        "owned", tmp_path, preexisting_identities=frozenset({(4243, 100)})
+    )
+
+    assert pids == set()
+    assert error is not None
+    assert "unclassified post-snapshot pid 4243" in error
 
 
 def _rank_environment(rank: int) -> dict[str, str]:
@@ -795,8 +957,9 @@ def _make_fake_single_rank_ncu(
 
 
 def test_gated_entrypoint_runs_nine_fresh_paired_generations_without_overlap(
-    tmp_path: Path,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.delenv("PYTHONPATH", raising=False)
     fixture_timeout_seconds = 30.0
     output_dir = tmp_path / "capture"
     output_dir.mkdir()
@@ -809,8 +972,9 @@ def test_gated_entrypoint_runs_nine_fresh_paired_generations_without_overlap(
     )
     worker_path = tmp_path / "worker.py"
     worker_path.write_text(
-        "import json, os, time\n"
+        "import json, os, sys, time\n"
         "from pathlib import Path\n"
+        f"sys.path.insert(0, {str(CODE_ROOT)!r})\n"
         "from core.benchmark.run_manifest import RuntimeProvenance\n"
         "from core.harness.torchrun_runtime_provenance import (\n"
         "    format_torchrun_runtime_provenance_frames,\n"
@@ -966,7 +1130,7 @@ def test_gated_entrypoint_runs_nine_fresh_paired_generations_without_overlap(
 
 @pytest.mark.parametrize("target_local_rank", (0, 1))
 def test_rank_single_capture_runs_one_target_and_one_unprofiled_peer_to_strict_receipt(
-    tmp_path: Path, target_local_rank: int
+    tmp_path: Path, target_local_rank: int, isolated_marker_scan: None
 ) -> None:
     if not _proc_cleanup_supported():
         pytest.skip("rank-single native import requires supported process cleanup")
