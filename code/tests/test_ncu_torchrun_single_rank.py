@@ -978,14 +978,28 @@ def test_rank_single_capture_runs_one_target_and_one_unprofiled_peer_to_strict_r
         source=source,
         ncu_path=fake_ncu,
         torchrun_argv=command,
+        timeout_seconds=120.0,
         report_import_timeout_seconds=30,
     )
 
     result = run_capture(plan, environment=_capture_environment(repo))
     receipt = json.loads(result.receipt_path.read_text(encoding="utf-8"))
     peer_rank = 1 - target_local_rank
+    failure_diagnostics = json.dumps(
+        {
+            "result": {
+                "status": result.status,
+                "returncode": result.returncode,
+                "timed_out": result.timed_out,
+            },
+            "timeout_seconds": plan.timeout_seconds,
+            "receipt": receipt,
+        },
+        indent=2,
+        sort_keys=True,
+    )
 
-    assert result.status == "CAPTURE_ARTIFACTS_PRESENT"
+    assert result.status == "CAPTURE_ARTIFACTS_PRESENT", failure_diagnostics
     assert result.returncode == 0
     assert result.timed_out is False
     assert receipt["schema"] == (
