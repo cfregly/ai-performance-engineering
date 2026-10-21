@@ -1319,7 +1319,7 @@ def test_nondefault_report_import_timeout_rejects_non_multirow_modes(
 ) -> None:
     message = (
         "nondefault report_import_timeout_seconds requires all-matching or "
-        "kernel-window rank-tcp application replay"
+        "kernel-window rank-local application replay"
     )
     with pytest.raises(ValueError, match=f"^{re.escape(message)}$"):
         if mode == "kernel":
@@ -1382,7 +1382,7 @@ def test_plan_rejects_unsupported_capture_options(
         ({"launch_count": 2}, "exactly 1"),
         ({"tcp_port": _free_port()}, "rejects tcp_port"),
         ({"nccl_nvtx_includes": NCCL_RANGES}, "rejects NCCL NVTX"),
-        ({"all_matching_kernels": True}, "requires rank-tcp topology"),
+        ({"all_matching_kernels": True}, "requires rank-local topology"),
         ({"expected_application_passes": 2}, "rejects expected_application_passes"),
         ({"application_rdzv_port_base": 31_100}, "rejects application_rdzv_port_base"),
     ],
@@ -1527,7 +1527,7 @@ def test_kernel_window_requires_strict_bounded_integer_pair(
         ),
         (
             {"application_topology": "parent"},
-            "application kernel-window capture requires rank-tcp topology",
+            "application kernel-window capture requires rank-local topology",
         ),
     ],
 )
