@@ -12,6 +12,8 @@ from pathlib import Path
 CODE_ROOT = Path(__file__).resolve().parents[1]
 REPOSITORY_ROOT = CODE_ROOT.parent.resolve()
 SETUP_SCRIPT = CODE_ROOT / "setup.sh"
+ENVIRONMENT_DOC = REPOSITORY_ROOT / "docs" / "environment.md"
+CODE_README = CODE_ROOT / "README.md"
 
 EXPECTED_TORCH = "2.14.1+cu130"
 EXPECTED_TORCHAUDIO = "2.11.0+cu130"
@@ -67,6 +69,67 @@ def _run_bootstrap(tmp_path: Path, *, fail_on: str = "") -> subprocess.Completed
 def _write_executable(path: Path, source: str) -> None:
     path.write_text(source, encoding="utf-8")
     path.chmod(0o755)
+
+
+def _setup_function(name: str) -> str:
+    setup = SETUP_SCRIPT.read_text(encoding="utf-8")
+    match = re.search(
+        rf"^{re.escape(name)}\(\) \{{\n.*?^\}}$",
+        setup,
+        re.MULTILINE | re.DOTALL,
+    )
+    assert match is not None, name
+    return match.group(0)
+
+
+def _run_rejected_gpu(
+    tmp_path: Path, *, reported_capabilities: str
+) -> tuple[subprocess.CompletedProcess[str], Path]:
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir(parents=True)
+    mutation_log = tmp_path / "mutations.log"
+    _write_executable(bin_dir / "uname", "#!/bin/sh\nprintf '%s\\n' 'x86_64'\n")
+    _write_executable(
+        bin_dir / "lsb_release",
+        "#!/bin/sh\n"
+        'case "$1" in\n'
+        "  -is) printf '%s\\n' 'Ubuntu' ;;\n"
+        "  -rs) printf '%s\\n' '22.04' ;;\n"
+        "  *) exit 2 ;;\n"
+        "esac\n",
+    )
+    _write_executable(
+        bin_dir / "nvidia-smi",
+        "#!/bin/sh\n"
+        'case "$*" in\n'
+        f"  *--query-gpu=compute_cap*) printf '%s\\n' '{reported_capabilities}' ;;\n"
+        "  *) exit 2 ;;\n"
+        "esac\n",
+    )
+    _write_executable(
+        bin_dir / "git",
+        "#!/bin/sh\n"
+        'printf \'git %s\\n\' "$*" >> "$AISP_TEST_MUTATION_LOG"\n'
+        "exit 97\n",
+    )
+    env = os.environ.copy()
+    env.pop("AISP_SETUP_BOOTSTRAP_ONLY", None)
+    env.update(
+        {
+            "AISP_TEST_MUTATION_LOG": str(mutation_log),
+            "AISP_VENV_DIR": str(tmp_path / "fresh-venv"),
+            "PATH": f"{bin_dir}:/usr/bin:/bin",
+            "SETUP_LOG_FILE": str(tmp_path / "setup.log"),
+        }
+    )
+    result = subprocess.run(
+        ["/bin/bash", str(SETUP_SCRIPT)],
+        check=False,
+        capture_output=True,
+        env=env,
+        text=True,
+    )
+    return result, mutation_log
 
 
 def _run_rejected_host(
@@ -175,6 +238,73 @@ def test_unsupported_host_rejection_precedes_every_setup_mutation(tmp_path: Path
         assert message in result.stderr
         assert not mutation_log.exists(), mutation_log.read_text(encoding="utf-8")
         assert not (tmp_path / str(index) / "setup.log").exists()
+
+
+def test_sm100_capability_is_accepted_and_normalized() -> None:
+    script = (
+        "set -e\n"
+        'SUPPORTED_NATIVE_GPU_COMPUTE_CAPABILITY="10.0"\n'
+        'GPU_COMPUTE_CAP_RAW=""\n'
+        'GPU_COMPUTE_SM_NUM=""\n'
+        'GPU_CUDA_ARCH_LIST=""\n'
+        f"{_setup_function('require_supported_native_gpu_compute_capability')}\n"
+        'require_supported_native_gpu_compute_capability "$1"\n'
+        'printf "%s|%s|%s\\n" "${GPU_COMPUTE_CAP_RAW}" '
+        '"${GPU_COMPUTE_SM_NUM}" "${GPU_CUDA_ARCH_LIST}"\n'
+    )
+
+    result = subprocess.run(
+        ["/bin/bash", "-s", "--", "10.0"],
+        input=script,
+        capture_output=True,
+        check=False,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == "10.0|100|10.0\n"
+
+
+def test_unsupported_capability_stops_before_repository_checkout(tmp_path: Path) -> None:
+    cases = (
+        ("10.3", "B300/GB300 compute capability 10.3"),
+        ("9.0", "Detected unsupported compute capability 9.0"),
+        ("\n".join(("10.0", "10.3")), "B300/GB300 compute capability 10.3"),
+    )
+    for index, (capabilities, message) in enumerate(cases):
+        case_root = tmp_path / str(index)
+        result, mutation_log = _run_rejected_gpu(
+            case_root, reported_capabilities=capabilities
+        )
+
+        assert result.returncode != 0
+        assert message in result.stderr
+        assert not mutation_log.exists(), mutation_log.read_text(encoding="utf-8")
+        assert not (case_root / "setup.log").exists()
+
+
+def test_validated_sm100_arch_reaches_both_native_builders() -> None:
+    setup = SETUP_SCRIPT.read_text(encoding="utf-8")
+
+    assert "\ndetect_supported_native_gpu\nbootstrap_repository_checkout\n" in setup
+    assert setup.count('--cuda-arch-list "${GPU_CUDA_ARCH_LIST}"') == 1
+    assert 'VLLM_ARCH_LIST="${GPU_CUDA_ARCH_LIST}"' in setup
+    assert setup.count('--cuda-arch-list "${VLLM_ARCH_LIST}"') == 1
+    assert "GPU_COMPUTE_SM:-" not in setup
+
+
+def test_setup_docs_limit_the_shared_native_contract_to_sm100() -> None:
+    setup = SETUP_SCRIPT.read_text(encoding="utf-8")
+    environment = ENVIRONMENT_DOC.read_text(encoding="utf-8")
+    readme = CODE_README.read_text(encoding="utf-8")
+
+    assert "NVIDIA B200 or GB200 GPU with compute capability 10.0" in setup
+    for document in (environment, readme):
+        assert "B200/GB200" in document
+        assert "compute capability 10.0" in document
+        assert "B300/GB300" in document
+        assert "10.3" in document
+        assert "before repository checkout" in document
 
 
 def _pytorch_source_script() -> str:

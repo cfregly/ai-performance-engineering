@@ -18,8 +18,8 @@ python -m labs.arithmetic_intensity_b200 formulas --output <artifact-dir>/formul
 
 Live commands and harness benchmark pairs use a lab-specific isolated runtime. They
 require exact readback of PyTorch 2.13.0+cu130 and the CUDA 13.0 version reported by
-PyTorch. This is the current qualification target and does not change the repository-wide
-PyTorch 2.9.1+cu130 default. Retained PyTorch 2.11.0+cu130 results are historical and do
+PyTorch. This lab's qualification target remains independently pinned. The repository-wide
+default is PyTorch 2.14.1+cu130. Retained PyTorch 2.11.0+cu130 results are historical and do
 not qualify the current source. The frozen cuBLASLt algorithm must report as supported and
 pass full-output correctness on 2.13.0. Reselect it through the bounded search if that check
 fails. The lab does not use Triton kernels. An installed Triton version is recorded in

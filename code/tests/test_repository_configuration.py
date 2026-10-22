@@ -560,6 +560,38 @@ def test_cuda13_base_requirements_pin_the_vllm_source_build_contract() -> None:
             "0add68262ab0a2e33b84524346cb27cbb2787356",
             "de055ee6adc5cfdd4891ccc3b50cf0a5cbd96163",
         ),
+        "deepgemm": (
+            "727f847082d2e7946f70dc02b94949db206310d3",
+            "213045eec56a68b1019af274275c641b2f7c2f34",
+        ),
+        "deepselect": (
+            "d96d33afe1fab0d6066da49cdc91e64c2bee65ea",
+            "59b66c5ef185b91ebc9314d2980c0c7cb839a989",
+        ),
+        "flashkda": (
+            "17a037d98da546deb4591e967cf961a43c034d8b",
+            "bf8cf88d6b38747b65346fbcf82fa58f7e8b7880",
+        ),
+        "flashmla": (
+            "5dceadbd9eabc9acfc547ef18ec8f7b14b980682",
+            "cce4425fbb8fe83f84b561dc0f9b4b8a9746dadc",
+        ),
+        "fmha_sm100": (
+            "968061ab16cb14991a5c7d4c0e8eabf531be0dcf",
+            "fc0ca8ee3b529a8d5d9219ae5784ec3a4dc857d3",
+        ),
+        "qutlass": (
+            "e74319e3405ce6d71965732880f5dc1f52371f64",
+            "7c522b19e1341e36c63c86bbd664981dda49cd5e",
+        ),
+        "tml_fa4": (
+            "75765e76a9c2c012c1f6ecd64577eb646eb4d303",
+            "096d2436be5c869aea329a42a81e544bda43b529",
+        ),
+        "vllm-flash-attn": (
+            "b273a02621d3c94bc747df67204f591b67f38fae",
+            "0d9528273c21f4f2c6534e52146c6b301925da17",
+        ),
     }
     expected_metadata = source_build["expected_metadata"]
     assert expected_metadata["version"] == source_build["package"]["version"]
@@ -652,6 +684,7 @@ def test_tier1_builds_and_installs_pinned_native_sources_as_no_deps_phases() -> 
     assert source_step["env"] == {
         "CUDA_VISIBLE_DEVICES": "",
         "TORCH_DEVICE_BACKEND_AUTOLOAD": "0",
+        "PYTORCH_NVML_BASED_CUDA_CHECK": "1",
         "VLLM_BUILD_ROOT": (
             "${{ runner.temp }}/vllm-torch2141-"
             "${{ github.run_id }}-${{ github.run_attempt }}"

@@ -26,6 +26,13 @@ devices with 12.0 and GB10 with 12.1 are separate targets. These identities do n
 make their feature sets, CPU architecture, memory or performance interchangeable.
 See [NVIDIA's capability table](https://developer.nvidia.com/cuda/gpus).
 
+The shared CUDA 13.0 and PyTorch 2.14.1 `setup.sh` native-build contract is
+limited to B200/GB200 compute capability 10.0. Full setup rejects B300/GB300
+10.3 and every other capability before repository checkout or compiler work.
+The historical GB300 runbook and standalone SM103 profiles remain available
+for their separately pinned environments and qualification. They are not an
+alternate target for this shared setup.
+
 [core/harness/arch_config.py](../code/core/harness/arch_config.py) and
 [core/common/cuda_arch.mk](../code/core/common/cuda_arch.mk) retain exact target
 identities. Select `ARCH=sm_100`, `sm_103`, `sm_120` or `sm_121` as appropriate.
@@ -55,11 +62,11 @@ explicit skip.
 | Nsight Systems | 2026.3.2 | Installer target in `setup.sh`. Supports drivers from 450 on for CUDA 11+ |
 | Nsight Compute | 2026.2.1 | Installer target in `setup.sh` and the only version `core/profiling/ncu_torchrun_capture.py` accepts. Requires a driver compatible with CUDA 13 (r580 or newer) |
 
-This is the B200-oriented dependency baseline, not a claim that every package
-installs or every kernel runs on all architectures. Read the separate, historical
-[GB300 runbook](../code/docs/gb300-runbook.md) and its correction notice before
-using that platform. Its environment and results require their own current
-validation. Do not substitute a B200 receipt.
+This is the B200 compute capability 10.0 dependency baseline. Package and
+kernel support on other architectures requires separate validation. Read the
+historical [GB300 runbook](../code/docs/gb300-runbook.md) and its correction
+notice before using that platform. Its environment and results require their
+own current validation. Do not substitute a B200 receipt.
 
 ## Installation and inspection
 
@@ -120,7 +127,7 @@ python -m pip check
 
 # Optional serving runtime. Choose a new absolute output path for each build.
 export VLLM_BUILD_ROOT=/absolute/path/to/new-vllm-torch2141-build
-CUDA_VISIBLE_DEVICES="" TORCH_DEVICE_BACKEND_AUTOLOAD=0 \
+CUDA_VISIBLE_DEVICES="" TORCH_DEVICE_BACKEND_AUTOLOAD=0 PYTORCH_NVML_BASED_CUDA_CHECK=1 \
   python scripts/build_vllm_for_torch.py \
     --output-dir "${VLLM_BUILD_ROOT}" \
     --cuda-arch-list 10.0 \
@@ -148,7 +155,7 @@ touching that FlashAttention installation:
 
 ```bash
 export NATIVE_EXTENSION_BUILD_ROOT=/absolute/path/to/new-te-torch2141-build
-CUDA_VISIBLE_DEVICES="" TORCH_DEVICE_BACKEND_AUTOLOAD=0 \
+CUDA_VISIBLE_DEVICES="" TORCH_DEVICE_BACKEND_AUTOLOAD=0 PYTORCH_NVML_BASED_CUDA_CHECK=1 \
   python scripts/build_torch_extensions.py \
     --package transformer-engine-torch \
     --output-dir "${NATIVE_EXTENSION_BUILD_ROOT}" \

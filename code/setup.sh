@@ -5,7 +5,7 @@
 # ========================================
 #
 # This script installs EVERYTHING you need:
-#   1. NVIDIA Driver 580.126.09 (auto-upgrades if needed; open kernel modules for B200/B300)
+#   1. NVIDIA Driver 580.126.09 (auto-upgrades if needed; open kernel modules for B200/GB200)
 #   2. Python 3.12
 #   3. CUDA 13.0.2 toolkit + cuBLAS 13.1.0.3 (Update 2) repository
 #   4. The canonical PyTorch/Triton stack pinned in requirements_latest.txt
@@ -22,7 +22,7 @@
 # Requirements:
 #   - Ubuntu 22.04 or 24.04 on x86_64 (tested on 22.04). NVIDIA publishes the
 #     CUDA 13.0.2 and Nsight packages below for both releases, not for 20.04.
-#   - NVIDIA B200/B300 GPU (or compatible)
+#   - NVIDIA B200 or GB200 GPU with compute capability 10.0
 #   - sudo/root access
 #   - Internet connection
 #
@@ -97,6 +97,58 @@ if ! REPOSITORY_ROOT="$(discover_repository_root "${PROJECT_ROOT}")"; then
     REPOSITORY_ROOT="${PROJECT_ROOT}"
 fi
 CUDA_FULL_VERSION="13.0.2"
+SUPPORTED_NATIVE_GPU_COMPUTE_CAPABILITY="10.0"
+GPU_COMPUTE_CAP_RAW=""
+GPU_COMPUTE_SM_NUM=""
+GPU_CUDA_ARCH_LIST=""
+
+require_supported_native_gpu_compute_capability() {
+    local detected_capability="$1"
+    if [ -z "${detected_capability}" ]; then
+        echo "ERROR: Could not detect the GPU compute capability." >&2
+        return 1
+    fi
+    if [ "${detected_capability}" != "${SUPPORTED_NATIVE_GPU_COMPUTE_CAPABILITY}" ]; then
+        echo "ERROR: This CUDA 13.0 and PyTorch 2.14.1 native setup supports only NVIDIA B200/GB200 compute capability ${SUPPORTED_NATIVE_GPU_COMPUTE_CAPABILITY}." >&2
+        if [ "${detected_capability}" = "10.3" ]; then
+            echo "       NVIDIA B300/GB300 compute capability 10.3 requires a separate SM103 native build contract and qualification." >&2
+        else
+            echo "       Detected unsupported compute capability ${detected_capability}." >&2
+        fi
+        return 1
+    fi
+
+    GPU_COMPUTE_CAP_RAW="${detected_capability}"
+    GPU_COMPUTE_SM_NUM="${detected_capability//./}"
+    GPU_CUDA_ARCH_LIST="${detected_capability}"
+    export GPU_COMPUTE_CAP_RAW GPU_COMPUTE_SM_NUM GPU_CUDA_ARCH_LIST
+}
+
+detect_supported_native_gpu() {
+    local detected_capabilities detected_capability detected_count
+    if ! command -v nvidia-smi >/dev/null 2>&1; then
+        echo "ERROR: NVIDIA GPU not detected. Ensure the NVIDIA driver is installed before running setup." >&2
+        return 1
+    fi
+    if ! detected_capabilities="$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader 2>/dev/null | tr -d '[:blank:]\r')"; then
+        echo "ERROR: Could not query GPU compute capability with nvidia-smi." >&2
+        return 1
+    fi
+
+    detected_count=0
+    while IFS= read -r detected_capability; do
+        if [ -z "${detected_capability}" ]; then
+            continue
+        fi
+        detected_count=$((detected_count + 1))
+        require_supported_native_gpu_compute_capability "${detected_capability}" || return 1
+    done <<< "${detected_capabilities}"
+    if [ "${detected_count}" -eq 0 ]; then
+        echo "ERROR: Could not detect the GPU compute capability." >&2
+        return 1
+    fi
+    echo "Detected ${detected_count} supported GPU(s) at compute capability ${GPU_COMPUTE_CAP_RAW} (sm_${GPU_COMPUTE_SM_NUM})."
+}
 
 bootstrap_repository_checkout() {
     if [ ! -e "${REPOSITORY_ROOT}/.git" ]; then
@@ -186,6 +238,7 @@ if [ -e "${AISP_VENV_DIR}" ] || [ -L "${AISP_VENV_DIR}" ]; then
     echo "       Preserve the existing runtime and choose a new AISP_VENV_DIR." >&2
     exit 1
 fi
+detect_supported_native_gpu
 bootstrap_repository_checkout
 
 # =============================================================================
@@ -341,7 +394,6 @@ MLPERF_TRAINING_REPO_URL="${MLPERF_TRAINING_REPO_URL:-https://github.com/mlcommo
 MLPERF_TRAINING_GIT_REF="${MLPERF_TRAINING_GIT_REF:-master}"
 MLPERF_TRAINING_SRC_DIR="${MLPERF_TRAINING_SRC_DIR:-${THIRD_PARTY_DIR}/mlperf_training}"
 PIP_ROOT_USER_ACTION="ignore"
-GPU_COMPUTE_SM_NUM=""
 export PROJECT_ROOT REQUIRED_DRIVER_VERSION PYTHON_TARGET_VERSION PYTHON_TARGET_BIN PIP_ROOT_USER_ACTION
 # These values must be populated from exact requirements_latest.txt pins.
 PYTORCH_TORCH_VERSION=""
@@ -802,36 +854,20 @@ else
     echo "fs.inotify.max_user_watches already set to ${CURRENT_INOTIFY_WATCHES}."
 fi
 
-# Check for NVIDIA GPU
+# Display the GPU and validate its installed driver. Compute capability was
+# already gated before repository checkout and every host mutation.
 echo ""
-echo "Checking for NVIDIA GPU..."
-if command -v nvidia-smi &> /dev/null; then
-    nvidia-smi
-    echo "NVIDIA GPU detected"
-
-    DRIVER_VERSION=$(nvidia-smi --query-gpu=driver_version --format=csv,noheader,nounits | head -n 1 | tr -d ' ')
-    if [[ -n "$DRIVER_VERSION" ]]; then
-        if ! dpkg --compare-versions "$DRIVER_VERSION" ge "$REQUIRED_DRIVER_VERSION"; then
-            echo "Current NVIDIA driver: $DRIVER_VERSION"
-            echo "CUDA ${CUDA_SHORT_VERSION} Update 2 requires driver ${REQUIRED_DRIVER_VERSION}+."
-            echo "This script will upgrade it automatically."
-        else
-            echo "NVIDIA driver version: $DRIVER_VERSION (compatible with CUDA ${CUDA_SHORT_VERSION} Update 2)"
-        fi
+echo "Checking the validated NVIDIA GPU driver..."
+nvidia-smi
+DRIVER_VERSION=$(nvidia-smi --query-gpu=driver_version --format=csv,noheader,nounits | head -n 1 | tr -d ' ')
+if [[ -n "$DRIVER_VERSION" ]]; then
+    if ! dpkg --compare-versions "$DRIVER_VERSION" ge "$REQUIRED_DRIVER_VERSION"; then
+        echo "Current NVIDIA driver: $DRIVER_VERSION"
+        echo "CUDA ${CUDA_SHORT_VERSION} Update 2 requires driver ${REQUIRED_DRIVER_VERSION}+."
+        echo "This script will upgrade it automatically."
+    else
+        echo "NVIDIA driver version: $DRIVER_VERSION (compatible with CUDA ${CUDA_SHORT_VERSION} Update 2)"
     fi
-else
-    echo "NVIDIA GPU not detected. Please ensure NVIDIA drivers are installed."
-    exit 1
-fi
-
-GPU_COMPUTE_CAP_RAW=$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader 2>/dev/null | head -n 1 | tr -d '[:space:]')
-GPU_COMPUTE_SM_NUM=$(echo "${GPU_COMPUTE_CAP_RAW}" | tr -d '.')
-if [[ -n "${GPU_COMPUTE_SM_NUM}" ]]; then
-    echo "Detected GPU compute capability: sm_${GPU_COMPUTE_SM_NUM}"
-    export GPU_COMPUTE_SM_NUM
-else
-    echo "ERROR: Could not detect the GPU compute capability." >&2
-    exit 1
 fi
 
 # Ensure open kernel modules are enabled for Blackwell GPUs
@@ -1679,12 +1715,12 @@ if [ -z "${NATIVE_BUILD_ROOT:-}" ]; then
     NATIVE_BUILD_PARENT="$(mktemp -d "${THIRD_PARTY_DIR}/torch2141-native-build.XXXXXX")"
     NATIVE_BUILD_ROOT="${NATIVE_BUILD_PARENT}/build"
 fi
-if ! CUDA_VISIBLE_DEVICES="" TORCH_DEVICE_BACKEND_AUTOLOAD=0 \
+if ! CUDA_VISIBLE_DEVICES="" TORCH_DEVICE_BACKEND_AUTOLOAD=0 PYTORCH_NVML_BASED_CUDA_CHECK=1 \
     python3 "${PROJECT_ROOT}/scripts/build_torch_extensions.py" \
     --contract "${PROJECT_ROOT}/native_torch_extensions.json" \
     --output-dir "${NATIVE_BUILD_ROOT}" \
     --package transformer-engine-torch \
-    --cuda-arch-list 10.0 \
+    --cuda-arch-list "${GPU_CUDA_ARCH_LIST}" \
     --max-jobs "${MAX_JOBS:-8}" --nvcc-threads "${NVCC_THREADS:-2}"; then
     echo "ERROR: The pinned Transformer Engine binding build failed."
     exit 1
@@ -1800,14 +1836,7 @@ PYATTENTION
 # Install pinned vLLM serving stack and verify ABI against torch.
 echo ""
 echo "Installing pinned vLLM serving stack (${VLLM_PIP_SPEC}) for this CUDA/toolchain..."
-VLLM_ARCH_LIST="10.0"
-if [ -n "${GPU_COMPUTE_SM:-}" ]; then
-    if [ "${#GPU_COMPUTE_SM}" -ge 3 ]; then
-        major="${GPU_COMPUTE_SM:0:2}"
-        minor="${GPU_COMPUTE_SM:2:1}"
-        VLLM_ARCH_LIST="${major}.${minor}"
-    fi
-fi
+VLLM_ARCH_LIST="${GPU_CUDA_ARCH_LIST}"
 VLLM_EXPECTED_VERSION="${VLLM_PIP_SPEC#vllm==}"
 
 # No published wheel targets this torch ABI. Rebuild the fixed source, retain
@@ -1816,7 +1845,7 @@ if [ -z "${VLLM_BUILD_ROOT:-}" ]; then
     VLLM_BUILD_PARENT="$(mktemp -d "${THIRD_PARTY_DIR}/vllm-torch2141-build.XXXXXX")"
     VLLM_BUILD_ROOT="${VLLM_BUILD_PARENT}/build"
 fi
-if ! CUDA_VISIBLE_DEVICES="" TORCH_DEVICE_BACKEND_AUTOLOAD=0 \
+if ! CUDA_VISIBLE_DEVICES="" TORCH_DEVICE_BACKEND_AUTOLOAD=0 PYTORCH_NVML_BASED_CUDA_CHECK=1 \
     python3 "${PROJECT_ROOT}/scripts/build_vllm_for_torch.py" \
     --contract "${VLLM_SOURCE_BUILD_MANIFEST}" \
     --output-dir "${VLLM_BUILD_ROOT}" \

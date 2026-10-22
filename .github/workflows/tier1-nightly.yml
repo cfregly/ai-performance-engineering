@@ -262,6 +262,7 @@ jobs:
           CUDA_VISIBLE_DEVICES: ""
           TORCH_DEVICE_BACKEND_AUTOLOAD: "0"
           VLLM_BUILD_ROOT: ${{ runner.temp }}/vllm-torch2141-${{ github.run_id }}-${{ github.run_attempt }}
+          PYTORCH_NVML_BASED_CUDA_CHECK: "1"
         run: |
           python scripts/build_vllm_for_torch.py \
             --output-dir "${VLLM_BUILD_ROOT}" \

@@ -168,7 +168,7 @@ python -m cli.aisp bench list-targets --chapter ch01
 python -m cli.aisp bench run --targets ch01 --profile minimal
 python -m cli.aisp bench run-tier1 --single-gpu --profile minimal
 ```
-- `setup.sh` installs system prerequisites (drivers, CUDA, Nsight) and should be rerun after driver upgrades.
+- `setup.sh` installs the shared CUDA 13.0 and PyTorch 2.14.1 environment only on B200/GB200 compute capability 10.0, and should be rerun after driver upgrades. It rejects B300/GB300 10.3 and every other capability before repository checkout or compiler work. Historical and standalone SM103 profiles keep their separate environment and qualification paths.
 - Benchmark validity profile defaults to strict. Virtualization is warning-only; use `--validity-profile portable` for broader compatibility on hardware-limited hosts.
 - Use `python -m cli.aisp bench expectations --hardware b200 --min-speedup 1.05` to report expectation entries below a target threshold.
 - Repeat `--targets` for multi-scope runs, for example `python -m cli.aisp bench run --targets ch01 --targets ch02 --profile minimal`; use `python -m cli.aisp bench run-tier1 --single-gpu --profile minimal` for the canonical regression suite.
@@ -185,7 +185,9 @@ python -m cli.aisp bench run-tier1 --single-gpu --profile minimal
 then resolves the NCCL, cuDNN and NVSHMEM headers and libraries from those
 same wheels. Its environment-local `runtime-env.sh` records the matching
 include and library paths for later builds without changing shell profiles or
-system-wide environment files. Missing wheel assets and external NCCL, cuDNN,
+system-wide environment files. This native-build path requires B200/GB200
+compute capability 10.0 and fails before repository checkout on B300/GB300
+10.3 or any other capability. Missing wheel assets and external NCCL, cuDNN,
 or cuBLAS preloads are hard errors.
 
 The hash lock selects the reviewed
@@ -205,7 +207,7 @@ requirements:
 
 ```bash
 export VLLM_BUILD_ROOT=/absolute/path/to/new-vllm-torch2141-build
-CUDA_VISIBLE_DEVICES="" TORCH_DEVICE_BACKEND_AUTOLOAD=0 \
+CUDA_VISIBLE_DEVICES="" TORCH_DEVICE_BACKEND_AUTOLOAD=0 PYTORCH_NVML_BASED_CUDA_CHECK=1 \
   python scripts/build_vllm_for_torch.py \
     --output-dir "${VLLM_BUILD_ROOT}" \
     --cuda-arch-list 10.0 \
@@ -229,7 +231,7 @@ FlashAttention installation:
 
 ```bash
 export NATIVE_EXTENSION_BUILD_ROOT=/absolute/path/to/new-te-torch2141-build
-CUDA_VISIBLE_DEVICES="" TORCH_DEVICE_BACKEND_AUTOLOAD=0 \
+CUDA_VISIBLE_DEVICES="" TORCH_DEVICE_BACKEND_AUTOLOAD=0 PYTORCH_NVML_BASED_CUDA_CHECK=1 \
   python scripts/build_torch_extensions.py \
     --package transformer-engine-torch \
     --output-dir "${NATIVE_EXTENSION_BUILD_ROOT}" \
