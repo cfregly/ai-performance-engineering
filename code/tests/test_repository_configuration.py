@@ -498,54 +498,232 @@ def test_cpu_ci_uses_exact_coverage_pins() -> None:
         assert pin in workflow
 
 
-def test_cuda13_base_requirements_exclude_conflicting_vllm_dependencies() -> None:
+def test_cuda13_base_requirements_pin_the_vllm_source_build_contract() -> None:
     requirements = (CODE_ROOT / "requirements_latest.txt").read_text(encoding="utf-8")
     active_lines = {
         line.split("#", 1)[0].strip()
         for line in requirements.splitlines()
         if line.split("#", 1)[0].strip()
     }
-    vllm_pin_lines = {
-        line.split("#", 1)[0].strip()
-        for line in (CODE_ROOT / "vllm_no_deps.pin").read_text(
-            encoding="utf-8"
-        ).splitlines()
-        if line.split("#", 1)[0].strip()
-    }
+    source_build = json.loads(
+        (CODE_ROOT / "vllm_source_build.json").read_text(encoding="utf-8")
+    )
 
-    assert "vllm==0.16.0+cu130" not in active_lines
     assert not any(line.startswith("vllm==") for line in active_lines)
     assert not any(line.startswith("cupy-cuda12x==") for line in active_lines)
     assert not any(line.startswith("typer-slim") for line in active_lines)
     assert "cupy-cuda13x==14.2.0" in active_lines
-    assert "fastapi[standard-no-fastapi-cloud-cli]==0.121.3" in active_lines
-    assert vllm_pin_lines == {"vllm==0.16.0+cu130"}
+    assert "fastapi[standard]==0.136.1" in active_lines
+    assert source_build["schema"] == "aisp.vllm-source-build.v1"
+    assert source_build["source"]["repository"] == (
+        "https://github.com/vllm-project/vllm.git"
+    )
+    assert source_build["source"]["commit"] == (
+        "cd914c98e4561f630e4400b8908c5e227a9e8d13"
+    )
+    assert source_build["source"]["tree"] == (
+        "3ec7923ecbc43cbe7001ec1348d54b37886bec80"
+    )
+    assert source_build["package"] == {
+        "name": "vllm",
+        "version": "0.33.0.dev0+cu130.torch2141",
+    }
+    assert source_build["runtime"] == {
+        "platform_system": "Linux",
+        "platform_machine": "x86_64",
+        "python": "3.12",
+        "torch": "2.14.1+cu130",
+        "torch_cuda": "13.0",
+        "triton": "3.8.0",
+        "torchvision": "0.29.1+cu130",
+        "torchaudio": "2.11.0+cu130",
+        "torchao": "0.18.0+cu130",
+        "flashinfer_python": "0.7.2",
+    }
+    assert source_build["build"]["environment"] == {
+        "VLLM_TARGET_DEVICE": "cuda",
+        "VLLM_USE_PRECOMPILED": "0",
+        "VLLM_USE_PRECOMPILED_RUST": "0",
+        "VLLM_REQUIRE_RUST_FRONTEND": "1",
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "TORCH_CUDA_ARCH_LIST": "10.0",
+    }
+    assert {
+        name: (dependency["commit"], dependency["tree"])
+        for name, dependency in source_build["source_dependencies"].items()
+    } == {
+        "cutlass": (
+            "cb4247394dd82148787aed73e5dc7cef33cbf862",
+            "80bf7bcb14301ae22e83a256c961a6b67ecf7893",
+        ),
+        "triton-kernels": (
+            "0add68262ab0a2e33b84524346cb27cbb2787356",
+            "de055ee6adc5cfdd4891ccc3b50cf0a5cbd96163",
+        ),
+        "deepgemm": (
+            "727f847082d2e7946f70dc02b94949db206310d3",
+            "213045eec56a68b1019af274275c641b2f7c2f34",
+        ),
+        "deepselect": (
+            "d96d33afe1fab0d6066da49cdc91e64c2bee65ea",
+            "59b66c5ef185b91ebc9314d2980c0c7cb839a989",
+        ),
+        "flashkda": (
+            "17a037d98da546deb4591e967cf961a43c034d8b",
+            "bf8cf88d6b38747b65346fbcf82fa58f7e8b7880",
+        ),
+        "flashmla": (
+            "5dceadbd9eabc9acfc547ef18ec8f7b14b980682",
+            "cce4425fbb8fe83f84b561dc0f9b4b8a9746dadc",
+        ),
+        "fmha_sm100": (
+            "968061ab16cb14991a5c7d4c0e8eabf531be0dcf",
+            "fc0ca8ee3b529a8d5d9219ae5784ec3a4dc857d3",
+        ),
+        "qutlass": (
+            "e74319e3405ce6d71965732880f5dc1f52371f64",
+            "7c522b19e1341e36c63c86bbd664981dda49cd5e",
+        ),
+        "tml_fa4": (
+            "75765e76a9c2c012c1f6ecd64577eb646eb4d303",
+            "096d2436be5c869aea329a42a81e544bda43b529",
+        ),
+        "vllm-flash-attn": (
+            "b273a02621d3c94bc747df67204f591b67f38fae",
+            "0d9528273c21f4f2c6534e52146c6b301925da17",
+        ),
+    }
+    expected_metadata = source_build["expected_metadata"]
+    assert expected_metadata["version"] == source_build["package"]["version"]
+    assert set(expected_metadata["forbidden_dependency_names"]) >= {
+        "torch",
+        "torchaudio",
+        "torchcodec",
+        "torchvision",
+    }
+    assert set(expected_metadata["required_native_member_prefixes"]) == {
+        "vllm/_C_stable_libtorch",
+        "vllm/_moe_C_stable_libtorch",
+    }
+    assert expected_metadata["required_archive_members"] == ["vllm/vllm-rs"]
+    assert expected_metadata["required_executable_member"] == "vllm/vllm-rs"
+    assert expected_metadata["minimum_native_member_size"] == 65_536
 
 
-def test_tier1_installs_the_cuda13_vllm_pin_as_a_separate_no_deps_phase() -> None:
+def test_tier1_builds_and_installs_pinned_native_sources_as_no_deps_phases() -> None:
     tier1_job = _load_workflow("tier1-nightly.yml")["jobs"]["tier1"]
+    steps = tier1_job["steps"]
     setup_python = next(
-        step for step in tier1_job["steps"] if step["name"] == "Set up Python"
+        step for step in steps if step["name"] == "Set up Python"
     )
-    install = next(
-        step["run"]
-        for step in tier1_job["steps"]
-        if step["name"] == "Install Python dependencies"
+    dependency_step = next(
+        step for step in steps if step["name"] == "Install Python dependencies"
     )
+    venv_step = next(
+        step for step in steps if step["name"] == "Create isolated Python environment"
+    )
+    rust_step = next(
+        step for step in steps if step["name"] == "Select pinned Rust toolchain"
+    )
+    native_step = next(
+        step
+        for step in steps
+        if step["name"] == "Build and install pinned Transformer Engine Torch binding"
+    )
+    source_step = next(
+        step for step in steps if step["name"] == "Build and install pinned vLLM source"
+    )
+    install = dependency_step["run"]
+    native_install = native_step["run"]
+    source_install = source_step["run"]
 
     assert setup_python["with"]["cache-dependency-path"].splitlines() == [
         "code/requirements_latest.txt",
-        "code/vllm_no_deps.pin",
+        "code/requirements_torch2141_linux_x86_64.lock",
+        "code/vllm_source_build.json",
+        "code/native_torch_extensions.json",
+        "code/torch_dlpack_source_build.json",
+        "code/scripts/build_torch_dlpack_wheel.py",
+        "code/vendor/python-wheels/*.whl",
     ]
-    assert "-r requirements_latest.txt" in install
-    assert 'vllm_spec="$(grep -E \'^vllm==\' vllm_no_deps.pin)"' in install
-    assert 'test -n "${vllm_spec}"' in install
+    assert "-r requirements_torch2141_linux_x86_64.lock" in install
+    assert "--require-hashes" in install
     assert "--no-deps" in install
-    assert "--index-url https://wheels.vllm.ai/0.16.0/cu130" in install
-    assert "--extra-index-url https://wheels.vllm.ai" not in install
-    assert '"${vllm_spec}"' in install
-    assert install.index("-r requirements_latest.txt") < install.index("vllm_spec=")
-    assert install.index("vllm_spec=") < install.index("--no-deps")
+    assert "-r requirements_latest.txt" not in install
+    assert "vllm_no_deps.pin" not in install
+    assert "wheels.vllm.ai" not in install
+    assert "python -m venv" in venv_step["run"]
+    assert "GITHUB_PATH" in venv_step["run"]
+    assert "VIRTUAL_ENV" in venv_step["run"]
+    assert "rustup toolchain install 1.95.0 --profile minimal" in rust_step["run"]
+    assert "RUSTUP_TOOLCHAIN=1.95.0" in rust_step["run"]
+    assert native_step["env"] == {
+        "CUDA_VISIBLE_DEVICES": "",
+        "TORCH_DEVICE_BACKEND_AUTOLOAD": "0",
+        "NATIVE_EXTENSION_BUILD_ROOT": (
+            "${{ runner.temp }}/te-torch2141-"
+            "${{ github.run_id }}-${{ github.run_attempt }}"
+        ),
+    }
+    assert "python scripts/build_torch_extensions.py" in native_install
+    assert "--package transformer-engine-torch" in native_install
+    assert '--output-dir "${NATIVE_EXTENSION_BUILD_ROOT}"' in native_install
+    assert "--cuda-arch-list 10.0" in native_install
+    assert "--max-jobs 8" in native_install
+    assert "--nvcc-threads 2" in native_install
+    assert "native-torch-extensions.manifest.json" in native_install
+    assert '["packages"]["transformer-engine-torch"]["wheel"]["path"]' in native_install
+    assert 'test -f "${TE_WHEEL}"' in native_install
+    assert 'python -m pip install --no-deps "${TE_WHEEL}"' in native_install
+    for package in (
+        'metadata.version("transformer-engine") == "2.20.2"',
+        'metadata.version("transformer-engine-cu13") == "2.20.2"',
+        'metadata.version("transformer-engine-torch") == "2.20.2"',
+    ):
+        assert package in native_install
+    assert source_step["env"] == {
+        "CUDA_VISIBLE_DEVICES": "",
+        "TORCH_DEVICE_BACKEND_AUTOLOAD": "0",
+        "PYTORCH_NVML_BASED_CUDA_CHECK": "1",
+        "VLLM_BUILD_ROOT": (
+            "${{ runner.temp }}/vllm-torch2141-"
+            "${{ github.run_id }}-${{ github.run_attempt }}"
+        )
+    }
+    assert "python scripts/build_vllm_for_torch.py" in source_install
+    assert '--output-dir "${VLLM_BUILD_ROOT}"' in source_install
+    assert "--cuda-arch-list 10.0" in source_install
+    assert "--max-jobs 4" in source_install
+    assert "vllm-source-wheel.manifest.json" in source_install
+    assert '["wheel"]["path"]' in source_install
+    assert 'test -f "${VLLM_WHEEL}"' in source_install
+    assert 'python -m pip install --no-deps "${VLLM_WHEEL}"' in source_install
+    assert "vllm._C_stable_libtorch" in source_install
+    assert "vllm._moe_C_stable_libtorch" in source_install
+    assert "vllm-rs" in source_install
+    assert "import vllm._C\n" not in source_install
+    assert '"vllm": "0.33.0.dev0+cu130.torch2141"' in source_install
+    assert '"torch": "2.14.1+cu130"' in source_install
+    assert '"triton": "3.8.0"' in source_install
+    assert 'torch.version.cuda != "13.0"' in source_install
+    assert source_install.index("build_vllm_for_torch.py") < source_install.index(
+        'test -f "${VLLM_WHEEL}"'
+    )
+    assert source_install.index('test -f "${VLLM_WHEEL}"') < source_install.index(
+        "pip install --no-deps"
+    )
+    cutlass_step = next(
+        step for step in steps if step["name"] == "Materialize and verify the validated CUTLASS source"
+    )
+    assert (
+        steps.index(setup_python)
+        < steps.index(venv_step)
+        < steps.index(rust_step)
+        < steps.index(dependency_step)
+        < steps.index(native_step)
+        < steps.index(source_step)
+        < steps.index(cutlass_step)
+    )
 
 
 
@@ -619,8 +797,11 @@ def test_workflow_path_filters_are_root_relative() -> None:
             "code/Makefile",
             "code/dashboard/**",
             "code/requirements_latest.txt",
+            "code/requirements_torch2141_linux_x86_64.lock",
+            "code/scripts/build_vllm_for_torch.py",
             "code/setup.sh",
             "code/uv.lock",
+            "code/vllm_source_build.json",
             ".gitmodules",
             ".github/workflows/**",
         } <= set(paths)
@@ -641,16 +822,25 @@ def test_gitmodules_matches_every_tracked_gitlink() -> None:
         assert parser[f'submodule "{path}"']["url"] == ("https://github.com/NVIDIA/nccl-tests.git")
 
 
-def test_cutlass_dsl_and_source_pins_match_validated_release() -> None:
+def test_cutlass_dsl_and_source_pins_match_their_validated_releases() -> None:
     requirements = (CODE_ROOT / "requirements_latest.txt").read_text(encoding="utf-8")
     setup = (CODE_ROOT / "setup.sh").read_text(encoding="utf-8")
     installer = (CODE_ROOT / "core" / "scripts" / "install_cutlass.sh").read_text(encoding="utf-8")
 
-    assert re.search(r"^nvidia-cutlass-dsl\[cu13\]==4\.5\.2$", requirements, re.MULTILINE)
-    assert 'CUTLASS_REF="${CUTLASS_REF:-v4.5.2}"' in setup
+    assert re.search(r"^nvidia-cutlass-dsl\[cu13\]==4\.8\.0$", requirements, re.MULTILINE)
+    assert 'CUTLASS_REF="${CUTLASS_REF:-db1c288993354c88e551c40c19a8fb93a774a241}"' in setup
     assert 'CUTLASS_TARGET_VERSION="${CUTLASS_TARGET_VERSION:-4.5.2}"' in setup
-    assert '"nvidia-cutlass-dsl[cu13]==4.5.2"' in setup
-    assert "CUTLASS_REF:-v4.5.2" in installer
+    lock = (CODE_ROOT / "requirements_torch2141_linux_x86_64.lock").read_text()
+    assert re.search(r"^nvidia-cutlass-dsl==4\.8\.0 \\$", lock, re.MULTILINE)
+    assert 'DEFAULT_COMMIT="db1c288993354c88e551c40c19a8fb93a774a241"' in installer
+    assert 'CUTLASS_RELEASE_TAG="v4.5.2"' in setup
+    for workflow_name in ("dual-arch-compare.yml", "tier1-nightly.yml"):
+        workflow = (WORKFLOW_ROOT / workflow_name).read_text(encoding="utf-8")
+        assert (
+            "bash core/scripts/install_cutlass.sh db1c288993354c88e551c40c19a8fb93a774a241"
+            in workflow
+        )
+        assert "install_cutlass.sh v4.5.2" not in workflow
 
 
 def test_uv_metadata_matches_supported_python_contract() -> None:

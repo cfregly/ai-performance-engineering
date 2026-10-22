@@ -80,17 +80,46 @@ def common_source() -> bytes:
     )
 
 
+@pytest.fixture
+def historical_vllm_pin(tmp_path: Path) -> Path:
+    pin = tmp_path / "vllm-0.16-no-deps.pin"
+    pin.write_text("vllm==0.16.0+cu130\n", encoding="utf-8")
+    return pin
+
+
+@pytest.fixture
+def historical_vllm_requirements(tmp_path: Path) -> Path:
+    requirements = tmp_path / "requirements-vllm-0.16.txt"
+    requirements.write_text(
+        "torch==2.9.1+cu130\nflashinfer-python==0.6.3\n",
+        encoding="utf-8",
+    )
+    return requirements
+
+
 def test_backport_builds_deterministic_installable_wheel_and_manifest(
     tmp_path: Path,
     common_source: bytes,
+    historical_vllm_pin: Path,
+    historical_vllm_requirements: Path,
 ) -> None:
     input_wheel = _write_test_wheel(tmp_path / "input", common=common_source)
     contract = _test_contract(input_wheel, common_source)
 
     first_wheel, first_manifest = backport.build_backport(
-        input_wheel, tmp_path / "first", contract=contract
+        input_wheel,
+        tmp_path / "first",
+        contract=contract,
+        pin_file=historical_vllm_pin,
+        requirements_file=historical_vllm_requirements,
     )
-    second_wheel, _ = backport.build_backport(input_wheel, tmp_path / "second", contract=contract)
+    second_wheel, _ = backport.build_backport(
+        input_wheel,
+        tmp_path / "second",
+        contract=contract,
+        pin_file=historical_vllm_pin,
+        requirements_file=historical_vllm_requirements,
+    )
 
     assert backport.sha256_file(first_wheel) == backport.sha256_file(second_wheel)
     assert first_manifest["input"]["sha256"] == contract.wheel_sha256
@@ -122,6 +151,8 @@ def test_backport_builds_deterministic_installable_wheel_and_manifest(
 def test_backport_rejects_wheel_source_and_metadata_drift(
     tmp_path: Path,
     common_source: bytes,
+    historical_vllm_pin: Path,
+    historical_vllm_requirements: Path,
 ) -> None:
     input_wheel = _write_test_wheel(tmp_path / "input", common=common_source)
     contract = _test_contract(input_wheel, common_source)
@@ -133,6 +164,7 @@ def test_backport_rejects_wheel_source_and_metadata_drift(
             tmp_path / "pin-output",
             contract=contract,
             pin_file=wrong_pin,
+            requirements_file=historical_vllm_requirements,
         )
 
     corrupt = tmp_path / "corrupt" / input_wheel.name
@@ -142,7 +174,13 @@ def test_backport_rejects_wheel_source_and_metadata_drift(
         handle.write(b"drift")
 
     with pytest.raises(RuntimeError, match="wheel hash"):
-        backport.build_backport(corrupt, tmp_path / "hash-output", contract=contract)
+        backport.build_backport(
+            corrupt,
+            tmp_path / "hash-output",
+            contract=contract,
+            pin_file=historical_vllm_pin,
+            requirements_file=historical_vllm_requirements,
+        )
 
     changed_source = _write_test_wheel(
         tmp_path / "source-drift", common=common_source + b"# drift\n"
@@ -150,7 +188,11 @@ def test_backport_rejects_wheel_source_and_metadata_drift(
     changed_source_contract = replace(contract, wheel_sha256=backport.sha256_file(changed_source))
     with pytest.raises(RuntimeError, match="upstream rotary source hash"):
         backport.build_backport(
-            changed_source, tmp_path / "source-output", contract=changed_source_contract
+            changed_source,
+            tmp_path / "source-output",
+            contract=changed_source_contract,
+            pin_file=historical_vllm_pin,
+            requirements_file=historical_vllm_requirements,
         )
 
     changed_metadata = _write_test_wheel(
@@ -164,6 +206,23 @@ def test_backport_rejects_wheel_source_and_metadata_drift(
             changed_metadata,
             tmp_path / "metadata-output",
             contract=changed_metadata_contract,
+            pin_file=historical_vllm_pin,
+            requirements_file=historical_vllm_requirements,
+        )
+
+
+def test_historical_backport_rejects_the_live_vllm_source_build_pin(
+    tmp_path: Path,
+    common_source: bytes,
+) -> None:
+    input_wheel = _write_test_wheel(tmp_path / "input", common=common_source)
+    contract = _test_contract(input_wheel, common_source)
+
+    with pytest.raises(RuntimeError, match="contain only vllm==0.16.0\\+cu130"):
+        backport.build_backport(
+            input_wheel,
+            tmp_path / "live-pin-output",
+            contract=contract,
         )
 
 

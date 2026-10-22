@@ -14,7 +14,7 @@ from core.utils.extension_loader_template import load_cuda_extension
 def _load_module():
     repo_root = Path(__file__).resolve().parent.parent
     source = repo_root / "profiling" / "cuda" / "occupancy_extension.cu"
-    extra_flags = ["-O3", "--use_fast_math", "-std=c++17"]
+    extra_flags = ["-O3", "--use_fast_math", "-std=c++20"]
     return load_cuda_extension(
         extension_name="occupancy_ext",
         cuda_source_file=str(source),

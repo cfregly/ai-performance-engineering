@@ -1165,7 +1165,9 @@ def _execute_benchmarks(
             artifacts_dir=str(artifact_manager.run_dir),
             log_file=str(log_file),
             events_file=str(artifact_manager.get_log_path("benchmark_events.jsonl")),
-            gpu_clock_lock_enabled=defaults.lock_gpu_clocks,
+            gpu_clock_lock_enabled=(
+                False if portable_mode else defaults.lock_gpu_clocks
+            ),
             gpu_sm_clock_mhz=defaults.gpu_sm_clock_mhz,
             gpu_mem_clock_mhz=defaults.gpu_mem_clock_mhz,
             gpu_app_clock_mhz=gpu_state.get("gpu_app_clock_mhz"),

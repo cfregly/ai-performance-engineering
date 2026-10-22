@@ -137,7 +137,7 @@ def load_nvfp4_extension(rung: int = DEFAULT_RUNG):
         f"fast_cu_nvfp4_r{rung}",
         [_NATIVE_SOURCE],
         extra_cuda_cflags=[
-            "-std=c++17",
+            "-std=c++20",
             "-O3",
             "-DNDEBUG",
             f"-DFAST_CU_NVFP4_RUNG={rung}",

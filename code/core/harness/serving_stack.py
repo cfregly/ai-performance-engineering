@@ -8,24 +8,28 @@ Single source of truth:
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import ctypes
+import importlib
 import os
-from pathlib import Path
 import re
 import site
+import sys
 import warnings
+from dataclasses import dataclass
+from pathlib import Path
+from types import ModuleType
 from typing import Dict, List, Optional, Sequence, Tuple
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _DEFAULT_REQUIREMENTS = _REPO_ROOT / "requirements_latest.txt"
 _DEFAULT_VLLM_PIN = _REPO_ROOT / "vllm_no_deps.pin"
 
-_DEFAULT_TORCH = "2.9.1+cu130"
-_DEFAULT_VLLM = "0.16.0+cu130"
-_DEFAULT_FLASHINFER = "0.6.3"
+_DEFAULT_TORCH = "2.14.1+cu130"
+_DEFAULT_VLLM = "0.33.0.dev0+cu130.torch2141"
+_DEFAULT_FLASHINFER = "0.7.2"
 
 _NVIDIA_WHEEL_LIB_SUBDIRS: Tuple[Tuple[str, ...], ...] = (
+    ("nvidia", "cu13", "lib"),
     ("nvidia", "cublas", "lib"),
     ("nvidia", "cuda_runtime", "lib"),
     ("nvidia", "cuda_nvrtc", "lib"),
@@ -42,9 +46,14 @@ _NVIDIA_WHEEL_LIB_SUBDIRS: Tuple[Tuple[str, ...], ...] = (
 )
 
 _DEFAULT_PRELOAD_LIBS: Tuple[str, ...] = (
-    "libcublas.so.12",
+    "libcublas.so.13",
     "libcudnn.so.9",
     "libcudnn_graph.so.9",
+)
+
+VLLM_NATIVE_EXTENSION_MODULES: Tuple[str, ...] = (
+    "vllm._C_stable_libtorch",
+    "vllm._moe_C_stable_libtorch",
 )
 
 
@@ -67,6 +76,32 @@ class ServingStackPins:
         )
 
 
+def is_vllm_native_extension_abi_error(exc: BaseException) -> bool:
+    """Return whether an import error identifies the pinned vLLM native ABI."""
+
+    text = str(exc).lower()
+    native_markers = tuple(
+        marker
+        for module_name in VLLM_NATIVE_EXTENSION_MODULES
+        for marker in (
+            module_name.lower(),
+            module_name.rsplit(".", 1)[-1].lower(),
+        )
+    )
+    return (
+        "undefined symbol" in text and any(marker in text for marker in native_markers)
+    ) or "c10_cuda_check_implementation" in text
+
+
+def load_vllm_native_extensions() -> Tuple[ModuleType, ...]:
+    """Import both native modules required by the pinned source-built vLLM."""
+
+    return tuple(
+        importlib.import_module(module_name)
+        for module_name in VLLM_NATIVE_EXTENSION_MODULES
+    )
+
+
 def _read_pinned_version(package_name: str, requirements_path: Path) -> Optional[str]:
     if not requirements_path.exists():
         return None
@@ -86,27 +121,46 @@ def _read_pinned_version(package_name: str, requirements_path: Path) -> Optional
 
 
 def _site_package_roots() -> List[Path]:
-    roots: List[Path] = []
-    try:
-        user_site = site.getusersitepackages()
-        if user_site:
-            roots.append(Path(user_site))
-    except Exception as exc:
-        warnings.warn(
-            f"Failed to query user site-packages for serving-stack CUDA wheels: {exc}",
-            RuntimeWarning,
-            stacklevel=2,
-        )
+    system_roots: List[Path] = []
     try:
         for site_path in site.getsitepackages():
             if site_path:
-                roots.append(Path(site_path))
+                system_roots.append(Path(site_path))
     except Exception as exc:
         warnings.warn(
             f"Failed to query system site-packages for serving-stack CUDA wheels: {exc}",
             RuntimeWarning,
             stacklevel=2,
         )
+
+    # A virtual environment must win over base/system installs even if a site
+    # implementation returns those paths in an unexpected order.
+    active_prefix = Path(sys.prefix).resolve()
+    active_roots: List[Path] = []
+    other_system_roots: List[Path] = []
+    for root in system_roots:
+        try:
+            root.resolve().relative_to(active_prefix)
+        except ValueError:
+            other_system_roots.append(root)
+        else:
+            active_roots.append(root)
+
+    roots = [*active_roots, *other_system_roots]
+    user_site_enabled = (
+        site.ENABLE_USER_SITE is True and not os.environ.get("PYTHONNOUSERSITE")
+    )
+    if user_site_enabled:
+        try:
+            user_site = site.getusersitepackages()
+            if user_site:
+                roots.append(Path(user_site))
+        except Exception as exc:
+            warnings.warn(
+                f"Failed to query user site-packages for serving-stack CUDA wheels: {exc}",
+                RuntimeWarning,
+                stacklevel=2,
+            )
     deduped: List[Path] = []
     seen = set()
     for root in roots:
@@ -119,9 +173,8 @@ def _site_package_roots() -> List[Path]:
 
 
 def _discover_cuda_wheel_lib_dirs(extra_roots: Optional[Sequence[Path]] = None) -> List[str]:
-    roots = list(_site_package_roots())
-    if extra_roots:
-        roots.extend(Path(p) for p in extra_roots)
+    roots = [Path(p) for p in extra_roots] if extra_roots else []
+    roots.extend(_site_package_roots())
 
     lib_dirs: List[str] = []
     seen = set()

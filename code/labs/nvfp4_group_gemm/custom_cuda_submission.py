@@ -146,7 +146,7 @@ def load_custom_cuda_nvfp4_group_gemm(*, verbose: bool = False) -> object:
     source = lab_dir / _SOURCE_FILE
 
     extra_cuda_cflags = [
-        "--std=c++17",
+        "--std=c++20",
         "-O3",
         "--use_fast_math",
         "-lineinfo",

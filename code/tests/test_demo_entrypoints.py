@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 import os
-from pathlib import Path
+import signal
 import subprocess
 import sys
+from pathlib import Path
 
 import pytest
-
 
 CODE_ROOT = Path(__file__).resolve().parents[1]
 
@@ -49,7 +49,7 @@ def test_registered_demo_reaches_explicit_cuda_gate(
             "PYTHONPATH": str(CODE_ROOT),
         }
     )
-    completed = subprocess.run(
+    process = subprocess.Popen(
         [
             sys.executable,
             "-m",
@@ -60,12 +60,18 @@ def test_registered_demo_reaches_explicit_cuda_gate(
         ],
         cwd=CODE_ROOT,
         env=env,
-        capture_output=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
         text=True,
-        timeout=45,
-        check=False,
+        start_new_session=True,
     )
+    try:
+        stdout, stderr = process.communicate(timeout=45)
+    except subprocess.TimeoutExpired:
+        os.killpg(process.pid, signal.SIGKILL)
+        stdout, stderr = process.communicate()
+        pytest.fail(f"Demo process timed out:\n{stdout}{stderr}")
 
-    combined_output = completed.stdout + completed.stderr
-    assert completed.returncode != 0, combined_output
+    combined_output = stdout + stderr
+    assert process.returncode != 0, combined_output
     assert expected_diagnostic in combined_output

@@ -3,7 +3,7 @@ name = "nanochat"
 version = "0.1.0"
 description = "the minimal full-stack ChatGPT clone"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.10,<3.15"
 dependencies = [
     "datasets>=4.0.0",
     "fastapi>=0.117.1",
@@ -13,7 +13,7 @@ dependencies = [
     "setuptools>=80.9.0",
     "tiktoken>=0.11.0",
     "tokenizers>=0.22.0",
-    "torch>=2.10.0.dev0",
+    "torch==2.14.1",
     "uvicorn>=0.36.0",
     "wandb>=0.21.3",
 ]
@@ -43,40 +43,35 @@ python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
 
-# target torch to CUDA 13.0 or CPU
+# Select exact stable Torch 2.14.1 builds for the mutually exclusive CPU/GPU extras.
 [tool.uv.sources]
-torch = [  
-    { index = "pytorch-cpu-nightly", extra = "cpu", marker = "sys_platform == 'linux' and platform_machine == 'x86_64' and python_version < '3.12'" },  
-    { index = "pytorch-cu130-nightly", extra = "gpu", marker = "sys_platform == 'linux' and platform_machine == 'x86_64'" },  
-]  
+torch = [
+    { index = "pytorch-cpu", extra = "cpu", marker = "sys_platform == 'linux' and platform_machine == 'x86_64'" },
+    { index = "pytorch-cu130", extra = "gpu", marker = "sys_platform == 'linux' and platform_machine == 'x86_64'" },
+]
 
-[[tool.uv.index]]  
-name = "pytorch-cpu"  
-url = "https://download.pytorch.org/whl/cpu"  
-explicit = true  
-  
-[[tool.uv.index]]  
-name = "pytorch-cpu-nightly"  
-url = "https://download.pytorch.org/whl/nightly/cpu"  
-explicit = true  
-  
-[[tool.uv.index]]  
-name = "pytorch-cu130-nightly"  
-url = "https://download.pytorch.org/whl/nightly/cu130"  
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
 explicit = true
 
-[project.optional-dependencies]  
-cpu = [  
-    "torch>=2.8.0",  
-]  
-gpu = [  
-    "torch>=2.8.0",  
-]  
-  
+[[tool.uv.index]]
+name = "pytorch-cu130"
+url = "https://download.pytorch.org/whl/cu130"
+explicit = true
+
+[project.optional-dependencies]
+cpu = [
+    "torch==2.14.1",
+]
+gpu = [
+    "torch==2.14.1",
+]
+
 [tool.uv]
-conflicts = [  
-    [  
-        { extra = "cpu" },  
-        { extra = "gpu" },  
-    ],  
-]  
+conflicts = [
+    [
+        { extra = "cpu" },
+        { extra = "gpu" },
+    ],
+]

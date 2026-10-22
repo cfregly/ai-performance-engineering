@@ -1,8 +1,5 @@
-# Pin manifest for the ABI-bound CUDA 13 serving wheel.
-#
-# Do not pass this file to `pip install -r`: vLLM 0.16.0 declares
-# ray[cgraph], whose metadata pulls cupy-cuda12x. The repository's CUDA 13
-# environment requires cupy-cuda13x through kvikio-cu13. setup.sh and the
-# hosted dependency gate parse this exact pin and install it with --no-deps
-# from https://wheels.vllm.ai/0.16.0/cu130.
-vllm==0.16.0+cu130
+# ABI-bound CUDA 13 serving build. Do not install a published wheel for this pin.
+# Build the fixed source in vllm_source_build.json against the installed exact
+# torch stack with scripts/build_vllm_for_torch.py, then install the receipt-
+# selected wheel with --no-deps. Keep its version aligned with this pin.
+vllm==0.33.0.dev0+cu130.torch2141

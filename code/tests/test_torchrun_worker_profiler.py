@@ -47,8 +47,13 @@ raise SystemExit(0)
 """,
         encoding="utf-8",
     )
+    benchmark = _WorkerBenchmark(worker)
     trace = profile_python_benchmark_torch(
-        _WorkerBenchmark(worker), worker, tmp_path, tmp_path / "traces"
+        benchmark,
+        worker,
+        tmp_path,
+        tmp_path / "traces",
+        config=benchmark._config,
     )
     assert trace is not None
     paths = [trace, trace.with_name(f"{trace.stem}.rank1{trace.suffix}")]
@@ -62,8 +67,13 @@ raise SystemExit(0)
 def test_failed_torchrun_worker_does_not_produce_success_trace(tmp_path: Path) -> None:
     worker = tmp_path / "failed_worker.py"
     worker.write_text("raise RuntimeError('worker failed before capture')\n", encoding="utf-8")
+    benchmark = _WorkerBenchmark(worker)
     trace = profile_python_benchmark_torch(
-        _WorkerBenchmark(worker), worker, tmp_path, tmp_path / "traces"
+        benchmark,
+        worker,
+        tmp_path,
+        tmp_path / "traces",
+        config=benchmark._config,
     )
     assert trace is None
     assert not list((tmp_path / "traces").glob("*_torch_trace*.json"))

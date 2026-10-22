@@ -30,6 +30,53 @@ def _prepare_cuda_hidden_control(
     monkeypatch.setattr(run_benchmarks_module.torch.cuda, "is_available", lambda: False)
 
 
+def test_portable_run_start_reports_effective_clock_control_disabled(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bench_root = tmp_path / "bench"
+    chapter_dir = bench_root / "ch01"
+    _write_pair(chapter_dir, "portable_control")
+    _prepare_cuda_hidden_control(monkeypatch)
+
+    run_start_payloads: list[dict[str, object]] = []
+    real_emit_event = bench_commands.emit_event
+
+    def capture_event(event_logger, logger, event_type, **payload):
+        if event_type == "run_start":
+            run_start_payloads.append(payload)
+        return real_emit_event(event_logger, logger, event_type, **payload)
+
+    monkeypatch.setattr(bench_commands, "emit_event", capture_event)
+    monkeypatch.setattr(
+        bench_commands,
+        "test_chapter",
+        lambda **_kwargs: {
+            "chapter": "ch01",
+            "benchmarks": [],
+            "manifests": [],
+            "summary": {"successful": 0, "failed": 0, "total_skipped": 0},
+        },
+    )
+
+    result = bench_commands._execute_benchmarks(
+        targets=["ch01:portable_control"],
+        bench_root=bench_root,
+        output_format="json",
+        profile_type="none",
+        suite_timeout=0,
+        validity_profile="portable",
+        artifacts_dir=str(tmp_path / "artifacts"),
+        run_id="portable_clock_control_provenance",
+        exit_on_failure=False,
+    )
+
+    assert result["total_failed"] == 0
+    assert len(run_start_payloads) == 1
+    assert run_start_payloads[0]["validity_profile"] == "portable"
+    assert run_start_payloads[0]["gpu_clock_lock_enabled"] is False
+
+
 def test_continuation_records_one_target_preflight_and_attempts_the_next(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

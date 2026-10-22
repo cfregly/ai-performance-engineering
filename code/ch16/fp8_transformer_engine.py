@@ -58,8 +58,8 @@ def transformer_engine_warning() -> str:
     reason = f"{_TE_IMPORT_ERROR}" if _TE_IMPORT_ERROR else "Transformer Engine not installed"
     return (
         "Transformer Engine FP8 disabled. "
-        "Install with `pip install transformer-engine[pytorch]` and ensure "
-        "the CUDA extensions build successfully. "
+        "Install the locked runtime and rebuild the Transformer Engine 2.20.2 binding "
+        "with scripts/build_torch_extensions.py. See docs/environment.md. "
         f"Reason: {reason}"
     )
 

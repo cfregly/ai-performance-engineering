@@ -95,7 +95,14 @@ def test_first_token_duration_ignores_wall_clock_adjustment(monkeypatch, wall_cl
 
     if core_loop:
         def core_step():
-            return {0: SimpleNamespace(outputs=engine_step(), timestamp=0, scheduler_stats=None)}, True
+            return {
+                0: SimpleNamespace(
+                    outputs=engine_step(),
+                    timestamp=0,
+                    scheduler_stats=None,
+                    weight_version=None,
+                )
+            }, True
 
         wrapper._core = SimpleNamespace(step_fn=core_step, post_step=lambda **kwargs: None)
         wrapper.engine = SimpleNamespace(output_processor=SimpleNamespace(

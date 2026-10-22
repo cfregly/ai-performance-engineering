@@ -7,12 +7,30 @@ remain for compatibility; no native-TMA capability or performance is claimed.
 
 from __future__ import annotations
 
+import hashlib
 from typing import Optional
 
 import torch
 from torch.utils.cpp_extension import load_inline
 
-_EXT_NAME = "persistent_decode_thread_async_copy_ext"
+
+def _torch_extension_cache_name(
+    base: str,
+    *,
+    torch_version: str | None = None,
+    cuda_version: str | None = None,
+) -> str:
+    """Bind a JIT extension module name to the PyTorch and CUDA ABI identity."""
+    if not base.isidentifier():
+        raise ValueError("Extension base name must be a Python identifier")
+    resolved_torch = str(torch.__version__) if torch_version is None else str(torch_version)
+    resolved_cuda = torch.version.cuda if cuda_version is None else cuda_version
+    identity = f"torch={resolved_torch}\ncuda={resolved_cuda or 'none'}"
+    digest = hashlib.sha256(identity.encode()).hexdigest()[:16]
+    return f"{base}_{digest}"
+
+
+_EXT_NAME = _torch_extension_cache_name("persistent_decode_thread_async_copy_ext")
 
 
 def _require_async_copy_hardware() -> None:
@@ -107,7 +125,7 @@ void tma_copy(torch::Tensor src, torch::Tensor dst) {
         cuda_sources=cuda_src,
         functions=None,
         extra_cuda_cflags=[
-            "--std=c++17",
+            "--std=c++20",
             "--use_fast_math",
             "-lineinfo",
             "-gencode=arch=compute_100,code=sm_100",

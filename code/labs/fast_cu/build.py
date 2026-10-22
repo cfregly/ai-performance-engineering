@@ -44,6 +44,24 @@ def extension_name(
     return f"{name}_{digest[:20]}"
 
 
+def _build_toolchain_identity(
+    *,
+    torch_version: str,
+    torch_cuda_version: str | None,
+    nvcc_path: Path,
+    nvcc_version: str,
+) -> str:
+    """Identify every binary toolchain component that can change the extension ABI."""
+    return "\n".join(
+        (
+            f"torch={torch_version}",
+            f"torch_cuda={torch_cuda_version or 'none'}",
+            f"nvcc={nvcc_path.resolve()}",
+            f"nvcc_version={nvcc_version.strip()}",
+        )
+    )
+
+
 def load_cuda_extension(
     name: str,
     sources: list[Path],
@@ -55,6 +73,7 @@ def load_cuda_extension(
 ):
     """Build before timing without installing dependencies or changing global flags."""
     manifest = verify_upstream()
+    import torch
     from torch.utils.cpp_extension import CUDA_HOME, load
 
     if CUDA_HOME is None:
@@ -77,7 +96,12 @@ def load_cuda_extension(
         extra_cuda_cflags,
         extra_ldflags,
         manifest,
-        toolchain_identity=f"{nvcc.resolve()}\n{compiler_version}",
+        toolchain_identity=_build_toolchain_identity(
+            torch_version=str(torch.__version__),
+            torch_cuda_version=torch.version.cuda,
+            nvcc_path=nvcc,
+            nvcc_version=compiler_version,
+        ),
     )
     return load(
         name=module_name,

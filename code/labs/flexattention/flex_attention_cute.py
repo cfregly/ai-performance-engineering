@@ -1,10 +1,10 @@
 """FlexAttention CuTe (FlashAttention-4) tool.
 
 This is a utility script (not a baseline/optimized benchmark pair). It validates
-the public FlashAttention-4 CuTe backend without changing the repository's
-default FlashAttention-2 environment.
+the public FlashAttention-4 CuTe backend from the repository's shared, hash-locked
+Torch 2.14.1 environment.
 
-Run from the dedicated environment documented in this lab's README:
+Run from the shared environment documented in this lab's README:
   python -m labs.flexattention.flex_attention_cute [args...]
 """
 
@@ -19,10 +19,13 @@ from core.benchmark.numerical_accuracy import assert_low_precision_attention_acc
 from labs.flexattention.flexattention_common import build_qkv_inputs, resolve_device
 
 CUTE_ENVIRONMENT_VERSIONS = {
-    "torch": "2.9.1+cu130",
-    "flash-attn-4": "4.0.0b19",
-    "nvidia-cutlass-dsl": "4.5.2",
-    "quack-kernels": "0.5.0",
+    "torch": "2.14.1+cu130",
+    "triton": "3.8.0",
+    "flash-attn-4": "4.0.0b36",
+    "nvidia-cutlass-dsl": "4.8.0",
+    "quack-kernels": "0.6.5",
+    "apache-tvm-ffi": "0.1.11",
+    "torch-c-dlpack-ext": "0.1.5+torch2141.nobackend1",
 }
 CUTE_REQUIREMENTS_PATH = "labs/flexattention/requirements_cute.txt"
 
@@ -47,8 +50,8 @@ def _resolve_cute_forward():
     if mismatches:
         details = ", ".join(mismatches)
         raise RuntimeError(
-            "The dedicated FlashAttention-4 CuTe environment is required. "
-            f"Install {CUTE_REQUIREMENTS_PATH} in a separate environment. "
+            "The shared Torch 2.14.1 FlashAttention-4 environment is required. "
+            f"Install the hash lock included by {CUTE_REQUIREMENTS_PATH}. "
             f"Observed: {details}"
         )
 
@@ -58,9 +61,9 @@ def _resolve_cute_forward():
         pass
     else:
         raise RuntimeError(
-            "The dedicated FlashAttention-4 CuTe environment must not contain "
-            f"flash-attn=={flash_attn_2_version}. Keep FlashAttention 2 in the default "
-            "repository environment."
+            "The shared FlashAttention-4 environment must not contain "
+            f"flash-attn=={flash_attn_2_version}. Build and validate FlashAttention 2 "
+            "only in its separate native-extension environment."
         )
 
     try:

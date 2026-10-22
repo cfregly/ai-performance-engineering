@@ -28,12 +28,12 @@ Core toggles:
 Optional installs:
   --install-base-pkgs        Install common tooling (git, curl, jq, build tools, python venv)
   --install-cuda-toolkit     Install CUDA toolkit via apt (driver must already be installed)
-  --install-python-stack     Create a venv and install torch/vllm helpers
+  --install-python-stack     Create a fresh venv from the repository runtime lock
 
 Environment overrides:
   RUN_ID=YYYY-MM-DD          Output file prefix
   LABEL=<label>              Label for logs (default: hostname)
-  VENV_DIR=<path>            Virtualenv path (default: /opt/cluster-venv)
+  VENV_DIR=<path>            Virtualenv path (default: /opt/cluster-torch2141)
 USAGE
 }
 
@@ -138,15 +138,35 @@ if [[ "$INSTALL_CUDA_TOOLKIT" -eq 1 ]]; then
 fi
 
 if [[ "$INSTALL_PYTHON_STACK" -eq 1 ]]; then
-  VENV_DIR="${VENV_DIR:-/opt/cluster-venv}"
-  echo "[$(timestamp)] Creating python venv at ${VENV_DIR}"
-  run_or_echo "sudo mkdir -p ${VENV_DIR}"
-  run_or_echo "sudo chown ${USER}:${USER} ${VENV_DIR}"
-  run_or_echo "python3 -m venv ${VENV_DIR}"
-  run_or_echo "${VENV_DIR}/bin/pip install -U pip setuptools wheel"
-  run_or_echo "${VENV_DIR}/bin/pip install torch torchvision torchaudio"
-  run_or_echo "${VENV_DIR}/bin/pip install vllm"
-  echo "Venv activated via: source ${VENV_DIR}/bin/activate"
+  VENV_DIR="${VENV_DIR:-/opt/cluster-torch2141}"
+  CODE_ROOT="$(cd "${ROOT_DIR}/.." && pwd)"
+  STACK_LOCK="${CODE_ROOT}/requirements_torch2141_linux_x86_64.lock"
+  if [[ ! -f "${STACK_LOCK}" ]]; then
+    echo "ERROR: Runtime lock is missing: ${STACK_LOCK}" >&2
+    exit 1
+  fi
+  if [[ -e "${VENV_DIR}" ]]; then
+    echo "ERROR: Choose a new VENV_DIR to preserve the existing environment: ${VENV_DIR}" >&2
+    exit 1
+  fi
+  run_stack_command() {
+    if [[ "$APPLY" -eq 1 ]]; then
+      "$@"
+    else
+      printf '[dry-run] '
+      printf '%q ' "$@"
+      printf '\n'
+    fi
+  }
+  echo "[$(timestamp)] Creating isolated Python 3.12 runtime at ${VENV_DIR}"
+  run_stack_command sudo mkdir -p "${VENV_DIR}"
+  run_stack_command sudo chown "${USER}:${USER}" "${VENV_DIR}"
+  run_stack_command python3.12 -m venv "${VENV_DIR}"
+  run_stack_command "${VENV_DIR}/bin/python" -m pip install --require-hashes --no-deps -r "${STACK_LOCK}"
+  run_stack_command "${VENV_DIR}/bin/python" -m pip check
+  echo "Activate via: source ${VENV_DIR}/bin/activate"
+  echo "The base graph does not include the ABI-bound TE and vLLM bindings."
+  echo "Build and validate those source wheels using docs/environment.md before serving."
 fi
 
 echo "[$(timestamp)] enable_researcher_stack.sh complete"

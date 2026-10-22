@@ -71,7 +71,7 @@ def _gemm_cuda_flags(capability: tuple[int, int]) -> list[str]:
     ensure_h100_capability_supported(capability)
     return [
         "-O3",
-        "-std=c++17",
+        "-std=c++20",
         "-DNDEBUG",
         "--expt-relaxed-constexpr",
         # torch cpp_extension disables this conversion by default, but pinned
@@ -97,7 +97,7 @@ def _reduction_build_contract(
     return (
         [
             "-O3",
-            "-std=c++17",
+            "-std=c++20",
             f"-gencode=arch=compute_{architecture},code=sm_{architecture}",
         ],
         minimum_cuda,

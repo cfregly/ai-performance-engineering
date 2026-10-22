@@ -719,9 +719,9 @@ Guidelines:
                 difficulty="easy",
                 category="kernels",
                 implementation_steps=[
-                    "pip install flash-attn",
-                    "model = model.to_bettertransformer()",
-                    "Or set attn_implementation='flash_attention_2'",
+                    "Build the pinned FlashAttention-2 wheel in a separate training runtime. See docs/environment.md.",
+                    "Load the model with attn_implementation='flash_attention_2'",
+                    "Validate complete outputs and end-to-end serving latency",
                 ],
                 code_snippet="model = AutoModelForCausalLM.from_pretrained(name, attn_implementation='flash_attention_2')",
             ))
@@ -737,7 +737,7 @@ Guidelines:
                 difficulty="medium",
                 category="precision",
                 implementation_steps=[
-                    "pip install transformer-engine",
+                    "Build the Transformer Engine 2.20.2 binding against the locked runtime. See docs/environment.md.",
                     "Enable FP8 training in config",
                     "Use TE layers for linear/attention",
                 ],

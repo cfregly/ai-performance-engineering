@@ -9,8 +9,9 @@ Credit: Chaim Rand's [Overcoming the PyTorch Recompilation Dilemma in Real-Time
 Inference Workloads](https://chaimrand.medium.com/overcoming-the-pytorch-recompilation-dilemma-in-real-time-inference-workloads-069fac5485cd)
 (September 8, 2026) motivates this review. His six mitigation experiments are
 illustrations, not performance evidence for this repository. Our example is an
-independent implementation. The article uses PyTorch 2.13. The repository's CPU
-validation environment uses 2.9.1, so validate APIs against your installed version.
+independent implementation. The article uses PyTorch 2.13. The repository's
+current Linux x86_64 runtime uses the hash-locked PyTorch 2.14.1+cu130 graph, so
+validate version-specific APIs against that environment.
 
 ## Choose a serving contract
 
@@ -117,7 +118,7 @@ replaces the harness's hardware, clock, profiler, and repeated-comparison gates.
 
 ## API references
 
-Run from `code/` (PyTorch 2.9+):
+Run from `code/` after activating the pinned PyTorch 2.14.1+cu130 environment:
 
 ```bash
 python -m cli.aisp demos ch14-recompilation -- --json /tmp/recompilation-strict.json
@@ -134,7 +135,7 @@ runs in a fresh process. Persistent compiler caches may still be warm.
 
 References:
 
-- [PyTorch 2.9 compiler stances](https://docs.pytorch.org/docs/2.9/generated/torch.compiler.set_stance.html)
-- [PyTorch recompilation troubleshooting](https://docs.pytorch.org/docs/2.9/compile/programming_model.recompilation.html)
+- [PyTorch compiler stances](https://docs.pytorch.org/docs/stable/generated/torch.compiler.set_stance.html)
+- [PyTorch recompilation troubleshooting](https://docs.pytorch.org/docs/stable/compile/programming_model.recompilation.html)
 - [Compiler cache artifacts](https://docs.pytorch.org/tutorials/recipes/torch_compile_caching_tutorial.html)
 - [Export and AOTInductor](https://docs.pytorch.org/docs/stable/torch.compiler_aot_inductor.html)
