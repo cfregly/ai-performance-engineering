@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 import subprocess
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -15,6 +16,61 @@ import pytest
 from scripts import build_vllm_for_torch as builder
 
 CODE_ROOT = Path(__file__).resolve().parents[1]
+PINNED_DEEPGEMM_BUILD_HELPER = b'''# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: Copyright contributors to the vLLM project
+"""Build DeepGEMM's TORCH_LIBRARY extension and copy vendored artifacts.
+
+DeepGEMM now registers ops via TORCH_LIBRARY into ``deep_gemm._C_extension``
+(abi3) and exposes the legacy API through ``deep_gemm/_C.py``. This driver
+delegates to DeepGEMM's ``setup.py build_ext --inplace`` and copies the shim
+plus extension into the cmake output directory.
+
+Usage: python build_deepgemm_C.py <DEEPGEMM_SRC_DIR> <OUTPUT_DIR>
+"""
+
+import os
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+
+if len(sys.argv) != 3:
+    sys.exit(f"usage: {sys.argv[0]} <SRC> <OUT>")
+
+src = Path(sys.argv[1]).resolve()
+out = Path(sys.argv[2]).resolve()
+_pkg = src / "deep_gemm"
+out.mkdir(parents=True, exist_ok=True)
+
+if not (_pkg / "_C.py").is_file():
+    sys.exit(
+        f"DeepGEMM source at {src} is missing deep_gemm/_C.py; "
+        "expected TORCH_LIBRARY migration layout"
+    )
+
+# Avoid DeepGEMM's clean-git assertion when vendoring a local dirty tree.
+env = os.environ.copy()
+env.pop("DG_SKIP_CUDA_BUILD", None)
+
+print(f"[build_deepgemm_C] building in {src} with {sys.executable}", flush=True)
+# CMake decides when to rebuild; setuptools would only check python_api.cpp.
+subprocess.check_call(
+    [sys.executable, "setup.py", "build_ext", "--inplace", "--force"],
+    cwd=src,
+    env=env,
+)
+
+shim = _pkg / "_C.py"
+shutil.copy2(shim, out / shim.name)
+
+so = _pkg / "_C_extension.abi3.so"
+if not so.is_file():
+    sys.exit(f"DeepGEMM build did not produce {so}")
+for stale in out.glob("_C_extension*.so"):
+    stale.unlink()
+shutil.copy2(so, out / so.name)
+print(f"[build_deepgemm_C] installed {so.name} -> {out}", flush=True)
+'''
 
 
 def _contract() -> dict[str, Any]:
@@ -264,6 +320,7 @@ def test_build_environment_is_explicit_offline_and_scoped(tmp_path: Path) -> Non
         {
             "CARGO_HOME": str(tmp_path / "shared-cargo"),
             "PIP_INDEX_URL": "https://example.invalid/simple",
+            "PYTHONPATH": str(tmp_path / "ambient-python"),
             "UNRELATED_SECRET": "must-not-cross-the-boundary",
         }
     )
@@ -298,6 +355,7 @@ def test_build_environment_is_explicit_offline_and_scoped(tmp_path: Path) -> Non
     assert environment["CXX"] == command_paths["g++"]
     assert environment["CUDACXX"] == command_paths["nvcc"]
     assert "PIP_INDEX_URL" not in environment
+    assert "PYTHONPATH" not in environment
     assert "UNRELATED_SECRET" not in environment
     assert {
         "CARGO_HOME",
@@ -305,6 +363,7 @@ def test_build_environment_is_explicit_offline_and_scoped(tmp_path: Path) -> Non
         "CPLUS_INCLUDE_PATH",
         "LIBRARY_PATH",
         "PIP_INDEX_URL",
+        "PYTHONPATH",
         "UNRELATED_SECRET",
     } <= set(removed)
     assert "-DFETCHCONTENT_FULLY_DISCONNECTED=ON" in environment["CMAKE_ARGS"]
@@ -501,6 +560,126 @@ def test_supplemental_transform_removes_only_canonical_torch_requirements(
         b"# Common dependencies\r\ntorchdata==0.11.0  # unrelated Torch project\r\nmytorch==1.0\r\n"
     )
     assert pyproject.read_bytes() == (b'requires = [\n    "packaging>=24.2", # unrelated\n]\n')
+
+
+def test_deepgemm_source_import_binding_runs_local_setup_under_safe_path(
+    tmp_path: Path,
+) -> None:
+    vllm_source = tmp_path / "vllm"
+    helper = vllm_source / builder.DEEPGEMM_BUILD_HELPER_PATH
+    helper.parent.mkdir(parents=True)
+    helper.write_bytes(PINNED_DEEPGEMM_BUILD_HELPER)
+    upstream_sha256 = hashlib.sha256(helper.read_bytes()).hexdigest()
+    assert upstream_sha256 == builder.DEEPGEMM_BUILD_HELPER_SHA256
+
+    deepgemm_source = tmp_path / "deepgemm"
+    package = deepgemm_source / "deep_gemm"
+    scripts = deepgemm_source / "scripts"
+    package.mkdir(parents=True)
+    scripts.mkdir()
+    (package / "_C.py").write_text("# fixture shim\n", encoding="utf-8")
+    (scripts / "generate_pyi.py").write_text(
+        "def generate_pyi_file():\n    return 'verified-local-source'\n",
+        encoding="utf-8",
+    )
+    (deepgemm_source / "setup.py").write_text(
+        """\
+import os
+from pathlib import Path
+from scripts.generate_pyi import generate_pyi_file
+
+source_root = Path(__file__).resolve().parent
+assert os.environ["PYTHONSAFEPATH"] == "1"
+assert os.environ["PYTHONPATH"] == str(source_root)
+(source_root / "setup-import.txt").write_text(generate_pyi_file(), encoding="utf-8")
+(source_root / "deep_gemm" / "_C_extension.abi3.so").write_bytes(b"fixture extension")
+""",
+        encoding="utf-8",
+    )
+    baseline_environment = os.environ.copy()
+    baseline_environment.pop("PYTHONPATH", None)
+    baseline_environment.update(
+        {
+            "PYTHONNOUSERSITE": "1",
+            "PYTHONSAFEPATH": "1",
+        }
+    )
+    baseline = subprocess.run(
+        [
+            sys.executable,
+            str(helper),
+            str(deepgemm_source),
+            str(tmp_path / "baseline-output"),
+        ],
+        cwd=tmp_path,
+        env=baseline_environment,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert baseline.returncode != 0
+    assert "ModuleNotFoundError: No module named 'scripts" in baseline.stderr
+
+    binding = builder._apply_deepgemm_source_import_binding(vllm_source)
+    ambient = tmp_path / "ambient"
+    (ambient / "scripts").mkdir(parents=True)
+    (ambient / "scripts" / "generate_pyi.py").write_text(
+        "def generate_pyi_file():\n    return 'ambient-fallback'\n",
+        encoding="utf-8",
+    )
+    environment = os.environ.copy()
+    environment.update(
+        {
+            "PYTHONNOUSERSITE": "1",
+            "PYTHONSAFEPATH": "1",
+            "PYTHONPATH": str(ambient),
+        }
+    )
+    output = tmp_path / "deepgemm-output"
+
+    subprocess.run(
+        [sys.executable, str(helper), str(deepgemm_source), str(output)],
+        cwd=tmp_path,
+        env=environment,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    assert (deepgemm_source / "setup-import.txt").read_text(encoding="utf-8") == (
+        "verified-local-source"
+    )
+    assert (output / "_C.py").read_text(encoding="utf-8") == "# fixture shim\n"
+    assert (output / "_C_extension.abi3.so").read_bytes() == b"fixture extension"
+    assert binding == {
+        "path": "tools/build_deepgemm_C.py",
+        "upstream_sha256": upstream_sha256,
+        "transformed_sha256": hashlib.sha256(helper.read_bytes()).hexdigest(),
+        "environment_variable": "PYTHONPATH",
+        "value": "resolved DeepGEMM source root",
+        "scope": "DeepGEMM setup.py subprocess",
+        "python_safe_path_preserved": True,
+        "reason": (
+            "Pinned DeepGEMM setup.py imports scripts.generate_pyi while "
+            "PYTHONSAFEPATH omits its working directory from sys.path."
+        ),
+        "retirement_condition": (
+            "The pinned vLLM helper or DeepGEMM setup binds the source root without "
+            "an ambient import fallback."
+        ),
+    }
+
+
+def test_deepgemm_source_import_binding_rejects_unreviewed_helper(tmp_path: Path) -> None:
+    helper = tmp_path / builder.DEEPGEMM_BUILD_HELPER_PATH
+    helper.parent.mkdir(parents=True)
+    helper.write_bytes(builder.DEEPGEMM_BUILD_HELPER_ENVIRONMENT + b"# changed upstream\n")
+    original = helper.read_bytes()
+
+    with pytest.raises(builder.BuildContractError, match="hash mismatch"):
+        builder._apply_deepgemm_source_import_binding(tmp_path)
+
+    assert helper.read_bytes() == original
 
 
 @pytest.mark.parametrize(

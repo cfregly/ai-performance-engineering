@@ -4,9 +4,10 @@
 The build runs only in a dedicated virtual environment. It verifies the
 upstream commit and selected source files, applies vLLM's own
 ``tools/use_existing_torch.py --prefix`` transformation, removes any remaining
-Torch-family requirements by canonical distribution name, and builds native
-CUDA and Rust extensions without build isolation. The script does not install
-the resulting wheel.
+Torch-family requirements by canonical distribution name, and binds the
+DeepGEMM setup child to its verified source root while preserving Python safe
+path mode. It builds native CUDA and Rust extensions without build isolation.
+The script does not install the resulting wheel.
 """
 
 from __future__ import annotations
@@ -142,6 +143,17 @@ TORCH_REQUIREMENT_NAMES = frozenset(
 )
 TOML_REQUIREMENT_LITERAL = re.compile(
     r"""^(?P<literal>"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')\s*,?(?:\s+#.*)?$"""
+)
+DEEPGEMM_BUILD_HELPER_PATH = Path("tools/build_deepgemm_C.py")
+DEEPGEMM_BUILD_HELPER_SHA256 = "c6423b96e6980fcc2726feb9e3b459386c7334a13bf6bb44d026c5158bd8ee64"
+DEEPGEMM_BUILD_HELPER_ENVIRONMENT = (
+    b'env = os.environ.copy()\nenv.pop("DG_SKIP_CUDA_BUILD", None)\n'
+)
+DEEPGEMM_BUILD_HELPER_ENVIRONMENT_WITH_IMPORT = (
+    DEEPGEMM_BUILD_HELPER_ENVIRONMENT
+    + b"# PYTHONSAFEPATH removes the working directory from sys.path. Bind only this\n"
+    + b"# setup.py subprocess to the verified DeepGEMM source root.\n"
+    + b'env["PYTHONPATH"] = str(src)\n'
 )
 
 
@@ -1741,9 +1753,46 @@ def _strip_torch_requirements(source_dir: Path, candidates: Sequence[Path]) -> l
     return removed
 
 
-def _apply_existing_torch_transform(
+def _apply_deepgemm_source_import_binding(source_dir: Path) -> dict[str, Any]:
+    relative_path, upstream_sha256 = _verify_repository_file(
+        source_dir,
+        DEEPGEMM_BUILD_HELPER_PATH,
+        DEEPGEMM_BUILD_HELPER_SHA256,
+    )
+    helper = source_dir / DEEPGEMM_BUILD_HELPER_PATH
+    original = helper.read_bytes()
+    if original.count(DEEPGEMM_BUILD_HELPER_ENVIRONMENT) != 1:
+        raise BuildContractError(
+            "Pinned DeepGEMM build helper does not contain the reviewed environment block."
+        )
+    transformed = original.replace(
+        DEEPGEMM_BUILD_HELPER_ENVIRONMENT,
+        DEEPGEMM_BUILD_HELPER_ENVIRONMENT_WITH_IMPORT,
+        1,
+    )
+    helper.write_bytes(transformed)
+    return {
+        "path": relative_path,
+        "upstream_sha256": upstream_sha256,
+        "transformed_sha256": _sha256_file(helper),
+        "environment_variable": "PYTHONPATH",
+        "value": "resolved DeepGEMM source root",
+        "scope": "DeepGEMM setup.py subprocess",
+        "python_safe_path_preserved": True,
+        "reason": (
+            "Pinned DeepGEMM setup.py imports scripts.generate_pyi while "
+            "PYTHONSAFEPATH omits its working directory from sys.path."
+        ),
+        "retirement_condition": (
+            "The pinned vLLM helper or DeepGEMM setup binds the source root without "
+            "an ambient import fallback."
+        ),
+    }
+
+
+def _apply_source_transforms(
     contract: Mapping[str, Any], source_dir: Path, *, env: Mapping[str, str]
-) -> tuple[list[str], list[dict[str, Any]]]:
+) -> tuple[list[str], list[dict[str, Any]], dict[str, Any]]:
     relative_script = Path(str(contract["build"]["use_existing_torch_script"]))
     script = source_dir / relative_script
     arguments = [str(value) for value in contract["build"]["use_existing_torch_arguments"]]
@@ -1757,6 +1806,7 @@ def _apply_existing_torch_transform(
             "Torch requirement transforms left forbidden requirements behind:\n"
             + "\n".join(remaining)
         )
+    deepgemm_import_binding = _apply_deepgemm_source_import_binding(source_dir)
 
     diff_check = subprocess.run(
         ["git", "diff", "--check"],
@@ -1767,20 +1817,21 @@ def _apply_existing_torch_transform(
     )
     if diff_check.returncode != 0:
         raise BuildContractError(
-            "The Torch requirement transforms produced an invalid diff:\n"
+            "The reviewed source transforms produced an invalid diff:\n"
             + (diff_check.stdout or diff_check.stderr)
         )
     modified = _capture(["git", "diff", "--name-only"], cwd=source_dir, env=env).splitlines()
     unexpected = [
         path
         for path in modified
-        if path != "pyproject.toml" and not path.startswith("requirements/")
+        if path not in {"pyproject.toml", DEEPGEMM_BUILD_HELPER_PATH.as_posix()}
+        and not path.startswith("requirements/")
     ]
     if unexpected:
         raise BuildContractError(
-            "The Torch requirement transforms changed unexpected paths: " + ", ".join(unexpected)
+            "The reviewed source transforms changed unexpected paths: " + ", ".join(unexpected)
         )
-    return modified, supplemental_removals
+    return modified, supplemental_removals, deepgemm_import_binding
 
 
 def _canonical_requirement(requirement: str) -> tuple[str, ...]:
@@ -2025,7 +2076,7 @@ def _build(
     receipt_path = output_dir / RECEIPT_NAME
     source_dir = output_dir / SOURCE_SUBDIR
     source_receipt = _checkout_source(contract, source_dir, env=build_environment)
-    modified_paths, supplemental_removals = _apply_existing_torch_transform(
+    modified_paths, supplemental_removals, deepgemm_import_binding = _apply_source_transforms(
         contract, source_dir, env=build_environment
     )
     transform_diff_sha256 = hashlib.sha256(
@@ -2194,6 +2245,7 @@ def _build(
                 "forbidden_distribution_names": sorted(TORCH_REQUIREMENT_NAMES),
                 "removed_requirements": supplemental_removals,
             },
+            "deepgemm_source_import_binding": deepgemm_import_binding,
         },
         "source_dependencies": source_dependency_receipts,
         "runtime": runtime,
