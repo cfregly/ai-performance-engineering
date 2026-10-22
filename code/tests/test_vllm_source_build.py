@@ -577,6 +577,14 @@ def test_deepgemm_source_import_binding_runs_local_setup_under_safe_path(
     scripts = deepgemm_source / "scripts"
     package.mkdir(parents=True)
     scripts.mkdir()
+    (package / "__init__.py").write_text(
+        """\
+from pathlib import Path
+
+extension_payload = Path(__file__).with_name("_C_extension.abi3.so").read_bytes()
+""",
+        encoding="utf-8",
+    )
     (package / "_C.py").write_text("# fixture shim\n", encoding="utf-8")
     (scripts / "generate_pyi.py").write_text(
         "def generate_pyi_file():\n    return 'verified-local-source'\n",
@@ -585,14 +593,28 @@ def test_deepgemm_source_import_binding_runs_local_setup_under_safe_path(
     (deepgemm_source / "setup.py").write_text(
         """\
 import os
+import sys
 from pathlib import Path
 from scripts.generate_pyi import generate_pyi_file
 
 source_root = Path(__file__).resolve().parent
 assert os.environ["PYTHONSAFEPATH"] == "1"
-assert os.environ["PYTHONPATH"] == str(source_root)
-(source_root / "setup-import.txt").write_text(generate_pyi_file(), encoding="utf-8")
-(source_root / "deep_gemm" / "_C_extension.abi3.so").write_bytes(b"fixture extension")
+assert "--inplace" not in sys.argv
+build_temp = Path(sys.argv[sys.argv.index("--build-temp") + 1]).resolve()
+build_lib = Path(sys.argv[sys.argv.index("--build-lib") + 1]).resolve()
+assert not build_temp.is_relative_to(source_root)
+assert not build_lib.is_relative_to(source_root)
+python_path = [Path(value).resolve() for value in os.environ["PYTHONPATH"].split(os.pathsep)]
+assert python_path == [build_lib, source_root]
+(build_temp / "csrc").mkdir(parents=True)
+(build_temp / "csrc" / "python_api.o").write_bytes(b"fixture object")
+(build_temp / "setup-import.txt").write_text(generate_pyi_file(), encoding="utf-8")
+extension = build_lib / "deep_gemm" / "_C_extension.abi3.so"
+extension.parent.mkdir(parents=True, exist_ok=True)
+extension.write_bytes(b"fixture extension")
+import deep_gemm
+assert Path(deep_gemm.__file__).resolve().parent == build_lib / "deep_gemm"
+assert deep_gemm.extension_payload == b"fixture extension"
 """,
         encoding="utf-8",
     )
@@ -602,6 +624,7 @@ assert os.environ["PYTHONPATH"] == str(source_root)
         {
             "PYTHONNOUSERSITE": "1",
             "PYTHONSAFEPATH": "1",
+            "PYTHONDONTWRITEBYTECODE": "1",
         }
     )
     baseline = subprocess.run(
@@ -632,10 +655,12 @@ assert os.environ["PYTHONPATH"] == str(source_root)
         {
             "PYTHONNOUSERSITE": "1",
             "PYTHONSAFEPATH": "1",
+            "PYTHONDONTWRITEBYTECODE": "1",
             "PYTHONPATH": str(ambient),
         }
     )
     output = tmp_path / "deepgemm-output"
+    source_manifest_before = builder._directory_tree_manifest(deepgemm_source)
 
     subprocess.run(
         [sys.executable, str(helper), str(deepgemm_source), str(output)],
@@ -646,26 +671,36 @@ assert os.environ["PYTHONPATH"] == str(source_root)
         text=True,
     )
 
-    assert (deepgemm_source / "setup-import.txt").read_text(encoding="utf-8") == (
+    build_root = tmp_path / "deepgemm-output.setuptools-build"
+    assert (build_root / "temp/setup-import.txt").read_text(encoding="utf-8") == (
         "verified-local-source"
     )
+    assert (build_root / "temp/csrc/python_api.o").read_bytes() == b"fixture object"
+    assert (build_root / "lib/deep_gemm/_C_extension.abi3.so").read_bytes() == b"fixture extension"
     assert (output / "_C.py").read_text(encoding="utf-8") == "# fixture shim\n"
     assert (output / "_C_extension.abi3.so").read_bytes() == b"fixture extension"
+    assert not (deepgemm_source / "build").exists()
+    assert not (deepgemm_source / "deep_gemm/_C_extension.abi3.so").exists()
+    assert builder._directory_tree_manifest(deepgemm_source) == source_manifest_before
     assert binding == {
         "path": "tools/build_deepgemm_C.py",
         "upstream_sha256": upstream_sha256,
         "transformed_sha256": hashlib.sha256(helper.read_bytes()).hexdigest(),
         "environment_variable": "PYTHONPATH",
-        "value": "resolved DeepGEMM source root",
+        "value": "complete external package stage, then resolved DeepGEMM source root",
         "scope": "DeepGEMM setup.py subprocess",
         "python_safe_path_preserved": True,
+        "build_mode": "setuptools-build-ext-out-of-tree",
+        "build_root": "sibling of CMake output",
+        "staged_package": "complete pinned deep_gemm package under external build-lib",
+        "source_write_policy": "pinned DeepGEMM tree remains byte-identical",
         "reason": (
-            "Pinned DeepGEMM setup.py imports scripts.generate_pyi while "
-            "PYTHONSAFEPATH omits its working directory from sys.path."
+            "Pinned DeepGEMM setup.py requires a verified import root and its default "
+            "in-place extension build writes ignored artifacts into the pinned source tree."
         ),
         "retirement_condition": (
-            "The pinned vLLM helper or DeepGEMM setup binds the source root without "
-            "an ambient import fallback."
+            "The pinned vLLM helper binds the source root without an ambient import "
+            "fallback and builds the extension outside the DeepGEMM source tree."
         ),
     }
 
@@ -856,6 +891,83 @@ def test_source_materialization_verifies_nested_parent_gitlinks_and_cleanliness(
             source,
             destination,
             label="fixture",
+            env=environment,
+        )
+
+
+def test_source_dependency_post_build_check_rejects_tracked_and_ignored_changes(
+    tmp_path: Path,
+) -> None:
+    source_dir = tmp_path / "dependency"
+    source = _create_git_repository(source_dir, "tracked.txt")
+    (source_dir / ".gitignore").write_text("build/\n", encoding="utf-8")
+    _git(source_dir, "add", ".gitignore")
+    _git(
+        source_dir,
+        "-c",
+        "user.name=Contract Test",
+        "-c",
+        "user.email=contract@example.invalid",
+        "commit",
+        "--quiet",
+        "-m",
+        "ignore build output",
+    )
+    source.update(
+        {
+            "commit": _git(source_dir, "rev-parse", "HEAD"),
+            "tree": _git(source_dir, "rev-parse", "HEAD^{tree}"),
+            "submodules": [],
+        }
+    )
+    environment = {"PATH": os.environ["PATH"], "HOME": str(tmp_path)}
+    before_receipt: dict[str, Any] = {
+        **builder._verify_clean_repository(
+            source,
+            source_dir,
+            label="fixture",
+            env=environment,
+        ),
+        "tree_manifest_before_build": builder._directory_tree_manifest(source_dir),
+    }
+
+    unchanged_receipt = dict(before_receipt)
+    builder._verify_source_dependency_unchanged(
+        source,
+        source_dir,
+        label="fixture",
+        before_receipt=unchanged_receipt,
+        env=environment,
+    )
+    assert unchanged_receipt["unchanged_after_build"] is True
+    assert (
+        unchanged_receipt["tree_manifest_after_build"]
+        == before_receipt["tree_manifest_before_build"]
+    )
+
+    tracked = source_dir / "tracked.txt"
+    tracked.write_text("changed\n", encoding="utf-8")
+    with pytest.raises(builder.BuildContractError, match="source tree is dirty"):
+        builder._verify_source_dependency_unchanged(
+            source,
+            source_dir,
+            label="fixture",
+            before_receipt=dict(before_receipt),
+            env=environment,
+        )
+    tracked.write_text(f"{source_dir.name}\n", encoding="utf-8")
+    assert _git(source_dir, "status", "--porcelain=v1", "--untracked-files=all") == ""
+
+    ignored = source_dir / "build" / "unexpected.bin"
+    ignored.parent.mkdir()
+    ignored.write_bytes(b"unexpected ignored output")
+    assert _git(source_dir, "status", "--porcelain=v1", "--untracked-files=all") == ""
+    with pytest.raises(builder.BuildContractError, match="source bytes changed"):
+        builder._verify_source_dependency_unchanged(
+            source,
+            source_dir,
+            label="fixture",
+            before_receipt=dict(before_receipt),
             env=environment,
         )
 

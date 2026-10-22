@@ -155,6 +155,44 @@ DEEPGEMM_BUILD_HELPER_ENVIRONMENT_WITH_IMPORT = (
     + b"# setup.py subprocess to the verified DeepGEMM source root.\n"
     + b'env["PYTHONPATH"] = str(src)\n'
 )
+DEEPGEMM_BUILD_HELPER_COMMAND = b"""subprocess.check_call(
+    [sys.executable, "setup.py", "build_ext", "--inplace", "--force"],
+    cwd=src,
+    env=env,
+)
+"""
+DEEPGEMM_BUILD_HELPER_COMMAND_OUT_OF_TREE = b"""build_root = out.parent / f"{out.name}.setuptools-build"
+try:
+    build_root.relative_to(src)
+except ValueError:
+    pass
+else:
+    sys.exit(f"DeepGEMM build root must be outside the pinned source tree: {build_root}")
+if build_root.exists() or build_root.is_symlink():
+    sys.exit(f"DeepGEMM build root must be fresh: {build_root}")
+build_temp = build_root / "temp"
+build_lib = build_root / "lib"
+build_lib.mkdir(parents=True)
+staged_package = build_lib / "deep_gemm"
+shutil.copytree(_pkg, staged_package, symlinks=True)
+env["PYTHONPATH"] = os.pathsep.join((str(build_lib), str(src)))
+subprocess.check_call(
+    [
+        sys.executable,
+        "setup.py",
+        "build_ext",
+        "--build-temp",
+        str(build_temp),
+        "--build-lib",
+        str(build_lib),
+        "--force",
+    ],
+    cwd=src,
+    env=env,
+)
+"""
+DEEPGEMM_BUILD_HELPER_EXTENSION = b'so = _pkg / "_C_extension.abi3.so"\n'
+DEEPGEMM_BUILD_HELPER_EXTENSION_OUT_OF_TREE = b'so = staged_package / "_C_extension.abi3.so"\n'
 
 
 class BuildContractError(RuntimeError):
@@ -1400,6 +1438,32 @@ def _checkout_source(
     return _checkout_repository(source, source_dir, label="vLLM", env=env)
 
 
+def _verify_source_dependency_unchanged(
+    dependency: Mapping[str, Any],
+    dependency_dir: Path,
+    *,
+    label: str,
+    before_receipt: dict[str, Any],
+    env: Mapping[str, str],
+) -> None:
+    post_identity = _verify_clean_repository(
+        dependency,
+        dependency_dir,
+        label=label,
+        env=env,
+    )
+    for identity_key in ("repository", "commit", "tree", "submodules"):
+        if post_identity[identity_key] != before_receipt[identity_key]:
+            raise BuildContractError(
+                f"Pinned {label} {identity_key} changed during the native build."
+            )
+    post_manifest = _directory_tree_manifest(dependency_dir)
+    if post_manifest != before_receipt["tree_manifest_before_build"]:
+        raise BuildContractError(f"Pinned {label} source bytes changed during the native build.")
+    before_receipt["tree_manifest_after_build"] = post_manifest
+    before_receipt["unchanged_after_build"] = True
+
+
 def _directory_tree_manifest(
     root: Path,
     *,
@@ -1761,31 +1825,50 @@ def _apply_deepgemm_source_import_binding(source_dir: Path) -> dict[str, Any]:
     )
     helper = source_dir / DEEPGEMM_BUILD_HELPER_PATH
     original = helper.read_bytes()
-    if original.count(DEEPGEMM_BUILD_HELPER_ENVIRONMENT) != 1:
-        raise BuildContractError(
-            "Pinned DeepGEMM build helper does not contain the reviewed environment block."
-        )
-    transformed = original.replace(
-        DEEPGEMM_BUILD_HELPER_ENVIRONMENT,
-        DEEPGEMM_BUILD_HELPER_ENVIRONMENT_WITH_IMPORT,
-        1,
+    replacements = (
+        (
+            "environment",
+            DEEPGEMM_BUILD_HELPER_ENVIRONMENT,
+            DEEPGEMM_BUILD_HELPER_ENVIRONMENT_WITH_IMPORT,
+        ),
+        (
+            "build command",
+            DEEPGEMM_BUILD_HELPER_COMMAND,
+            DEEPGEMM_BUILD_HELPER_COMMAND_OUT_OF_TREE,
+        ),
+        (
+            "extension source",
+            DEEPGEMM_BUILD_HELPER_EXTENSION,
+            DEEPGEMM_BUILD_HELPER_EXTENSION_OUT_OF_TREE,
+        ),
     )
+    transformed = original
+    for label, expected, replacement in replacements:
+        if transformed.count(expected) != 1:
+            raise BuildContractError(
+                f"Pinned DeepGEMM build helper does not contain exactly one reviewed {label} block."
+            )
+        transformed = transformed.replace(expected, replacement, 1)
     helper.write_bytes(transformed)
     return {
         "path": relative_path,
         "upstream_sha256": upstream_sha256,
         "transformed_sha256": _sha256_file(helper),
         "environment_variable": "PYTHONPATH",
-        "value": "resolved DeepGEMM source root",
+        "value": "complete external package stage, then resolved DeepGEMM source root",
         "scope": "DeepGEMM setup.py subprocess",
         "python_safe_path_preserved": True,
+        "build_mode": "setuptools-build-ext-out-of-tree",
+        "build_root": "sibling of CMake output",
+        "staged_package": "complete pinned deep_gemm package under external build-lib",
+        "source_write_policy": "pinned DeepGEMM tree remains byte-identical",
         "reason": (
-            "Pinned DeepGEMM setup.py imports scripts.generate_pyi while "
-            "PYTHONSAFEPATH omits its working directory from sys.path."
+            "Pinned DeepGEMM setup.py requires a verified import root and its default "
+            "in-place extension build writes ignored artifacts into the pinned source tree."
         ),
         "retirement_condition": (
-            "The pinned vLLM helper or DeepGEMM setup binds the source root without "
-            "an ambient import fallback."
+            "The pinned vLLM helper binds the source root without an ambient import "
+            "fallback and builds the extension outside the DeepGEMM source tree."
         ),
     }
 
@@ -2179,23 +2262,13 @@ def _build(
     for name, dependency in contract["source_dependencies"].items():
         dependency_name = _safe_dependency_name(name)
         dependency_dir = dependency_root / dependency_name
-        post_identity = _verify_clean_repository(
+        _verify_source_dependency_unchanged(
             dependency,
             dependency_dir,
             label=str(name),
+            before_receipt=source_dependency_receipts[dependency_name],
             env=build_environment,
         )
-        before_receipt = source_dependency_receipts[dependency_name]
-        for identity_key in ("repository", "commit", "tree", "submodules"):
-            if post_identity[identity_key] != before_receipt[identity_key]:
-                raise BuildContractError(
-                    f"Pinned {name} {identity_key} changed during the native build."
-                )
-        post_manifest = _directory_tree_manifest(dependency_dir)
-        if post_manifest != before_receipt["tree_manifest_before_build"]:
-            raise BuildContractError(f"Pinned {name} source bytes changed during the native build.")
-        before_receipt["tree_manifest_after_build"] = post_manifest
-        before_receipt["unchanged_after_build"] = True
 
     cargo_materialization = _verify_cargo_materialization_unchanged(
         contract,
