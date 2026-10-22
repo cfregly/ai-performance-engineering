@@ -67,3 +67,22 @@ def test_audit_allows_stdio_recovery_when_stream_is_none(tmp_path: Path) -> None
     findings = collect_findings(tmp_path, ["core"])
 
     assert findings == []
+
+
+def test_audit_exclusions_are_relative_to_repository_root(tmp_path: Path) -> None:
+    repo_root = tmp_path / "artifacts" / "repository"
+    _write(
+        repo_root / "core" / "included.py",
+        "import warnings\nwarnings.filterwarnings('ignore')\n",
+    )
+    _write(
+        repo_root / "core" / "artifacts" / "excluded.py",
+        "import warnings\nwarnings.filterwarnings('ignore')\n",
+    )
+
+    findings = collect_findings(repo_root, ["core"])
+
+    assert [finding.path.relative_to(repo_root).as_posix() for finding in findings] == [
+        "core/included.py"
+    ]
+    assert findings[0].category == "global_warning_filter"

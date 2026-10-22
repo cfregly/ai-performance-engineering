@@ -291,6 +291,7 @@ def test_dynamic_router_read_int_normalizes_negative_numa_to_none(tmp_path: Path
 def test_dynamic_router_detect_topology_preserves_gpu_slots_without_nvml(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.delenv("CUDA_VISIBLE_DEVICES", raising=False)
     monkeypatch.setattr(dynamic_router_topology, "_nvml_gpu_bus_and_numa", lambda max_gpus=None: {})
     monkeypatch.setattr(dynamic_router_topology, "_distance_matrix", lambda: {})
 

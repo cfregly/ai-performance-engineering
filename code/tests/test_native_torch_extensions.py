@@ -407,8 +407,10 @@ def test_cuda_toolkit_is_derived_from_nvcc_and_rejects_conflicts(
     nvcc = tmp_path / "cuda-13.0" / "bin" / "nvcc"
     nvcc.parent.mkdir(parents=True)
     nvcc.write_bytes(b"pinned-nvcc")
-    monkeypatch.setenv("CUDA_HOME", str(nvcc.parents[1]))
-    monkeypatch.setenv("CUDACXX", str(nvcc))
+    for name in native_builder._CUDA_ROOT_ENVIRONMENT_KEYS:
+        monkeypatch.setenv(name, str(nvcc.parents[1]))
+    for name in native_builder._CUDA_COMPILER_ENVIRONMENT_KEYS:
+        monkeypatch.setenv(name, str(nvcc))
 
     toolkit = native_builder._resolve_cuda_toolkit(str(nvcc), "13.0")
 
