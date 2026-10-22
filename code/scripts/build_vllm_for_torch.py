@@ -616,6 +616,7 @@ def _create_build_environment(
             "PYTHONNOUSERSITE": "1",
             "TORCH_CUDA_ARCH_LIST": cuda_arch_list,
             "MAX_JOBS": str(max_jobs),
+            "CARGO_BUILD_JOBS": str(max_jobs),
             "VLLM_VERSION_OVERRIDE": str(contract["package"]["version"]),
             "VLLM_SKIP_VERSION_SUFFIX": "1",
         }

@@ -142,7 +142,7 @@ def _fixed_kv_cache_memory_bytes() -> int:
     free memory changes mid-profile in shared/containerized environments.
     Supplying kv_cache_memory_bytes skips that fragile profiling path.
     """
-    return 2 * 1024**3  # Fixed across paired runs; sized for the supported small-model target.
+    return 2 * 1024**3  # Fixed across paired runs and sized for the supported small-model target.
 
 
 def _parse_target_overrides(

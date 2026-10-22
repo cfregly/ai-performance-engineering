@@ -254,7 +254,7 @@
         {
           "id": "torch-2.13-plus-cxx20",
           "path": "setup.py",
-          "reason": "PyTorch 2.13 and later require C++20 for extensions that include ATen headers; the pinned FlashAttention release explicitly selects C++17 for both host and CUDA compilation.",
+          "reason": "PyTorch 2.13 and later require C++20 for extensions that include ATen headers. The pinned FlashAttention release explicitly selects C++17 for both host and CUDA compilation.",
           "upstream_issue": "https://github.com/Dao-AILab/flash-attention/issues/2863",
           "upstream_fix_commit": "https://github.com/Dao-AILab/flash-attention/commit/edb5c76ee329b18ed95d1f7ea9aa522a1331ab7d",
           "pytorch_release_matrix": "https://github.com/pytorch/pytorch/blob/main/RELEASE.md",

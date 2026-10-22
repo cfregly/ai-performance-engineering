@@ -810,7 +810,7 @@ def _validate_environment(
         except importlib_metadata.PackageNotFoundError:
             continue
         raise BuildContractError(
-            f"{name}=={actual} is already installed; build in a clean environment without native bindings."
+            f"{name}=={actual} is already installed. Build in a clean environment without native bindings."
         )
     native_wheel_sdks = _validate_native_wheel_sdks(build["native_wheel_sdks"])
     for name, sdk in native_wheel_sdks.items():
@@ -1250,7 +1250,7 @@ def _inspect_wheel(package: Mapping[str, Any], wheel_path: Path) -> dict[str, An
         native_candidates = sorted(name for name in names if name.endswith(".so"))
         if len(native_candidates) != int(expected["native_member_count"]):
             raise BuildContractError(
-                f"Wheel has {len(native_candidates)} native members; "
+                f"Wheel has {len(native_candidates)} native members. "
                 f"expected {expected['native_member_count']}."
             )
         required_native_members: list[str] = []

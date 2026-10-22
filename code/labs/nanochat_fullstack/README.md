@@ -1,7 +1,7 @@
 # Lab - NanoChat Fullstack
 
 ## Summary
-Provides a harness-comparable NanoChat inference pair for a fixed prefill-plus-decode workload. The baseline launches the eager model for both phases; the optimized path replays the complete request in one CUDA graph.
+Provides a harness-comparable NanoChat inference pair for a fixed prefill-plus-decode workload. The baseline launches the eager model for both phases. The optimized path replays the complete request in one CUDA graph.
 
 ## Problem
 Full-stack LLM comparisons can look successful while checking degenerate outputs or timing different execution scopes. This lab holds the model, inputs, attention settings, KV-cache layout, and decode work constant, then verifies the final decode logits from both paths.
@@ -14,7 +14,7 @@ Full-stack LLM comparisons can look successful while checking degenerate outputs
 ## Optimized Path
 - Runs the same model configuration, inputs, attention path, KV cache, and decode loop as the baseline.
 - Captures the fixed 512-token prefill and all 64 ordered decode steps in one CUDA graph, preserving the baseline kernels and supplied decode tokens.
-- Warms and captures during setup; reports those costs separately from steady-state replay. Inputs remain mutable in place, and each replay overwrites the complete request's KV-cache state.
+- Warms and captures during setup and reports those costs separately from steady-state replay. Inputs remain mutable in place, and each replay overwrites the complete request's KV-cache state.
 
 ## Historical Delta
 No current performance delta is published. Earlier README timings and the retained expectation files were produced by older benchmark source. The current pair reinitializes projections that the training initializer leaves at zero, rejects all-zero or non-finite logits, and captures the complete request for replay. Prior numbers therefore do not establish the performance of this workload.
@@ -27,7 +27,7 @@ cd code
 python -m cli.aisp bench run -t labs/nanochat_fullstack:nanochat_inference --profile deep_dive --single-gpu
 ```
 
-Use this path to compare eager kernel launches with whole-request CUDA graph replay. A successful correctness run alone does not establish a performance win. Keep the `speedrun.sh` workflow separate from this harness pair; they exercise different scopes.
+Use this path to compare eager kernel launches with whole-request CUDA graph replay. A successful correctness run alone does not establish a performance win. Keep the `speedrun.sh` workflow separate from this harness pair because they exercise different scopes.
 
 ## Repro Commands
 ```bash
@@ -58,7 +58,7 @@ python -m cli.aisp bench list-targets --chapter labs/nanochat_fullstack
 python -m cli.aisp bench run -t labs/nanochat_fullstack:nanochat_inference --profile minimal --single-gpu
 ```
 - The benchmark requires CUDA and uses one visible GPU with `--single-gpu`.
-- Benchmark validity defaults to `strict`; use `portable` only when its documented compatibility tradeoffs are acceptable.
+- Benchmark validity defaults to `strict`. Use `portable` only when its documented compatibility tradeoffs are acceptable.
 - Treat the retained expectation files as historical until current-source measurements pass the verification and evidence gates above.
 
 ## Validation Checklist
@@ -66,7 +66,7 @@ python -m cli.aisp bench run -t labs/nanochat_fullstack:nanochat_inference --pro
 - Do not require or claim that the optimized path wins until a current-source, equivalent-workload run supplies repeated measurements and profiler attribution.
 
 ## Project Context
-NanoChat is intentionally bigger than a single benchmark pair. This lab entry provides one narrow, auditable inference comparison inside that tree; it does not replace the broader NanoChat project documentation.
+NanoChat is intentionally bigger than a single benchmark pair. This lab entry provides one narrow, auditable inference comparison inside that tree. It does not replace the broader NanoChat project documentation.
 
 - Use [README_FAST.md](README_FAST.md) for the faster end-to-end project walkthrough.
 - Use [speedrun.sh](speedrun.sh) when you want the broader "train and talk to a small model" experience.
@@ -80,4 +80,4 @@ x86-64.
 
 ## Notes
 - This README covers the harness pair. Use `README_FAST.md` and the project scripts for the broader training and serving walkthrough.
-- The decode microbenchmarks live separately in `labs/decode_optimization`; this lab is the broader inference-stack companion.
+- The decode microbenchmarks live separately in `labs/decode_optimization`. This lab is the broader inference-stack companion.
