@@ -60,7 +60,7 @@ explicit skip.
 | vLLM | 0.33.0.dev0+cu130.torch2141 source build | Source commit and build contract in `vllm_source_build.json`. Built against the installed PyTorch 2.14.1 stack because no published stable vLLM wheel matches this ABI |
 | CMake | 4.4.4 | pip wheel pin in the dependency source and Linux hash lock. Must be at least the newest first-party `cmake_minimum_required` (3.31.8 in `labs/custom_vs_cublas/cutlass_gemm`) |
 | Ninja | 1.13.2 | pip wheel pin in the dependency source and Linux hash lock |
-| Nsight Systems | 2026.3.2 | Installer target in `setup.sh`. Supports drivers from 450 on for CUDA 11+ |
+| Nsight Systems | 2026.5.1 | Exact CLI-only package `nsight-systems-cli-2026.5.1=2026.5.1.161-265138896106v0` from NVIDIA's signed DEVTOOLS repository. Supports drivers from 450 on for CUDA 11+ |
 | Nsight Compute | 2026.2.1 | Installer target in `setup.sh` and the only version `core/profiling/ncu_torchrun_capture.py` accepts. Requires a driver compatible with CUDA 13 (r580 or newer) |
 
 This is the B200 compute capability 10.0 dependency baseline. Package and
@@ -89,9 +89,12 @@ build, it reads the newest `cmake_minimum_required` from the tracked first-party
 `CMakeLists.txt` files and stops if the CMake on `PATH` is older or is not the
 pinned version.
 
-The CUDA 13.0 toolkit packages also install Nsight Systems 2026.3.2 and Nsight
-Compute 2026.2.1. The harness runs `nsys` and `ncu` by name, so `setup.sh` puts
-the pinned Nsight directories ahead of `/usr/local/cuda-13.0/bin` in
+The CUDA 13.0 toolkit also installs older 2025.3.x profiler copies. `setup.sh`
+adds NVIDIA's distribution-specific DEVTOOLS repository with its own scoped,
+hash- and fingerprint-verified signing key. It installs the exact CLI-only
+Nsight Systems 2026.5.1.161 package and keeps Nsight Compute 2026.2.1 from the
+CUDA repository. The harness runs `nsys` and `ncu` by name, so `setup.sh` puts
+these pinned directories ahead of `/usr/local/cuda-13.0/bin` in
 `${AISP_VENV_DIR}/cuda-env.sh`. It composes that file into
 `${AISP_VENV_DIR}/runtime-env.sh` with the isolated Python environment, cache
 directories and locked wheel-library paths. Source `runtime-env.sh` in a new

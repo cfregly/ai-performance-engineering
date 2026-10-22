@@ -11,7 +11,7 @@
 #   4. The canonical PyTorch/Triton stack pinned in requirements_latest.txt
 #      (torch==2.14.1+cu130, triton==3.8.0) for CUDA 13.0.2. The script requires
 #      these exact pins in requirements_latest.txt and the hash lock.
-#   5. NVIDIA Nsight Systems 2026.3.2 (for timeline profiling)
+#   5. NVIDIA Nsight Systems 2026.5.1 CLI (for timeline profiling)
 #   6. NVIDIA Nsight Compute 2026.2.1 (for kernel metrics), the version that
 #      core/profiling/ncu_torchrun_capture.py accepts
 #   7. CMake and ninja from the pip pins in requirements_latest.txt
@@ -40,8 +40,8 @@
 #   - Creates a fresh isolated Python 3.12 runtime for the pinned PyTorch stack
 #   - Auto-upgrades NVIDIA driver to 580+ if needed (will prompt reboot)
 #   - Installs CUDA 13.0.2 toolkit and libraries
-#   - Installs pinned Nsight Systems 2026.3.2 and Nsight Compute 2026.2.1 and puts
-#     them ahead of the CUDA toolkit's bundled 2025.3.x copies on PATH
+#   - Installs pinned Nsight Systems CLI 2026.5.1 and Nsight Compute 2026.2.1
+#     and puts them ahead of the CUDA toolkit's bundled 2025.3.x copies on PATH
 #   - Installs the pinned CMake and ninja wheels and stops if CMake is older
 #     than the newest cmake_minimum_required in first-party CMakeLists.txt files
 #   - Installs pinned PyTorch CUDA 13 wheels (no source build)
@@ -326,7 +326,7 @@ echo "  • NVIDIA Driver 580.126.09 (auto-upgrade if needed)"
 echo "  • Python 3.12 for the pinned PyTorch stack"
 echo "  • CUDA 13.0.2 toolkit + cuBLAS 13.1.0.3 (Update 2) repository"
 echo "  • PyTorch CUDA 13 wheels pinned by requirements_latest.txt"
-echo "  • NVIDIA Nsight Systems 2026.3.2"
+echo "  • NVIDIA Nsight Systems 2026.5.1"
 echo "  • NVIDIA Nsight Compute 2026.2.1"
 echo "  • CMake and ninja pinned by requirements_latest.txt"
 echo "  • All project dependencies"
@@ -673,8 +673,21 @@ PY
 # and the harness runs nsys and ncu by name, so PATH must resolve the pinned copies.
 require_pinned_nsight_tools() {
     local nsys_bin ncu_bin nsys_output ncu_output
+    local nsys_resolved ncu_resolved expected_nsys_resolved expected_ncu_resolved
     if ! nsys_bin="$(command -v nsys)" || ! ncu_bin="$(command -v ncu)"; then
         echo "ERROR: nsys and ncu must be on PATH after installing Nsight Systems ${NSYS_VERSION} and Nsight Compute ${NCU_VERSION}." >&2
+        exit 1
+    fi
+    if ! nsys_resolved="$(realpath "${nsys_bin}")" \
+        || ! expected_nsys_resolved="$(realpath "${NSYS_BIN}")" \
+        || [ "${nsys_resolved}" != "${expected_nsys_resolved}" ]; then
+        echo "ERROR: ${nsys_bin} does not resolve to the pinned Nsight Systems binary ${NSYS_BIN}." >&2
+        exit 1
+    fi
+    if ! ncu_resolved="$(realpath "${ncu_bin}")" \
+        || ! expected_ncu_resolved="$(realpath "${NCU_BIN}")" \
+        || [ "${ncu_resolved}" != "${expected_ncu_resolved}" ]; then
+        echo "ERROR: ${ncu_bin} does not resolve to the pinned Nsight Compute binary ${NCU_BIN}." >&2
         exit 1
     fi
     nsys_output="$("${nsys_bin}" --version 2>&1 | head -n 1 || true)"
@@ -915,7 +928,7 @@ apt update || {
 }
 
 # Install required packages for adding repositories
-apt install -y wget curl software-properties-common
+apt install -y wget curl gnupg software-properties-common
 
 # Install NVIDIA DCGM (Data Center GPU Manager) for monitoring stack
 echo ""
@@ -1180,32 +1193,76 @@ echo "CUDA command-line tools 13.0.2 installed"
 echo ""
 echo "Installing pinned NVIDIA Nsight Systems and Compute..."
 
-# Refresh package metadata before installing the two pinned Nsight packages.
-apt update -qq
-
 # Create temporary directory for downloads
-TEMP_DIR="/tmp/nsight_install"
-mkdir -p "$TEMP_DIR"
+TEMP_DIR="$(mktemp -d /tmp/aisp_nsight_install.XXXXXX)"
 cd "$TEMP_DIR"
 
-# Install Nsight Systems and set binary alternative
-NSYS_VERSION="2026.3.2"
-echo "Installing Nsight Systems (pinned ${NSYS_VERSION})..."
-apt install -y --upgrade "nsight-systems-${NSYS_VERSION}"
-NSYS_BIN=""
-for bin_path in "/opt/nvidia/nsight-systems/${NSYS_VERSION}/bin/nsys" "/opt/nvidia/nsight-systems/${NSYS_VERSION}/nsys"; do
-    if [[ -x "$bin_path" ]]; then
-        NSYS_BIN="$bin_path"
-        break
-    fi
-done
-if [[ -z "$NSYS_BIN" ]]; then
-    echo "ERROR: Nsight Systems ${NSYS_VERSION} binary not found under /opt/nvidia/nsight-systems/${NSYS_VERSION}." >&2
+# Add the signed NVIDIA DEVTOOLS repository for the CLI-only Nsight Systems
+# package. Keep this key scoped to that repository and reject key drift before
+# changing APT configuration.
+NSYS_VERSION="2026.5.1"
+NSYS_PACKAGE="nsight-systems-cli-${NSYS_VERSION}"
+NSYS_PACKAGE_VERSION="2026.5.1.161-265138896106v0"
+DEVTOOLS_KEY_URL="https://developer.download.nvidia.com/compute/cuda/repos/ubuntu1804/x86_64/7fa2af80.pub"
+DEVTOOLS_KEY_SHA256="47217c49dcb9e47a8728b354450f694c9898cd4a126173044a69b1e9ac0fba96"
+DEVTOOLS_KEYRING_SHA256="0d4c5cbe167a020fc2978ea28eaea0e797f89fdee696488e93bf446dd868486f"
+DEVTOOLS_KEY_FINGERPRINT="AE09FE4BBD223A84B2CCFCE3F60F4B3D7FA2AF80"
+DEVTOOLS_KEYRING="/usr/share/keyrings/nvidia-devtools-keyring.gpg"
+DEVTOOLS_SOURCE_LIST="/etc/apt/sources.list.d/nvidia-devtools.list"
+DEVTOOLS_REPO_URL="https://developer.download.nvidia.com/devtools/repos/${CUDA_REPO_DISTRO}/amd64"
+DEVTOOLS_GNUPG_HOME="${TEMP_DIR}/gnupg"
+DEVTOOLS_RAW_KEY="${TEMP_DIR}/7fa2af80.pub"
+DEVTOOLS_KEYRING_TEMP="${TEMP_DIR}/nvidia-devtools-keyring.gpg"
+install -d -m 0700 "${DEVTOOLS_GNUPG_HOME}"
+curl --disable --fail --location --proto '=https' --tlsv1.2 --silent --show-error \
+    --output "${DEVTOOLS_RAW_KEY}" "${DEVTOOLS_KEY_URL}"
+if ! printf '%s  %s\n' "${DEVTOOLS_KEY_SHA256}" "${DEVTOOLS_RAW_KEY}" | sha256sum --check --status; then
+    echo "ERROR: NVIDIA DEVTOOLS signing key SHA-256 mismatch." >&2
+    exit 1
+fi
+mapfile -t DEVTOOLS_KEY_FINGERPRINTS < <(
+    gpg --no-options --homedir "${DEVTOOLS_GNUPG_HOME}" --batch --show-keys \
+        --with-colons --fingerprint "${DEVTOOLS_RAW_KEY}" \
+        | awk -F: '$1 == "fpr" { print $10 }'
+)
+if [ "${#DEVTOOLS_KEY_FINGERPRINTS[@]}" -ne 1 ] || [ "${DEVTOOLS_KEY_FINGERPRINTS[0]}" != "${DEVTOOLS_KEY_FINGERPRINT}" ]; then
+    echo "ERROR: NVIDIA DEVTOOLS signing key fingerprint mismatch." >&2
+    exit 1
+fi
+gpg --no-options --homedir "${DEVTOOLS_GNUPG_HOME}" --batch --yes --dearmor \
+    --output "${DEVTOOLS_KEYRING_TEMP}" "${DEVTOOLS_RAW_KEY}"
+if ! printf '%s  %s\n' "${DEVTOOLS_KEYRING_SHA256}" "${DEVTOOLS_KEYRING_TEMP}" | sha256sum --check --status; then
+    echo "ERROR: NVIDIA DEVTOOLS dearmored key SHA-256 mismatch." >&2
+    exit 1
+fi
+install -m 0644 "${DEVTOOLS_KEYRING_TEMP}" "${DEVTOOLS_KEYRING}"
+printf 'deb [arch=amd64 signed-by=%s] %s/ /\n' \
+    "${DEVTOOLS_KEYRING}" "${DEVTOOLS_REPO_URL}" > "${TEMP_DIR}/nvidia-devtools.list"
+install -m 0644 "${TEMP_DIR}/nvidia-devtools.list" "${DEVTOOLS_SOURCE_LIST}"
+
+# Refresh package metadata only after both signed NVIDIA repositories are ready.
+apt update -qq
+
+# Install the exact CLI-only Nsight Systems build and select its concrete target
+# executable instead of the full GUI package or a version-selector link.
+echo "Installing Nsight Systems CLI (pinned ${NSYS_PACKAGE}=${NSYS_PACKAGE_VERSION})..."
+if ! apt install -y --upgrade "${NSYS_PACKAGE}=${NSYS_PACKAGE_VERSION}"; then
+    echo "ERROR: ${NSYS_PACKAGE}=${NSYS_PACKAGE_VERSION} is unavailable from ${DEVTOOLS_REPO_URL}." >&2
+    exit 1
+fi
+INSTALLED_NSYS_PACKAGE_VERSION="$(dpkg-query -W -f='${Version}' "${NSYS_PACKAGE}" 2>/dev/null || true)"
+if [ "${INSTALLED_NSYS_PACKAGE_VERSION}" != "${NSYS_PACKAGE_VERSION}" ]; then
+    echo "ERROR: ${NSYS_PACKAGE} resolved to ${INSTALLED_NSYS_PACKAGE_VERSION:-missing}, expected ${NSYS_PACKAGE_VERSION}." >&2
+    exit 1
+fi
+NSYS_BIN="/opt/nvidia/nsight-systems-cli/${NSYS_VERSION}/target-linux-x64/nsys"
+if [[ ! -x "${NSYS_BIN}" ]]; then
+    echo "ERROR: Nsight Systems CLI ${NSYS_VERSION} binary not found at ${NSYS_BIN}." >&2
     exit 1
 fi
 update-alternatives --install /usr/local/bin/nsys nsys "$NSYS_BIN" 50
 update-alternatives --set nsys "$NSYS_BIN"
-echo "Nsight Systems pinned to ${NSYS_VERSION} (${NSYS_BIN})"
+echo "Nsight Systems CLI pinned to ${NSYS_PACKAGE_VERSION} (${NSYS_BIN})"
 
 # Install Nsight Compute and set binary alternative
 NCU_VERSION="2026.2.1"

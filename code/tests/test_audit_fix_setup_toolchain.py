@@ -268,6 +268,53 @@ def test_setup_and_docs_report_the_installed_nsight_pins() -> None:
     assert re.search(r"^\| Ninja \| " + re.escape(_requirements_pin("ninja")) + r" \|", doc, re.MULTILINE)
 
 
+def test_setup_installs_the_exact_signed_nsight_systems_cli_package() -> None:
+    setup = _setup_text()
+    assert _setup_assignment("NSYS_VERSION") == "2026.5.1"
+    assert _setup_assignment("NSYS_PACKAGE_VERSION") == "2026.5.1.161-265138896106v0"
+    assert 'NSYS_PACKAGE="nsight-systems-cli-${NSYS_VERSION}"' in setup
+    assert 'apt install -y --upgrade "${NSYS_PACKAGE}=${NSYS_PACKAGE_VERSION}"' in setup
+    assert 'apt install -y --upgrade "nsight-systems-${NSYS_VERSION}"' not in setup
+    assert (
+        'NSYS_BIN="/opt/nvidia/nsight-systems-cli/${NSYS_VERSION}/target-linux-x64/nsys"' in setup
+    )
+    source_install = setup.index('install -m 0644 "${TEMP_DIR}/nvidia-devtools.list"')
+    metadata_refresh = setup.index("apt update -qq", source_install)
+    exact_install = setup.index(
+        'apt install -y --upgrade "${NSYS_PACKAGE}=${NSYS_PACKAGE_VERSION}"',
+        metadata_refresh,
+    )
+    installed_version_check = setup.index('dpkg-query -W -f=\'${Version}\' "${NSYS_PACKAGE}"', exact_install)
+    path_gate = setup.index('if [[ ! -x "${NSYS_BIN}" ]]', installed_version_check)
+    assert source_install < metadata_refresh < exact_install < installed_version_check < path_gate
+    assert "nsight-systems-cli-2026.5.1=2026.5.1.161-265138896106v0" in ENVIRONMENT_DOC.read_text(
+        encoding="utf-8"
+    )
+
+
+def test_setup_scopes_and_verifies_the_devtools_repository_key() -> None:
+    setup = _setup_text()
+    assert (
+        _setup_assignment("DEVTOOLS_KEY_SHA256")
+        == "47217c49dcb9e47a8728b354450f694c9898cd4a126173044a69b1e9ac0fba96"
+    )
+    assert (
+        _setup_assignment("DEVTOOLS_KEYRING_SHA256")
+        == "0d4c5cbe167a020fc2978ea28eaea0e797f89fdee696488e93bf446dd868486f"
+    )
+    assert (
+        _setup_assignment("DEVTOOLS_KEY_FINGERPRINT") == "AE09FE4BBD223A84B2CCFCE3F60F4B3D7FA2AF80"
+    )
+    assert (
+        'DEVTOOLS_REPO_URL="https://developer.download.nvidia.com/devtools/repos/'
+        '${CUDA_REPO_DISTRO}/amd64"' in setup
+    )
+    assert "signed-by=%s" in setup
+    assert 'DEVTOOLS_KEYRING="/usr/share/keyrings/nvidia-devtools-keyring.gpg"' in setup
+    assert "gpg --no-options --homedir" in setup
+    assert "sha256sum --check --status" in setup
+
+
 def test_pinned_nsight_directories_precede_cuda_bin_on_runtime_paths() -> None:
     setup = _setup_text()
     assert 'NSIGHT_BIN_PATH="$(dirname "${NSYS_BIN}"):$(dirname "${NCU_BIN}")"' in setup
@@ -292,12 +339,17 @@ def test_pinned_nsight_directories_precede_cuda_bin_on_runtime_paths() -> None:
 
 
 def _run_nsight_check(
-    tmp_path: Path, nsys_version: str, ncu_version: str
+    tmp_path: Path,
+    nsys_version: str,
+    ncu_version: str,
+    *,
+    expected_nsys: Path | None = None,
+    expected_ncu: Path | None = None,
 ) -> subprocess.CompletedProcess[str]:
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     (bin_dir / "nsys").write_text(
-        f"#!/bin/sh\nprintf 'NVIDIA Nsight Systems version {nsys_version}.476-263238834031v0\\n'\n",
+        f"#!/bin/sh\nprintf 'NVIDIA Nsight Systems version {nsys_version}.161-265138896106v0\\n'\n",
         encoding="utf-8",
     )
     (bin_dir / "ncu").write_text(
@@ -313,6 +365,8 @@ def _run_nsight_check(
         "set -e\n"
         f'NSYS_VERSION="{_setup_assignment("NSYS_VERSION")}"\n'
         f'NCU_VERSION="{_setup_assignment("NCU_VERSION")}"\n'
+        f'NSYS_BIN="{expected_nsys or (bin_dir / "nsys")}"\n'
+        f'NCU_BIN="{expected_ncu or (bin_dir / "ncu")}"\n'
         f"{_setup_function('require_pinned_nsight_tools')}"
         "require_pinned_nsight_tools\n"
     )
@@ -332,6 +386,17 @@ def test_nsight_check_accepts_the_pinned_tools(tmp_path: Path) -> None:
     assert result.returncode == 0, result.stderr
     assert f"Nsight Systems {nsys}" in result.stdout
     assert f"Nsight Compute {ncu}" in result.stdout
+
+
+def test_nsight_check_rejects_a_different_binary_path(tmp_path: Path) -> None:
+    result = _run_nsight_check(
+        tmp_path,
+        _setup_assignment("NSYS_VERSION"),
+        _setup_assignment("NCU_VERSION"),
+        expected_nsys=tmp_path / "different" / "nsys",
+    )
+    assert result.returncode != 0
+    assert "does not resolve to the pinned Nsight Systems binary" in result.stderr
 
 
 @pytest.mark.parametrize(
