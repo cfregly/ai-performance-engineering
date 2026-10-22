@@ -107,6 +107,41 @@ def test_merge_preserves_allow_foreign_gpu_processes_from_run_level_policy() -> 
     assert merged.allow_foreign_gpu_processes is True
 
 
+def test_portable_merge_disables_and_locks_gpu_clock_control() -> None:
+    base = _base_config(validity_profile="portable", lock_gpu_clocks=False)
+    locked = _compute_locked_fields(
+        base_config=base,
+        cli_iterations_provided=False,
+        cli_warmup_provided=False,
+        enable_profiling=False,
+    )
+    override = BenchmarkConfig(
+        validity_profile="strict",
+        lock_gpu_clocks=True,
+        timeout_multiplier=1.0,
+    )
+
+    assert "lock_gpu_clocks" in locked
+    merged = _merge_benchmark_config(
+        base_config=base,
+        benchmark_obj=_DummyBenchmark(override),
+        defaults_obj=BenchmarkDefaults(),
+        locked_fields=locked,
+    )
+    assert merged.validity_profile == "portable"
+    assert merged.lock_gpu_clocks is False
+
+    # The final portable invariant also protects callers with an older lock set.
+    merged_without_lock_set = _merge_benchmark_config(
+        base_config=base,
+        benchmark_obj=_DummyBenchmark(override),
+        defaults_obj=BenchmarkDefaults(),
+        locked_fields=set(),
+    )
+    assert merged_without_lock_set.validity_profile == "portable"
+    assert merged_without_lock_set.lock_gpu_clocks is False
+
+
 def test_merge_locks_profiling_knobs_when_cli_enabled() -> None:
     base = _base_config(enable_profiling=True, enable_nsys=True, enable_ncu=True, profile_type="minimal")
     locked = _compute_locked_fields(
