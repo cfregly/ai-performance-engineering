@@ -665,6 +665,7 @@ def test_build_command_uses_pinned_frontend_and_force_source_environment(
         ]
     )
     assert observed["environment"]["CPATH"] == include_search_path
+    assert observed["environment"]["PYTORCH_NVML_BASED_CUDA_CHECK"] == "1"
     assert observed["environment"]["CPLUS_INCLUDE_PATH"] == include_search_path
     assert observed["environment"]["CMAKE_INCLUDE_PATH"] == include_search_path
     assert observed["environment"]["LIBRARY_PATH"] == library_search_path

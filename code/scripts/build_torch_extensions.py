@@ -1327,6 +1327,7 @@ def _explicit_build_environment(
         "PIP_NO_INDEX": "1",
         "PYTHONNOUSERSITE": "1",
         "PYTHONSAFEPATH": "1",
+        "PYTORCH_NVML_BASED_CUDA_CHECK": "1",
         "TORCH_CUDA_HOME": cuda_toolkit["root"],
         "TORCH_CUDA_ARCH_LIST": build["cuda_arch_list"],
         "TORCH_DEVICE_BACKEND_AUTOLOAD": build["required_host_environment"][

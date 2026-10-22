@@ -614,6 +614,7 @@ def _create_build_environment(
     build_environment.update(
         {
             "PYTHONNOUSERSITE": "1",
+            "PYTORCH_NVML_BASED_CUDA_CHECK": "1",
             "TORCH_CUDA_ARCH_LIST": cuda_arch_list,
             "MAX_JOBS": str(max_jobs),
             "CARGO_BUILD_JOBS": str(max_jobs),

@@ -123,6 +123,7 @@ def test_continuation_build_environment_keeps_only_explicit_sdk_paths() -> None:
     assert environment["LIBRARY_PATH"] == "/sdk/usr/lib/x86_64-linux-gnu"
     assert environment["MAX_JOBS"] == "8"
     assert environment["CARGO_BUILD_JOBS"] == "8"
+    assert environment["PYTORCH_NVML_BASED_CUDA_CHECK"] == "1"
     assert environment["NVCC_THREADS"] == "2"
     assert environment["VLLM_USE_PRECOMPILED"] == "0"
     assert environment["VLLM_USE_PRECOMPILED_RUST"] == "0"
