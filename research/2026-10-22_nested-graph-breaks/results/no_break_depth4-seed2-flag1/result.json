@@ -1,0 +1,632 @@
+{
+  "benchmark_id": "torch-dynamo-nested-graph-breaks-b200-20261020",
+  "case": "no_break_depth4",
+  "compile": {
+    "api": "torch.compile",
+    "backend": "inductor",
+    "cuda_graph_eligibility": "mode requests CUDA graphs; actual capture requires profiler markers or retained perf-hint evidence",
+    "fullgraph": false,
+    "mode": "reduce-overhead",
+    "mode_options": {
+      "triton.cudagraphs": true
+    }
+  },
+  "controller_contract": {
+    "cache_dirs": {
+      "TORCHINDUCTOR_CACHE_DIR": {
+        "initial_entries": [],
+        "initially_empty": true,
+        "path": "<cache-root>/no_break_depth4-seed2-flag1/inductor"
+      },
+      "TRITON_CACHE_DIR": {
+        "initial_entries": [],
+        "initially_empty": true,
+        "path": "<cache-root>/no_break_depth4-seed2-flag1/triton"
+      }
+    },
+    "cuda_visible_devices": "GPU-<b200-device>",
+    "expected_gpu_uuid": "GPU-<b200-device>"
+  },
+  "correctness": {
+    "first_compiled_call": {
+      "assert_close_error": null,
+      "assert_close_pass": true,
+      "atol": 1e-05,
+      "compiled_dtype": "torch.float32",
+      "compiled_shape": [
+        1048576
+      ],
+      "dtype_match": true,
+      "finite": true,
+      "max_abs_error": 0.0,
+      "max_rel_error": 0.0,
+      "pass": true,
+      "reference_dtype": "torch.float32",
+      "reference_shape": [
+        1048576
+      ],
+      "rtol": 0.0001,
+      "sample_output": {
+        "hash_encoding": "network-order float64 values at selected indices",
+        "indices": [
+          0,
+          1,
+          17,
+          1024,
+          349525,
+          524288,
+          1048575
+        ],
+        "sha256": "862e02907f6649081c80c05fb16f6c98afb713a9fbc17b83d47f6bf2c6a5e2fe",
+        "values": [
+          0.9738693237304688,
+          0.9296303391456604,
+          0.9370847940444946,
+          0.820104718208313,
+          0.6978058815002441,
+          0.9936850070953369,
+          -0.18198007345199585
+        ]
+      },
+      "shape_match": true
+    },
+    "pass": true,
+    "post_steady_compiled_call": {
+      "assert_close_error": null,
+      "assert_close_pass": true,
+      "atol": 1e-05,
+      "compiled_dtype": "torch.float32",
+      "compiled_shape": [
+        1048576
+      ],
+      "dtype_match": true,
+      "finite": true,
+      "max_abs_error": 0.0,
+      "max_rel_error": 0.0,
+      "pass": true,
+      "reference_dtype": "torch.float32",
+      "reference_shape": [
+        1048576
+      ],
+      "rtol": 0.0001,
+      "sample_output": {
+        "hash_encoding": "network-order float64 values at selected indices",
+        "indices": [
+          0,
+          1,
+          17,
+          1024,
+          349525,
+          524288,
+          1048575
+        ],
+        "sha256": "862e02907f6649081c80c05fb16f6c98afb713a9fbc17b83d47f6bf2c6a5e2fe",
+        "values": [
+          0.9738693237304688,
+          0.9296303391456604,
+          0.9370847940444946,
+          0.820104718208313,
+          0.6978058815002441,
+          0.9936850070953369,
+          -0.18198007345199585
+        ]
+      },
+      "shape_match": true
+    }
+  },
+  "counter_lifecycle": {
+    "instrumentation_semantics": "native missing-key group materialization plus read-only snapshots; no counter entry writes, increments, clears, or group replacement",
+    "invariants": {
+      "all_observed_required_group_identities_preserved": true,
+      "all_observed_required_groups_present": true,
+      "all_observed_top_level_mapping_identities_preserved": true,
+      "lifecycle_valid": true,
+      "preparation_added_zero_entries": true
+    },
+    "observations": [
+      {
+        "groups": {
+          "graph_break": {
+            "binding_replaced": false,
+            "content_changed_since_preparation": false,
+            "entry_sum": 0,
+            "object_id": "<object-id:no_break_depth4-seed2-flag1:graph-break-counter>",
+            "object_type": "collections.Counter",
+            "present": true,
+            "raw_counts": {},
+            "same_object_as_prepared": true
+          },
+          "stats": {
+            "binding_replaced": false,
+            "content_changed_since_preparation": true,
+            "entry_sum": 33,
+            "object_id": "<object-id:no_break_depth4-seed2-flag1:stats-counter>",
+            "object_type": "collections.Counter",
+            "present": true,
+            "raw_counts": {
+              "calls_captured": 32,
+              "unique_graphs": 1
+            },
+            "same_object_as_prepared": true
+          }
+        },
+        "stage": "after_first_compiled_call",
+        "top_level_keys": [
+          "aot_autograd",
+          "frames",
+          "graph_break",
+          "inductor",
+          "stats"
+        ],
+        "top_level_mapping_identity_preserved": true
+      },
+      {
+        "groups": {
+          "graph_break": {
+            "binding_replaced": false,
+            "content_changed_since_preparation": false,
+            "entry_sum": 0,
+            "object_id": "<object-id:no_break_depth4-seed2-flag1:graph-break-counter>",
+            "object_type": "collections.Counter",
+            "present": true,
+            "raw_counts": {},
+            "same_object_as_prepared": true
+          },
+          "stats": {
+            "binding_replaced": false,
+            "content_changed_since_preparation": true,
+            "entry_sum": 33,
+            "object_id": "<object-id:no_break_depth4-seed2-flag1:stats-counter>",
+            "object_type": "collections.Counter",
+            "present": true,
+            "raw_counts": {
+              "calls_captured": 32,
+              "unique_graphs": 1
+            },
+            "same_object_as_prepared": true
+          }
+        },
+        "stage": "after_run_timing",
+        "top_level_keys": [
+          "aot_autograd",
+          "frames",
+          "graph_break",
+          "inductor",
+          "stats"
+        ],
+        "top_level_mapping_identity_preserved": true
+      }
+    ],
+    "preparation": {
+      "graph_break": {
+        "created_by_native_missing_key_lookup": true,
+        "entries_unchanged_by_preparation": true,
+        "entry_delta_from_preparation": 0,
+        "entry_sum_after_prepare": 0,
+        "entry_sum_before_prepare": 0,
+        "object_id": "<object-id:no_break_depth4-seed2-flag1:graph-break-counter>",
+        "object_type": "collections.Counter",
+        "present_before_prepare": false,
+        "raw_after_prepare": {},
+        "raw_before_prepare": {}
+      },
+      "stats": {
+        "created_by_native_missing_key_lookup": true,
+        "entries_unchanged_by_preparation": true,
+        "entry_delta_from_preparation": 0,
+        "entry_sum_after_prepare": 0,
+        "entry_sum_before_prepare": 0,
+        "object_id": "<object-id:no_break_depth4-seed2-flag1:stats-counter>",
+        "object_type": "collections.Counter",
+        "present_before_prepare": false,
+        "raw_after_prepare": {},
+        "raw_before_prepare": {}
+      }
+    },
+    "required_groups": [
+      "graph_break",
+      "stats"
+    ],
+    "schema": "nested-graph-breaks-counter-lifecycle/v1",
+    "top_level_mapping": {
+      "keys_before_prepare": [],
+      "object_id": "<object-id:no_break_depth4-seed2-flag1:top-level-counter-map>",
+      "object_type": "collections.defaultdict"
+    }
+  },
+  "device": {
+    "compute_capability": [
+      10,
+      0
+    ],
+    "cuda_visible_devices": "GPU-<b200-device>",
+    "expected_gpu_uuid": "GPU-<b200-device>",
+    "logical_index": 0,
+    "observed_uuid": "GPU-<b200-device>",
+    "observed_uuid_source": "controller-bound CUDA_VISIBLE_DEVICES",
+    "optional_torch_device_uuid": "<torch-device-object:no_break_depth4-seed2-flag1>",
+    "torch_name": "NVIDIA B200",
+    "total_memory_bytes": 191503007744,
+    "type": "cuda"
+  },
+  "dynamo": {
+    "all": {
+      "aot_autograd": {
+        "ok": 1,
+        "total": 1
+      },
+      "frames": {
+        "ok": 1,
+        "total": 1
+      },
+      "graph_break": {},
+      "inductor": {
+        "async_compile_cache_miss": 1,
+        "benchmarking.InductorBenchmarker.benchmark": 2,
+        "benchmarking.InductorBenchmarker.benchmark_gpu": 2,
+        "cudagraph_recorded_non_static_inputs": 1
+      },
+      "stats": {
+        "calls_captured": 32,
+        "unique_graphs": 1
+      }
+    },
+    "graph_break_distinct_reason_count": 0,
+    "graph_break_event_sum": 0,
+    "graph_break_reason_counts": {},
+    "stats": {
+      "calls_captured": 32,
+      "unique_graphs": 1
+    },
+    "unique_graphs": 1
+  },
+  "enabled": 1,
+  "finished_at": "2026-10-22T01:52:59.099830+00:00",
+  "inductor_metrics": {
+    "available": true,
+    "cpp_to_dtype_count": 0,
+    "generated_cpp_vec_kernel_count": 0,
+    "generated_kernel_count": 1,
+    "ir_nodes_pre_fusion": 1,
+    "num_bytes_accessed": 0,
+    "num_comprehensive_padding": 0,
+    "num_loop_reordering": 0
+  },
+  "profile": {
+    "requested": false,
+    "status": "not_requested"
+  },
+  "profile_requested": false,
+  "provenance": {
+    "argv": [
+      "<source-root>/benchmark.py",
+      "--case",
+      "no_break_depth4",
+      "--seed",
+      "2",
+      "--enabled",
+      "1",
+      "--out",
+      "<result-root>/no_break_depth4-seed2-flag1",
+      "--expected-gpu-uuid",
+      "GPU-<b200-device>"
+    ],
+    "flag_source_snapshot_line": 587,
+    "flag_source_snapshot_path": "<source-root>/pytorch-main-dynamo-config.py",
+    "flag_source_snapshot_sha256": "d44a413bf4274ff0ce4384fb0538c3c48a9972af963d8f30c5b16416892ee6b1",
+    "stderr_capture_owner": "controller",
+    "timing_clock": "time.perf_counter_ns",
+    "worker_source_path": "<source-root>/benchmark.py",
+    "worker_source_sha256": "4c7a5a8dcef474405be19a87d22cfdeb7ea564c76f19acc67ddcd1125d247689"
+  },
+  "runtime": {
+    "cuda_matmul_allow_tf32": false,
+    "cudnn_allow_tf32": false,
+    "cudnn_version": 92400,
+    "fixed_environment": {
+      "CUDA_CACHE_DISABLE": "1",
+      "MKL_NUM_THREADS": "1",
+      "OMP_NUM_THREADS": "1",
+      "TORCHINDUCTOR_AUTOGRAD_CACHE": "0",
+      "TORCHINDUCTOR_AUTOGRAD_REMOTE_CACHE": "0",
+      "TORCHINDUCTOR_AUTOTUNE_REMOTE_CACHE": "0",
+      "TORCHINDUCTOR_BUNDLED_AUTOTUNE_REMOTE_CACHE": "0",
+      "TORCHINDUCTOR_COMPILE_THREADS": "1",
+      "TORCHINDUCTOR_FX_GRAPH_CACHE": "0",
+      "TORCHINDUCTOR_FX_GRAPH_REMOTE_CACHE": "0"
+    },
+    "float32_matmul_precision": "highest",
+    "functorch_options": {
+      "bundled_autograd_cache": false,
+      "enable_autograd_cache": false,
+      "enable_remote_autograd_cache": false
+    },
+    "hostname": "<b200-host>",
+    "inductor_options": {
+      "autotune_remote_cache": false,
+      "bundled_autotune_remote_cache": false,
+      "compile_threads": 1,
+      "fx_graph_cache": false,
+      "fx_graph_remote_cache": false,
+      "max_autotune": false,
+      "triton.cudagraph_skip_dynamic_graphs": false,
+      "triton.cudagraphs": false
+    },
+    "num_interop_threads": 1,
+    "num_threads": 1,
+    "pid": "<process-id:no_break_depth4-seed2-flag1>",
+    "platform": "Linux-6.8.0-100-generic-x86_64-with-glibc2.39",
+    "python": "3.12.3 (main, Jun 19 2026, 12:46:00) [GCC 13.3.0]",
+    "torch_cuda_version": "13.0",
+    "torch_git_version": "5c4886908584029761b579af026dcfb627c84070",
+    "torch_version": "2.14.1+cu130"
+  },
+  "runtime_warnings": [],
+  "schema": "nested-graph-breaks-b200-benchmark/v1",
+  "scope": "controlled compiler microbenchmark; no serving, model-throughput, or model-quality claim",
+  "seed": 2,
+  "started_at": "2026-10-22T01:52:54.986002+00:00",
+  "status": "pass",
+  "timing": {
+    "acceptance_roles": {
+      "batched_throughput": "reported descriptive corroboration only",
+      "cold_first_10": "predeclared startup-only acceptance metric",
+      "steady_invocation_latency": "predeclared steady acceptance metric"
+    },
+    "batched_throughput": {
+      "blocks": [
+        {
+          "per_call_ms": 0.03124858,
+          "total_ms": 1.562429
+        },
+        {
+          "per_call_ms": 0.03118818,
+          "total_ms": 1.559409
+        },
+        {
+          "per_call_ms": 0.0314076,
+          "total_ms": 1.57038
+        },
+        {
+          "per_call_ms": 0.03119262,
+          "total_ms": 1.559631
+        },
+        {
+          "per_call_ms": 0.03105158,
+          "total_ms": 1.552579
+        },
+        {
+          "per_call_ms": 0.031163979999999997,
+          "total_ms": 1.558199
+        },
+        {
+          "per_call_ms": 0.031128219999999998,
+          "total_ms": 1.556411
+        },
+        {
+          "per_call_ms": 0.031095980000000002,
+          "total_ms": 1.554799
+        },
+        {
+          "per_call_ms": 0.0311882,
+          "total_ms": 1.55941
+        },
+        {
+          "per_call_ms": 0.0312342,
+          "total_ms": 1.56171
+        }
+      ],
+      "calls_per_block": 50,
+      "median_per_call_ms": 0.031188189999999998
+    },
+    "cold_first_10": {
+      "mean_host_ms": 190.3287515,
+      "median_host_ms": 0.071769,
+      "raw_host_ms": [
+        1885.707486,
+        16.820479,
+        0.255907,
+        0.109069,
+        0.075759,
+        0.067779,
+        0.064049,
+        0.062429,
+        0.063789,
+        0.060769
+      ],
+      "total_host_ms": 1903.287515
+    },
+    "compiler_counter_stability": {
+      "after_batched_throughput": {
+        "aot_autograd.ok": 1,
+        "aot_autograd.total": 1,
+        "frames.ok": 1,
+        "frames.total": 1,
+        "inductor.async_compile_cache_miss": 1,
+        "inductor.benchmarking.InductorBenchmarker.benchmark": 2,
+        "inductor.benchmarking.InductorBenchmarker.benchmark_gpu": 2,
+        "inductor.cudagraph_recorded_non_static_inputs": 1,
+        "stats.calls_captured": 32,
+        "stats.unique_graphs": 1
+      },
+      "after_steady_latency": {
+        "aot_autograd.ok": 1,
+        "aot_autograd.total": 1,
+        "frames.ok": 1,
+        "frames.total": 1,
+        "inductor.async_compile_cache_miss": 1,
+        "inductor.benchmarking.InductorBenchmarker.benchmark": 2,
+        "inductor.benchmarking.InductorBenchmarker.benchmark_gpu": 2,
+        "inductor.cudagraph_recorded_non_static_inputs": 1,
+        "stats.calls_captured": 32,
+        "stats.unique_graphs": 1
+      },
+      "batched_throughput_delta": {},
+      "before_steady_latency": {
+        "aot_autograd.ok": 1,
+        "aot_autograd.total": 1,
+        "frames.ok": 1,
+        "frames.total": 1,
+        "inductor.async_compile_cache_miss": 1,
+        "inductor.benchmarking.InductorBenchmarker.benchmark": 2,
+        "inductor.benchmarking.InductorBenchmarker.benchmark_gpu": 2,
+        "inductor.cudagraph_recorded_non_static_inputs": 1,
+        "stats.calls_captured": 32,
+        "stats.unique_graphs": 1
+      },
+      "stable": true,
+      "steady_latency_delta": {},
+      "validation_rule": "any compiler-counter delta during either timed steady window invalidates warmed measurements"
+    },
+    "first_compiled_call_host_ms": 1885.707486,
+    "steady_invocation_latency": {
+      "mean_host_ms": 0.059562949999999996,
+      "median_host_ms": 0.0590445,
+      "p95_host_ms": 0.06473055,
+      "raw_host_ms": [
+        0.063489,
+        0.061909,
+        0.061459,
+        0.060559,
+        0.0588,
+        0.06034,
+        0.060429,
+        0.060889,
+        0.059869,
+        0.060649,
+        0.06374,
+        0.06216,
+        0.060518,
+        0.059659,
+        0.060199,
+        0.05927,
+        0.05974,
+        0.05905,
+        0.058768,
+        0.058819,
+        0.057798,
+        0.05912,
+        0.060879,
+        0.060149,
+        0.059949,
+        0.070969,
+        0.059459,
+        0.05994,
+        0.060329,
+        0.058829,
+        0.059639,
+        0.061169,
+        0.06143,
+        0.05988,
+        0.060689,
+        0.059259,
+        0.059749,
+        0.059098,
+        0.059571,
+        0.060139,
+        0.06495,
+        0.06579,
+        0.060019,
+        0.058388,
+        0.058851,
+        0.060168,
+        0.058899,
+        0.058909,
+        0.058549,
+        0.05998,
+        0.057909,
+        0.057719,
+        0.058309,
+        0.058889,
+        0.05919,
+        0.062009,
+        0.061089,
+        0.061379,
+        0.059959,
+        0.059409,
+        0.05844,
+        0.057719,
+        0.056379,
+        0.057299,
+        0.05842,
+        0.05778,
+        0.05825,
+        0.058539,
+        0.058259,
+        0.0587,
+        0.05862,
+        0.058499,
+        0.064719,
+        0.059189,
+        0.058059,
+        0.05777,
+        0.059029,
+        0.057709,
+        0.057479,
+        0.05638,
+        0.057549,
+        0.057149,
+        0.057349,
+        0.056959,
+        0.057,
+        0.058489,
+        0.057789,
+        0.065439,
+        0.065949,
+        0.059039,
+        0.058459,
+        0.058648,
+        0.057939,
+        0.058139,
+        0.057331,
+        0.057799,
+        0.05713,
+        0.058058,
+        0.05709,
+        0.05703
+      ]
+    },
+    "timing_semantics": "host wall time; CUDA synchronize immediately before and after every individual latency invocation and each throughput block",
+    "warmup_calls": 25
+  },
+  "treatment": {
+    "actual": true,
+    "name": "torch._dynamo.config.nested_graph_breaks",
+    "only_intended_arm_difference": true,
+    "requested": true
+  },
+  "workload": {
+    "depth": 4,
+    "explicit_graph_breaks": 0,
+    "generated_source": "def ngb_no_break_depth4_frame_3(y, residual):\n    y = torch.sin(y)\n    y = y * 0.5\n    y = y + residual\n    y = torch.cos(y)\n    y = torch.sin(y)\n    y = y * 0.25\n    y = y + residual\n    y = torch.cos(y)\n    return y\n\ndef ngb_no_break_depth4_frame_2(y, residual):\n    y = torch.sin(y)\n    y = y * 0.5\n    y = y + residual\n    y = torch.cos(y)\n    y = ngb_no_break_depth4_frame_3(y, residual)\n    y = torch.sin(y)\n    y = y * 0.25\n    y = y + residual\n    y = torch.cos(y)\n    return y\n\ndef ngb_no_break_depth4_frame_1(y, residual):\n    y = torch.sin(y)\n    y = y * 0.5\n    y = y + residual\n    y = torch.cos(y)\n    y = ngb_no_break_depth4_frame_2(y, residual)\n    y = torch.sin(y)\n    y = y * 0.25\n    y = y + residual\n    y = torch.cos(y)\n    return y\n\ndef ngb_no_break_depth4_frame_0(y, residual):\n    y = torch.sin(y)\n    y = y * 0.5\n    y = y + residual\n    y = torch.cos(y)\n    y = ngb_no_break_depth4_frame_1(y, residual)\n    y = torch.sin(y)\n    y = y * 0.25\n    y = y + residual\n    y = torch.cos(y)\n    return y\n\ndef ngb_no_break_depth4_entry(x):\n    return ngb_no_break_depth4_frame_0(x, x)\n",
+    "generated_source_sha256": "62d5a2b9b8a49bd0fb1b40c380b364223a21b2d77172f82087b257774f49104f",
+    "input_bytes": 4194304,
+    "input_distribution": "torch.randn with per-process CUDA generator",
+    "input_dtype": "torch.float32",
+    "input_elements": 1048576,
+    "math_signature": {
+      "depth": 4,
+      "post": [
+        "sin",
+        "multiply:0.25",
+        "residual_add",
+        "cos"
+      ],
+      "pre": [
+        "sin",
+        "multiply:0.5",
+        "residual_add",
+        "cos"
+      ]
+    },
+    "math_signature_sha256": "895df092ae021f52faae88dba15e13d57c0a67379c1695c8ce88f932fb4d65d4",
+    "pointwise_math": [
+      "sin",
+      "multiply",
+      "residual_add",
+      "cos"
+    ],
+    "post_pointwise_ops_per_frame": 4,
+    "pre_pointwise_ops_per_frame": 4
+  }
+}

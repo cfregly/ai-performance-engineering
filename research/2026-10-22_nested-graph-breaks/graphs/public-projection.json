@@ -1,0 +1,247 @@
+{
+  "schema": "aiperf.nested_graph_breaks.public_projection.v1",
+  "visibility": "public",
+  "description": "Portable public projection of the retained standalone graph and timing study.",
+  "redactions": [
+    {
+      "artifact": "compiled-graphs.json and sources/*.py",
+      "removed": [
+        "machine-local cache paths",
+        "cache-key filenames",
+        "wrapper executable setup"
+      ],
+      "retained": [
+        "AOT IDs",
+        "exact graph-fragment comments",
+        "parsed nodes",
+        "edges",
+        "outputs",
+        "operation counts",
+        "original wrapper SHA256 values"
+      ]
+    },
+    {
+      "artifact": "trace-extraction.json",
+      "removed": [
+        "attempt identifier",
+        "absolute owner paths",
+        "internal hostname",
+        "trace identifiers"
+      ],
+      "retained": [
+        "all numeric values",
+        "event relationships",
+        "graph IDs",
+        "node IDs",
+        "correlation IDs",
+        "counts",
+        "input hashes",
+        "qualification boundaries"
+      ]
+    },
+    {
+      "artifact": "startup-decomposition-data.json and startup-decomposition.*",
+      "removed": [
+        "absolute source-audit path",
+        "attempt identifier in visual text"
+      ],
+      "retained": [
+        "all timing values",
+        "ratios",
+        "seeds",
+        "case labels",
+        "gate range",
+        "failed startup-control marker"
+      ]
+    }
+  ],
+  "excluded_identifiers": [
+    "internal hostnames",
+    "GPU UUIDs",
+    "PCI addresses",
+    "absolute owner paths",
+    "thread IDs",
+    "trace and profile identifiers"
+  ],
+  "content_equivalence": {
+    "statement": "Only identifiers, paths, and executable wrapper context were removed. Numerical measurements and ATen graph content are unchanged.",
+    "graph_regions": 18,
+    "graph_operation_counts": {
+      "false": 64,
+      "true": 64
+    },
+    "graph_content_sha256": "bc29bbfcb87d6cef834ec18d3b691263cdedb4bfeec514f323f2b6d8a436f1a6",
+    "trace_numeric_content_sha256": "05219789459fffdc5b9a7715450549f37e77f813c7bbb80836250f7f4a790aab",
+    "startup_numeric_content_sha256": "ba2b717d50c242d8f9177a9ecddbc5e498115431fb51f1bc840704acb64d839b",
+    "failed_startup_control_retained": true
+  },
+  "artifacts": {
+    "compiled-graphs.json": {
+      "original_sha256": "e3330ba534f59caec3e4de23f8717e529cf400aa5fc91263cb58ad936aa98ac6",
+      "public_sha256": "3efd443a2beb73b895805e562abbcbd0c729b60ed6ce6858e8ec7fdf089fed40"
+    },
+    "trace-extraction.json": {
+      "original_sha256": "57c2ce58f853382f6f791957a08cf0b42c4895a0b906432d94668faeb2ab8a82",
+      "public_sha256": "6db1441cbdbc667a027248fe0da40d0616a95e9eb6e19f893d957a87852b71f2"
+    },
+    "startup-decomposition-data.json": {
+      "original_sha256": "630c9d6b5305f243b5696e36b139a2534f4b35de95d62df0d04331d5dc604114",
+      "public_sha256": "6659b2eb2cb9423a63d38b73db73fe76351cc19bcd1c2ab575ad33a8f7d515c8"
+    },
+    "startup-decomposition.svg": {
+      "original_sha256": "03e6783b22ca50cd5b8ce118455a3253ca8f820f4b6535b2bf9268f768eb29e5",
+      "public_sha256": "a488ceecc9d88832b4f170f69d106e507ad3462f1b8e97a6dd89ccc44d8716ec"
+    },
+    "startup-decomposition.png": {
+      "original_sha256": "1accf28d863b8a8429a1a8d5cd358cec68af0c9c9e8f73228a900ec720168edf",
+      "public_sha256": "bf7462613a9ef3b9e8a7780fb1e8d2871d5a47cc4c03105c6ba07175250499f7"
+    },
+    "build_comparison.py": {
+      "original_sha256": "7b8651a050198da7e828006fec60602ed75f2918b3c9a969d4b42c117235749a",
+      "public_sha256": "1355c8486fc914740dba391c0f478b9fcb4c63f2070f1fa89c846a1e9a7c0cb1"
+    },
+    "plot_startup_decomposition.py": {
+      "original_sha256": "0e8df798b70b4f1db7fd44f2e56748db4cad8dd62d66c2b7f5d8c51b5eb7fcd0",
+      "public_sha256": "7179c6ed9181af813ac5b392e1709b0096ee53dcb3db1810876b6a9c6ae42774"
+    }
+  },
+  "source_wrappers": [
+    {
+      "public_path": "sources/region-flag0-aot0.py",
+      "original_sha256": "be0b1c1ff8aec5831f14b9f218625a64d17868fdcc9becf8cd4edcd0633a0afc",
+      "public_sha256": "63bf1e8f5b97216171ae3960ee3208d3c597aa6809d36d1dbe4034f6fe810b94"
+    },
+    {
+      "public_path": "sources/region-flag0-aot1.py",
+      "original_sha256": "e542badaf31d52000441b529342f3a47c735375822278bfb35359b15c1a49d75",
+      "public_sha256": "38ee08a0ae437ffdc1853c365c0e8e42af8b0c4635597f5af1101d4201680bc0"
+    },
+    {
+      "public_path": "sources/region-flag0-aot2.py",
+      "original_sha256": "925b32080b43a38c3e28ad5d14d0497468c40b5e1e31e07086ba2050ff23e61f",
+      "public_sha256": "092f66fdfe5801910afe8b15fd530497bef69e1dd78b8643acec30281f98efc6"
+    },
+    {
+      "public_path": "sources/region-flag0-aot3.py",
+      "original_sha256": "dbb0efa70de87de1511445511cb76c9342775b8d60d5d2e064ceb70bce06c891",
+      "public_sha256": "65b2c03ee40ac07d760d976c89bdc8fba01dce5d5351cd1a9a1ea01da42c2575"
+    },
+    {
+      "public_path": "sources/region-flag0-aot4.py",
+      "original_sha256": "a072eb4d2eae86f6f1bef577aabc677780567ab98bac3e74760f53a5c0421966",
+      "public_sha256": "7415e74e689ac715c865e7bc930a06d24a50981e5b1b5d2cdc7b28b2c8f5a25b"
+    },
+    {
+      "public_path": "sources/region-flag0-aot5.py",
+      "original_sha256": "0d867c19fb9f95729694d6731598fc763bd50447efb0e782946043783c2bf497",
+      "public_sha256": "bd0ff1e153bd7aef2bfa2566dc67298d313baa3ca1521cac114d805b74110ea5"
+    },
+    {
+      "public_path": "sources/region-flag0-aot6.py",
+      "original_sha256": "774170715998f077b0ce6616f827e778441e999bf9a5db7d3d938507f99d9c97",
+      "public_sha256": "c22d6bd4c97c75bde3aa81e4eac274813e079b1c8532d5de40ffb1ad0f2b6eb8"
+    },
+    {
+      "public_path": "sources/region-flag0-aot7.py",
+      "original_sha256": "7f40a99ec235ad7fa821ba82a4a8abadad155ef6e6248a762c4657c8cd910baf",
+      "public_sha256": "e20a003377bd707ff3e7e8ad12dc467ce27cc7b6e41feba950bbd0d597b5b8db"
+    },
+    {
+      "public_path": "sources/region-flag0-aot8.py",
+      "original_sha256": "0ca96b6163d13727374abccf7cb2d73cad92b05f9abc5cffb6d2187edb8158d0",
+      "public_sha256": "fdf9ebeecf0811205f37d93fc7c2aefe51010f171da707f498749540935d83dc"
+    },
+    {
+      "public_path": "sources/region-flag0-aot9.py",
+      "original_sha256": "fe4ed65df3cb2110500711a583bf2b2332f9242f8de513f03a89723e705482e8",
+      "public_sha256": "8385c397dc3265bd6e49f98cd07cac0f195ca58bbc1eb7395779748e4d25d6fc"
+    },
+    {
+      "public_path": "sources/region-flag0-aot10.py",
+      "original_sha256": "86d5ef084ddaea6e5ba4bcb0dfe7014d12e823c3ed6a492e7e94d58051a07597",
+      "public_sha256": "5e0fff656457c3c4ce32b1d99c5534c2588025361f8df6d1593b66405b3e81da"
+    },
+    {
+      "public_path": "sources/region-flag0-aot11.py",
+      "original_sha256": "4adc07bd735ee0433911de1cdf92add36a47ee0f4c00da9c41c3623e7ddc747f",
+      "public_sha256": "828968ecb4df1cca97e91cdda04a84fd9d8ace06edc5683fefe0510d054198ae"
+    },
+    {
+      "public_path": "sources/region-flag0-aot12.py",
+      "original_sha256": "c4bf06e50fcc7845bbe2ea2918ad460e72c87551b1c3fc89066fc026dabd4712",
+      "public_sha256": "352e201e41ebb76e28d87f63db880cec209a7ef5ab1e3fb5b9d457d7b20b36bd"
+    },
+    {
+      "public_path": "sources/region-flag0-aot13.py",
+      "original_sha256": "a5c70b8b6c0a0166cabb2ee20aac310a896123a3a0d9f2c3a322159ab86b0246",
+      "public_sha256": "aa13fffe74768420e600b66b852d39cd08bf8ede054840532ae05c5998b41143"
+    },
+    {
+      "public_path": "sources/region-flag0-aot14.py",
+      "original_sha256": "14cbb05ec16bcfe46deb7d0fb7510779506f35e1dca3c7a96cd634d464bb286f",
+      "public_sha256": "3cd7d45f4ef0aef9469bf3baa2611535f3794930505e3e8ed8583360df52dbcd"
+    },
+    {
+      "public_path": "sources/region-flag0-aot15.py",
+      "original_sha256": "9a1e2eba676237f73309972555a203a6e8638c2824f9ac254b3a1b67d4454a2b",
+      "public_sha256": "02a6208dc8a1a917e064c55bcbccd3c5830880e93a1b2bdab6e1e0a625c1554e"
+    },
+    {
+      "public_path": "sources/region-flag1-aot0.py",
+      "original_sha256": "96ee078ef0edcfdf744b2daca20b04c239faaa05cd91128910123d6662619731",
+      "public_sha256": "7fa56f1917b567acf202b168c6d7bb223fd57cbe788a8ea4d0b11b614d80a724"
+    },
+    {
+      "public_path": "sources/region-flag1-aot1.py",
+      "original_sha256": "4cea0a79131fa84c652e458e1c023c9f4ac5734d25078d9e1e79f5e4db250939",
+      "public_sha256": "7ab2192587b8b082088e2b2cd6cc1207ff2da26238b956adb068e6ebab588c2f"
+    }
+  ],
+  "unmodified_public_assets": {
+    "region-summary.png": "57c985fc1fb4d75013e52b97f3bb1c0519fa59909ffe0a3d2e8feeea48107f36"
+  },
+  "opaque_archives_included": false,
+  "no_workload_rerun": true,
+  "source_wrapper_normalization": {
+    "statement": "One extra empty line at EOF was removed from each public wrapper excerpt. The exact retained graph fragment text is unchanged.",
+    "wrappers_normalized": 18
+  },
+  "svg_normalization": {
+    "statement": "Only spaces and tabs at line endings were removed. XML structure, text, geometry, path commands, and numeric values are unchanged.",
+    "normalized_before_embedding_and_hashing": true
+  },
+  "normalized_public_svgs": {
+    "comparison-overview.svg": {
+      "original_sha256": "db3a3f90e47e22e3841d42b6fdf4df5f9518de967b7b2918d1d7a125c0724738",
+      "public_sha256": "5e16a3fb2008ef1d9f385736187de1f52e1b111806a06f8b7c0236493da5186b"
+    },
+    "startup-decomposition.svg": {
+      "original_sha256": "03e6783b22ca50cd5b8ce118455a3253ca8f820f4b6535b2bf9268f768eb29e5",
+      "public_sha256": "a488ceecc9d88832b4f170f69d106e507ad3462f1b8e97a6dd89ccc44d8716ec"
+    },
+    "region-summary.svg": {
+      "original_sha256": "467e13e5f63e39be3c2a616dce29eae99a600a7d32318818ff182f2897c1c081",
+      "public_sha256": "899c6e3445d0abe95a8a59b5047307384a9e1846724619f350a77b548dab67b8"
+    },
+    "replay-invocation-1.svg": {
+      "original_sha256": "dfd7384880e4e437fe6840f646da340589e67f30d7ce82c8ddc6105195a575ec",
+      "public_sha256": "2b8c4a06f15fd36882a3107805b3a4fed3e215406cb54225e53ccf2eec8f9406"
+    },
+    "replay-invocation-2.svg": {
+      "original_sha256": "54af024cd25667d6a739795ae13fb6ac8b2a8481ddce90f07ec9c29ed082f2de",
+      "public_sha256": "b93ad263fec501e4135ba41687e5d3d7bb3f0033d412dc99c7b30f132fad176a"
+    },
+    "replay-invocation-3.svg": {
+      "original_sha256": "3c54195f39894cab8ed751ce2fd5c294da9be4ab4b4743ba9cd7911e20af1e9f",
+      "public_sha256": "b1a665e85b61726be35e2db868ba775ff13843b4843da61b58cf40a7d5a84666"
+    },
+    "replay-invocation-4.svg": {
+      "original_sha256": "5c90bafc75a40279087c7885ab34fa0c4b1fa33dab42ba895b5620a8562edf4f",
+      "public_sha256": "82d45096002c4387515e61b9f40fbbf8eb39a32e113db30b25f4f5b4411448e6"
+    },
+    "replay-invocation-5.svg": {
+      "original_sha256": "b355a8f13ade34ec68076b2d505722230be8740af1f0fb635ae8204526c93b52",
+      "public_sha256": "975c62ce5dd2e0e5dfa766b53b1421823b801de142514c49c0d62ba6be8dbc02"
+    }
+  }
+}

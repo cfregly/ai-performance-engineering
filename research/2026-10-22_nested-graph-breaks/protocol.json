@@ -1,0 +1,113 @@
+{
+  "schema": "nested-graph-breaks-b200-protocol/v1",
+  "attempt_id": "nested-graph-breaks-b200-002",
+  "scope": "Controlled compiler microbenchmark, not model quality or end-to-end serving",
+  "treatment": "torch._dynamo.config.nested_graph_breaks",
+  "baseline": false,
+  "baseline_must_match_probed_runtime_flag_default": true,
+  "candidate": true,
+  "backend": "inductor",
+  "mode": "reduce-overhead",
+  "dtype": "float32",
+  "elements": 1048576,
+  "device": "NVIDIA B200, logical CUDA device 0, exact owner-granted GPU UUID",
+  "cases": [
+    "no_break_depth4",
+    "nested_break_depth4",
+    "nested_break_depth8"
+  ],
+  "primary_case": "nested_break_depth8",
+  "seeds": [
+    0,
+    1,
+    2,
+    3
+  ],
+  "arm_order_by_seed": [
+    [
+      0,
+      1
+    ],
+    [
+      1,
+      0
+    ],
+    [
+      0,
+      1
+    ],
+    [
+      1,
+      0
+    ]
+  ],
+  "matrix_order": "Seed, case in listed order, arm in that seed's declared order",
+  "workers": 24,
+  "fresh_process_per_worker": true,
+  "caches": "Unique empty Inductor and Triton cache directories per worker, disable FX and AOTAutograd local and remote graph caches and persistent CUDA driver cache identically",
+  "correctness": {
+    "reference": "Eager evaluation of the identical case, not a performance baseline",
+    "shape_dtype_finite": true,
+    "rtol": 0.0001,
+    "atol": 1e-05,
+    "all_workers_must_pass": true
+  },
+  "timing": {
+    "cold_first_call": "Host call through CUDA synchronization, excludes Python process startup",
+    "startup": "First ten compiled calls through CUDA synchronization, includes CUDA Graph warmup and capture",
+    "warmup_calls": 25,
+    "synchronized_latency_trials": 100,
+    "throughput_blocks": 10,
+    "calls_per_block": 50,
+    "host_timer": "perf_counter_ns",
+    "synchronize_before_and_after": true,
+    "raw_samples_required": true,
+    "no_profiling_in_timed_region": true
+  },
+  "profile": "Separate untimed Chrome CPU/CUDA profile for both primary-case seed-0 arms. Report actual CUDA Graph launch evidence or its absence.",
+  "capture_gate": "Both primary-case seed-0 arms must show positive CUDA Graph launch and CUDA kernel evidence in retained profiles before either measured win qualifies for new content. Profile failure preserves timing evidence and continues the matrix but cannot pass this gate.",
+  "statistics": {
+    "unit": "Paired seed ratio, baseline divided by candidate",
+    "acceptance_summary": "Observed minimum paired ratio across four seeds, with no confidence interval or coverage claim",
+    "descriptive_summary": "Geometric mean and all individual paired ratios. Four repeats have limited generality.",
+    "all_cases_and_cold_and_steady_metrics_reported": true
+  },
+  "qualified_steady_win": {
+    "case": "nested_break_depth8",
+    "metric": "Median of 100 synchronized invocation latency trials for each seed",
+    "observed_minimum_seed_ratio_at_least": 1.1,
+    "candidate_p95_no_worse_than_baseline": true
+  },
+  "qualified_startup_win": {
+    "case": "nested_break_depth8",
+    "metric": "Sum of the first ten individually synchronized compiled call timings",
+    "first_ten_calls_observed_minimum_seed_ratio_at_least": 1.1,
+    "candidate_steady_p95_at_most_baseline_multiple": 1.03
+  },
+  "control_validity_gate": "Steady qualification requires the no_break_depth4 steady median baseline/candidate latency ratio within [0.95, 1.05] for every seed. Startup qualification additionally requires the no_break_depth4 cold-first-ten ratio within [0.95, 1.05] for every seed. A failed route-specific control makes that route inconclusive.",
+  "mechanism_gate": "All workers must retain positive integer Dynamo unique_graphs. No-break workers must have zero graph-break events, zero distinct reasons and an empty reason histogram. Every nested worker must have positive graph-break events and distinct reasons with a nonempty histogram. Do not require specific reason wording or counts.",
+  "environment_gate": "Retain nvidia-smi -q -x before and after every child. Exact GPU and driver identities must remain fixed. Active hardware slowdown, thermal slowdown, or power brake flags fail environmental validity. Idle and software power-cap flags are retained rather than treated as failures. Missing required telemetry makes qualification inconclusive.",
+  "operational": {
+    "source_and_runtime_bound_fresh_handoff_required": true,
+    "owner_thread_id": "<execution-owner>",
+    "ssh_host": "<b200-host>",
+    "remote_root": "<run-root>",
+    "runtime_probe_timeout_seconds": 90,
+    "worker_timeout_seconds": 90,
+    "guard_process_timeout_scope": "90 seconds covers the whole strict guard subprocess, including its own admission, worker, monitoring and receipts. The worker inside that process has a separate 60 second ceiling. On timeout the controller stops the matrix and allows at most 60 seconds for cooperative guard cleanup.",
+    "guarded_worker_timeout_seconds": 60,
+    "total_child_timeout_seconds": 2250,
+    "controller_and_guard_allowance_seconds": 150,
+    "normal_controller_overhead_seconds": 30,
+    "terminal_cleanup_allowance_seconds": 120,
+    "aggregate_overhead_scope": "All source preparation, runtime hashing, telemetry and bookkeeping outside guard processes share one 30 second budget across the entire matrix. Each telemetry timeout is capped by its remaining balance. Terminal cleanup has a separate 120 second reserve. Exhaustion stops the matrix and cannot qualify a win.",
+    "retention_cleanup_margin_seconds": 180,
+    "minimum_remaining_at_admission_seconds": 2580,
+    "requested_window_seconds": 2700,
+    "new_attempt_recorded_before_ssh": true,
+    "no_retry_of_consumed_or_unknown_attempt": true,
+    "no_shared_hardware_service_scheduler_or_runtime_install_changes": true,
+    "retain_partial_outputs_on_failure": true
+  },
+  "disposition": "Only a qualified primary-case win can proceed to a new Whiteboard content package. Losses, unsupported runtime, errors and inconclusive results remain internal. Never change the fixed gates after viewing outputs."
+}

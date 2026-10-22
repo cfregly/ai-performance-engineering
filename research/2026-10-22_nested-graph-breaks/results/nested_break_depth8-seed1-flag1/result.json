@@ -1,0 +1,682 @@
+{
+  "benchmark_id": "torch-dynamo-nested-graph-breaks-b200-20261020",
+  "case": "nested_break_depth8",
+  "compile": {
+    "api": "torch.compile",
+    "backend": "inductor",
+    "cuda_graph_eligibility": "mode requests CUDA graphs; actual capture requires profiler markers or retained perf-hint evidence",
+    "fullgraph": false,
+    "mode": "reduce-overhead",
+    "mode_options": {
+      "triton.cudagraphs": true
+    }
+  },
+  "controller_contract": {
+    "cache_dirs": {
+      "TORCHINDUCTOR_CACHE_DIR": {
+        "initial_entries": [],
+        "initially_empty": true,
+        "path": "<cache-root>/nested_break_depth8-seed1-flag1/inductor"
+      },
+      "TRITON_CACHE_DIR": {
+        "initial_entries": [],
+        "initially_empty": true,
+        "path": "<cache-root>/nested_break_depth8-seed1-flag1/triton"
+      }
+    },
+    "cuda_visible_devices": "GPU-<b200-device>",
+    "expected_gpu_uuid": "GPU-<b200-device>"
+  },
+  "correctness": {
+    "first_compiled_call": {
+      "assert_close_error": null,
+      "assert_close_pass": true,
+      "atol": 1e-05,
+      "compiled_dtype": "torch.float32",
+      "compiled_shape": [
+        1048576
+      ],
+      "dtype_match": true,
+      "finite": true,
+      "max_abs_error": 0.0,
+      "max_rel_error": 0.0,
+      "pass": true,
+      "reference_dtype": "torch.float32",
+      "reference_shape": [
+        1048576
+      ],
+      "rtol": 0.0001,
+      "sample_output": {
+        "hash_encoding": "network-order float64 values at selected indices",
+        "indices": [
+          0,
+          1,
+          17,
+          1024,
+          349525,
+          524288,
+          1048575
+        ],
+        "sha256": "8f67025399b404a43caf3a70b0143400ea5d5eb4bc0cbdf14ff63bbf7282bd6d",
+        "values": [
+          0.9962685108184814,
+          -0.799466073513031,
+          0.9734215140342712,
+          0.9392436742782593,
+          0.5811471939086914,
+          0.7271730899810791,
+          -0.9962451457977295
+        ]
+      },
+      "shape_match": true
+    },
+    "pass": true,
+    "post_steady_compiled_call": {
+      "assert_close_error": null,
+      "assert_close_pass": true,
+      "atol": 1e-05,
+      "compiled_dtype": "torch.float32",
+      "compiled_shape": [
+        1048576
+      ],
+      "dtype_match": true,
+      "finite": true,
+      "max_abs_error": 0.0,
+      "max_rel_error": 0.0,
+      "pass": true,
+      "reference_dtype": "torch.float32",
+      "reference_shape": [
+        1048576
+      ],
+      "rtol": 0.0001,
+      "sample_output": {
+        "hash_encoding": "network-order float64 values at selected indices",
+        "indices": [
+          0,
+          1,
+          17,
+          1024,
+          349525,
+          524288,
+          1048575
+        ],
+        "sha256": "8f67025399b404a43caf3a70b0143400ea5d5eb4bc0cbdf14ff63bbf7282bd6d",
+        "values": [
+          0.9962685108184814,
+          -0.799466073513031,
+          0.9734215140342712,
+          0.9392436742782593,
+          0.5811471939086914,
+          0.7271730899810791,
+          -0.9962451457977295
+        ]
+      },
+      "shape_match": true
+    }
+  },
+  "counter_lifecycle": {
+    "instrumentation_semantics": "native missing-key group materialization plus read-only snapshots; no counter entry writes, increments, clears, or group replacement",
+    "invariants": {
+      "all_observed_required_group_identities_preserved": true,
+      "all_observed_required_groups_present": true,
+      "all_observed_top_level_mapping_identities_preserved": true,
+      "lifecycle_valid": true,
+      "preparation_added_zero_entries": true
+    },
+    "observations": [
+      {
+        "groups": {
+          "graph_break": {
+            "binding_replaced": false,
+            "content_changed_since_preparation": true,
+            "entry_sum": 1,
+            "object_id": "<object-id:nested_break_depth8-seed1-flag1:graph-break-counter>",
+            "object_type": "collections.Counter",
+            "present": true,
+            "raw_counts": {
+              "Call to `torch._dynamo.graph_break()`\n  Explanation: User-inserted graph break. Message: None\n  Hint: Remove the `torch._dynamo.graph_break()` call.\n\n  Developer debug context: Called `torch._dynamo.graph_break()` with args `[]`, kwargs `{}`\n\n For more details about this graph break, please visit: https://meta-pytorch.github.io/compile-graph-break-site/gb/gb0025.html": 1
+            },
+            "same_object_as_prepared": true
+          },
+          "stats": {
+            "binding_replaced": false,
+            "content_changed_since_preparation": true,
+            "entry_sum": 66,
+            "object_id": "<object-id:nested_break_depth8-seed1-flag1:stats-counter>",
+            "object_type": "collections.Counter",
+            "present": true,
+            "raw_counts": {
+              "calls_captured": 64,
+              "unique_graphs": 2
+            },
+            "same_object_as_prepared": true
+          }
+        },
+        "stage": "after_first_compiled_call",
+        "top_level_keys": [
+          "aot_autograd",
+          "frames",
+          "graph_break",
+          "inductor",
+          "resumes",
+          "stats",
+          "unimplemented"
+        ],
+        "top_level_mapping_identity_preserved": true
+      },
+      {
+        "groups": {
+          "graph_break": {
+            "binding_replaced": false,
+            "content_changed_since_preparation": true,
+            "entry_sum": 1,
+            "object_id": "<object-id:nested_break_depth8-seed1-flag1:graph-break-counter>",
+            "object_type": "collections.Counter",
+            "present": true,
+            "raw_counts": {
+              "Call to `torch._dynamo.graph_break()`\n  Explanation: User-inserted graph break. Message: None\n  Hint: Remove the `torch._dynamo.graph_break()` call.\n\n  Developer debug context: Called `torch._dynamo.graph_break()` with args `[]`, kwargs `{}`\n\n For more details about this graph break, please visit: https://meta-pytorch.github.io/compile-graph-break-site/gb/gb0025.html": 1
+            },
+            "same_object_as_prepared": true
+          },
+          "stats": {
+            "binding_replaced": false,
+            "content_changed_since_preparation": true,
+            "entry_sum": 66,
+            "object_id": "<object-id:nested_break_depth8-seed1-flag1:stats-counter>",
+            "object_type": "collections.Counter",
+            "present": true,
+            "raw_counts": {
+              "calls_captured": 64,
+              "unique_graphs": 2
+            },
+            "same_object_as_prepared": true
+          }
+        },
+        "stage": "after_run_timing",
+        "top_level_keys": [
+          "aot_autograd",
+          "frames",
+          "graph_break",
+          "inductor",
+          "resumes",
+          "stats",
+          "unimplemented"
+        ],
+        "top_level_mapping_identity_preserved": true
+      }
+    ],
+    "preparation": {
+      "graph_break": {
+        "created_by_native_missing_key_lookup": true,
+        "entries_unchanged_by_preparation": true,
+        "entry_delta_from_preparation": 0,
+        "entry_sum_after_prepare": 0,
+        "entry_sum_before_prepare": 0,
+        "object_id": "<object-id:nested_break_depth8-seed1-flag1:graph-break-counter>",
+        "object_type": "collections.Counter",
+        "present_before_prepare": false,
+        "raw_after_prepare": {},
+        "raw_before_prepare": {}
+      },
+      "stats": {
+        "created_by_native_missing_key_lookup": true,
+        "entries_unchanged_by_preparation": true,
+        "entry_delta_from_preparation": 0,
+        "entry_sum_after_prepare": 0,
+        "entry_sum_before_prepare": 0,
+        "object_id": "<object-id:nested_break_depth8-seed1-flag1:stats-counter>",
+        "object_type": "collections.Counter",
+        "present_before_prepare": false,
+        "raw_after_prepare": {},
+        "raw_before_prepare": {}
+      }
+    },
+    "required_groups": [
+      "graph_break",
+      "stats"
+    ],
+    "schema": "nested-graph-breaks-counter-lifecycle/v1",
+    "top_level_mapping": {
+      "keys_before_prepare": [],
+      "object_id": "<object-id:nested_break_depth8-seed1-flag1:top-level-counter-map>",
+      "object_type": "collections.defaultdict"
+    }
+  },
+  "device": {
+    "compute_capability": [
+      10,
+      0
+    ],
+    "cuda_visible_devices": "GPU-<b200-device>",
+    "expected_gpu_uuid": "GPU-<b200-device>",
+    "logical_index": 0,
+    "observed_uuid": "GPU-<b200-device>",
+    "observed_uuid_source": "controller-bound CUDA_VISIBLE_DEVICES",
+    "optional_torch_device_uuid": "<torch-device-object:nested_break_depth8-seed1-flag1>",
+    "torch_name": "NVIDIA B200",
+    "total_memory_bytes": 191503007744,
+    "type": "cuda"
+  },
+  "dynamo": {
+    "all": {
+      "aot_autograd": {
+        "ok": 2,
+        "total": 2
+      },
+      "frames": {
+        "ok": 2,
+        "total": 2
+      },
+      "graph_break": {
+        "Call to `torch._dynamo.graph_break()`\n  Explanation: User-inserted graph break. Message: None\n  Hint: Remove the `torch._dynamo.graph_break()` call.\n\n  Developer debug context: Called `torch._dynamo.graph_break()` with args `[]`, kwargs `{}`\n\n For more details about this graph break, please visit: https://meta-pytorch.github.io/compile-graph-break-site/gb/gb0025.html": 1
+      },
+      "inductor": {
+        "async_compile_cache_miss": 2,
+        "benchmarking.InductorBenchmarker.benchmark": 4,
+        "benchmarking.InductorBenchmarker.benchmark_gpu": 4,
+        "cudagraph_recorded_non_static_inputs": 2
+      },
+      "resumes": {
+        "torch_dynamo_resume_in_ngb_nested_break_depth8_frame_0_at_90": 1,
+        "torch_dynamo_resume_in_ngb_nested_break_depth8_frame_1_at_78": 1,
+        "torch_dynamo_resume_in_ngb_nested_break_depth8_frame_2_at_66": 1,
+        "torch_dynamo_resume_in_ngb_nested_break_depth8_frame_3_at_54": 1,
+        "torch_dynamo_resume_in_ngb_nested_break_depth8_frame_4_at_42": 1,
+        "torch_dynamo_resume_in_ngb_nested_break_depth8_frame_5_at_30": 1,
+        "torch_dynamo_resume_in_ngb_nested_break_depth8_frame_6_at_18": 1,
+        "torch_dynamo_resume_in_ngb_nested_break_depth8_frame_7_at_6": 1
+      },
+      "stats": {
+        "calls_captured": 64,
+        "unique_graphs": 2
+      },
+      "unimplemented": {}
+    },
+    "graph_break_distinct_reason_count": 1,
+    "graph_break_event_sum": 1,
+    "graph_break_reason_counts": {
+      "Call to `torch._dynamo.graph_break()`\n  Explanation: User-inserted graph break. Message: None\n  Hint: Remove the `torch._dynamo.graph_break()` call.\n\n  Developer debug context: Called `torch._dynamo.graph_break()` with args `[]`, kwargs `{}`\n\n For more details about this graph break, please visit: https://meta-pytorch.github.io/compile-graph-break-site/gb/gb0025.html": 1
+    },
+    "stats": {
+      "calls_captured": 64,
+      "unique_graphs": 2
+    },
+    "unique_graphs": 2
+  },
+  "enabled": 1,
+  "finished_at": "2026-10-22T01:52:37.549507+00:00",
+  "inductor_metrics": {
+    "available": true,
+    "cpp_to_dtype_count": 0,
+    "generated_cpp_vec_kernel_count": 0,
+    "generated_kernel_count": 2,
+    "ir_nodes_pre_fusion": 3,
+    "num_bytes_accessed": 0,
+    "num_comprehensive_padding": 0,
+    "num_loop_reordering": 0
+  },
+  "profile": {
+    "requested": false,
+    "status": "not_requested"
+  },
+  "profile_requested": false,
+  "provenance": {
+    "argv": [
+      "<source-root>/benchmark.py",
+      "--case",
+      "nested_break_depth8",
+      "--seed",
+      "1",
+      "--enabled",
+      "1",
+      "--out",
+      "<result-root>/nested_break_depth8-seed1-flag1",
+      "--expected-gpu-uuid",
+      "GPU-<b200-device>"
+    ],
+    "flag_source_snapshot_line": 587,
+    "flag_source_snapshot_path": "<source-root>/pytorch-main-dynamo-config.py",
+    "flag_source_snapshot_sha256": "d44a413bf4274ff0ce4384fb0538c3c48a9972af963d8f30c5b16416892ee6b1",
+    "stderr_capture_owner": "controller",
+    "timing_clock": "time.perf_counter_ns",
+    "worker_source_path": "<source-root>/benchmark.py",
+    "worker_source_sha256": "4c7a5a8dcef474405be19a87d22cfdeb7ea564c76f19acc67ddcd1125d247689"
+  },
+  "runtime": {
+    "cuda_matmul_allow_tf32": false,
+    "cudnn_allow_tf32": false,
+    "cudnn_version": 92400,
+    "fixed_environment": {
+      "CUDA_CACHE_DISABLE": "1",
+      "MKL_NUM_THREADS": "1",
+      "OMP_NUM_THREADS": "1",
+      "TORCHINDUCTOR_AUTOGRAD_CACHE": "0",
+      "TORCHINDUCTOR_AUTOGRAD_REMOTE_CACHE": "0",
+      "TORCHINDUCTOR_AUTOTUNE_REMOTE_CACHE": "0",
+      "TORCHINDUCTOR_BUNDLED_AUTOTUNE_REMOTE_CACHE": "0",
+      "TORCHINDUCTOR_COMPILE_THREADS": "1",
+      "TORCHINDUCTOR_FX_GRAPH_CACHE": "0",
+      "TORCHINDUCTOR_FX_GRAPH_REMOTE_CACHE": "0"
+    },
+    "float32_matmul_precision": "highest",
+    "functorch_options": {
+      "bundled_autograd_cache": false,
+      "enable_autograd_cache": false,
+      "enable_remote_autograd_cache": false
+    },
+    "hostname": "<b200-host>",
+    "inductor_options": {
+      "autotune_remote_cache": false,
+      "bundled_autotune_remote_cache": false,
+      "compile_threads": 1,
+      "fx_graph_cache": false,
+      "fx_graph_remote_cache": false,
+      "max_autotune": false,
+      "triton.cudagraph_skip_dynamic_graphs": false,
+      "triton.cudagraphs": false
+    },
+    "num_interop_threads": 1,
+    "num_threads": 1,
+    "pid": "<process-id:nested_break_depth8-seed1-flag1>",
+    "platform": "Linux-6.8.0-100-generic-x86_64-with-glibc2.39",
+    "python": "3.12.3 (main, Jun 19 2026, 12:46:00) [GCC 13.3.0]",
+    "torch_cuda_version": "13.0",
+    "torch_git_version": "5c4886908584029761b579af026dcfb627c84070",
+    "torch_version": "2.14.1+cu130"
+  },
+  "runtime_warnings": [],
+  "schema": "nested-graph-breaks-b200-benchmark/v1",
+  "scope": "controlled compiler microbenchmark; no serving, model-throughput, or model-quality claim",
+  "seed": 1,
+  "started_at": "2026-10-22T01:52:31.998147+00:00",
+  "status": "pass",
+  "timing": {
+    "acceptance_roles": {
+      "batched_throughput": "reported descriptive corroboration only",
+      "cold_first_10": "predeclared startup-only acceptance metric",
+      "steady_invocation_latency": "predeclared steady acceptance metric"
+    },
+    "batched_throughput": {
+      "blocks": [
+        {
+          "per_call_ms": 0.0620392,
+          "total_ms": 3.10196
+        },
+        {
+          "per_call_ms": 0.06205618,
+          "total_ms": 3.102809
+        },
+        {
+          "per_call_ms": 0.06207418,
+          "total_ms": 3.103709
+        },
+        {
+          "per_call_ms": 0.0619552,
+          "total_ms": 3.09776
+        },
+        {
+          "per_call_ms": 0.06194258,
+          "total_ms": 3.097129
+        },
+        {
+          "per_call_ms": 0.061951,
+          "total_ms": 3.09755
+        },
+        {
+          "per_call_ms": 0.061864,
+          "total_ms": 3.0932
+        },
+        {
+          "per_call_ms": 0.061826400000000004,
+          "total_ms": 3.09132
+        },
+        {
+          "per_call_ms": 0.06185798,
+          "total_ms": 3.092899
+        },
+        {
+          "per_call_ms": 0.0618362,
+          "total_ms": 3.09181
+        }
+      ],
+      "calls_per_block": 50,
+      "median_per_call_ms": 0.06194679
+    },
+    "cold_first_10": {
+      "mean_host_ms": 325.66034989999997,
+      "median_host_ms": 0.099573,
+      "raw_host_ms": [
+        3237.45271,
+        18.180011,
+        0.277556,
+        0.126459,
+        0.101827,
+        0.097319,
+        0.09281,
+        0.092019,
+        0.091859,
+        0.090929
+      ],
+      "total_host_ms": 3256.603499
+    },
+    "compiler_counter_stability": {
+      "after_batched_throughput": {
+        "aot_autograd.ok": 2,
+        "aot_autograd.total": 2,
+        "frames.ok": 2,
+        "frames.total": 2,
+        "graph_break.Call to `torch._dynamo.graph_break()`\n  Explanation: User-inserted graph break. Message: None\n  Hint: Remove the `torch._dynamo.graph_break()` call.\n\n  Developer debug context: Called `torch._dynamo.graph_break()` with args `[]`, kwargs `{}`\n\n For more details about this graph break, please visit: https://meta-pytorch.github.io/compile-graph-break-site/gb/gb0025.html": 1,
+        "inductor.async_compile_cache_miss": 2,
+        "inductor.benchmarking.InductorBenchmarker.benchmark": 4,
+        "inductor.benchmarking.InductorBenchmarker.benchmark_gpu": 4,
+        "inductor.cudagraph_recorded_non_static_inputs": 2,
+        "resumes.torch_dynamo_resume_in_ngb_nested_break_depth8_frame_0_at_90": 1,
+        "resumes.torch_dynamo_resume_in_ngb_nested_break_depth8_frame_1_at_78": 1,
+        "resumes.torch_dynamo_resume_in_ngb_nested_break_depth8_frame_2_at_66": 1,
+        "resumes.torch_dynamo_resume_in_ngb_nested_break_depth8_frame_3_at_54": 1,
+        "resumes.torch_dynamo_resume_in_ngb_nested_break_depth8_frame_4_at_42": 1,
+        "resumes.torch_dynamo_resume_in_ngb_nested_break_depth8_frame_5_at_30": 1,
+        "resumes.torch_dynamo_resume_in_ngb_nested_break_depth8_frame_6_at_18": 1,
+        "resumes.torch_dynamo_resume_in_ngb_nested_break_depth8_frame_7_at_6": 1,
+        "stats.calls_captured": 64,
+        "stats.unique_graphs": 2
+      },
+      "after_steady_latency": {
+        "aot_autograd.ok": 2,
+        "aot_autograd.total": 2,
+        "frames.ok": 2,
+        "frames.total": 2,
+        "graph_break.Call to `torch._dynamo.graph_break()`\n  Explanation: User-inserted graph break. Message: None\n  Hint: Remove the `torch._dynamo.graph_break()` call.\n\n  Developer debug context: Called `torch._dynamo.graph_break()` with args `[]`, kwargs `{}`\n\n For more details about this graph break, please visit: https://meta-pytorch.github.io/compile-graph-break-site/gb/gb0025.html": 1,
+        "inductor.async_compile_cache_miss": 2,
+        "inductor.benchmarking.InductorBenchmarker.benchmark": 4,
+        "inductor.benchmarking.InductorBenchmarker.benchmark_gpu": 4,
+        "inductor.cudagraph_recorded_non_static_inputs": 2,
+        "resumes.torch_dynamo_resume_in_ngb_nested_break_depth8_frame_0_at_90": 1,
+        "resumes.torch_dynamo_resume_in_ngb_nested_break_depth8_frame_1_at_78": 1,
+        "resumes.torch_dynamo_resume_in_ngb_nested_break_depth8_frame_2_at_66": 1,
+        "resumes.torch_dynamo_resume_in_ngb_nested_break_depth8_frame_3_at_54": 1,
+        "resumes.torch_dynamo_resume_in_ngb_nested_break_depth8_frame_4_at_42": 1,
+        "resumes.torch_dynamo_resume_in_ngb_nested_break_depth8_frame_5_at_30": 1,
+        "resumes.torch_dynamo_resume_in_ngb_nested_break_depth8_frame_6_at_18": 1,
+        "resumes.torch_dynamo_resume_in_ngb_nested_break_depth8_frame_7_at_6": 1,
+        "stats.calls_captured": 64,
+        "stats.unique_graphs": 2
+      },
+      "batched_throughput_delta": {},
+      "before_steady_latency": {
+        "aot_autograd.ok": 2,
+        "aot_autograd.total": 2,
+        "frames.ok": 2,
+        "frames.total": 2,
+        "graph_break.Call to `torch._dynamo.graph_break()`\n  Explanation: User-inserted graph break. Message: None\n  Hint: Remove the `torch._dynamo.graph_break()` call.\n\n  Developer debug context: Called `torch._dynamo.graph_break()` with args `[]`, kwargs `{}`\n\n For more details about this graph break, please visit: https://meta-pytorch.github.io/compile-graph-break-site/gb/gb0025.html": 1,
+        "inductor.async_compile_cache_miss": 2,
+        "inductor.benchmarking.InductorBenchmarker.benchmark": 4,
+        "inductor.benchmarking.InductorBenchmarker.benchmark_gpu": 4,
+        "inductor.cudagraph_recorded_non_static_inputs": 2,
+        "resumes.torch_dynamo_resume_in_ngb_nested_break_depth8_frame_0_at_90": 1,
+        "resumes.torch_dynamo_resume_in_ngb_nested_break_depth8_frame_1_at_78": 1,
+        "resumes.torch_dynamo_resume_in_ngb_nested_break_depth8_frame_2_at_66": 1,
+        "resumes.torch_dynamo_resume_in_ngb_nested_break_depth8_frame_3_at_54": 1,
+        "resumes.torch_dynamo_resume_in_ngb_nested_break_depth8_frame_4_at_42": 1,
+        "resumes.torch_dynamo_resume_in_ngb_nested_break_depth8_frame_5_at_30": 1,
+        "resumes.torch_dynamo_resume_in_ngb_nested_break_depth8_frame_6_at_18": 1,
+        "resumes.torch_dynamo_resume_in_ngb_nested_break_depth8_frame_7_at_6": 1,
+        "stats.calls_captured": 64,
+        "stats.unique_graphs": 2
+      },
+      "stable": true,
+      "steady_latency_delta": {},
+      "validation_rule": "any compiler-counter delta during either timed steady window invalidates warmed measurements"
+    },
+    "first_compiled_call_host_ms": 3237.45271,
+    "steady_invocation_latency": {
+      "mean_host_ms": 0.0901348,
+      "median_host_ms": 0.089719,
+      "p95_host_ms": 0.09392749999999998,
+      "raw_host_ms": [
+        0.095229,
+        0.093859,
+        0.089449,
+        0.088829,
+        0.090359,
+        0.090389,
+        0.098328,
+        0.090089,
+        0.090859,
+        0.089009,
+        0.089629,
+        0.091538,
+        0.089519,
+        0.092208,
+        0.089579,
+        0.08883,
+        0.09377,
+        0.091609,
+        0.090099,
+        0.089809,
+        0.091158,
+        0.090219,
+        0.091459,
+        0.089359,
+        0.090209,
+        0.090858,
+        0.096329,
+        0.090669,
+        0.090049,
+        0.089529,
+        0.089207,
+        0.090028,
+        0.089699,
+        0.089088,
+        0.089129,
+        0.088818,
+        0.090319,
+        0.090369,
+        0.090499,
+        0.089609,
+        0.088658,
+        0.089609,
+        0.088219,
+        0.089059,
+        0.089809,
+        0.089929,
+        0.090729,
+        0.097699,
+        0.091499,
+        0.09001,
+        0.089098,
+        0.089308,
+        0.090219,
+        0.090399,
+        0.088999,
+        0.090308,
+        0.087399,
+        0.089049,
+        0.089249,
+        0.090009,
+        0.089668,
+        0.087849,
+        0.089389,
+        0.088159,
+        0.088848,
+        0.08883,
+        0.089538,
+        0.090039,
+        0.089979,
+        0.090728,
+        0.088899,
+        0.089038,
+        0.089439,
+        0.089399,
+        0.089399,
+        0.089889,
+        0.089079,
+        0.089469,
+        0.090299,
+        0.097159,
+        0.090089,
+        0.088498,
+        0.089739,
+        0.08883,
+        0.088999,
+        0.090539,
+        0.088137,
+        0.089609,
+        0.088859,
+        0.089799,
+        0.090969,
+        0.089958,
+        0.091239,
+        0.087539,
+        0.089889,
+        0.089189,
+        0.089209,
+        0.090309,
+        0.088828,
+        0.089308
+      ]
+    },
+    "timing_semantics": "host wall time; CUDA synchronize immediately before and after every individual latency invocation and each throughput block",
+    "warmup_calls": 25
+  },
+  "treatment": {
+    "actual": true,
+    "name": "torch._dynamo.config.nested_graph_breaks",
+    "only_intended_arm_difference": true,
+    "requested": true
+  },
+  "workload": {
+    "depth": 8,
+    "explicit_graph_breaks": 1,
+    "generated_source": "def ngb_nested_break_depth8_frame_7(y, residual):\n    y = torch.sin(y)\n    y = y * 0.5\n    y = y + residual\n    y = torch.cos(y)\n    torch._dynamo.graph_break()\n    y = torch.sin(y)\n    y = y * 0.25\n    y = y + residual\n    y = torch.cos(y)\n    return y\n\ndef ngb_nested_break_depth8_frame_6(y, residual):\n    y = torch.sin(y)\n    y = y * 0.5\n    y = y + residual\n    y = torch.cos(y)\n    y = ngb_nested_break_depth8_frame_7(y, residual)\n    y = torch.sin(y)\n    y = y * 0.25\n    y = y + residual\n    y = torch.cos(y)\n    return y\n\ndef ngb_nested_break_depth8_frame_5(y, residual):\n    y = torch.sin(y)\n    y = y * 0.5\n    y = y + residual\n    y = torch.cos(y)\n    y = ngb_nested_break_depth8_frame_6(y, residual)\n    y = torch.sin(y)\n    y = y * 0.25\n    y = y + residual\n    y = torch.cos(y)\n    return y\n\ndef ngb_nested_break_depth8_frame_4(y, residual):\n    y = torch.sin(y)\n    y = y * 0.5\n    y = y + residual\n    y = torch.cos(y)\n    y = ngb_nested_break_depth8_frame_5(y, residual)\n    y = torch.sin(y)\n    y = y * 0.25\n    y = y + residual\n    y = torch.cos(y)\n    return y\n\ndef ngb_nested_break_depth8_frame_3(y, residual):\n    y = torch.sin(y)\n    y = y * 0.5\n    y = y + residual\n    y = torch.cos(y)\n    y = ngb_nested_break_depth8_frame_4(y, residual)\n    y = torch.sin(y)\n    y = y * 0.25\n    y = y + residual\n    y = torch.cos(y)\n    return y\n\ndef ngb_nested_break_depth8_frame_2(y, residual):\n    y = torch.sin(y)\n    y = y * 0.5\n    y = y + residual\n    y = torch.cos(y)\n    y = ngb_nested_break_depth8_frame_3(y, residual)\n    y = torch.sin(y)\n    y = y * 0.25\n    y = y + residual\n    y = torch.cos(y)\n    return y\n\ndef ngb_nested_break_depth8_frame_1(y, residual):\n    y = torch.sin(y)\n    y = y * 0.5\n    y = y + residual\n    y = torch.cos(y)\n    y = ngb_nested_break_depth8_frame_2(y, residual)\n    y = torch.sin(y)\n    y = y * 0.25\n    y = y + residual\n    y = torch.cos(y)\n    return y\n\ndef ngb_nested_break_depth8_frame_0(y, residual):\n    y = torch.sin(y)\n    y = y * 0.5\n    y = y + residual\n    y = torch.cos(y)\n    y = ngb_nested_break_depth8_frame_1(y, residual)\n    y = torch.sin(y)\n    y = y * 0.25\n    y = y + residual\n    y = torch.cos(y)\n    return y\n\ndef ngb_nested_break_depth8_entry(x):\n    return ngb_nested_break_depth8_frame_0(x, x)\n",
+    "generated_source_sha256": "3cf1dd8527dd71bde2f20209bdb48b91202046863baf9b3aeff5815754cde3ad",
+    "input_bytes": 4194304,
+    "input_distribution": "torch.randn with per-process CUDA generator",
+    "input_dtype": "torch.float32",
+    "input_elements": 1048576,
+    "math_signature": {
+      "depth": 8,
+      "post": [
+        "sin",
+        "multiply:0.25",
+        "residual_add",
+        "cos"
+      ],
+      "pre": [
+        "sin",
+        "multiply:0.5",
+        "residual_add",
+        "cos"
+      ]
+    },
+    "math_signature_sha256": "9f64f6ac72880e4057ef8e5f5f9f175ad38a64e9f379c0bebfc6c878b70e256a",
+    "pointwise_math": [
+      "sin",
+      "multiply",
+      "residual_add",
+      "cos"
+    ],
+    "post_pointwise_ops_per_frame": 4,
+    "pre_pointwise_ops_per_frame": 4
+  }
+}

@@ -1,0 +1,20 @@
+digraph G {
+graph [rankdir=TB, bgcolor="transparent", pad="0.25", nodesep="0.17", ranksep="0.35", fontname="Arial", fontsize=17];
+node [shape=box, style="rounded,filled", fontname="Arial", fontsize=12, color="#a9b5c4", margin="0.12,0.08"];
+edge [color="#607187", arrowsize=0.65];
+label="False · AOT 13 · 4 ATen operations";
+n0 [label="input\n%arg0_1", fillcolor="#f0f3f7", tooltip="%arg0_1 : Tensor \"f32[1048576][1]cuda:0\" = PlaceHolder[target=arg0_1]"];
+n1 [label="input\n%arg1_1", fillcolor="#f0f3f7", tooltip="%arg1_1 : Tensor \"f32[1048576][1]cuda:0\" = PlaceHolder[target=arg1_1]"];
+n2 [label="sin\n%sin", fillcolor="#e7efff", tooltip="%sin : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.sin.default](args = (%arg0_1,), kwargs = {})"];
+n3 [label="multiply 0.25\n%mul", fillcolor="#e2f3ee", tooltip="%mul : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.mul.Tensor](args = (%sin, 0.25), kwargs = {})"];
+n4 [label="add\n%add", fillcolor="#fff0da", tooltip="%add : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.add.Tensor](args = (%mul, %arg1_1), kwargs = {})"];
+n5 [label="cos\n%cos", fillcolor="#eee5fb", tooltip="%cos : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.cos.default](args = (%add,), kwargs = {})"];
+n0 -> n2;
+n2 -> n3;
+n3 -> n4;
+n1 -> n4;
+n4 -> n5;
+{rank=same; n2; n3; n4; n5;}
+out0 [label="return 0", fillcolor="#f0f3f7"];
+n5 -> out0;
+}

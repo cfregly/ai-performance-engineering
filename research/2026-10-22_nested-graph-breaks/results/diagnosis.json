@@ -1,0 +1,288 @@
+{
+  "analyzer_route_outcomes": {
+    "qualified_startup_win": false,
+    "qualified_steady_win": true,
+    "startup": "FAIL",
+    "steady": "PASS"
+  },
+  "no_break_startup_control_diagnosis": {
+    "allowed_inclusive_range": [
+      0.95,
+      1.05
+    ],
+    "case": "no_break_depth4",
+    "failing_seeds": [
+      1
+    ],
+    "first_10_ratio_by_seed": {
+      "0": 1.003320083,
+      "1": 0.942412474,
+      "2": 0.996036942,
+      "3": 0.994267316
+    },
+    "interpretation": "Seed 1 misses the lower control bound because its first compiled call ratio is 0.941899568. Calls 2 through 10 are neutral at 1.001055019.",
+    "seed_1_phase_split": {
+      "call_1": {
+        "baseline_enabled_0_ms": 1905.738544,
+        "baseline_over_candidate_ratio": 0.941899568,
+        "candidate_enabled_1_ms": 2023.292725
+      },
+      "calls_1_through_10_total": {
+        "baseline_enabled_0_ms": 1923.45357,
+        "baseline_over_candidate_ratio": 0.942412474,
+        "candidate_enabled_1_ms": 2040.989081
+      },
+      "calls_2_through_10_total": {
+        "baseline_enabled_0_ms": 17.715026,
+        "baseline_over_candidate_ratio": 1.001055019,
+        "candidate_enabled_1_ms": 17.696356
+      },
+      "seed": 1
+    },
+    "status": "FAIL"
+  },
+  "phase_split_by_case_and_seed": {
+    "nested_break_depth4": [
+      {
+        "call_1": {
+          "baseline_enabled_0_ms": 1995.219286,
+          "baseline_over_candidate_ratio": 0.980511092,
+          "candidate_enabled_1_ms": 2034.876812
+        },
+        "calls_1_through_10_total": {
+          "baseline_enabled_0_ms": 2022.722285,
+          "baseline_over_candidate_ratio": 0.984435976,
+          "candidate_enabled_1_ms": 2054.701711
+        },
+        "calls_2_through_10_total": {
+          "baseline_enabled_0_ms": 27.502999,
+          "baseline_over_candidate_ratio": 1.387295794,
+          "candidate_enabled_1_ms": 19.824899
+        },
+        "seed": 0
+      },
+      {
+        "call_1": {
+          "baseline_enabled_0_ms": 1972.681641,
+          "baseline_over_candidate_ratio": 0.954573943,
+          "candidate_enabled_1_ms": 2066.557186
+        },
+        "calls_1_through_10_total": {
+          "baseline_enabled_0_ms": 2003.133921,
+          "baseline_over_candidate_ratio": 0.960490621,
+          "candidate_enabled_1_ms": 2085.531994
+        },
+        "calls_2_through_10_total": {
+          "baseline_enabled_0_ms": 30.45228,
+          "baseline_over_candidate_ratio": 1.60487948,
+          "candidate_enabled_1_ms": 18.974808
+        },
+        "seed": 1
+      },
+      {
+        "call_1": {
+          "baseline_enabled_0_ms": 1978.627733,
+          "baseline_over_candidate_ratio": 0.97591353,
+          "candidate_enabled_1_ms": 2027.46214
+        },
+        "calls_1_through_10_total": {
+          "baseline_enabled_0_ms": 2006.304309,
+          "baseline_over_candidate_ratio": 0.980334022,
+          "candidate_enabled_1_ms": 2046.55175
+        },
+        "calls_2_through_10_total": {
+          "baseline_enabled_0_ms": 27.676576,
+          "baseline_over_candidate_ratio": 1.449824067,
+          "candidate_enabled_1_ms": 19.08961
+        },
+        "seed": 2
+      },
+      {
+        "call_1": {
+          "baseline_enabled_0_ms": 1977.959862,
+          "baseline_over_candidate_ratio": 0.962972167,
+          "candidate_enabled_1_ms": 2054.01561
+        },
+        "calls_1_through_10_total": {
+          "baseline_enabled_0_ms": 2004.624401,
+          "baseline_over_candidate_ratio": 0.966805745,
+          "candidate_enabled_1_ms": 2073.451064
+        },
+        "calls_2_through_10_total": {
+          "baseline_enabled_0_ms": 26.664539,
+          "baseline_over_candidate_ratio": 1.371953493,
+          "candidate_enabled_1_ms": 19.435454
+        },
+        "seed": 3
+      }
+    ],
+    "nested_break_depth8": [
+      {
+        "call_1": {
+          "baseline_enabled_0_ms": 2365.005753,
+          "baseline_over_candidate_ratio": 0.743778517,
+          "candidate_enabled_1_ms": 3179.71775
+        },
+        "calls_1_through_10_total": {
+          "baseline_enabled_0_ms": 2402.971532,
+          "baseline_over_candidate_ratio": 0.75114906,
+          "candidate_enabled_1_ms": 3199.060824
+        },
+        "calls_2_through_10_total": {
+          "baseline_enabled_0_ms": 37.965779,
+          "baseline_over_candidate_ratio": 1.962758298,
+          "candidate_enabled_1_ms": 19.343074
+        },
+        "seed": 0
+      },
+      {
+        "call_1": {
+          "baseline_enabled_0_ms": 2361.505889,
+          "baseline_over_candidate_ratio": 0.729433323,
+          "candidate_enabled_1_ms": 3237.45271
+        },
+        "calls_1_through_10_total": {
+          "baseline_enabled_0_ms": 2399.38371,
+          "baseline_over_candidate_ratio": 0.736774898,
+          "candidate_enabled_1_ms": 3256.603499
+        },
+        "calls_2_through_10_total": {
+          "baseline_enabled_0_ms": 37.877821,
+          "baseline_over_candidate_ratio": 1.977872609,
+          "candidate_enabled_1_ms": 19.150789
+        },
+        "seed": 1
+      },
+      {
+        "call_1": {
+          "baseline_enabled_0_ms": 2384.720115,
+          "baseline_over_candidate_ratio": 0.75203387,
+          "candidate_enabled_1_ms": 3171.027545
+        },
+        "calls_1_through_10_total": {
+          "baseline_enabled_0_ms": 2422.848022,
+          "baseline_over_candidate_ratio": 0.759454937,
+          "candidate_enabled_1_ms": 3190.245932
+        },
+        "calls_2_through_10_total": {
+          "baseline_enabled_0_ms": 38.127907,
+          "baseline_over_candidate_ratio": 1.983928568,
+          "candidate_enabled_1_ms": 19.218387
+        },
+        "seed": 2
+      },
+      {
+        "call_1": {
+          "baseline_enabled_0_ms": 2381.425667,
+          "baseline_over_candidate_ratio": 0.748329497,
+          "candidate_enabled_1_ms": 3182.322327
+        },
+        "calls_1_through_10_total": {
+          "baseline_enabled_0_ms": 2419.590574,
+          "baseline_over_candidate_ratio": 0.755833251,
+          "candidate_enabled_1_ms": 3201.222717
+        },
+        "calls_2_through_10_total": {
+          "baseline_enabled_0_ms": 38.164907,
+          "baseline_over_candidate_ratio": 2.019265581,
+          "candidate_enabled_1_ms": 18.90039
+        },
+        "seed": 3
+      }
+    ],
+    "no_break_depth4": [
+      {
+        "call_1": {
+          "baseline_enabled_0_ms": 1901.118235,
+          "baseline_over_candidate_ratio": 1.003319286,
+          "candidate_enabled_1_ms": 1894.828757
+        },
+        "calls_1_through_10_total": {
+          "baseline_enabled_0_ms": 1918.555594,
+          "baseline_over_candidate_ratio": 1.003320083,
+          "candidate_enabled_1_ms": 1912.206908
+        },
+        "calls_2_through_10_total": {
+          "baseline_enabled_0_ms": 17.437359,
+          "baseline_over_candidate_ratio": 1.003407037,
+          "candidate_enabled_1_ms": 17.378151
+        },
+        "seed": 0
+      },
+      {
+        "call_1": {
+          "baseline_enabled_0_ms": 1905.738544,
+          "baseline_over_candidate_ratio": 0.941899568,
+          "candidate_enabled_1_ms": 2023.292725
+        },
+        "calls_1_through_10_total": {
+          "baseline_enabled_0_ms": 1923.45357,
+          "baseline_over_candidate_ratio": 0.942412474,
+          "candidate_enabled_1_ms": 2040.989081
+        },
+        "calls_2_through_10_total": {
+          "baseline_enabled_0_ms": 17.715026,
+          "baseline_over_candidate_ratio": 1.001055019,
+          "candidate_enabled_1_ms": 17.696356
+        },
+        "seed": 1
+      },
+      {
+        "call_1": {
+          "baseline_enabled_0_ms": 1878.287515,
+          "baseline_over_candidate_ratio": 0.996065153,
+          "candidate_enabled_1_ms": 1885.707486
+        },
+        "calls_1_through_10_total": {
+          "baseline_enabled_0_ms": 1895.744676,
+          "baseline_over_candidate_ratio": 0.996036942,
+          "candidate_enabled_1_ms": 1903.287515
+        },
+        "calls_2_through_10_total": {
+          "baseline_enabled_0_ms": 17.457161,
+          "baseline_over_candidate_ratio": 0.993010933,
+          "candidate_enabled_1_ms": 17.580029
+        },
+        "seed": 2
+      },
+      {
+        "call_1": {
+          "baseline_enabled_0_ms": 1875.469903,
+          "baseline_over_candidate_ratio": 0.994275649,
+          "candidate_enabled_1_ms": 1886.267561
+        },
+        "calls_1_through_10_total": {
+          "baseline_enabled_0_ms": 1892.825615,
+          "baseline_over_candidate_ratio": 0.994267316,
+          "candidate_enabled_1_ms": 1903.73915
+        },
+        "calls_2_through_10_total": {
+          "baseline_enabled_0_ms": 17.355712,
+          "baseline_over_candidate_ratio": 0.99336769,
+          "candidate_enabled_1_ms": 17.471589
+        },
+        "seed": 3
+      }
+    ]
+  },
+  "primary_startup_diagnosis": {
+    "call_1_ratio_range": [
+      0.729433323,
+      0.75203387
+    ],
+    "calls_1_through_10_ratio_range": [
+      0.736774898,
+      0.759454937
+    ],
+    "calls_2_through_10_ratio_range": [
+      1.962758298,
+      2.019265581
+    ],
+    "case": "nested_break_depth8",
+    "fixed_minimum_ratio": 1.1,
+    "interpretation": "Enabled=1 is faster across calls 2 through 10 in every seed. Its slower first compiled call dominates the predeclared first-10 total, so every seed misses the startup threshold.",
+    "status": "FAIL"
+  },
+  "ratio_definition": "enabled=0 host time divided by enabled=1 host time",
+  "schema": "nested-graph-breaks-public-diagnosis/v1"
+}

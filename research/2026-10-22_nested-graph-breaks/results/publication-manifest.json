@@ -1,0 +1,4194 @@
+{
+  "analyzer_replay": {
+    "comparison_excludes_only": [
+      "generated_at",
+      "retention paths",
+      "profile trace paths"
+    ],
+    "decision_verdict": "PASS",
+    "decision_win_kind": "steady_invocation",
+    "exit_code": 0,
+    "public_analyzer_output_sha256": "8d8b3fad3b07045310b18d0cceca4d395c64c96745a28f3e9799b9380a5c1d25",
+    "public_command": "python analyze.py results --out analyzer-result.json --markdown analyzer-report.md",
+    "public_projection_changes": [
+      {
+        "category": "local analyzer path",
+        "original_type": "str",
+        "path": "retention.raw_result_paths[0]",
+        "public_type": "str",
+        "replacement": "nested_break_depth4-seed0-flag0/result.json"
+      },
+      {
+        "category": "local analyzer path",
+        "original_type": "str",
+        "path": "retention.raw_result_paths[1]",
+        "public_type": "str",
+        "replacement": "nested_break_depth4-seed0-flag1/result.json"
+      },
+      {
+        "category": "local analyzer path",
+        "original_type": "str",
+        "path": "retention.raw_result_paths[2]",
+        "public_type": "str",
+        "replacement": "nested_break_depth4-seed1-flag0/result.json"
+      },
+      {
+        "category": "local analyzer path",
+        "original_type": "str",
+        "path": "retention.raw_result_paths[3]",
+        "public_type": "str",
+        "replacement": "nested_break_depth4-seed1-flag1/result.json"
+      },
+      {
+        "category": "local analyzer path",
+        "original_type": "str",
+        "path": "retention.raw_result_paths[4]",
+        "public_type": "str",
+        "replacement": "nested_break_depth4-seed2-flag0/result.json"
+      },
+      {
+        "category": "local analyzer path",
+        "original_type": "str",
+        "path": "retention.raw_result_paths[5]",
+        "public_type": "str",
+        "replacement": "nested_break_depth4-seed2-flag1/result.json"
+      },
+      {
+        "category": "local analyzer path",
+        "original_type": "str",
+        "path": "retention.raw_result_paths[6]",
+        "public_type": "str",
+        "replacement": "nested_break_depth4-seed3-flag0/result.json"
+      },
+      {
+        "category": "local analyzer path",
+        "original_type": "str",
+        "path": "retention.raw_result_paths[7]",
+        "public_type": "str",
+        "replacement": "nested_break_depth4-seed3-flag1/result.json"
+      },
+      {
+        "category": "local analyzer path",
+        "original_type": "str",
+        "path": "retention.raw_result_paths[8]",
+        "public_type": "str",
+        "replacement": "nested_break_depth8-seed0-flag0/result.json"
+      },
+      {
+        "category": "local analyzer path",
+        "original_type": "str",
+        "path": "retention.raw_result_paths[9]",
+        "public_type": "str",
+        "replacement": "nested_break_depth8-seed0-flag1/result.json"
+      },
+      {
+        "category": "local analyzer path",
+        "original_type": "str",
+        "path": "retention.raw_result_paths[10]",
+        "public_type": "str",
+        "replacement": "nested_break_depth8-seed1-flag0/result.json"
+      },
+      {
+        "category": "local analyzer path",
+        "original_type": "str",
+        "path": "retention.raw_result_paths[11]",
+        "public_type": "str",
+        "replacement": "nested_break_depth8-seed1-flag1/result.json"
+      },
+      {
+        "category": "local analyzer path",
+        "original_type": "str",
+        "path": "retention.raw_result_paths[12]",
+        "public_type": "str",
+        "replacement": "nested_break_depth8-seed2-flag0/result.json"
+      },
+      {
+        "category": "local analyzer path",
+        "original_type": "str",
+        "path": "retention.raw_result_paths[13]",
+        "public_type": "str",
+        "replacement": "nested_break_depth8-seed2-flag1/result.json"
+      },
+      {
+        "category": "local analyzer path",
+        "original_type": "str",
+        "path": "retention.raw_result_paths[14]",
+        "public_type": "str",
+        "replacement": "nested_break_depth8-seed3-flag0/result.json"
+      },
+      {
+        "category": "local analyzer path",
+        "original_type": "str",
+        "path": "retention.raw_result_paths[15]",
+        "public_type": "str",
+        "replacement": "nested_break_depth8-seed3-flag1/result.json"
+      },
+      {
+        "category": "local analyzer path",
+        "original_type": "str",
+        "path": "retention.raw_result_paths[16]",
+        "public_type": "str",
+        "replacement": "no_break_depth4-seed0-flag0/result.json"
+      },
+      {
+        "category": "local analyzer path",
+        "original_type": "str",
+        "path": "retention.raw_result_paths[17]",
+        "public_type": "str",
+        "replacement": "no_break_depth4-seed0-flag1/result.json"
+      },
+      {
+        "category": "local analyzer path",
+        "original_type": "str",
+        "path": "retention.raw_result_paths[18]",
+        "public_type": "str",
+        "replacement": "no_break_depth4-seed1-flag0/result.json"
+      },
+      {
+        "category": "local analyzer path",
+        "original_type": "str",
+        "path": "retention.raw_result_paths[19]",
+        "public_type": "str",
+        "replacement": "no_break_depth4-seed1-flag1/result.json"
+      },
+      {
+        "category": "local analyzer path",
+        "original_type": "str",
+        "path": "retention.raw_result_paths[20]",
+        "public_type": "str",
+        "replacement": "no_break_depth4-seed2-flag0/result.json"
+      },
+      {
+        "category": "local analyzer path",
+        "original_type": "str",
+        "path": "retention.raw_result_paths[21]",
+        "public_type": "str",
+        "replacement": "no_break_depth4-seed2-flag1/result.json"
+      },
+      {
+        "category": "local analyzer path",
+        "original_type": "str",
+        "path": "retention.raw_result_paths[22]",
+        "public_type": "str",
+        "replacement": "no_break_depth4-seed3-flag0/result.json"
+      },
+      {
+        "category": "local analyzer path",
+        "original_type": "str",
+        "path": "retention.raw_result_paths[23]",
+        "public_type": "str",
+        "replacement": "no_break_depth4-seed3-flag1/result.json"
+      }
+    ],
+    "public_report_sha256": "1b1424ba07e2ca093d491977a20c7f01139449aa25aca06c3aee40368bf482f5",
+    "raw_analyzer_output_sha256": "0e8ea38d68e27152b078ce7177b8999f46270c6252a5610b565fb0eb1d4f20cb",
+    "reference_analysis_sha256": "5319eb7b890f8febb105476fe0ea0f963699945407c46ac76745a325934b9281",
+    "scientific_output_matches_retained_analysis": true,
+    "validation_status": "PASS"
+  },
+  "benchmark_id": "torch-dynamo-nested-graph-breaks-b200-20261020",
+  "excluded_private_evidence": [
+    "control logs",
+    "credential material",
+    "raw telemetry XML",
+    "Chrome trace bytes",
+    "the full retained final-decision and custody documents"
+  ],
+  "projection_boundary": {
+    "hash_scope": "original_sha256 covers each retained private input. public_sha256 covers the corresponding public projection.",
+    "not_present_in_source_records": [
+      "GPU PCI identifiers",
+      "thread identifiers",
+      "standalone username fields"
+    ],
+    "preserved_without_value_changes": [
+      "all timing samples and derived timing fields",
+      "all counter measurements and mechanism flags",
+      "all treatment and compile flags",
+      "generated workload source and hashes",
+      "correctness values and hashes",
+      "profile counts, names, statuses and trace hashes",
+      "result statuses and analyzer verdict inputs"
+    ],
+    "public": "24 field-redacted JSON projections",
+    "public_files_are_exact_private_bytes": false,
+    "redacted": [
+      "GPU UUIDs",
+      "hostnames",
+      "filesystem paths and embedded usernames",
+      "process identifiers",
+      "process-local object identifiers and addresses"
+    ],
+    "source": "24 private retained result records"
+  },
+  "records": [
+    {
+      "byte_identical": false,
+      "changes": [
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "controller_contract.cuda_visible_devices",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "controller_contract.expected_gpu_uuid",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "device.cuda_visible_devices",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "device.expected_gpu_uuid",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "device.observed_uuid",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "process-local device object address",
+          "original_type": "str",
+          "path": "device.optional_torch_device_uuid",
+          "public_type": "str",
+          "replacement": "<torch-device-object:nested_break_depth4-seed0-flag0>"
+        },
+        {
+          "category": "hostname",
+          "original_type": "str",
+          "path": "runtime.hostname",
+          "public_type": "str",
+          "replacement": "<b200-host>"
+        },
+        {
+          "category": "process identifier",
+          "original_type": "int",
+          "path": "runtime.pid",
+          "public_type": "str",
+          "replacement": "<process-id:nested_break_depth4-seed0-flag0>"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "controller_contract.cache_dirs.TORCHINDUCTOR_CACHE_DIR.path",
+          "public_type": "str",
+          "replacement": "<cache-root>/nested_break_depth4-seed0-flag0/inductor"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "controller_contract.cache_dirs.TRITON_CACHE_DIR.path",
+          "public_type": "str",
+          "replacement": "<cache-root>/nested_break_depth4-seed0-flag0/triton"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "provenance.worker_source_path",
+          "public_type": "str",
+          "replacement": "<source-root>/benchmark.py"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "provenance.flag_source_snapshot_path",
+          "public_type": "str",
+          "replacement": "<source-root>/pytorch-main-dynamo-config.py"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "provenance.argv[0]",
+          "public_type": "str",
+          "replacement": "<source-root>/benchmark.py"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "provenance.argv[8]",
+          "public_type": "str",
+          "replacement": "<result-root>/nested_break_depth4-seed0-flag0"
+        },
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "provenance.argv[10]",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.top_level_mapping.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:nested_break_depth4-seed0-flag0:top-level-counter-map>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.preparation.graph_break.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:nested_break_depth4-seed0-flag0:graph-break-counter>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.preparation.stats.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:nested_break_depth4-seed0-flag0:stats-counter>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.observations[0].groups.graph_break.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:nested_break_depth4-seed0-flag0:graph-break-counter>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.observations[0].groups.stats.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:nested_break_depth4-seed0-flag0:stats-counter>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.observations[1].groups.graph_break.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:nested_break_depth4-seed0-flag0:graph-break-counter>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.observations[1].groups.stats.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:nested_break_depth4-seed0-flag0:stats-counter>"
+        }
+      ],
+      "original_sha256": "831ca57318e03a340a34951ab720185306cb7eb2b44c5e17c21a582e8cff5e18",
+      "public_relative_path": "nested_break_depth4-seed0-flag0/result.json",
+      "public_sha256": "17f6d162280054c65d869b5e9ddb3a8fea743a9cab2c1de930cdad5285b0d8aa",
+      "record_id": "nested_break_depth4-seed0-flag0",
+      "source_relative_path": "results/nested_break_depth4-seed0-flag0/result.json"
+    },
+    {
+      "byte_identical": false,
+      "changes": [
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "controller_contract.cuda_visible_devices",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "controller_contract.expected_gpu_uuid",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "device.cuda_visible_devices",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "device.expected_gpu_uuid",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "device.observed_uuid",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "process-local device object address",
+          "original_type": "str",
+          "path": "device.optional_torch_device_uuid",
+          "public_type": "str",
+          "replacement": "<torch-device-object:nested_break_depth4-seed0-flag1>"
+        },
+        {
+          "category": "hostname",
+          "original_type": "str",
+          "path": "runtime.hostname",
+          "public_type": "str",
+          "replacement": "<b200-host>"
+        },
+        {
+          "category": "process identifier",
+          "original_type": "int",
+          "path": "runtime.pid",
+          "public_type": "str",
+          "replacement": "<process-id:nested_break_depth4-seed0-flag1>"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "controller_contract.cache_dirs.TORCHINDUCTOR_CACHE_DIR.path",
+          "public_type": "str",
+          "replacement": "<cache-root>/nested_break_depth4-seed0-flag1/inductor"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "controller_contract.cache_dirs.TRITON_CACHE_DIR.path",
+          "public_type": "str",
+          "replacement": "<cache-root>/nested_break_depth4-seed0-flag1/triton"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "provenance.worker_source_path",
+          "public_type": "str",
+          "replacement": "<source-root>/benchmark.py"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "provenance.flag_source_snapshot_path",
+          "public_type": "str",
+          "replacement": "<source-root>/pytorch-main-dynamo-config.py"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "provenance.argv[0]",
+          "public_type": "str",
+          "replacement": "<source-root>/benchmark.py"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "provenance.argv[8]",
+          "public_type": "str",
+          "replacement": "<result-root>/nested_break_depth4-seed0-flag1"
+        },
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "provenance.argv[10]",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.top_level_mapping.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:nested_break_depth4-seed0-flag1:top-level-counter-map>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.preparation.graph_break.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:nested_break_depth4-seed0-flag1:graph-break-counter>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.preparation.stats.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:nested_break_depth4-seed0-flag1:stats-counter>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.observations[0].groups.graph_break.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:nested_break_depth4-seed0-flag1:graph-break-counter>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.observations[0].groups.stats.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:nested_break_depth4-seed0-flag1:stats-counter>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.observations[1].groups.graph_break.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:nested_break_depth4-seed0-flag1:graph-break-counter>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.observations[1].groups.stats.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:nested_break_depth4-seed0-flag1:stats-counter>"
+        }
+      ],
+      "original_sha256": "62b8d91c0a2805ff8cee41b367e5e9599468aefc4763d5c89ac2b76509c9a89f",
+      "public_relative_path": "nested_break_depth4-seed0-flag1/result.json",
+      "public_sha256": "84979a2ad72f961c91308191aa07c3ea54f0cd5b073554d9b17395d40c8ac7ec",
+      "record_id": "nested_break_depth4-seed0-flag1",
+      "source_relative_path": "results/nested_break_depth4-seed0-flag1/result.json"
+    },
+    {
+      "byte_identical": false,
+      "changes": [
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "controller_contract.cuda_visible_devices",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "controller_contract.expected_gpu_uuid",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "device.cuda_visible_devices",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "device.expected_gpu_uuid",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "device.observed_uuid",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "process-local device object address",
+          "original_type": "str",
+          "path": "device.optional_torch_device_uuid",
+          "public_type": "str",
+          "replacement": "<torch-device-object:nested_break_depth4-seed1-flag0>"
+        },
+        {
+          "category": "hostname",
+          "original_type": "str",
+          "path": "runtime.hostname",
+          "public_type": "str",
+          "replacement": "<b200-host>"
+        },
+        {
+          "category": "process identifier",
+          "original_type": "int",
+          "path": "runtime.pid",
+          "public_type": "str",
+          "replacement": "<process-id:nested_break_depth4-seed1-flag0>"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "controller_contract.cache_dirs.TORCHINDUCTOR_CACHE_DIR.path",
+          "public_type": "str",
+          "replacement": "<cache-root>/nested_break_depth4-seed1-flag0/inductor"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "controller_contract.cache_dirs.TRITON_CACHE_DIR.path",
+          "public_type": "str",
+          "replacement": "<cache-root>/nested_break_depth4-seed1-flag0/triton"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "provenance.worker_source_path",
+          "public_type": "str",
+          "replacement": "<source-root>/benchmark.py"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "provenance.flag_source_snapshot_path",
+          "public_type": "str",
+          "replacement": "<source-root>/pytorch-main-dynamo-config.py"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "provenance.argv[0]",
+          "public_type": "str",
+          "replacement": "<source-root>/benchmark.py"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "provenance.argv[8]",
+          "public_type": "str",
+          "replacement": "<result-root>/nested_break_depth4-seed1-flag0"
+        },
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "provenance.argv[10]",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.top_level_mapping.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:nested_break_depth4-seed1-flag0:top-level-counter-map>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.preparation.graph_break.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:nested_break_depth4-seed1-flag0:graph-break-counter>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.preparation.stats.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:nested_break_depth4-seed1-flag0:stats-counter>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.observations[0].groups.graph_break.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:nested_break_depth4-seed1-flag0:graph-break-counter>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.observations[0].groups.stats.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:nested_break_depth4-seed1-flag0:stats-counter>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.observations[1].groups.graph_break.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:nested_break_depth4-seed1-flag0:graph-break-counter>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.observations[1].groups.stats.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:nested_break_depth4-seed1-flag0:stats-counter>"
+        }
+      ],
+      "original_sha256": "5d84dc8b528e44092d341928dab42925715aa2ff9e255f5a4b7d1d9a4ced32c3",
+      "public_relative_path": "nested_break_depth4-seed1-flag0/result.json",
+      "public_sha256": "bfc040cce0de1f27c9e0f09021ba4628524db46f058856b333e68d47deb155b9",
+      "record_id": "nested_break_depth4-seed1-flag0",
+      "source_relative_path": "results/nested_break_depth4-seed1-flag0/result.json"
+    },
+    {
+      "byte_identical": false,
+      "changes": [
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "controller_contract.cuda_visible_devices",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "controller_contract.expected_gpu_uuid",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "device.cuda_visible_devices",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "device.expected_gpu_uuid",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "device.observed_uuid",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "process-local device object address",
+          "original_type": "str",
+          "path": "device.optional_torch_device_uuid",
+          "public_type": "str",
+          "replacement": "<torch-device-object:nested_break_depth4-seed1-flag1>"
+        },
+        {
+          "category": "hostname",
+          "original_type": "str",
+          "path": "runtime.hostname",
+          "public_type": "str",
+          "replacement": "<b200-host>"
+        },
+        {
+          "category": "process identifier",
+          "original_type": "int",
+          "path": "runtime.pid",
+          "public_type": "str",
+          "replacement": "<process-id:nested_break_depth4-seed1-flag1>"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "controller_contract.cache_dirs.TORCHINDUCTOR_CACHE_DIR.path",
+          "public_type": "str",
+          "replacement": "<cache-root>/nested_break_depth4-seed1-flag1/inductor"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "controller_contract.cache_dirs.TRITON_CACHE_DIR.path",
+          "public_type": "str",
+          "replacement": "<cache-root>/nested_break_depth4-seed1-flag1/triton"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "provenance.worker_source_path",
+          "public_type": "str",
+          "replacement": "<source-root>/benchmark.py"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "provenance.flag_source_snapshot_path",
+          "public_type": "str",
+          "replacement": "<source-root>/pytorch-main-dynamo-config.py"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "provenance.argv[0]",
+          "public_type": "str",
+          "replacement": "<source-root>/benchmark.py"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "provenance.argv[8]",
+          "public_type": "str",
+          "replacement": "<result-root>/nested_break_depth4-seed1-flag1"
+        },
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "provenance.argv[10]",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.top_level_mapping.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:nested_break_depth4-seed1-flag1:top-level-counter-map>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.preparation.graph_break.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:nested_break_depth4-seed1-flag1:graph-break-counter>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.preparation.stats.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:nested_break_depth4-seed1-flag1:stats-counter>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.observations[0].groups.graph_break.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:nested_break_depth4-seed1-flag1:graph-break-counter>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.observations[0].groups.stats.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:nested_break_depth4-seed1-flag1:stats-counter>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.observations[1].groups.graph_break.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:nested_break_depth4-seed1-flag1:graph-break-counter>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.observations[1].groups.stats.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:nested_break_depth4-seed1-flag1:stats-counter>"
+        }
+      ],
+      "original_sha256": "be1e57afeb57ccb2c5243e1c06f13b16d1fa4db93cfd0d796f8ec5a34c202710",
+      "public_relative_path": "nested_break_depth4-seed1-flag1/result.json",
+      "public_sha256": "a6af514b2e79192b8d7308c45f9490bbfbbc19bd3d4695cef7c12a1b303d6518",
+      "record_id": "nested_break_depth4-seed1-flag1",
+      "source_relative_path": "results/nested_break_depth4-seed1-flag1/result.json"
+    },
+    {
+      "byte_identical": false,
+      "changes": [
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "controller_contract.cuda_visible_devices",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "controller_contract.expected_gpu_uuid",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "device.cuda_visible_devices",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "device.expected_gpu_uuid",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "device.observed_uuid",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "process-local device object address",
+          "original_type": "str",
+          "path": "device.optional_torch_device_uuid",
+          "public_type": "str",
+          "replacement": "<torch-device-object:nested_break_depth4-seed2-flag0>"
+        },
+        {
+          "category": "hostname",
+          "original_type": "str",
+          "path": "runtime.hostname",
+          "public_type": "str",
+          "replacement": "<b200-host>"
+        },
+        {
+          "category": "process identifier",
+          "original_type": "int",
+          "path": "runtime.pid",
+          "public_type": "str",
+          "replacement": "<process-id:nested_break_depth4-seed2-flag0>"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "controller_contract.cache_dirs.TORCHINDUCTOR_CACHE_DIR.path",
+          "public_type": "str",
+          "replacement": "<cache-root>/nested_break_depth4-seed2-flag0/inductor"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "controller_contract.cache_dirs.TRITON_CACHE_DIR.path",
+          "public_type": "str",
+          "replacement": "<cache-root>/nested_break_depth4-seed2-flag0/triton"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "provenance.worker_source_path",
+          "public_type": "str",
+          "replacement": "<source-root>/benchmark.py"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "provenance.flag_source_snapshot_path",
+          "public_type": "str",
+          "replacement": "<source-root>/pytorch-main-dynamo-config.py"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "provenance.argv[0]",
+          "public_type": "str",
+          "replacement": "<source-root>/benchmark.py"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "provenance.argv[8]",
+          "public_type": "str",
+          "replacement": "<result-root>/nested_break_depth4-seed2-flag0"
+        },
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "provenance.argv[10]",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.top_level_mapping.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:nested_break_depth4-seed2-flag0:top-level-counter-map>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.preparation.graph_break.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:nested_break_depth4-seed2-flag0:graph-break-counter>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.preparation.stats.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:nested_break_depth4-seed2-flag0:stats-counter>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.observations[0].groups.graph_break.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:nested_break_depth4-seed2-flag0:graph-break-counter>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.observations[0].groups.stats.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:nested_break_depth4-seed2-flag0:stats-counter>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.observations[1].groups.graph_break.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:nested_break_depth4-seed2-flag0:graph-break-counter>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.observations[1].groups.stats.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:nested_break_depth4-seed2-flag0:stats-counter>"
+        }
+      ],
+      "original_sha256": "5c4eb6155e63ef58ad52624affae0ad3b9314e14b06c990a42873b290a516c2d",
+      "public_relative_path": "nested_break_depth4-seed2-flag0/result.json",
+      "public_sha256": "4700c66bbf381fcb08011f65a5f86b9de4889a7bb7af6b84f4aa3a6ae1955d08",
+      "record_id": "nested_break_depth4-seed2-flag0",
+      "source_relative_path": "results/nested_break_depth4-seed2-flag0/result.json"
+    },
+    {
+      "byte_identical": false,
+      "changes": [
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "controller_contract.cuda_visible_devices",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "controller_contract.expected_gpu_uuid",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "device.cuda_visible_devices",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "device.expected_gpu_uuid",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "device.observed_uuid",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "process-local device object address",
+          "original_type": "str",
+          "path": "device.optional_torch_device_uuid",
+          "public_type": "str",
+          "replacement": "<torch-device-object:nested_break_depth4-seed2-flag1>"
+        },
+        {
+          "category": "hostname",
+          "original_type": "str",
+          "path": "runtime.hostname",
+          "public_type": "str",
+          "replacement": "<b200-host>"
+        },
+        {
+          "category": "process identifier",
+          "original_type": "int",
+          "path": "runtime.pid",
+          "public_type": "str",
+          "replacement": "<process-id:nested_break_depth4-seed2-flag1>"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "controller_contract.cache_dirs.TORCHINDUCTOR_CACHE_DIR.path",
+          "public_type": "str",
+          "replacement": "<cache-root>/nested_break_depth4-seed2-flag1/inductor"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "controller_contract.cache_dirs.TRITON_CACHE_DIR.path",
+          "public_type": "str",
+          "replacement": "<cache-root>/nested_break_depth4-seed2-flag1/triton"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "provenance.worker_source_path",
+          "public_type": "str",
+          "replacement": "<source-root>/benchmark.py"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "provenance.flag_source_snapshot_path",
+          "public_type": "str",
+          "replacement": "<source-root>/pytorch-main-dynamo-config.py"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "provenance.argv[0]",
+          "public_type": "str",
+          "replacement": "<source-root>/benchmark.py"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "provenance.argv[8]",
+          "public_type": "str",
+          "replacement": "<result-root>/nested_break_depth4-seed2-flag1"
+        },
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "provenance.argv[10]",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.top_level_mapping.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:nested_break_depth4-seed2-flag1:top-level-counter-map>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.preparation.graph_break.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:nested_break_depth4-seed2-flag1:graph-break-counter>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.preparation.stats.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:nested_break_depth4-seed2-flag1:stats-counter>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.observations[0].groups.graph_break.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:nested_break_depth4-seed2-flag1:graph-break-counter>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.observations[0].groups.stats.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:nested_break_depth4-seed2-flag1:stats-counter>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.observations[1].groups.graph_break.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:nested_break_depth4-seed2-flag1:graph-break-counter>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.observations[1].groups.stats.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:nested_break_depth4-seed2-flag1:stats-counter>"
+        }
+      ],
+      "original_sha256": "33446af325484aee888ff18943d3896aa96ab61435625ebcbbc5e032743b23f0",
+      "public_relative_path": "nested_break_depth4-seed2-flag1/result.json",
+      "public_sha256": "5de2283b3fe064cbac7ae01680a22ecaa16b456cc3128b2ec4a11e4a44b451e9",
+      "record_id": "nested_break_depth4-seed2-flag1",
+      "source_relative_path": "results/nested_break_depth4-seed2-flag1/result.json"
+    },
+    {
+      "byte_identical": false,
+      "changes": [
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "controller_contract.cuda_visible_devices",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "controller_contract.expected_gpu_uuid",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "device.cuda_visible_devices",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "device.expected_gpu_uuid",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "device.observed_uuid",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "process-local device object address",
+          "original_type": "str",
+          "path": "device.optional_torch_device_uuid",
+          "public_type": "str",
+          "replacement": "<torch-device-object:nested_break_depth4-seed3-flag0>"
+        },
+        {
+          "category": "hostname",
+          "original_type": "str",
+          "path": "runtime.hostname",
+          "public_type": "str",
+          "replacement": "<b200-host>"
+        },
+        {
+          "category": "process identifier",
+          "original_type": "int",
+          "path": "runtime.pid",
+          "public_type": "str",
+          "replacement": "<process-id:nested_break_depth4-seed3-flag0>"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "controller_contract.cache_dirs.TORCHINDUCTOR_CACHE_DIR.path",
+          "public_type": "str",
+          "replacement": "<cache-root>/nested_break_depth4-seed3-flag0/inductor"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "controller_contract.cache_dirs.TRITON_CACHE_DIR.path",
+          "public_type": "str",
+          "replacement": "<cache-root>/nested_break_depth4-seed3-flag0/triton"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "provenance.worker_source_path",
+          "public_type": "str",
+          "replacement": "<source-root>/benchmark.py"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "provenance.flag_source_snapshot_path",
+          "public_type": "str",
+          "replacement": "<source-root>/pytorch-main-dynamo-config.py"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "provenance.argv[0]",
+          "public_type": "str",
+          "replacement": "<source-root>/benchmark.py"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "provenance.argv[8]",
+          "public_type": "str",
+          "replacement": "<result-root>/nested_break_depth4-seed3-flag0"
+        },
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "provenance.argv[10]",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.top_level_mapping.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:nested_break_depth4-seed3-flag0:top-level-counter-map>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.preparation.graph_break.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:nested_break_depth4-seed3-flag0:graph-break-counter>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.preparation.stats.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:nested_break_depth4-seed3-flag0:stats-counter>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.observations[0].groups.graph_break.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:nested_break_depth4-seed3-flag0:graph-break-counter>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.observations[0].groups.stats.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:nested_break_depth4-seed3-flag0:stats-counter>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.observations[1].groups.graph_break.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:nested_break_depth4-seed3-flag0:graph-break-counter>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.observations[1].groups.stats.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:nested_break_depth4-seed3-flag0:stats-counter>"
+        }
+      ],
+      "original_sha256": "9235484e70014a9e9b4d6e90062aa6eaccf7c24849ef14870ba61eb732c6f27f",
+      "public_relative_path": "nested_break_depth4-seed3-flag0/result.json",
+      "public_sha256": "90497afbe60c60ba9406a6b8f9991b7b8d5aa3bd77095a5a82ce3154bae4e7d2",
+      "record_id": "nested_break_depth4-seed3-flag0",
+      "source_relative_path": "results/nested_break_depth4-seed3-flag0/result.json"
+    },
+    {
+      "byte_identical": false,
+      "changes": [
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "controller_contract.cuda_visible_devices",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "controller_contract.expected_gpu_uuid",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "device.cuda_visible_devices",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "device.expected_gpu_uuid",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "device.observed_uuid",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "process-local device object address",
+          "original_type": "str",
+          "path": "device.optional_torch_device_uuid",
+          "public_type": "str",
+          "replacement": "<torch-device-object:nested_break_depth4-seed3-flag1>"
+        },
+        {
+          "category": "hostname",
+          "original_type": "str",
+          "path": "runtime.hostname",
+          "public_type": "str",
+          "replacement": "<b200-host>"
+        },
+        {
+          "category": "process identifier",
+          "original_type": "int",
+          "path": "runtime.pid",
+          "public_type": "str",
+          "replacement": "<process-id:nested_break_depth4-seed3-flag1>"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "controller_contract.cache_dirs.TORCHINDUCTOR_CACHE_DIR.path",
+          "public_type": "str",
+          "replacement": "<cache-root>/nested_break_depth4-seed3-flag1/inductor"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "controller_contract.cache_dirs.TRITON_CACHE_DIR.path",
+          "public_type": "str",
+          "replacement": "<cache-root>/nested_break_depth4-seed3-flag1/triton"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "provenance.worker_source_path",
+          "public_type": "str",
+          "replacement": "<source-root>/benchmark.py"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "provenance.flag_source_snapshot_path",
+          "public_type": "str",
+          "replacement": "<source-root>/pytorch-main-dynamo-config.py"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "provenance.argv[0]",
+          "public_type": "str",
+          "replacement": "<source-root>/benchmark.py"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "provenance.argv[8]",
+          "public_type": "str",
+          "replacement": "<result-root>/nested_break_depth4-seed3-flag1"
+        },
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "provenance.argv[10]",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.top_level_mapping.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:nested_break_depth4-seed3-flag1:top-level-counter-map>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.preparation.graph_break.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:nested_break_depth4-seed3-flag1:graph-break-counter>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.preparation.stats.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:nested_break_depth4-seed3-flag1:stats-counter>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.observations[0].groups.graph_break.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:nested_break_depth4-seed3-flag1:graph-break-counter>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.observations[0].groups.stats.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:nested_break_depth4-seed3-flag1:stats-counter>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.observations[1].groups.graph_break.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:nested_break_depth4-seed3-flag1:graph-break-counter>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.observations[1].groups.stats.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:nested_break_depth4-seed3-flag1:stats-counter>"
+        }
+      ],
+      "original_sha256": "bafa8c5eb8d9595fe24b08a6ea3ebf40c97c31b7587e4de760faec522e40f534",
+      "public_relative_path": "nested_break_depth4-seed3-flag1/result.json",
+      "public_sha256": "7266f6a6986c75f22c8bd089bb5692fe365528aa0059d831b70fdeb34bd6916b",
+      "record_id": "nested_break_depth4-seed3-flag1",
+      "source_relative_path": "results/nested_break_depth4-seed3-flag1/result.json"
+    },
+    {
+      "byte_identical": false,
+      "changes": [
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "controller_contract.cuda_visible_devices",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "controller_contract.expected_gpu_uuid",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "device.cuda_visible_devices",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "device.expected_gpu_uuid",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "device.observed_uuid",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "process-local device object address",
+          "original_type": "str",
+          "path": "device.optional_torch_device_uuid",
+          "public_type": "str",
+          "replacement": "<torch-device-object:nested_break_depth8-seed0-flag0>"
+        },
+        {
+          "category": "hostname",
+          "original_type": "str",
+          "path": "runtime.hostname",
+          "public_type": "str",
+          "replacement": "<b200-host>"
+        },
+        {
+          "category": "process identifier",
+          "original_type": "int",
+          "path": "runtime.pid",
+          "public_type": "str",
+          "replacement": "<process-id:nested_break_depth8-seed0-flag0>"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "controller_contract.cache_dirs.TORCHINDUCTOR_CACHE_DIR.path",
+          "public_type": "str",
+          "replacement": "<cache-root>/nested_break_depth8-seed0-flag0/inductor"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "controller_contract.cache_dirs.TRITON_CACHE_DIR.path",
+          "public_type": "str",
+          "replacement": "<cache-root>/nested_break_depth8-seed0-flag0/triton"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "provenance.worker_source_path",
+          "public_type": "str",
+          "replacement": "<source-root>/benchmark.py"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "provenance.flag_source_snapshot_path",
+          "public_type": "str",
+          "replacement": "<source-root>/pytorch-main-dynamo-config.py"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "provenance.argv[0]",
+          "public_type": "str",
+          "replacement": "<source-root>/benchmark.py"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "provenance.argv[8]",
+          "public_type": "str",
+          "replacement": "<result-root>/nested_break_depth8-seed0-flag0"
+        },
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "provenance.argv[10]",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "profile.trace_path",
+          "public_type": "str",
+          "replacement": "<result-root>/nested_break_depth8-seed0-flag0/profile.chrome.json"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.top_level_mapping.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:nested_break_depth8-seed0-flag0:top-level-counter-map>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.preparation.graph_break.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:nested_break_depth8-seed0-flag0:graph-break-counter>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.preparation.stats.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:nested_break_depth8-seed0-flag0:stats-counter>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.observations[0].groups.graph_break.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:nested_break_depth8-seed0-flag0:graph-break-counter>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.observations[0].groups.stats.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:nested_break_depth8-seed0-flag0:stats-counter>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.observations[1].groups.graph_break.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:nested_break_depth8-seed0-flag0:graph-break-counter>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.observations[1].groups.stats.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:nested_break_depth8-seed0-flag0:stats-counter>"
+        }
+      ],
+      "original_sha256": "fb59a46edac13388bbb3f0c20234b921d4e51a84541abe9103a99428ac7b5f23",
+      "public_relative_path": "nested_break_depth8-seed0-flag0/result.json",
+      "public_sha256": "c2e31e6c845a26a0c7d9d56532f81c17989ed46454d89fa218e0f4f461187318",
+      "record_id": "nested_break_depth8-seed0-flag0",
+      "source_relative_path": "results/nested_break_depth8-seed0-flag0/result.json"
+    },
+    {
+      "byte_identical": false,
+      "changes": [
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "controller_contract.cuda_visible_devices",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "controller_contract.expected_gpu_uuid",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "device.cuda_visible_devices",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "device.expected_gpu_uuid",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "device.observed_uuid",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "process-local device object address",
+          "original_type": "str",
+          "path": "device.optional_torch_device_uuid",
+          "public_type": "str",
+          "replacement": "<torch-device-object:nested_break_depth8-seed0-flag1>"
+        },
+        {
+          "category": "hostname",
+          "original_type": "str",
+          "path": "runtime.hostname",
+          "public_type": "str",
+          "replacement": "<b200-host>"
+        },
+        {
+          "category": "process identifier",
+          "original_type": "int",
+          "path": "runtime.pid",
+          "public_type": "str",
+          "replacement": "<process-id:nested_break_depth8-seed0-flag1>"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "controller_contract.cache_dirs.TORCHINDUCTOR_CACHE_DIR.path",
+          "public_type": "str",
+          "replacement": "<cache-root>/nested_break_depth8-seed0-flag1/inductor"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "controller_contract.cache_dirs.TRITON_CACHE_DIR.path",
+          "public_type": "str",
+          "replacement": "<cache-root>/nested_break_depth8-seed0-flag1/triton"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "provenance.worker_source_path",
+          "public_type": "str",
+          "replacement": "<source-root>/benchmark.py"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "provenance.flag_source_snapshot_path",
+          "public_type": "str",
+          "replacement": "<source-root>/pytorch-main-dynamo-config.py"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "provenance.argv[0]",
+          "public_type": "str",
+          "replacement": "<source-root>/benchmark.py"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "provenance.argv[8]",
+          "public_type": "str",
+          "replacement": "<result-root>/nested_break_depth8-seed0-flag1"
+        },
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "provenance.argv[10]",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "profile.trace_path",
+          "public_type": "str",
+          "replacement": "<result-root>/nested_break_depth8-seed0-flag1/profile.chrome.json"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.top_level_mapping.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:nested_break_depth8-seed0-flag1:top-level-counter-map>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.preparation.graph_break.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:nested_break_depth8-seed0-flag1:graph-break-counter>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.preparation.stats.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:nested_break_depth8-seed0-flag1:stats-counter>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.observations[0].groups.graph_break.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:nested_break_depth8-seed0-flag1:graph-break-counter>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.observations[0].groups.stats.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:nested_break_depth8-seed0-flag1:stats-counter>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.observations[1].groups.graph_break.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:nested_break_depth8-seed0-flag1:graph-break-counter>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.observations[1].groups.stats.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:nested_break_depth8-seed0-flag1:stats-counter>"
+        }
+      ],
+      "original_sha256": "a545422770d5a84340b5d692c328e9e8a571e317a60880a7c931471d6fd8fda7",
+      "public_relative_path": "nested_break_depth8-seed0-flag1/result.json",
+      "public_sha256": "4f57b5d874412027dc8ff541c16b4c34ad434d4d67a608c90537149a13e160d9",
+      "record_id": "nested_break_depth8-seed0-flag1",
+      "source_relative_path": "results/nested_break_depth8-seed0-flag1/result.json"
+    },
+    {
+      "byte_identical": false,
+      "changes": [
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "controller_contract.cuda_visible_devices",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "controller_contract.expected_gpu_uuid",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "device.cuda_visible_devices",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "device.expected_gpu_uuid",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "device.observed_uuid",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "process-local device object address",
+          "original_type": "str",
+          "path": "device.optional_torch_device_uuid",
+          "public_type": "str",
+          "replacement": "<torch-device-object:nested_break_depth8-seed1-flag0>"
+        },
+        {
+          "category": "hostname",
+          "original_type": "str",
+          "path": "runtime.hostname",
+          "public_type": "str",
+          "replacement": "<b200-host>"
+        },
+        {
+          "category": "process identifier",
+          "original_type": "int",
+          "path": "runtime.pid",
+          "public_type": "str",
+          "replacement": "<process-id:nested_break_depth8-seed1-flag0>"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "controller_contract.cache_dirs.TORCHINDUCTOR_CACHE_DIR.path",
+          "public_type": "str",
+          "replacement": "<cache-root>/nested_break_depth8-seed1-flag0/inductor"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "controller_contract.cache_dirs.TRITON_CACHE_DIR.path",
+          "public_type": "str",
+          "replacement": "<cache-root>/nested_break_depth8-seed1-flag0/triton"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "provenance.worker_source_path",
+          "public_type": "str",
+          "replacement": "<source-root>/benchmark.py"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "provenance.flag_source_snapshot_path",
+          "public_type": "str",
+          "replacement": "<source-root>/pytorch-main-dynamo-config.py"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "provenance.argv[0]",
+          "public_type": "str",
+          "replacement": "<source-root>/benchmark.py"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "provenance.argv[8]",
+          "public_type": "str",
+          "replacement": "<result-root>/nested_break_depth8-seed1-flag0"
+        },
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "provenance.argv[10]",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.top_level_mapping.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:nested_break_depth8-seed1-flag0:top-level-counter-map>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.preparation.graph_break.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:nested_break_depth8-seed1-flag0:graph-break-counter>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.preparation.stats.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:nested_break_depth8-seed1-flag0:stats-counter>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.observations[0].groups.graph_break.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:nested_break_depth8-seed1-flag0:graph-break-counter>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.observations[0].groups.stats.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:nested_break_depth8-seed1-flag0:stats-counter>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.observations[1].groups.graph_break.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:nested_break_depth8-seed1-flag0:graph-break-counter>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.observations[1].groups.stats.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:nested_break_depth8-seed1-flag0:stats-counter>"
+        }
+      ],
+      "original_sha256": "cd73186bf9c20bf5819c5d125e3334d33eae0949a00836bf40be6c9d2954115a",
+      "public_relative_path": "nested_break_depth8-seed1-flag0/result.json",
+      "public_sha256": "6fd4c6d7204bc0d2e396c4f8e3d2431e7ce65e2973542432f6cc222df0c59717",
+      "record_id": "nested_break_depth8-seed1-flag0",
+      "source_relative_path": "results/nested_break_depth8-seed1-flag0/result.json"
+    },
+    {
+      "byte_identical": false,
+      "changes": [
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "controller_contract.cuda_visible_devices",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "controller_contract.expected_gpu_uuid",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "device.cuda_visible_devices",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "device.expected_gpu_uuid",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "device.observed_uuid",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "process-local device object address",
+          "original_type": "str",
+          "path": "device.optional_torch_device_uuid",
+          "public_type": "str",
+          "replacement": "<torch-device-object:nested_break_depth8-seed1-flag1>"
+        },
+        {
+          "category": "hostname",
+          "original_type": "str",
+          "path": "runtime.hostname",
+          "public_type": "str",
+          "replacement": "<b200-host>"
+        },
+        {
+          "category": "process identifier",
+          "original_type": "int",
+          "path": "runtime.pid",
+          "public_type": "str",
+          "replacement": "<process-id:nested_break_depth8-seed1-flag1>"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "controller_contract.cache_dirs.TORCHINDUCTOR_CACHE_DIR.path",
+          "public_type": "str",
+          "replacement": "<cache-root>/nested_break_depth8-seed1-flag1/inductor"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "controller_contract.cache_dirs.TRITON_CACHE_DIR.path",
+          "public_type": "str",
+          "replacement": "<cache-root>/nested_break_depth8-seed1-flag1/triton"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "provenance.worker_source_path",
+          "public_type": "str",
+          "replacement": "<source-root>/benchmark.py"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "provenance.flag_source_snapshot_path",
+          "public_type": "str",
+          "replacement": "<source-root>/pytorch-main-dynamo-config.py"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "provenance.argv[0]",
+          "public_type": "str",
+          "replacement": "<source-root>/benchmark.py"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "provenance.argv[8]",
+          "public_type": "str",
+          "replacement": "<result-root>/nested_break_depth8-seed1-flag1"
+        },
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "provenance.argv[10]",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.top_level_mapping.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:nested_break_depth8-seed1-flag1:top-level-counter-map>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.preparation.graph_break.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:nested_break_depth8-seed1-flag1:graph-break-counter>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.preparation.stats.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:nested_break_depth8-seed1-flag1:stats-counter>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.observations[0].groups.graph_break.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:nested_break_depth8-seed1-flag1:graph-break-counter>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.observations[0].groups.stats.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:nested_break_depth8-seed1-flag1:stats-counter>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.observations[1].groups.graph_break.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:nested_break_depth8-seed1-flag1:graph-break-counter>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.observations[1].groups.stats.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:nested_break_depth8-seed1-flag1:stats-counter>"
+        }
+      ],
+      "original_sha256": "7b3a3b2c3ff9ae67790346224fe26c86547f913d0126ae5d195db804f7b0545d",
+      "public_relative_path": "nested_break_depth8-seed1-flag1/result.json",
+      "public_sha256": "98132bfd97e6889784b2d3244cf6083d16f5fc7028b480cbadbd52e3d1692bb0",
+      "record_id": "nested_break_depth8-seed1-flag1",
+      "source_relative_path": "results/nested_break_depth8-seed1-flag1/result.json"
+    },
+    {
+      "byte_identical": false,
+      "changes": [
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "controller_contract.cuda_visible_devices",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "controller_contract.expected_gpu_uuid",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "device.cuda_visible_devices",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "device.expected_gpu_uuid",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "device.observed_uuid",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "process-local device object address",
+          "original_type": "str",
+          "path": "device.optional_torch_device_uuid",
+          "public_type": "str",
+          "replacement": "<torch-device-object:nested_break_depth8-seed2-flag0>"
+        },
+        {
+          "category": "hostname",
+          "original_type": "str",
+          "path": "runtime.hostname",
+          "public_type": "str",
+          "replacement": "<b200-host>"
+        },
+        {
+          "category": "process identifier",
+          "original_type": "int",
+          "path": "runtime.pid",
+          "public_type": "str",
+          "replacement": "<process-id:nested_break_depth8-seed2-flag0>"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "controller_contract.cache_dirs.TORCHINDUCTOR_CACHE_DIR.path",
+          "public_type": "str",
+          "replacement": "<cache-root>/nested_break_depth8-seed2-flag0/inductor"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "controller_contract.cache_dirs.TRITON_CACHE_DIR.path",
+          "public_type": "str",
+          "replacement": "<cache-root>/nested_break_depth8-seed2-flag0/triton"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "provenance.worker_source_path",
+          "public_type": "str",
+          "replacement": "<source-root>/benchmark.py"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "provenance.flag_source_snapshot_path",
+          "public_type": "str",
+          "replacement": "<source-root>/pytorch-main-dynamo-config.py"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "provenance.argv[0]",
+          "public_type": "str",
+          "replacement": "<source-root>/benchmark.py"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "provenance.argv[8]",
+          "public_type": "str",
+          "replacement": "<result-root>/nested_break_depth8-seed2-flag0"
+        },
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "provenance.argv[10]",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.top_level_mapping.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:nested_break_depth8-seed2-flag0:top-level-counter-map>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.preparation.graph_break.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:nested_break_depth8-seed2-flag0:graph-break-counter>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.preparation.stats.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:nested_break_depth8-seed2-flag0:stats-counter>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.observations[0].groups.graph_break.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:nested_break_depth8-seed2-flag0:graph-break-counter>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.observations[0].groups.stats.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:nested_break_depth8-seed2-flag0:stats-counter>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.observations[1].groups.graph_break.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:nested_break_depth8-seed2-flag0:graph-break-counter>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.observations[1].groups.stats.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:nested_break_depth8-seed2-flag0:stats-counter>"
+        }
+      ],
+      "original_sha256": "4becf2cb8cd31b7599aee0640f628962c7af6403fa7bc55da05d8128fe0a4996",
+      "public_relative_path": "nested_break_depth8-seed2-flag0/result.json",
+      "public_sha256": "6e7235fb8caab8b322b856c35c68722d70151d6352b245d5fc547012fe6bb447",
+      "record_id": "nested_break_depth8-seed2-flag0",
+      "source_relative_path": "results/nested_break_depth8-seed2-flag0/result.json"
+    },
+    {
+      "byte_identical": false,
+      "changes": [
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "controller_contract.cuda_visible_devices",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "controller_contract.expected_gpu_uuid",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "device.cuda_visible_devices",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "device.expected_gpu_uuid",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "device.observed_uuid",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "process-local device object address",
+          "original_type": "str",
+          "path": "device.optional_torch_device_uuid",
+          "public_type": "str",
+          "replacement": "<torch-device-object:nested_break_depth8-seed2-flag1>"
+        },
+        {
+          "category": "hostname",
+          "original_type": "str",
+          "path": "runtime.hostname",
+          "public_type": "str",
+          "replacement": "<b200-host>"
+        },
+        {
+          "category": "process identifier",
+          "original_type": "int",
+          "path": "runtime.pid",
+          "public_type": "str",
+          "replacement": "<process-id:nested_break_depth8-seed2-flag1>"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "controller_contract.cache_dirs.TORCHINDUCTOR_CACHE_DIR.path",
+          "public_type": "str",
+          "replacement": "<cache-root>/nested_break_depth8-seed2-flag1/inductor"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "controller_contract.cache_dirs.TRITON_CACHE_DIR.path",
+          "public_type": "str",
+          "replacement": "<cache-root>/nested_break_depth8-seed2-flag1/triton"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "provenance.worker_source_path",
+          "public_type": "str",
+          "replacement": "<source-root>/benchmark.py"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "provenance.flag_source_snapshot_path",
+          "public_type": "str",
+          "replacement": "<source-root>/pytorch-main-dynamo-config.py"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "provenance.argv[0]",
+          "public_type": "str",
+          "replacement": "<source-root>/benchmark.py"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "provenance.argv[8]",
+          "public_type": "str",
+          "replacement": "<result-root>/nested_break_depth8-seed2-flag1"
+        },
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "provenance.argv[10]",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.top_level_mapping.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:nested_break_depth8-seed2-flag1:top-level-counter-map>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.preparation.graph_break.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:nested_break_depth8-seed2-flag1:graph-break-counter>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.preparation.stats.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:nested_break_depth8-seed2-flag1:stats-counter>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.observations[0].groups.graph_break.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:nested_break_depth8-seed2-flag1:graph-break-counter>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.observations[0].groups.stats.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:nested_break_depth8-seed2-flag1:stats-counter>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.observations[1].groups.graph_break.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:nested_break_depth8-seed2-flag1:graph-break-counter>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.observations[1].groups.stats.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:nested_break_depth8-seed2-flag1:stats-counter>"
+        }
+      ],
+      "original_sha256": "ca898c95e95dd606d26bf106de5745362cff75477c92cb77048e4f5207e3cc86",
+      "public_relative_path": "nested_break_depth8-seed2-flag1/result.json",
+      "public_sha256": "b6d5a0a01360dc6e1fe6b7ca0c0d3ab2e07e29339f928b4c11f7eb0817a78c9e",
+      "record_id": "nested_break_depth8-seed2-flag1",
+      "source_relative_path": "results/nested_break_depth8-seed2-flag1/result.json"
+    },
+    {
+      "byte_identical": false,
+      "changes": [
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "controller_contract.cuda_visible_devices",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "controller_contract.expected_gpu_uuid",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "device.cuda_visible_devices",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "device.expected_gpu_uuid",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "device.observed_uuid",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "process-local device object address",
+          "original_type": "str",
+          "path": "device.optional_torch_device_uuid",
+          "public_type": "str",
+          "replacement": "<torch-device-object:nested_break_depth8-seed3-flag0>"
+        },
+        {
+          "category": "hostname",
+          "original_type": "str",
+          "path": "runtime.hostname",
+          "public_type": "str",
+          "replacement": "<b200-host>"
+        },
+        {
+          "category": "process identifier",
+          "original_type": "int",
+          "path": "runtime.pid",
+          "public_type": "str",
+          "replacement": "<process-id:nested_break_depth8-seed3-flag0>"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "controller_contract.cache_dirs.TORCHINDUCTOR_CACHE_DIR.path",
+          "public_type": "str",
+          "replacement": "<cache-root>/nested_break_depth8-seed3-flag0/inductor"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "controller_contract.cache_dirs.TRITON_CACHE_DIR.path",
+          "public_type": "str",
+          "replacement": "<cache-root>/nested_break_depth8-seed3-flag0/triton"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "provenance.worker_source_path",
+          "public_type": "str",
+          "replacement": "<source-root>/benchmark.py"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "provenance.flag_source_snapshot_path",
+          "public_type": "str",
+          "replacement": "<source-root>/pytorch-main-dynamo-config.py"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "provenance.argv[0]",
+          "public_type": "str",
+          "replacement": "<source-root>/benchmark.py"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "provenance.argv[8]",
+          "public_type": "str",
+          "replacement": "<result-root>/nested_break_depth8-seed3-flag0"
+        },
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "provenance.argv[10]",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.top_level_mapping.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:nested_break_depth8-seed3-flag0:top-level-counter-map>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.preparation.graph_break.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:nested_break_depth8-seed3-flag0:graph-break-counter>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.preparation.stats.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:nested_break_depth8-seed3-flag0:stats-counter>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.observations[0].groups.graph_break.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:nested_break_depth8-seed3-flag0:graph-break-counter>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.observations[0].groups.stats.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:nested_break_depth8-seed3-flag0:stats-counter>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.observations[1].groups.graph_break.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:nested_break_depth8-seed3-flag0:graph-break-counter>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.observations[1].groups.stats.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:nested_break_depth8-seed3-flag0:stats-counter>"
+        }
+      ],
+      "original_sha256": "f534403e8ff62b98cd79b29feb23fec5004dcf2125cf1e5cca6f79dda0be47ba",
+      "public_relative_path": "nested_break_depth8-seed3-flag0/result.json",
+      "public_sha256": "af3f2a788dd8b4aacabddb2b366d1b799921ee18371c67a669c44c68b23fc969",
+      "record_id": "nested_break_depth8-seed3-flag0",
+      "source_relative_path": "results/nested_break_depth8-seed3-flag0/result.json"
+    },
+    {
+      "byte_identical": false,
+      "changes": [
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "controller_contract.cuda_visible_devices",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "controller_contract.expected_gpu_uuid",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "device.cuda_visible_devices",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "device.expected_gpu_uuid",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "device.observed_uuid",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "process-local device object address",
+          "original_type": "str",
+          "path": "device.optional_torch_device_uuid",
+          "public_type": "str",
+          "replacement": "<torch-device-object:nested_break_depth8-seed3-flag1>"
+        },
+        {
+          "category": "hostname",
+          "original_type": "str",
+          "path": "runtime.hostname",
+          "public_type": "str",
+          "replacement": "<b200-host>"
+        },
+        {
+          "category": "process identifier",
+          "original_type": "int",
+          "path": "runtime.pid",
+          "public_type": "str",
+          "replacement": "<process-id:nested_break_depth8-seed3-flag1>"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "controller_contract.cache_dirs.TORCHINDUCTOR_CACHE_DIR.path",
+          "public_type": "str",
+          "replacement": "<cache-root>/nested_break_depth8-seed3-flag1/inductor"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "controller_contract.cache_dirs.TRITON_CACHE_DIR.path",
+          "public_type": "str",
+          "replacement": "<cache-root>/nested_break_depth8-seed3-flag1/triton"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "provenance.worker_source_path",
+          "public_type": "str",
+          "replacement": "<source-root>/benchmark.py"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "provenance.flag_source_snapshot_path",
+          "public_type": "str",
+          "replacement": "<source-root>/pytorch-main-dynamo-config.py"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "provenance.argv[0]",
+          "public_type": "str",
+          "replacement": "<source-root>/benchmark.py"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "provenance.argv[8]",
+          "public_type": "str",
+          "replacement": "<result-root>/nested_break_depth8-seed3-flag1"
+        },
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "provenance.argv[10]",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.top_level_mapping.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:nested_break_depth8-seed3-flag1:top-level-counter-map>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.preparation.graph_break.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:nested_break_depth8-seed3-flag1:graph-break-counter>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.preparation.stats.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:nested_break_depth8-seed3-flag1:stats-counter>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.observations[0].groups.graph_break.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:nested_break_depth8-seed3-flag1:graph-break-counter>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.observations[0].groups.stats.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:nested_break_depth8-seed3-flag1:stats-counter>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.observations[1].groups.graph_break.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:nested_break_depth8-seed3-flag1:graph-break-counter>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.observations[1].groups.stats.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:nested_break_depth8-seed3-flag1:stats-counter>"
+        }
+      ],
+      "original_sha256": "2baa87a1d4751e5ec45735049844faf54e6e49d365c3ce6fd15c939399d3f5d1",
+      "public_relative_path": "nested_break_depth8-seed3-flag1/result.json",
+      "public_sha256": "c0f929958e6dceb6429559ef2b34df7912384ebfcd38c543b613a80be7f25343",
+      "record_id": "nested_break_depth8-seed3-flag1",
+      "source_relative_path": "results/nested_break_depth8-seed3-flag1/result.json"
+    },
+    {
+      "byte_identical": false,
+      "changes": [
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "controller_contract.cuda_visible_devices",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "controller_contract.expected_gpu_uuid",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "device.cuda_visible_devices",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "device.expected_gpu_uuid",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "device.observed_uuid",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "process-local device object address",
+          "original_type": "str",
+          "path": "device.optional_torch_device_uuid",
+          "public_type": "str",
+          "replacement": "<torch-device-object:no_break_depth4-seed0-flag0>"
+        },
+        {
+          "category": "hostname",
+          "original_type": "str",
+          "path": "runtime.hostname",
+          "public_type": "str",
+          "replacement": "<b200-host>"
+        },
+        {
+          "category": "process identifier",
+          "original_type": "int",
+          "path": "runtime.pid",
+          "public_type": "str",
+          "replacement": "<process-id:no_break_depth4-seed0-flag0>"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "controller_contract.cache_dirs.TORCHINDUCTOR_CACHE_DIR.path",
+          "public_type": "str",
+          "replacement": "<cache-root>/no_break_depth4-seed0-flag0/inductor"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "controller_contract.cache_dirs.TRITON_CACHE_DIR.path",
+          "public_type": "str",
+          "replacement": "<cache-root>/no_break_depth4-seed0-flag0/triton"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "provenance.worker_source_path",
+          "public_type": "str",
+          "replacement": "<source-root>/benchmark.py"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "provenance.flag_source_snapshot_path",
+          "public_type": "str",
+          "replacement": "<source-root>/pytorch-main-dynamo-config.py"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "provenance.argv[0]",
+          "public_type": "str",
+          "replacement": "<source-root>/benchmark.py"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "provenance.argv[8]",
+          "public_type": "str",
+          "replacement": "<result-root>/no_break_depth4-seed0-flag0"
+        },
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "provenance.argv[10]",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.top_level_mapping.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:no_break_depth4-seed0-flag0:top-level-counter-map>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.preparation.graph_break.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:no_break_depth4-seed0-flag0:graph-break-counter>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.preparation.stats.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:no_break_depth4-seed0-flag0:stats-counter>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.observations[0].groups.graph_break.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:no_break_depth4-seed0-flag0:graph-break-counter>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.observations[0].groups.stats.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:no_break_depth4-seed0-flag0:stats-counter>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.observations[1].groups.graph_break.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:no_break_depth4-seed0-flag0:graph-break-counter>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.observations[1].groups.stats.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:no_break_depth4-seed0-flag0:stats-counter>"
+        }
+      ],
+      "original_sha256": "acb9b1a394f3a9d6473d4f3170d4ea6e4ac79165be0ee92b820b021ad52b4cea",
+      "public_relative_path": "no_break_depth4-seed0-flag0/result.json",
+      "public_sha256": "55fe36e1b3b730bdd127c092afbe9de3e0ad9b69d99fd37736bd2536052f3eea",
+      "record_id": "no_break_depth4-seed0-flag0",
+      "source_relative_path": "results/no_break_depth4-seed0-flag0/result.json"
+    },
+    {
+      "byte_identical": false,
+      "changes": [
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "controller_contract.cuda_visible_devices",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "controller_contract.expected_gpu_uuid",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "device.cuda_visible_devices",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "device.expected_gpu_uuid",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "device.observed_uuid",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "process-local device object address",
+          "original_type": "str",
+          "path": "device.optional_torch_device_uuid",
+          "public_type": "str",
+          "replacement": "<torch-device-object:no_break_depth4-seed0-flag1>"
+        },
+        {
+          "category": "hostname",
+          "original_type": "str",
+          "path": "runtime.hostname",
+          "public_type": "str",
+          "replacement": "<b200-host>"
+        },
+        {
+          "category": "process identifier",
+          "original_type": "int",
+          "path": "runtime.pid",
+          "public_type": "str",
+          "replacement": "<process-id:no_break_depth4-seed0-flag1>"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "controller_contract.cache_dirs.TORCHINDUCTOR_CACHE_DIR.path",
+          "public_type": "str",
+          "replacement": "<cache-root>/no_break_depth4-seed0-flag1/inductor"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "controller_contract.cache_dirs.TRITON_CACHE_DIR.path",
+          "public_type": "str",
+          "replacement": "<cache-root>/no_break_depth4-seed0-flag1/triton"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "provenance.worker_source_path",
+          "public_type": "str",
+          "replacement": "<source-root>/benchmark.py"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "provenance.flag_source_snapshot_path",
+          "public_type": "str",
+          "replacement": "<source-root>/pytorch-main-dynamo-config.py"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "provenance.argv[0]",
+          "public_type": "str",
+          "replacement": "<source-root>/benchmark.py"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "provenance.argv[8]",
+          "public_type": "str",
+          "replacement": "<result-root>/no_break_depth4-seed0-flag1"
+        },
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "provenance.argv[10]",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.top_level_mapping.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:no_break_depth4-seed0-flag1:top-level-counter-map>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.preparation.graph_break.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:no_break_depth4-seed0-flag1:graph-break-counter>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.preparation.stats.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:no_break_depth4-seed0-flag1:stats-counter>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.observations[0].groups.graph_break.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:no_break_depth4-seed0-flag1:graph-break-counter>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.observations[0].groups.stats.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:no_break_depth4-seed0-flag1:stats-counter>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.observations[1].groups.graph_break.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:no_break_depth4-seed0-flag1:graph-break-counter>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.observations[1].groups.stats.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:no_break_depth4-seed0-flag1:stats-counter>"
+        }
+      ],
+      "original_sha256": "51fc3a6600516ce1c77a65d3dec0837f7fa997d396bfeb5327e05305773f7b86",
+      "public_relative_path": "no_break_depth4-seed0-flag1/result.json",
+      "public_sha256": "817ad2ea68c040feabb5e375dd62b1c7a6315dd9a9a8ff4a14b6dda96ba1837f",
+      "record_id": "no_break_depth4-seed0-flag1",
+      "source_relative_path": "results/no_break_depth4-seed0-flag1/result.json"
+    },
+    {
+      "byte_identical": false,
+      "changes": [
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "controller_contract.cuda_visible_devices",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "controller_contract.expected_gpu_uuid",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "device.cuda_visible_devices",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "device.expected_gpu_uuid",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "device.observed_uuid",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "process-local device object address",
+          "original_type": "str",
+          "path": "device.optional_torch_device_uuid",
+          "public_type": "str",
+          "replacement": "<torch-device-object:no_break_depth4-seed1-flag0>"
+        },
+        {
+          "category": "hostname",
+          "original_type": "str",
+          "path": "runtime.hostname",
+          "public_type": "str",
+          "replacement": "<b200-host>"
+        },
+        {
+          "category": "process identifier",
+          "original_type": "int",
+          "path": "runtime.pid",
+          "public_type": "str",
+          "replacement": "<process-id:no_break_depth4-seed1-flag0>"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "controller_contract.cache_dirs.TORCHINDUCTOR_CACHE_DIR.path",
+          "public_type": "str",
+          "replacement": "<cache-root>/no_break_depth4-seed1-flag0/inductor"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "controller_contract.cache_dirs.TRITON_CACHE_DIR.path",
+          "public_type": "str",
+          "replacement": "<cache-root>/no_break_depth4-seed1-flag0/triton"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "provenance.worker_source_path",
+          "public_type": "str",
+          "replacement": "<source-root>/benchmark.py"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "provenance.flag_source_snapshot_path",
+          "public_type": "str",
+          "replacement": "<source-root>/pytorch-main-dynamo-config.py"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "provenance.argv[0]",
+          "public_type": "str",
+          "replacement": "<source-root>/benchmark.py"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "provenance.argv[8]",
+          "public_type": "str",
+          "replacement": "<result-root>/no_break_depth4-seed1-flag0"
+        },
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "provenance.argv[10]",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.top_level_mapping.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:no_break_depth4-seed1-flag0:top-level-counter-map>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.preparation.graph_break.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:no_break_depth4-seed1-flag0:graph-break-counter>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.preparation.stats.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:no_break_depth4-seed1-flag0:stats-counter>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.observations[0].groups.graph_break.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:no_break_depth4-seed1-flag0:graph-break-counter>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.observations[0].groups.stats.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:no_break_depth4-seed1-flag0:stats-counter>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.observations[1].groups.graph_break.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:no_break_depth4-seed1-flag0:graph-break-counter>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.observations[1].groups.stats.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:no_break_depth4-seed1-flag0:stats-counter>"
+        }
+      ],
+      "original_sha256": "dbebf0f9f755085bf69eb8f2579ace404f895685774491dab18f72da705db26b",
+      "public_relative_path": "no_break_depth4-seed1-flag0/result.json",
+      "public_sha256": "6c2becb906379fe64fb62c7add48924d0524e7f829c9126fdf9c8f6fb3b44fc1",
+      "record_id": "no_break_depth4-seed1-flag0",
+      "source_relative_path": "results/no_break_depth4-seed1-flag0/result.json"
+    },
+    {
+      "byte_identical": false,
+      "changes": [
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "controller_contract.cuda_visible_devices",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "controller_contract.expected_gpu_uuid",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "device.cuda_visible_devices",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "device.expected_gpu_uuid",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "device.observed_uuid",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "process-local device object address",
+          "original_type": "str",
+          "path": "device.optional_torch_device_uuid",
+          "public_type": "str",
+          "replacement": "<torch-device-object:no_break_depth4-seed1-flag1>"
+        },
+        {
+          "category": "hostname",
+          "original_type": "str",
+          "path": "runtime.hostname",
+          "public_type": "str",
+          "replacement": "<b200-host>"
+        },
+        {
+          "category": "process identifier",
+          "original_type": "int",
+          "path": "runtime.pid",
+          "public_type": "str",
+          "replacement": "<process-id:no_break_depth4-seed1-flag1>"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "controller_contract.cache_dirs.TORCHINDUCTOR_CACHE_DIR.path",
+          "public_type": "str",
+          "replacement": "<cache-root>/no_break_depth4-seed1-flag1/inductor"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "controller_contract.cache_dirs.TRITON_CACHE_DIR.path",
+          "public_type": "str",
+          "replacement": "<cache-root>/no_break_depth4-seed1-flag1/triton"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "provenance.worker_source_path",
+          "public_type": "str",
+          "replacement": "<source-root>/benchmark.py"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "provenance.flag_source_snapshot_path",
+          "public_type": "str",
+          "replacement": "<source-root>/pytorch-main-dynamo-config.py"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "provenance.argv[0]",
+          "public_type": "str",
+          "replacement": "<source-root>/benchmark.py"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "provenance.argv[8]",
+          "public_type": "str",
+          "replacement": "<result-root>/no_break_depth4-seed1-flag1"
+        },
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "provenance.argv[10]",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.top_level_mapping.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:no_break_depth4-seed1-flag1:top-level-counter-map>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.preparation.graph_break.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:no_break_depth4-seed1-flag1:graph-break-counter>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.preparation.stats.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:no_break_depth4-seed1-flag1:stats-counter>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.observations[0].groups.graph_break.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:no_break_depth4-seed1-flag1:graph-break-counter>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.observations[0].groups.stats.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:no_break_depth4-seed1-flag1:stats-counter>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.observations[1].groups.graph_break.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:no_break_depth4-seed1-flag1:graph-break-counter>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.observations[1].groups.stats.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:no_break_depth4-seed1-flag1:stats-counter>"
+        }
+      ],
+      "original_sha256": "ea5d9159f63f3a517a9597f8463b6face7d9a5587c3bb9776b68c2264bb6b7d8",
+      "public_relative_path": "no_break_depth4-seed1-flag1/result.json",
+      "public_sha256": "2b20c443036f05d1bd471b74fc828d327cc7659bddabfa25fd4c8734a2bb41c5",
+      "record_id": "no_break_depth4-seed1-flag1",
+      "source_relative_path": "results/no_break_depth4-seed1-flag1/result.json"
+    },
+    {
+      "byte_identical": false,
+      "changes": [
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "controller_contract.cuda_visible_devices",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "controller_contract.expected_gpu_uuid",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "device.cuda_visible_devices",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "device.expected_gpu_uuid",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "device.observed_uuid",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "process-local device object address",
+          "original_type": "str",
+          "path": "device.optional_torch_device_uuid",
+          "public_type": "str",
+          "replacement": "<torch-device-object:no_break_depth4-seed2-flag0>"
+        },
+        {
+          "category": "hostname",
+          "original_type": "str",
+          "path": "runtime.hostname",
+          "public_type": "str",
+          "replacement": "<b200-host>"
+        },
+        {
+          "category": "process identifier",
+          "original_type": "int",
+          "path": "runtime.pid",
+          "public_type": "str",
+          "replacement": "<process-id:no_break_depth4-seed2-flag0>"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "controller_contract.cache_dirs.TORCHINDUCTOR_CACHE_DIR.path",
+          "public_type": "str",
+          "replacement": "<cache-root>/no_break_depth4-seed2-flag0/inductor"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "controller_contract.cache_dirs.TRITON_CACHE_DIR.path",
+          "public_type": "str",
+          "replacement": "<cache-root>/no_break_depth4-seed2-flag0/triton"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "provenance.worker_source_path",
+          "public_type": "str",
+          "replacement": "<source-root>/benchmark.py"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "provenance.flag_source_snapshot_path",
+          "public_type": "str",
+          "replacement": "<source-root>/pytorch-main-dynamo-config.py"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "provenance.argv[0]",
+          "public_type": "str",
+          "replacement": "<source-root>/benchmark.py"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "provenance.argv[8]",
+          "public_type": "str",
+          "replacement": "<result-root>/no_break_depth4-seed2-flag0"
+        },
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "provenance.argv[10]",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.top_level_mapping.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:no_break_depth4-seed2-flag0:top-level-counter-map>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.preparation.graph_break.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:no_break_depth4-seed2-flag0:graph-break-counter>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.preparation.stats.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:no_break_depth4-seed2-flag0:stats-counter>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.observations[0].groups.graph_break.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:no_break_depth4-seed2-flag0:graph-break-counter>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.observations[0].groups.stats.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:no_break_depth4-seed2-flag0:stats-counter>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.observations[1].groups.graph_break.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:no_break_depth4-seed2-flag0:graph-break-counter>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.observations[1].groups.stats.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:no_break_depth4-seed2-flag0:stats-counter>"
+        }
+      ],
+      "original_sha256": "391372c850e93ba1ccb4950f376e9c4cf36684d222d3941fc33828c754c66fdd",
+      "public_relative_path": "no_break_depth4-seed2-flag0/result.json",
+      "public_sha256": "e4a53ac317f3f9351a260fe9b593a2ab9ec4ca2c3c3dd140503ae071d0187a1f",
+      "record_id": "no_break_depth4-seed2-flag0",
+      "source_relative_path": "results/no_break_depth4-seed2-flag0/result.json"
+    },
+    {
+      "byte_identical": false,
+      "changes": [
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "controller_contract.cuda_visible_devices",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "controller_contract.expected_gpu_uuid",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "device.cuda_visible_devices",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "device.expected_gpu_uuid",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "device.observed_uuid",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "process-local device object address",
+          "original_type": "str",
+          "path": "device.optional_torch_device_uuid",
+          "public_type": "str",
+          "replacement": "<torch-device-object:no_break_depth4-seed2-flag1>"
+        },
+        {
+          "category": "hostname",
+          "original_type": "str",
+          "path": "runtime.hostname",
+          "public_type": "str",
+          "replacement": "<b200-host>"
+        },
+        {
+          "category": "process identifier",
+          "original_type": "int",
+          "path": "runtime.pid",
+          "public_type": "str",
+          "replacement": "<process-id:no_break_depth4-seed2-flag1>"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "controller_contract.cache_dirs.TORCHINDUCTOR_CACHE_DIR.path",
+          "public_type": "str",
+          "replacement": "<cache-root>/no_break_depth4-seed2-flag1/inductor"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "controller_contract.cache_dirs.TRITON_CACHE_DIR.path",
+          "public_type": "str",
+          "replacement": "<cache-root>/no_break_depth4-seed2-flag1/triton"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "provenance.worker_source_path",
+          "public_type": "str",
+          "replacement": "<source-root>/benchmark.py"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "provenance.flag_source_snapshot_path",
+          "public_type": "str",
+          "replacement": "<source-root>/pytorch-main-dynamo-config.py"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "provenance.argv[0]",
+          "public_type": "str",
+          "replacement": "<source-root>/benchmark.py"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "provenance.argv[8]",
+          "public_type": "str",
+          "replacement": "<result-root>/no_break_depth4-seed2-flag1"
+        },
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "provenance.argv[10]",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.top_level_mapping.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:no_break_depth4-seed2-flag1:top-level-counter-map>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.preparation.graph_break.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:no_break_depth4-seed2-flag1:graph-break-counter>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.preparation.stats.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:no_break_depth4-seed2-flag1:stats-counter>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.observations[0].groups.graph_break.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:no_break_depth4-seed2-flag1:graph-break-counter>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.observations[0].groups.stats.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:no_break_depth4-seed2-flag1:stats-counter>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.observations[1].groups.graph_break.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:no_break_depth4-seed2-flag1:graph-break-counter>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.observations[1].groups.stats.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:no_break_depth4-seed2-flag1:stats-counter>"
+        }
+      ],
+      "original_sha256": "19246d51c05107ccf811c1ca06d46016886c9cbe077611f71c0db8f3b28f6239",
+      "public_relative_path": "no_break_depth4-seed2-flag1/result.json",
+      "public_sha256": "0f11fb3f7c4db5c4870ea41d9e409c42c5738c4c663dbbc5f7c3e05abe43a076",
+      "record_id": "no_break_depth4-seed2-flag1",
+      "source_relative_path": "results/no_break_depth4-seed2-flag1/result.json"
+    },
+    {
+      "byte_identical": false,
+      "changes": [
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "controller_contract.cuda_visible_devices",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "controller_contract.expected_gpu_uuid",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "device.cuda_visible_devices",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "device.expected_gpu_uuid",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "device.observed_uuid",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "process-local device object address",
+          "original_type": "str",
+          "path": "device.optional_torch_device_uuid",
+          "public_type": "str",
+          "replacement": "<torch-device-object:no_break_depth4-seed3-flag0>"
+        },
+        {
+          "category": "hostname",
+          "original_type": "str",
+          "path": "runtime.hostname",
+          "public_type": "str",
+          "replacement": "<b200-host>"
+        },
+        {
+          "category": "process identifier",
+          "original_type": "int",
+          "path": "runtime.pid",
+          "public_type": "str",
+          "replacement": "<process-id:no_break_depth4-seed3-flag0>"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "controller_contract.cache_dirs.TORCHINDUCTOR_CACHE_DIR.path",
+          "public_type": "str",
+          "replacement": "<cache-root>/no_break_depth4-seed3-flag0/inductor"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "controller_contract.cache_dirs.TRITON_CACHE_DIR.path",
+          "public_type": "str",
+          "replacement": "<cache-root>/no_break_depth4-seed3-flag0/triton"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "provenance.worker_source_path",
+          "public_type": "str",
+          "replacement": "<source-root>/benchmark.py"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "provenance.flag_source_snapshot_path",
+          "public_type": "str",
+          "replacement": "<source-root>/pytorch-main-dynamo-config.py"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "provenance.argv[0]",
+          "public_type": "str",
+          "replacement": "<source-root>/benchmark.py"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "provenance.argv[8]",
+          "public_type": "str",
+          "replacement": "<result-root>/no_break_depth4-seed3-flag0"
+        },
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "provenance.argv[10]",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.top_level_mapping.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:no_break_depth4-seed3-flag0:top-level-counter-map>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.preparation.graph_break.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:no_break_depth4-seed3-flag0:graph-break-counter>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.preparation.stats.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:no_break_depth4-seed3-flag0:stats-counter>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.observations[0].groups.graph_break.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:no_break_depth4-seed3-flag0:graph-break-counter>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.observations[0].groups.stats.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:no_break_depth4-seed3-flag0:stats-counter>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.observations[1].groups.graph_break.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:no_break_depth4-seed3-flag0:graph-break-counter>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.observations[1].groups.stats.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:no_break_depth4-seed3-flag0:stats-counter>"
+        }
+      ],
+      "original_sha256": "7e06781bc651d540032a24e9740192e47fffb25956e11c4c37f2143ca1e8d1ea",
+      "public_relative_path": "no_break_depth4-seed3-flag0/result.json",
+      "public_sha256": "d7663897e805b76386f6df3565cb27745761c6d9cd7510e22b9a3a7965a478dc",
+      "record_id": "no_break_depth4-seed3-flag0",
+      "source_relative_path": "results/no_break_depth4-seed3-flag0/result.json"
+    },
+    {
+      "byte_identical": false,
+      "changes": [
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "controller_contract.cuda_visible_devices",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "controller_contract.expected_gpu_uuid",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "device.cuda_visible_devices",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "device.expected_gpu_uuid",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "device.observed_uuid",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "process-local device object address",
+          "original_type": "str",
+          "path": "device.optional_torch_device_uuid",
+          "public_type": "str",
+          "replacement": "<torch-device-object:no_break_depth4-seed3-flag1>"
+        },
+        {
+          "category": "hostname",
+          "original_type": "str",
+          "path": "runtime.hostname",
+          "public_type": "str",
+          "replacement": "<b200-host>"
+        },
+        {
+          "category": "process identifier",
+          "original_type": "int",
+          "path": "runtime.pid",
+          "public_type": "str",
+          "replacement": "<process-id:no_break_depth4-seed3-flag1>"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "controller_contract.cache_dirs.TORCHINDUCTOR_CACHE_DIR.path",
+          "public_type": "str",
+          "replacement": "<cache-root>/no_break_depth4-seed3-flag1/inductor"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "controller_contract.cache_dirs.TRITON_CACHE_DIR.path",
+          "public_type": "str",
+          "replacement": "<cache-root>/no_break_depth4-seed3-flag1/triton"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "provenance.worker_source_path",
+          "public_type": "str",
+          "replacement": "<source-root>/benchmark.py"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "provenance.flag_source_snapshot_path",
+          "public_type": "str",
+          "replacement": "<source-root>/pytorch-main-dynamo-config.py"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "provenance.argv[0]",
+          "public_type": "str",
+          "replacement": "<source-root>/benchmark.py"
+        },
+        {
+          "category": "filesystem path and username",
+          "original_type": "str",
+          "path": "provenance.argv[8]",
+          "public_type": "str",
+          "replacement": "<result-root>/no_break_depth4-seed3-flag1"
+        },
+        {
+          "category": "GPU UUID",
+          "original_type": "str",
+          "path": "provenance.argv[10]",
+          "public_type": "str",
+          "replacement": "GPU-<b200-device>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.top_level_mapping.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:no_break_depth4-seed3-flag1:top-level-counter-map>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.preparation.graph_break.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:no_break_depth4-seed3-flag1:graph-break-counter>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.preparation.stats.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:no_break_depth4-seed3-flag1:stats-counter>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.observations[0].groups.graph_break.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:no_break_depth4-seed3-flag1:graph-break-counter>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.observations[0].groups.stats.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:no_break_depth4-seed3-flag1:stats-counter>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.observations[1].groups.graph_break.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:no_break_depth4-seed3-flag1:graph-break-counter>"
+        },
+        {
+          "category": "process-local object identifier",
+          "original_type": "int",
+          "path": "counter_lifecycle.observations[1].groups.stats.object_id",
+          "public_type": "str",
+          "replacement": "<object-id:no_break_depth4-seed3-flag1:stats-counter>"
+        }
+      ],
+      "original_sha256": "3035c59260593196c357ed36b64f513a2dea3c4748b69d718bd8a69654d8a25b",
+      "public_relative_path": "no_break_depth4-seed3-flag1/result.json",
+      "public_sha256": "82dcd4e82d8ae45213b4c2b401c1e083d5f1b9123dfad8109c085df97258bdd6",
+      "record_id": "no_break_depth4-seed3-flag1",
+      "source_relative_path": "results/no_break_depth4-seed3-flag1/result.json"
+    }
+  ],
+  "schema": "nested-graph-breaks-public-results/v1",
+  "supporting_files": {
+    "README.md": {
+      "sha256": "87973412e39f39d47f56b9425023b51b97e00e2a929910f234b67297b330d4fb"
+    },
+    "analyzer-report.md": {
+      "sha256": "1b1424ba07e2ca093d491977a20c7f01139449aa25aca06c3aee40368bf482f5"
+    },
+    "analyzer-result.json": {
+      "sha256": "8d8b3fad3b07045310b18d0cceca4d395c64c96745a28f3e9799b9380a5c1d25"
+    },
+    "diagnosis.json": {
+      "sha256": "7947aa18f280b8a2f924c8687abea2b918b57b3872959a862e5461b1c4ca865f"
+    },
+    "qualification.json": {
+      "sha256": "7fee15d624ad93a8b45380a0e163af76ed769a2f446c5ebdbf63ff43813825e9"
+    }
+  }
+}

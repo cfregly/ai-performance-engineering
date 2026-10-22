@@ -1,0 +1,89 @@
+{
+  "schema": "aiperf-startup-decomposition-figure-data/v1",
+  "source_audit": {
+    "original_sha256": "b3ef37d22f5a71d3ba53d64c07929702d55312b2235b41bec10798aba38649ac"
+  },
+  "ratio_definition": "baseline false divided by candidate true",
+  "primary_case": "nested_break_depth8",
+  "primary": [
+    {
+      "seed": 0,
+      "call_1_false_s": 2.365005753,
+      "call_1_true_s": 3.17971775,
+      "calls_2_10_false_ms": 37.965779000000005,
+      "calls_2_10_true_ms": 19.343074
+    },
+    {
+      "seed": 1,
+      "call_1_false_s": 2.361505889,
+      "call_1_true_s": 3.23745271,
+      "calls_2_10_false_ms": 37.877821000000004,
+      "calls_2_10_true_ms": 19.150789
+    },
+    {
+      "seed": 2,
+      "call_1_false_s": 2.384720115,
+      "call_1_true_s": 3.171027545,
+      "calls_2_10_false_ms": 38.127907,
+      "calls_2_10_true_ms": 19.218386999999996
+    },
+    {
+      "seed": 3,
+      "call_1_false_s": 2.381425667,
+      "call_1_true_s": 3.182322327,
+      "calls_2_10_false_ms": 38.16490700000001,
+      "calls_2_10_true_ms": 18.900389999999998
+    }
+  ],
+  "control_case": "no_break_depth4",
+  "no_break": [
+    {
+      "seed": 0,
+      "call_1_false_s": 1.901118235,
+      "call_1_true_s": 1.894828757,
+      "call_1_ratio": 1.003319285701552,
+      "first_10_ratio": 1.00332008318422
+    },
+    {
+      "seed": 1,
+      "call_1_false_s": 1.905738544,
+      "call_1_true_s": 2.023292725,
+      "call_1_ratio": 0.9418995681902628,
+      "first_10_ratio": 0.942412474376192,
+      "startup_control_failure": true
+    },
+    {
+      "seed": 2,
+      "call_1_false_s": 1.878287515,
+      "call_1_true_s": 1.885707486,
+      "call_1_ratio": 0.9960651527052378,
+      "first_10_ratio": 0.9960369419015498
+    },
+    {
+      "seed": 3,
+      "call_1_false_s": 1.875469903,
+      "call_1_true_s": 1.886267561,
+      "call_1_ratio": 0.9942756487874522,
+      "first_10_ratio": 0.9942673159818141
+    }
+  ],
+  "fixed_startup_control_range": [
+    0.95,
+    1.05
+  ],
+  "notes": [
+    "All four retained seeds are shown.",
+    "The primary candidate is slower on call 1 in every seed.",
+    "The primary candidate is faster over calls 2 through 10 in every seed.",
+    "The exact compiler phase responsible for the call-1 delta is unresolved.",
+    "This public evidence visual does not change any fixed gate."
+  ],
+  "public_projection": {
+    "original_sha256": "630c9d6b5305f243b5696e36b139a2534f4b35de95d62df0d04331d5dc604114",
+    "redacted_fields": [
+      "source_audit.path"
+    ],
+    "content_statement": "The source path was removed. All timing values, ratios, seeds, cases, gate bounds, and the failed startup-control marker are unchanged.",
+    "numeric_content_sha256": "ba2b717d50c242d8f9177a9ecddbc5e498115431fb51f1bc840704acb64d839b"
+  }
+}
