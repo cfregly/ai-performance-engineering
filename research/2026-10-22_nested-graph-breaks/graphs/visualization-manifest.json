@@ -1,0 +1,33 @@
+{
+  "graph_counts": {
+    "0": 16,
+    "1": 2
+  },
+  "no_workload_rerun": true,
+  "operation_counts": {
+    "0": 64,
+    "1": 64
+  },
+  "public_data_sha256": {
+    "compiled-graphs.json": "3efd443a2beb73b895805e562abbcbd0c729b60ed6ce6858e8ec7fdf089fed40",
+    "public-projection.json": "4bce77fd920649521b6687c6ce58cc1df129fc3f202078da5eef76e19607dcb2",
+    "startup-decomposition-data.json": "6659b2eb2cb9423a63d38b73db73fe76351cc19bcd1c2ab575ad33a8f7d515c8",
+    "trace-extraction.json": "6db1441cbdbc667a027248fe0da40d0616a95e9eb6e19f893d957a87852b71f2"
+  },
+  "rendered_asset_sha256": {
+    "comparison-overview.png": "b77ae39d9be1892a3ecb7bee385d7034f1ee969ee844e2b886c831f92667f93c",
+    "comparison-overview.svg": "5e16a3fb2008ef1d9f385736187de1f52e1b111806a06f8b7c0236493da5186b",
+    "comparison.html": "e58d12b6b0c8bcd06c947ab7911ba99ca21fef41e874be20e73099a721fbcefc",
+    "region-summary.png": "57c985fc1fb4d75013e52b97f3bb1c0519fa59909ffe0a3d2e8feeea48107f36",
+    "region-summary.svg": "899c6e3445d0abe95a8a59b5047307384a9e1846724619f350a77b548dab67b8",
+    "replay-invocation-1.svg": "2b8c4a06f15fd36882a3107805b3a4fed3e215406cb54225e53ccf2eec8f9406",
+    "replay-invocation-2.svg": "b93ad263fec501e4135ba41687e5d3d7bb3f0033d412dc99c7b30f132fad176a",
+    "replay-invocation-3.svg": "b1a665e85b61726be35e2db868ba775ff13843b4843da61b58cf40a7d5a84666",
+    "replay-invocation-4.svg": "82d45096002c4387515e61b9f40fbbf8eb39a32e113db30b25f4f5b4411448e6",
+    "replay-invocation-5.svg": "975c62ce5dd2e0e5dfa766b53b1421823b801de142514c49c0d62ba6be8dbc02",
+    "startup-decomposition.png": "bf7462613a9ef3b9e8a7780fb1e8d2871d5a47cc4c03105c6ba07175250499f7",
+    "startup-decomposition.svg": "a488ceecc9d88832b4f170f69d106e507ad3462f1b8e97a6dd89ccc44d8716ec"
+  },
+  "schema": "aiperf.nested_graph_breaks.visualization.v2",
+  "source_wrapper_count": 18
+}

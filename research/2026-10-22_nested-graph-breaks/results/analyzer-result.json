@@ -1,0 +1,1408 @@
+{
+  "benchmark_id": "torch-dynamo-nested-graph-breaks-b200-20261020",
+  "capture_qualification": {
+    "cuda_graph_claim_permitted": true,
+    "failure_semantics": "failed or incomplete profiler evidence does not invalidate retained timings, but it forbids a CUDA Graph capture claim",
+    "qualified_arms": [
+      0,
+      1
+    ],
+    "required_identities": [
+      {
+        "case": "nested_break_depth8",
+        "enabled": 0,
+        "seed": 0
+      },
+      {
+        "case": "nested_break_depth8",
+        "enabled": 1,
+        "seed": 0
+      }
+    ],
+    "status": "PASS"
+  },
+  "cases": {
+    "nested_break_depth4": {
+      "batched_throughput": {
+        "coverage_claim": null,
+        "geometric_mean_ratio": 3.696463365078993,
+        "observed_max_seed_ratio": 3.8079269838326355,
+        "observed_min_seed_ratio": 3.6595244226011223,
+        "observed_seed_ratios": [
+          3.6601693360404175,
+          3.8079269838326355,
+          3.660422236418598,
+          3.6595244226011223
+        ],
+        "summary_role": "descriptive four-seed summary; no confidence-interval or population-coverage claim"
+      },
+      "case": "nested_break_depth4",
+      "cold_first_10": {
+        "coverage_claim": null,
+        "geometric_mean_ratio": 0.972967817951915,
+        "observed_max_seed_ratio": 0.9844359763615342,
+        "observed_min_seed_ratio": 0.9604906214639448,
+        "observed_seed_ratios": [
+          0.9844359763615342,
+          0.9604906214639448,
+          0.9803340223378177,
+          0.9668057451680471
+        ],
+        "summary_role": "descriptive four-seed summary; no confidence-interval or population-coverage claim"
+      },
+      "per_seed": [
+        {
+          "baseline_enabled_0": {
+            "cold_first_10_mean_host_ms": 202.2722285,
+            "cold_first_10_total_host_ms": 2022.722285,
+            "first_compiled_call_host_ms": 1995.219286,
+            "steady_median_invocation_host_ms": 0.212502,
+            "steady_p95_invocation_host_ms": 0.22683450000000002,
+            "throughput_median_per_call_host_ms": 0.19331004999999998
+          },
+          "candidate_enabled_1": {
+            "cold_first_10_mean_host_ms": 205.47017110000002,
+            "cold_first_10_total_host_ms": 2054.701711,
+            "first_compiled_call_host_ms": 2034.876812,
+            "steady_median_invocation_host_ms": 0.0752935,
+            "steady_p95_invocation_host_ms": 0.08392149999999998,
+            "throughput_median_per_call_host_ms": 0.052814509999999995
+          },
+          "cold_first_10_speedup_ratio": 0.9844359763615342,
+          "seed": 0,
+          "steady_median_invocation_speedup_ratio": 2.8223153393055176,
+          "steady_p95_candidate_over_baseline": 0.3699679722440809,
+          "throughput_speedup_ratio": 3.6601693360404175
+        },
+        {
+          "baseline_enabled_0": {
+            "cold_first_10_mean_host_ms": 200.3133921,
+            "cold_first_10_total_host_ms": 2003.1339209999999,
+            "first_compiled_call_host_ms": 1972.681641,
+            "steady_median_invocation_host_ms": 0.219082,
+            "steady_p95_invocation_host_ms": 0.23280299999999998,
+            "throughput_median_per_call_host_ms": 0.19754280000000002
+          },
+          "candidate_enabled_1": {
+            "cold_first_10_mean_host_ms": 208.55319939999998,
+            "cold_first_10_total_host_ms": 2085.531994,
+            "first_compiled_call_host_ms": 2066.557186,
+            "steady_median_invocation_host_ms": 0.074444,
+            "steady_p95_invocation_host_ms": 0.08101955,
+            "throughput_median_per_call_host_ms": 0.05187673
+          },
+          "cold_first_10_speedup_ratio": 0.9604906214639448,
+          "seed": 1,
+          "steady_median_invocation_speedup_ratio": 2.9429101069260115,
+          "steady_p95_candidate_over_baseline": 0.3480176372297608,
+          "throughput_speedup_ratio": 3.8079269838326355
+        },
+        {
+          "baseline_enabled_0": {
+            "cold_first_10_mean_host_ms": 200.63043090000002,
+            "cold_first_10_total_host_ms": 2006.304309,
+            "first_compiled_call_host_ms": 1978.627733,
+            "steady_median_invocation_host_ms": 0.214082,
+            "steady_p95_invocation_host_ms": 0.22824000000000003,
+            "throughput_median_per_call_host_ms": 0.19149066999999997
+          },
+          "candidate_enabled_1": {
+            "cold_first_10_mean_host_ms": 204.655175,
+            "cold_first_10_total_host_ms": 2046.55175,
+            "first_compiled_call_host_ms": 2027.46214,
+            "steady_median_invocation_host_ms": 0.074844,
+            "steady_p95_invocation_host_ms": 0.0820515,
+            "throughput_median_per_call_host_ms": 0.05231382
+          },
+          "cold_first_10_speedup_ratio": 0.9803340223378177,
+          "seed": 2,
+          "steady_median_invocation_speedup_ratio": 2.8603762492651383,
+          "steady_p95_candidate_over_baseline": 0.35949658254468975,
+          "throughput_speedup_ratio": 3.660422236418598
+        },
+        {
+          "baseline_enabled_0": {
+            "cold_first_10_mean_host_ms": 200.4624401,
+            "cold_first_10_total_host_ms": 2004.624401,
+            "first_compiled_call_host_ms": 1977.959862,
+            "steady_median_invocation_host_ms": 0.21590700000000002,
+            "steady_p95_invocation_host_ms": 0.2300895,
+            "throughput_median_per_call_host_ms": 0.19612782
+          },
+          "candidate_enabled_1": {
+            "cold_first_10_mean_host_ms": 207.3451064,
+            "cold_first_10_total_host_ms": 2073.451064,
+            "first_compiled_call_host_ms": 2054.01561,
+            "steady_median_invocation_host_ms": 0.07574349999999999,
+            "steady_p95_invocation_host_ms": 0.08346,
+            "throughput_median_per_call_host_ms": 0.0535938
+          },
+          "cold_first_10_speedup_ratio": 0.9668057451680471,
+          "seed": 3,
+          "steady_median_invocation_speedup_ratio": 2.8505020232759253,
+          "steady_p95_candidate_over_baseline": 0.36272841655095084,
+          "throughput_speedup_ratio": 3.6595244226011223
+        }
+      ],
+      "role": "secondary descriptive case",
+      "startup_win_criteria_pass": false,
+      "steady_median_invocation": {
+        "coverage_claim": null,
+        "geometric_mean_ratio": 2.8686777330161672,
+        "observed_max_seed_ratio": 2.9429101069260115,
+        "observed_min_seed_ratio": 2.8223153393055176,
+        "observed_seed_ratios": [
+          2.8223153393055176,
+          2.9429101069260115,
+          2.8603762492651383,
+          2.8505020232759253
+        ],
+        "summary_role": "descriptive four-seed summary; no confidence-interval or population-coverage claim"
+      },
+      "steady_p95_no_regression_each_seed": true,
+      "steady_p95_within_3_percent_each_seed": true,
+      "steady_win_criteria_pass": true
+    },
+    "nested_break_depth8": {
+      "batched_throughput": {
+        "coverage_claim": null,
+        "geometric_mean_ratio": 6.238764809699087,
+        "observed_max_seed_ratio": 6.291399804620202,
+        "observed_min_seed_ratio": 6.175525843480057,
+        "observed_seed_ratios": [
+          6.226380481859618,
+          6.262353384251226,
+          6.291399804620202,
+          6.175525843480057
+        ],
+        "summary_role": "descriptive four-seed summary; no confidence-interval or population-coverage claim"
+      },
+      "case": "nested_break_depth8",
+      "cold_first_10": {
+        "coverage_claim": null,
+        "geometric_mean_ratio": 0.7507532796851079,
+        "observed_max_seed_ratio": 0.759454936592017,
+        "observed_min_seed_ratio": 0.7367748977536795,
+        "observed_seed_ratios": [
+          0.7511490603655995,
+          0.7367748977536795,
+          0.759454936592017,
+          0.7558332511983108
+        ],
+        "summary_role": "descriptive four-seed summary; no confidence-interval or population-coverage claim"
+      },
+      "per_seed": [
+        {
+          "baseline_enabled_0": {
+            "cold_first_10_mean_host_ms": 240.2971532,
+            "cold_first_10_total_host_ms": 2402.971532,
+            "first_compiled_call_host_ms": 2365.005753,
+            "steady_median_invocation_host_ms": 0.40646499999999997,
+            "steady_p95_invocation_host_ms": 0.41911000000000004,
+            "throughput_median_per_call_host_ms": 0.38580950999999997
+          },
+          "candidate_enabled_1": {
+            "cold_first_10_mean_host_ms": 319.90608239999995,
+            "cold_first_10_total_host_ms": 3199.0608239999997,
+            "first_compiled_call_host_ms": 3179.71775,
+            "steady_median_invocation_host_ms": 0.08987400000000001,
+            "steady_p95_invocation_host_ms": 0.094049,
+            "throughput_median_per_call_host_ms": 0.06196369
+          },
+          "cold_first_10_speedup_ratio": 0.7511490603655995,
+          "seed": 0,
+          "steady_median_invocation_speedup_ratio": 4.52260943098115,
+          "steady_p95_candidate_over_baseline": 0.22440170838204765,
+          "throughput_speedup_ratio": 6.226380481859618
+        },
+        {
+          "baseline_enabled_0": {
+            "cold_first_10_mean_host_ms": 239.93837100000002,
+            "cold_first_10_total_host_ms": 2399.38371,
+            "first_compiled_call_host_ms": 2361.505889,
+            "steady_median_invocation_host_ms": 0.410864,
+            "steady_p95_invocation_host_ms": 0.424578,
+            "throughput_median_per_call_host_ms": 0.38793268999999997
+          },
+          "candidate_enabled_1": {
+            "cold_first_10_mean_host_ms": 325.66034989999997,
+            "cold_first_10_total_host_ms": 3256.603499,
+            "first_compiled_call_host_ms": 3237.45271,
+            "steady_median_invocation_host_ms": 0.089719,
+            "steady_p95_invocation_host_ms": 0.09392749999999998,
+            "throughput_median_per_call_host_ms": 0.06194679
+          },
+          "cold_first_10_speedup_ratio": 0.7367748977536795,
+          "seed": 1,
+          "steady_median_invocation_speedup_ratio": 4.579453627436775,
+          "steady_p95_candidate_over_baseline": 0.2212255463071567,
+          "throughput_speedup_ratio": 6.262353384251226
+        },
+        {
+          "baseline_enabled_0": {
+            "cold_first_10_mean_host_ms": 242.2848022,
+            "cold_first_10_total_host_ms": 2422.848022,
+            "first_compiled_call_host_ms": 2384.720115,
+            "steady_median_invocation_host_ms": 0.40873000000000004,
+            "steady_p95_invocation_host_ms": 0.42182794999999995,
+            "throughput_median_per_call_host_ms": 0.39001695999999997
+          },
+          "candidate_enabled_1": {
+            "cold_first_10_mean_host_ms": 319.02459319999997,
+            "cold_first_10_total_host_ms": 3190.245932,
+            "first_compiled_call_host_ms": 3171.027545,
+            "steady_median_invocation_host_ms": 0.090224,
+            "steady_p95_invocation_host_ms": 0.09580345,
+            "throughput_median_per_call_host_ms": 0.061992080000000005
+          },
+          "cold_first_10_speedup_ratio": 0.759454936592017,
+          "seed": 2,
+          "steady_median_invocation_speedup_ratio": 4.530169356268843,
+          "steady_p95_candidate_over_baseline": 0.2271149884686399,
+          "throughput_speedup_ratio": 6.291399804620202
+        },
+        {
+          "baseline_enabled_0": {
+            "cold_first_10_mean_host_ms": 241.95905739999998,
+            "cold_first_10_total_host_ms": 2419.590574,
+            "first_compiled_call_host_ms": 2381.425667,
+            "steady_median_invocation_host_ms": 0.40424000000000004,
+            "steady_p95_invocation_host_ms": 0.41608645,
+            "throughput_median_per_call_host_ms": 0.38262076
+          },
+          "candidate_enabled_1": {
+            "cold_first_10_mean_host_ms": 320.12227169999994,
+            "cold_first_10_total_host_ms": 3201.2227169999996,
+            "first_compiled_call_host_ms": 3182.322327,
+            "steady_median_invocation_host_ms": 0.089924,
+            "steady_p95_invocation_host_ms": 0.09480295000000001,
+            "throughput_median_per_call_host_ms": 0.0619576
+          },
+          "cold_first_10_speedup_ratio": 0.7558332511983108,
+          "seed": 3,
+          "steady_median_invocation_speedup_ratio": 4.495351630265558,
+          "steady_p95_candidate_over_baseline": 0.22784435782515872,
+          "throughput_speedup_ratio": 6.175525843480057
+        }
+      ],
+      "role": "predeclared primary",
+      "startup_win_criteria_pass": false,
+      "steady_median_invocation": {
+        "coverage_claim": null,
+        "geometric_mean_ratio": 4.531794562480241,
+        "observed_max_seed_ratio": 4.579453627436775,
+        "observed_min_seed_ratio": 4.495351630265558,
+        "observed_seed_ratios": [
+          4.52260943098115,
+          4.579453627436775,
+          4.530169356268843,
+          4.495351630265558
+        ],
+        "summary_role": "descriptive four-seed summary; no confidence-interval or population-coverage claim"
+      },
+      "steady_p95_no_regression_each_seed": true,
+      "steady_p95_within_3_percent_each_seed": true,
+      "steady_win_criteria_pass": true
+    },
+    "no_break_depth4": {
+      "batched_throughput": {
+        "coverage_claim": null,
+        "geometric_mean_ratio": 1.001830858911159,
+        "observed_max_seed_ratio": 1.0035589474972528,
+        "observed_min_seed_ratio": 1.0008791409060733,
+        "observed_seed_ratios": [
+          1.001896883256129,
+          1.0008791409060733,
+          1.0009907596433136,
+          1.0035589474972528
+        ],
+        "summary_role": "descriptive four-seed summary; no confidence-interval or population-coverage claim"
+      },
+      "case": "no_break_depth4",
+      "cold_first_10": {
+        "coverage_claim": null,
+        "geometric_mean_ratio": 0.9837047880805773,
+        "observed_max_seed_ratio": 1.00332008318422,
+        "observed_min_seed_ratio": 0.942412474376192,
+        "observed_seed_ratios": [
+          1.00332008318422,
+          0.942412474376192,
+          0.9960369419015498,
+          0.9942673159818141
+        ],
+        "summary_role": "descriptive four-seed summary; no confidence-interval or population-coverage claim"
+      },
+      "per_seed": [
+        {
+          "baseline_enabled_0": {
+            "cold_first_10_mean_host_ms": 191.8555594,
+            "cold_first_10_total_host_ms": 1918.555594,
+            "first_compiled_call_host_ms": 1901.118235,
+            "steady_median_invocation_host_ms": 0.0596995,
+            "steady_p95_invocation_host_ms": 0.0645635,
+            "throughput_median_per_call_host_ms": 0.03121019
+          },
+          "candidate_enabled_1": {
+            "cold_first_10_mean_host_ms": 191.2206908,
+            "cold_first_10_total_host_ms": 1912.2069079999999,
+            "first_compiled_call_host_ms": 1894.828757,
+            "steady_median_invocation_host_ms": 0.059104500000000004,
+            "steady_p95_invocation_host_ms": 0.0643165,
+            "throughput_median_per_call_host_ms": 0.0311511
+          },
+          "cold_first_10_speedup_ratio": 1.00332008318422,
+          "seed": 0,
+          "steady_median_invocation_speedup_ratio": 1.0100669153786936,
+          "steady_p95_candidate_over_baseline": 0.9961743090136068,
+          "throughput_speedup_ratio": 1.001896883256129
+        },
+        {
+          "baseline_enabled_0": {
+            "cold_first_10_mean_host_ms": 192.345357,
+            "cold_first_10_total_host_ms": 1923.4535700000001,
+            "first_compiled_call_host_ms": 1905.738544,
+            "steady_median_invocation_host_ms": 0.0593245,
+            "steady_p95_invocation_host_ms": 0.06310055,
+            "throughput_median_per_call_host_ms": 0.031194189999999997
+          },
+          "candidate_enabled_1": {
+            "cold_first_10_mean_host_ms": 204.0989081,
+            "cold_first_10_total_host_ms": 2040.989081,
+            "first_compiled_call_host_ms": 2023.292725,
+            "steady_median_invocation_host_ms": 0.0592385,
+            "steady_p95_invocation_host_ms": 0.06345655,
+            "throughput_median_per_call_host_ms": 0.03116679
+          },
+          "cold_first_10_speedup_ratio": 0.942412474376192,
+          "seed": 1,
+          "steady_median_invocation_speedup_ratio": 1.0014517585691738,
+          "steady_p95_candidate_over_baseline": 1.005641789176164,
+          "throughput_speedup_ratio": 1.0008791409060733
+        },
+        {
+          "baseline_enabled_0": {
+            "cold_first_10_mean_host_ms": 189.5744676,
+            "cold_first_10_total_host_ms": 1895.744676,
+            "first_compiled_call_host_ms": 1878.287515,
+            "steady_median_invocation_host_ms": 0.059319,
+            "steady_p95_invocation_host_ms": 0.063763,
+            "throughput_median_per_call_host_ms": 0.031219089999999998
+          },
+          "candidate_enabled_1": {
+            "cold_first_10_mean_host_ms": 190.3287515,
+            "cold_first_10_total_host_ms": 1903.287515,
+            "first_compiled_call_host_ms": 1885.707486,
+            "steady_median_invocation_host_ms": 0.0590445,
+            "steady_p95_invocation_host_ms": 0.06473055,
+            "throughput_median_per_call_host_ms": 0.031188189999999998
+          },
+          "cold_first_10_speedup_ratio": 0.9960369419015498,
+          "seed": 2,
+          "steady_median_invocation_speedup_ratio": 1.0046490358966542,
+          "steady_p95_candidate_over_baseline": 1.015174160563336,
+          "throughput_speedup_ratio": 1.0009907596433136
+        },
+        {
+          "baseline_enabled_0": {
+            "cold_first_10_mean_host_ms": 189.28256149999999,
+            "cold_first_10_total_host_ms": 1892.825615,
+            "first_compiled_call_host_ms": 1875.469903,
+            "steady_median_invocation_host_ms": 0.0587545,
+            "steady_p95_invocation_host_ms": 0.06433855000000001,
+            "throughput_median_per_call_host_ms": 0.031240780000000003
+          },
+          "candidate_enabled_1": {
+            "cold_first_10_mean_host_ms": 190.37391499999998,
+            "cold_first_10_total_host_ms": 1903.7391499999999,
+            "first_compiled_call_host_ms": 1886.267561,
+            "steady_median_invocation_host_ms": 0.058474,
+            "steady_p95_invocation_host_ms": 0.06122339999999999,
+            "throughput_median_per_call_host_ms": 0.03112999
+          },
+          "cold_first_10_speedup_ratio": 0.9942673159818141,
+          "seed": 3,
+          "steady_median_invocation_speedup_ratio": 1.0047970037965592,
+          "steady_p95_candidate_over_baseline": 0.9515819054050796,
+          "throughput_speedup_ratio": 1.0035589474972528
+        }
+      ],
+      "role": "predeclared no-break drift-control gate",
+      "startup_win_criteria_pass": false,
+      "steady_median_invocation": {
+        "coverage_claim": null,
+        "geometric_mean_ratio": 1.0052364336040047,
+        "observed_max_seed_ratio": 1.0100669153786936,
+        "observed_min_seed_ratio": 1.0014517585691738,
+        "observed_seed_ratios": [
+          1.0100669153786936,
+          1.0014517585691738,
+          1.0046490358966542,
+          1.0047970037965592
+        ],
+        "summary_role": "descriptive four-seed summary; no confidence-interval or population-coverage claim"
+      },
+      "steady_p95_no_regression_each_seed": false,
+      "steady_p95_within_3_percent_each_seed": true,
+      "steady_win_criteria_pass": false
+    }
+  },
+  "claim_limits": [
+    "This is a controlled compiler microbenchmark.",
+    "Invocation p95 is not a serving latency percentile.",
+    "The eager execution is a correctness reference, not a performance competitor.",
+    "The no-break case gates drift validity and does not establish nested-break benefit.",
+    "No serving, model throughput, or model quality conclusion follows."
+  ],
+  "control_validity": {
+    "case": "no_break_depth4",
+    "cold_first_10": {
+      "allowed_inclusive_range": [
+        0.95,
+        1.05
+      ],
+      "every_seed_required": true,
+      "gate_pass": false,
+      "metric": "cold first-10 synchronized compiled-call total",
+      "observed_seed_ratios": [
+        1.00332008318422,
+        0.942412474376192,
+        0.9960369419015498,
+        0.9942673159818141
+      ],
+      "per_seed": [
+        {
+          "baseline_over_candidate_ratio": 1.00332008318422,
+          "seed": 0,
+          "within_predeclared_range": true
+        },
+        {
+          "baseline_over_candidate_ratio": 0.942412474376192,
+          "seed": 1,
+          "within_predeclared_range": false
+        },
+        {
+          "baseline_over_candidate_ratio": 0.9960369419015498,
+          "seed": 2,
+          "within_predeclared_range": true
+        },
+        {
+          "baseline_over_candidate_ratio": 0.9942673159818141,
+          "seed": 3,
+          "within_predeclared_range": true
+        }
+      ],
+      "status": "FAIL"
+    },
+    "failure_semantics": "steady control drift blocks both routes; cold first-10 control drift blocks the startup route while leaving an otherwise qualified steady route eligible",
+    "ratio_definition": "enabled=0 latency divided by enabled=1 latency",
+    "startup_qualification_gate_pass": false,
+    "steady": {
+      "allowed_inclusive_range": [
+        0.95,
+        1.05
+      ],
+      "every_seed_required": true,
+      "gate_pass": true,
+      "metric": "steady median synchronized invocation latency",
+      "observed_seed_ratios": [
+        1.0100669153786936,
+        1.0014517585691738,
+        1.0046490358966542,
+        1.0047970037965592
+      ],
+      "per_seed": [
+        {
+          "baseline_over_candidate_ratio": 1.0100669153786936,
+          "seed": 0,
+          "within_predeclared_range": true
+        },
+        {
+          "baseline_over_candidate_ratio": 1.0014517585691738,
+          "seed": 1,
+          "within_predeclared_range": true
+        },
+        {
+          "baseline_over_candidate_ratio": 1.0046490358966542,
+          "seed": 2,
+          "within_predeclared_range": true
+        },
+        {
+          "baseline_over_candidate_ratio": 1.0047970037965592,
+          "seed": 3,
+          "within_predeclared_range": true
+        }
+      ],
+      "status": "PASS"
+    },
+    "steady_qualification_gate_pass": true
+  },
+  "counter_evidence": [
+    {
+      "case": "nested_break_depth4",
+      "dynamo_stats": {
+        "calls_captured": 32,
+        "unique_graphs": 8
+      },
+      "enabled": 0,
+      "graph_break_event_sum": 5,
+      "graph_break_histogram_nonempty": true,
+      "graph_break_reason_counts": {
+        "Call to `torch._dynamo.graph_break()`\n  Explanation: User-inserted graph break. Message: None\n  Hint: Remove the `torch._dynamo.graph_break()` call.\n\n  Developer debug context: Called `torch._dynamo.graph_break()` with args `[]`, kwargs `{}`\n\n For more details about this graph break, please visit: https://meta-pytorch.github.io/compile-graph-break-site/gb/gb0025.html": 5
+      },
+      "inductor_metrics": {
+        "available": true,
+        "cpp_to_dtype_count": 0,
+        "generated_cpp_vec_kernel_count": 0,
+        "generated_kernel_count": 8,
+        "ir_nodes_pre_fusion": 8,
+        "num_bytes_accessed": 0,
+        "num_comprehensive_padding": 0,
+        "num_loop_reordering": 0
+      },
+      "seed": 0
+    },
+    {
+      "case": "nested_break_depth4",
+      "dynamo_stats": {
+        "calls_captured": 32,
+        "unique_graphs": 8
+      },
+      "enabled": 0,
+      "graph_break_event_sum": 5,
+      "graph_break_histogram_nonempty": true,
+      "graph_break_reason_counts": {
+        "Call to `torch._dynamo.graph_break()`\n  Explanation: User-inserted graph break. Message: None\n  Hint: Remove the `torch._dynamo.graph_break()` call.\n\n  Developer debug context: Called `torch._dynamo.graph_break()` with args `[]`, kwargs `{}`\n\n For more details about this graph break, please visit: https://meta-pytorch.github.io/compile-graph-break-site/gb/gb0025.html": 5
+      },
+      "inductor_metrics": {
+        "available": true,
+        "cpp_to_dtype_count": 0,
+        "generated_cpp_vec_kernel_count": 0,
+        "generated_kernel_count": 8,
+        "ir_nodes_pre_fusion": 8,
+        "num_bytes_accessed": 0,
+        "num_comprehensive_padding": 0,
+        "num_loop_reordering": 0
+      },
+      "seed": 1
+    },
+    {
+      "case": "nested_break_depth4",
+      "dynamo_stats": {
+        "calls_captured": 32,
+        "unique_graphs": 8
+      },
+      "enabled": 0,
+      "graph_break_event_sum": 5,
+      "graph_break_histogram_nonempty": true,
+      "graph_break_reason_counts": {
+        "Call to `torch._dynamo.graph_break()`\n  Explanation: User-inserted graph break. Message: None\n  Hint: Remove the `torch._dynamo.graph_break()` call.\n\n  Developer debug context: Called `torch._dynamo.graph_break()` with args `[]`, kwargs `{}`\n\n For more details about this graph break, please visit: https://meta-pytorch.github.io/compile-graph-break-site/gb/gb0025.html": 5
+      },
+      "inductor_metrics": {
+        "available": true,
+        "cpp_to_dtype_count": 0,
+        "generated_cpp_vec_kernel_count": 0,
+        "generated_kernel_count": 8,
+        "ir_nodes_pre_fusion": 8,
+        "num_bytes_accessed": 0,
+        "num_comprehensive_padding": 0,
+        "num_loop_reordering": 0
+      },
+      "seed": 2
+    },
+    {
+      "case": "nested_break_depth4",
+      "dynamo_stats": {
+        "calls_captured": 32,
+        "unique_graphs": 8
+      },
+      "enabled": 0,
+      "graph_break_event_sum": 5,
+      "graph_break_histogram_nonempty": true,
+      "graph_break_reason_counts": {
+        "Call to `torch._dynamo.graph_break()`\n  Explanation: User-inserted graph break. Message: None\n  Hint: Remove the `torch._dynamo.graph_break()` call.\n\n  Developer debug context: Called `torch._dynamo.graph_break()` with args `[]`, kwargs `{}`\n\n For more details about this graph break, please visit: https://meta-pytorch.github.io/compile-graph-break-site/gb/gb0025.html": 5
+      },
+      "inductor_metrics": {
+        "available": true,
+        "cpp_to_dtype_count": 0,
+        "generated_cpp_vec_kernel_count": 0,
+        "generated_kernel_count": 8,
+        "ir_nodes_pre_fusion": 8,
+        "num_bytes_accessed": 0,
+        "num_comprehensive_padding": 0,
+        "num_loop_reordering": 0
+      },
+      "seed": 3
+    },
+    {
+      "case": "nested_break_depth4",
+      "dynamo_stats": {
+        "calls_captured": 32,
+        "unique_graphs": 2
+      },
+      "enabled": 1,
+      "graph_break_event_sum": 1,
+      "graph_break_histogram_nonempty": true,
+      "graph_break_reason_counts": {
+        "Call to `torch._dynamo.graph_break()`\n  Explanation: User-inserted graph break. Message: None\n  Hint: Remove the `torch._dynamo.graph_break()` call.\n\n  Developer debug context: Called `torch._dynamo.graph_break()` with args `[]`, kwargs `{}`\n\n For more details about this graph break, please visit: https://meta-pytorch.github.io/compile-graph-break-site/gb/gb0025.html": 1
+      },
+      "inductor_metrics": {
+        "available": true,
+        "cpp_to_dtype_count": 0,
+        "generated_cpp_vec_kernel_count": 0,
+        "generated_kernel_count": 2,
+        "ir_nodes_pre_fusion": 2,
+        "num_bytes_accessed": 0,
+        "num_comprehensive_padding": 0,
+        "num_loop_reordering": 0
+      },
+      "seed": 0
+    },
+    {
+      "case": "nested_break_depth4",
+      "dynamo_stats": {
+        "calls_captured": 32,
+        "unique_graphs": 2
+      },
+      "enabled": 1,
+      "graph_break_event_sum": 1,
+      "graph_break_histogram_nonempty": true,
+      "graph_break_reason_counts": {
+        "Call to `torch._dynamo.graph_break()`\n  Explanation: User-inserted graph break. Message: None\n  Hint: Remove the `torch._dynamo.graph_break()` call.\n\n  Developer debug context: Called `torch._dynamo.graph_break()` with args `[]`, kwargs `{}`\n\n For more details about this graph break, please visit: https://meta-pytorch.github.io/compile-graph-break-site/gb/gb0025.html": 1
+      },
+      "inductor_metrics": {
+        "available": true,
+        "cpp_to_dtype_count": 0,
+        "generated_cpp_vec_kernel_count": 0,
+        "generated_kernel_count": 2,
+        "ir_nodes_pre_fusion": 2,
+        "num_bytes_accessed": 0,
+        "num_comprehensive_padding": 0,
+        "num_loop_reordering": 0
+      },
+      "seed": 1
+    },
+    {
+      "case": "nested_break_depth4",
+      "dynamo_stats": {
+        "calls_captured": 32,
+        "unique_graphs": 2
+      },
+      "enabled": 1,
+      "graph_break_event_sum": 1,
+      "graph_break_histogram_nonempty": true,
+      "graph_break_reason_counts": {
+        "Call to `torch._dynamo.graph_break()`\n  Explanation: User-inserted graph break. Message: None\n  Hint: Remove the `torch._dynamo.graph_break()` call.\n\n  Developer debug context: Called `torch._dynamo.graph_break()` with args `[]`, kwargs `{}`\n\n For more details about this graph break, please visit: https://meta-pytorch.github.io/compile-graph-break-site/gb/gb0025.html": 1
+      },
+      "inductor_metrics": {
+        "available": true,
+        "cpp_to_dtype_count": 0,
+        "generated_cpp_vec_kernel_count": 0,
+        "generated_kernel_count": 2,
+        "ir_nodes_pre_fusion": 2,
+        "num_bytes_accessed": 0,
+        "num_comprehensive_padding": 0,
+        "num_loop_reordering": 0
+      },
+      "seed": 2
+    },
+    {
+      "case": "nested_break_depth4",
+      "dynamo_stats": {
+        "calls_captured": 32,
+        "unique_graphs": 2
+      },
+      "enabled": 1,
+      "graph_break_event_sum": 1,
+      "graph_break_histogram_nonempty": true,
+      "graph_break_reason_counts": {
+        "Call to `torch._dynamo.graph_break()`\n  Explanation: User-inserted graph break. Message: None\n  Hint: Remove the `torch._dynamo.graph_break()` call.\n\n  Developer debug context: Called `torch._dynamo.graph_break()` with args `[]`, kwargs `{}`\n\n For more details about this graph break, please visit: https://meta-pytorch.github.io/compile-graph-break-site/gb/gb0025.html": 1
+      },
+      "inductor_metrics": {
+        "available": true,
+        "cpp_to_dtype_count": 0,
+        "generated_cpp_vec_kernel_count": 0,
+        "generated_kernel_count": 2,
+        "ir_nodes_pre_fusion": 2,
+        "num_bytes_accessed": 0,
+        "num_comprehensive_padding": 0,
+        "num_loop_reordering": 0
+      },
+      "seed": 3
+    },
+    {
+      "case": "nested_break_depth8",
+      "dynamo_stats": {
+        "calls_captured": 64,
+        "unique_graphs": 16
+      },
+      "enabled": 0,
+      "graph_break_event_sum": 9,
+      "graph_break_histogram_nonempty": true,
+      "graph_break_reason_counts": {
+        "Call to `torch._dynamo.graph_break()`\n  Explanation: User-inserted graph break. Message: None\n  Hint: Remove the `torch._dynamo.graph_break()` call.\n\n  Developer debug context: Called `torch._dynamo.graph_break()` with args `[]`, kwargs `{}`\n\n For more details about this graph break, please visit: https://meta-pytorch.github.io/compile-graph-break-site/gb/gb0025.html": 9
+      },
+      "inductor_metrics": {
+        "available": true,
+        "cpp_to_dtype_count": 0,
+        "generated_cpp_vec_kernel_count": 0,
+        "generated_kernel_count": 16,
+        "ir_nodes_pre_fusion": 16,
+        "num_bytes_accessed": 0,
+        "num_comprehensive_padding": 0,
+        "num_loop_reordering": 0
+      },
+      "seed": 0
+    },
+    {
+      "case": "nested_break_depth8",
+      "dynamo_stats": {
+        "calls_captured": 64,
+        "unique_graphs": 16
+      },
+      "enabled": 0,
+      "graph_break_event_sum": 9,
+      "graph_break_histogram_nonempty": true,
+      "graph_break_reason_counts": {
+        "Call to `torch._dynamo.graph_break()`\n  Explanation: User-inserted graph break. Message: None\n  Hint: Remove the `torch._dynamo.graph_break()` call.\n\n  Developer debug context: Called `torch._dynamo.graph_break()` with args `[]`, kwargs `{}`\n\n For more details about this graph break, please visit: https://meta-pytorch.github.io/compile-graph-break-site/gb/gb0025.html": 9
+      },
+      "inductor_metrics": {
+        "available": true,
+        "cpp_to_dtype_count": 0,
+        "generated_cpp_vec_kernel_count": 0,
+        "generated_kernel_count": 16,
+        "ir_nodes_pre_fusion": 16,
+        "num_bytes_accessed": 0,
+        "num_comprehensive_padding": 0,
+        "num_loop_reordering": 0
+      },
+      "seed": 1
+    },
+    {
+      "case": "nested_break_depth8",
+      "dynamo_stats": {
+        "calls_captured": 64,
+        "unique_graphs": 16
+      },
+      "enabled": 0,
+      "graph_break_event_sum": 9,
+      "graph_break_histogram_nonempty": true,
+      "graph_break_reason_counts": {
+        "Call to `torch._dynamo.graph_break()`\n  Explanation: User-inserted graph break. Message: None\n  Hint: Remove the `torch._dynamo.graph_break()` call.\n\n  Developer debug context: Called `torch._dynamo.graph_break()` with args `[]`, kwargs `{}`\n\n For more details about this graph break, please visit: https://meta-pytorch.github.io/compile-graph-break-site/gb/gb0025.html": 9
+      },
+      "inductor_metrics": {
+        "available": true,
+        "cpp_to_dtype_count": 0,
+        "generated_cpp_vec_kernel_count": 0,
+        "generated_kernel_count": 16,
+        "ir_nodes_pre_fusion": 16,
+        "num_bytes_accessed": 0,
+        "num_comprehensive_padding": 0,
+        "num_loop_reordering": 0
+      },
+      "seed": 2
+    },
+    {
+      "case": "nested_break_depth8",
+      "dynamo_stats": {
+        "calls_captured": 64,
+        "unique_graphs": 16
+      },
+      "enabled": 0,
+      "graph_break_event_sum": 9,
+      "graph_break_histogram_nonempty": true,
+      "graph_break_reason_counts": {
+        "Call to `torch._dynamo.graph_break()`\n  Explanation: User-inserted graph break. Message: None\n  Hint: Remove the `torch._dynamo.graph_break()` call.\n\n  Developer debug context: Called `torch._dynamo.graph_break()` with args `[]`, kwargs `{}`\n\n For more details about this graph break, please visit: https://meta-pytorch.github.io/compile-graph-break-site/gb/gb0025.html": 9
+      },
+      "inductor_metrics": {
+        "available": true,
+        "cpp_to_dtype_count": 0,
+        "generated_cpp_vec_kernel_count": 0,
+        "generated_kernel_count": 16,
+        "ir_nodes_pre_fusion": 16,
+        "num_bytes_accessed": 0,
+        "num_comprehensive_padding": 0,
+        "num_loop_reordering": 0
+      },
+      "seed": 3
+    },
+    {
+      "case": "nested_break_depth8",
+      "dynamo_stats": {
+        "calls_captured": 64,
+        "unique_graphs": 2
+      },
+      "enabled": 1,
+      "graph_break_event_sum": 1,
+      "graph_break_histogram_nonempty": true,
+      "graph_break_reason_counts": {
+        "Call to `torch._dynamo.graph_break()`\n  Explanation: User-inserted graph break. Message: None\n  Hint: Remove the `torch._dynamo.graph_break()` call.\n\n  Developer debug context: Called `torch._dynamo.graph_break()` with args `[]`, kwargs `{}`\n\n For more details about this graph break, please visit: https://meta-pytorch.github.io/compile-graph-break-site/gb/gb0025.html": 1
+      },
+      "inductor_metrics": {
+        "available": true,
+        "cpp_to_dtype_count": 0,
+        "generated_cpp_vec_kernel_count": 0,
+        "generated_kernel_count": 2,
+        "ir_nodes_pre_fusion": 3,
+        "num_bytes_accessed": 0,
+        "num_comprehensive_padding": 0,
+        "num_loop_reordering": 0
+      },
+      "seed": 0
+    },
+    {
+      "case": "nested_break_depth8",
+      "dynamo_stats": {
+        "calls_captured": 64,
+        "unique_graphs": 2
+      },
+      "enabled": 1,
+      "graph_break_event_sum": 1,
+      "graph_break_histogram_nonempty": true,
+      "graph_break_reason_counts": {
+        "Call to `torch._dynamo.graph_break()`\n  Explanation: User-inserted graph break. Message: None\n  Hint: Remove the `torch._dynamo.graph_break()` call.\n\n  Developer debug context: Called `torch._dynamo.graph_break()` with args `[]`, kwargs `{}`\n\n For more details about this graph break, please visit: https://meta-pytorch.github.io/compile-graph-break-site/gb/gb0025.html": 1
+      },
+      "inductor_metrics": {
+        "available": true,
+        "cpp_to_dtype_count": 0,
+        "generated_cpp_vec_kernel_count": 0,
+        "generated_kernel_count": 2,
+        "ir_nodes_pre_fusion": 3,
+        "num_bytes_accessed": 0,
+        "num_comprehensive_padding": 0,
+        "num_loop_reordering": 0
+      },
+      "seed": 1
+    },
+    {
+      "case": "nested_break_depth8",
+      "dynamo_stats": {
+        "calls_captured": 64,
+        "unique_graphs": 2
+      },
+      "enabled": 1,
+      "graph_break_event_sum": 1,
+      "graph_break_histogram_nonempty": true,
+      "graph_break_reason_counts": {
+        "Call to `torch._dynamo.graph_break()`\n  Explanation: User-inserted graph break. Message: None\n  Hint: Remove the `torch._dynamo.graph_break()` call.\n\n  Developer debug context: Called `torch._dynamo.graph_break()` with args `[]`, kwargs `{}`\n\n For more details about this graph break, please visit: https://meta-pytorch.github.io/compile-graph-break-site/gb/gb0025.html": 1
+      },
+      "inductor_metrics": {
+        "available": true,
+        "cpp_to_dtype_count": 0,
+        "generated_cpp_vec_kernel_count": 0,
+        "generated_kernel_count": 2,
+        "ir_nodes_pre_fusion": 3,
+        "num_bytes_accessed": 0,
+        "num_comprehensive_padding": 0,
+        "num_loop_reordering": 0
+      },
+      "seed": 2
+    },
+    {
+      "case": "nested_break_depth8",
+      "dynamo_stats": {
+        "calls_captured": 64,
+        "unique_graphs": 2
+      },
+      "enabled": 1,
+      "graph_break_event_sum": 1,
+      "graph_break_histogram_nonempty": true,
+      "graph_break_reason_counts": {
+        "Call to `torch._dynamo.graph_break()`\n  Explanation: User-inserted graph break. Message: None\n  Hint: Remove the `torch._dynamo.graph_break()` call.\n\n  Developer debug context: Called `torch._dynamo.graph_break()` with args `[]`, kwargs `{}`\n\n For more details about this graph break, please visit: https://meta-pytorch.github.io/compile-graph-break-site/gb/gb0025.html": 1
+      },
+      "inductor_metrics": {
+        "available": true,
+        "cpp_to_dtype_count": 0,
+        "generated_cpp_vec_kernel_count": 0,
+        "generated_kernel_count": 2,
+        "ir_nodes_pre_fusion": 3,
+        "num_bytes_accessed": 0,
+        "num_comprehensive_padding": 0,
+        "num_loop_reordering": 0
+      },
+      "seed": 3
+    },
+    {
+      "case": "no_break_depth4",
+      "dynamo_stats": {
+        "calls_captured": 32,
+        "unique_graphs": 1
+      },
+      "enabled": 0,
+      "graph_break_event_sum": 0,
+      "graph_break_histogram_nonempty": false,
+      "graph_break_reason_counts": {},
+      "inductor_metrics": {
+        "available": true,
+        "cpp_to_dtype_count": 0,
+        "generated_cpp_vec_kernel_count": 0,
+        "generated_kernel_count": 1,
+        "ir_nodes_pre_fusion": 1,
+        "num_bytes_accessed": 0,
+        "num_comprehensive_padding": 0,
+        "num_loop_reordering": 0
+      },
+      "seed": 0
+    },
+    {
+      "case": "no_break_depth4",
+      "dynamo_stats": {
+        "calls_captured": 32,
+        "unique_graphs": 1
+      },
+      "enabled": 0,
+      "graph_break_event_sum": 0,
+      "graph_break_histogram_nonempty": false,
+      "graph_break_reason_counts": {},
+      "inductor_metrics": {
+        "available": true,
+        "cpp_to_dtype_count": 0,
+        "generated_cpp_vec_kernel_count": 0,
+        "generated_kernel_count": 1,
+        "ir_nodes_pre_fusion": 1,
+        "num_bytes_accessed": 0,
+        "num_comprehensive_padding": 0,
+        "num_loop_reordering": 0
+      },
+      "seed": 1
+    },
+    {
+      "case": "no_break_depth4",
+      "dynamo_stats": {
+        "calls_captured": 32,
+        "unique_graphs": 1
+      },
+      "enabled": 0,
+      "graph_break_event_sum": 0,
+      "graph_break_histogram_nonempty": false,
+      "graph_break_reason_counts": {},
+      "inductor_metrics": {
+        "available": true,
+        "cpp_to_dtype_count": 0,
+        "generated_cpp_vec_kernel_count": 0,
+        "generated_kernel_count": 1,
+        "ir_nodes_pre_fusion": 1,
+        "num_bytes_accessed": 0,
+        "num_comprehensive_padding": 0,
+        "num_loop_reordering": 0
+      },
+      "seed": 2
+    },
+    {
+      "case": "no_break_depth4",
+      "dynamo_stats": {
+        "calls_captured": 32,
+        "unique_graphs": 1
+      },
+      "enabled": 0,
+      "graph_break_event_sum": 0,
+      "graph_break_histogram_nonempty": false,
+      "graph_break_reason_counts": {},
+      "inductor_metrics": {
+        "available": true,
+        "cpp_to_dtype_count": 0,
+        "generated_cpp_vec_kernel_count": 0,
+        "generated_kernel_count": 1,
+        "ir_nodes_pre_fusion": 1,
+        "num_bytes_accessed": 0,
+        "num_comprehensive_padding": 0,
+        "num_loop_reordering": 0
+      },
+      "seed": 3
+    },
+    {
+      "case": "no_break_depth4",
+      "dynamo_stats": {
+        "calls_captured": 32,
+        "unique_graphs": 1
+      },
+      "enabled": 1,
+      "graph_break_event_sum": 0,
+      "graph_break_histogram_nonempty": false,
+      "graph_break_reason_counts": {},
+      "inductor_metrics": {
+        "available": true,
+        "cpp_to_dtype_count": 0,
+        "generated_cpp_vec_kernel_count": 0,
+        "generated_kernel_count": 1,
+        "ir_nodes_pre_fusion": 1,
+        "num_bytes_accessed": 0,
+        "num_comprehensive_padding": 0,
+        "num_loop_reordering": 0
+      },
+      "seed": 0
+    },
+    {
+      "case": "no_break_depth4",
+      "dynamo_stats": {
+        "calls_captured": 32,
+        "unique_graphs": 1
+      },
+      "enabled": 1,
+      "graph_break_event_sum": 0,
+      "graph_break_histogram_nonempty": false,
+      "graph_break_reason_counts": {},
+      "inductor_metrics": {
+        "available": true,
+        "cpp_to_dtype_count": 0,
+        "generated_cpp_vec_kernel_count": 0,
+        "generated_kernel_count": 1,
+        "ir_nodes_pre_fusion": 1,
+        "num_bytes_accessed": 0,
+        "num_comprehensive_padding": 0,
+        "num_loop_reordering": 0
+      },
+      "seed": 1
+    },
+    {
+      "case": "no_break_depth4",
+      "dynamo_stats": {
+        "calls_captured": 32,
+        "unique_graphs": 1
+      },
+      "enabled": 1,
+      "graph_break_event_sum": 0,
+      "graph_break_histogram_nonempty": false,
+      "graph_break_reason_counts": {},
+      "inductor_metrics": {
+        "available": true,
+        "cpp_to_dtype_count": 0,
+        "generated_cpp_vec_kernel_count": 0,
+        "generated_kernel_count": 1,
+        "ir_nodes_pre_fusion": 1,
+        "num_bytes_accessed": 0,
+        "num_comprehensive_padding": 0,
+        "num_loop_reordering": 0
+      },
+      "seed": 2
+    },
+    {
+      "case": "no_break_depth4",
+      "dynamo_stats": {
+        "calls_captured": 32,
+        "unique_graphs": 1
+      },
+      "enabled": 1,
+      "graph_break_event_sum": 0,
+      "graph_break_histogram_nonempty": false,
+      "graph_break_reason_counts": {},
+      "inductor_metrics": {
+        "available": true,
+        "cpp_to_dtype_count": 0,
+        "generated_cpp_vec_kernel_count": 0,
+        "generated_kernel_count": 1,
+        "ir_nodes_pre_fusion": 1,
+        "num_bytes_accessed": 0,
+        "num_comprehensive_padding": 0,
+        "num_loop_reordering": 0
+      },
+      "seed": 3
+    }
+  ],
+  "decision": {
+    "capture_qualification_pass": true,
+    "control_rule": "no_break_depth4 steady median baseline/candidate ratio must be within [0.95, 1.05] for every seed on both routes; startup also requires its cold first-10 ratio within [0.95, 1.05] for every seed",
+    "control_validity_pass": true,
+    "cuda_graph_claim_permitted": true,
+    "failure_semantics": "INCONCLUSIVE retains the full raw matrix; the measurement gate, control-validity gate, capture qualification, or more than one did not pass, so no qualified optimization-win claim is supported",
+    "measurement_gate_pass": true,
+    "measurement_win_kind": "steady_invocation",
+    "primary_case": "nested_break_depth8",
+    "qualified_startup_win": false,
+    "qualified_steady_win": true,
+    "startup_control_validity_pass": false,
+    "startup_rule": "observed minimum of four paired-seed cold-first-10 speedup ratios >= 1.10; candidate steady invocation p95 no more than 3% above baseline for every seed",
+    "steady_control_validity_pass": true,
+    "steady_rule": "observed minimum of four paired-seed median speedup ratios >= 1.10; candidate invocation p95 <= baseline for every seed",
+    "verdict": "PASS",
+    "verdict_scope": "predeclared performance thresholds, no-break control validity, and two-arm CUDA Graph capture qualification",
+    "win_kind": "steady_invocation"
+  },
+  "generated_at": "2026-10-22T10:54:36.994294+00:00",
+  "metric_definition": {
+    "p95": "type-7 percentile over 100 synchronized host-timed invocations",
+    "paired_seed_summary": {
+      "acceptance_statistic": "observed minimum paired-seed ratio",
+      "confidence_interval": null,
+      "coverage_claim": null,
+      "descriptive_statistic": "geometric mean of four seed ratios",
+      "paired_unit": "seed",
+      "seeds": [
+        0,
+        1,
+        2,
+        3
+      ]
+    },
+    "speedup_ratio": "enabled=0 latency divided by enabled=1 latency"
+  },
+  "predeclared_primary_case": "nested_break_depth8",
+  "profile_evidence": [
+    {
+      "case": "nested_break_depth8",
+      "enabled": 0,
+      "profile": {
+        "asserted_cuda_graph_capture_count": false,
+        "compiler_counter_audit": {
+          "after_profile": {
+            "aot_autograd.ok": 16,
+            "aot_autograd.total": 16,
+            "frames.ok": 17,
+            "frames.total": 17,
+            "graph_break.Call to `torch._dynamo.graph_break()`\n  Explanation: User-inserted graph break. Message: None\n  Hint: Remove the `torch._dynamo.graph_break()` call.\n\n  Developer debug context: Called `torch._dynamo.graph_break()` with args `[]`, kwargs `{}`\n\n For more details about this graph break, please visit: https://meta-pytorch.github.io/compile-graph-break-site/gb/gb0025.html": 9,
+            "inductor.async_compile_cache_miss": 16,
+            "inductor.benchmarking.InductorBenchmarker.benchmark": 6,
+            "inductor.benchmarking.InductorBenchmarker.benchmark_gpu": 6,
+            "inductor.cudagraph_recorded_non_static_inputs": 16,
+            "resumes.torch_dynamo_resume_in_ngb_nested_break_depth8_frame_0_at_90": 1,
+            "resumes.torch_dynamo_resume_in_ngb_nested_break_depth8_frame_1_at_78": 1,
+            "resumes.torch_dynamo_resume_in_ngb_nested_break_depth8_frame_2_at_66": 1,
+            "resumes.torch_dynamo_resume_in_ngb_nested_break_depth8_frame_3_at_54": 1,
+            "resumes.torch_dynamo_resume_in_ngb_nested_break_depth8_frame_4_at_42": 1,
+            "resumes.torch_dynamo_resume_in_ngb_nested_break_depth8_frame_5_at_30": 1,
+            "resumes.torch_dynamo_resume_in_ngb_nested_break_depth8_frame_6_at_18": 1,
+            "resumes.torch_dynamo_resume_in_ngb_nested_break_depth8_frame_7_at_6": 1,
+            "stats.calls_captured": 64,
+            "stats.unique_graphs": 16
+          },
+          "before_profile": {
+            "aot_autograd.ok": 16,
+            "aot_autograd.total": 16,
+            "frames.ok": 17,
+            "frames.total": 17,
+            "graph_break.Call to `torch._dynamo.graph_break()`\n  Explanation: User-inserted graph break. Message: None\n  Hint: Remove the `torch._dynamo.graph_break()` call.\n\n  Developer debug context: Called `torch._dynamo.graph_break()` with args `[]`, kwargs `{}`\n\n For more details about this graph break, please visit: https://meta-pytorch.github.io/compile-graph-break-site/gb/gb0025.html": 9,
+            "inductor.async_compile_cache_miss": 16,
+            "inductor.benchmarking.InductorBenchmarker.benchmark": 6,
+            "inductor.benchmarking.InductorBenchmarker.benchmark_gpu": 6,
+            "inductor.cudagraph_recorded_non_static_inputs": 16,
+            "resumes.torch_dynamo_resume_in_ngb_nested_break_depth8_frame_0_at_90": 1,
+            "resumes.torch_dynamo_resume_in_ngb_nested_break_depth8_frame_1_at_78": 1,
+            "resumes.torch_dynamo_resume_in_ngb_nested_break_depth8_frame_2_at_66": 1,
+            "resumes.torch_dynamo_resume_in_ngb_nested_break_depth8_frame_3_at_54": 1,
+            "resumes.torch_dynamo_resume_in_ngb_nested_break_depth8_frame_4_at_42": 1,
+            "resumes.torch_dynamo_resume_in_ngb_nested_break_depth8_frame_5_at_30": 1,
+            "resumes.torch_dynamo_resume_in_ngb_nested_break_depth8_frame_6_at_18": 1,
+            "resumes.torch_dynamo_resume_in_ngb_nested_break_depth8_frame_7_at_6": 1,
+            "stats.calls_captured": 64,
+            "stats.unique_graphs": 16
+          },
+          "complete": true,
+          "delta": {},
+          "requested": true,
+          "role": "pre/post profile audit for recompilation; counter stability does not prove CUDA Graph capture or replay",
+          "stable": true
+        },
+        "cpu_call_durations_ns": [
+          2114483,
+          647611,
+          584902,
+          594092,
+          622022
+        ],
+        "cpu_call_evidence_complete": true,
+        "cuda_event_elapsed_ms": [
+          0.9875199794769287,
+          0.6153600215911865,
+          0.565343976020813,
+          0.5756800174713135,
+          0.6017600297927856
+        ],
+        "cuda_event_evidence_complete": true,
+        "cuda_graph_launch_event_count": 80,
+        "cuda_graph_launch_event_names": [
+          "cudaGraphLaunch"
+        ],
+        "cuda_kernel_event_count": 160,
+        "cuda_kernel_event_names": [
+          "triton_poi_fused_add_cos_mul_sin_0",
+          "void at::native::(anonymous namespace)::multi_tensor_apply_kernel<at::native::(anonymous namespace)::TensorListMetadata<2>, at::native::(anonymous namespace)::UnaryOpFunctor<float, 2, 1, 1>, at::native::Copy<float, float> >(at::native::(anonymous namespace)::TensorListMetadata<2>, at::native::(anonymous namespace)::UnaryOpFunctor<float, 2, 1, 1>, at::native::Copy<float, float>)"
+        ],
+        "cuda_profiler_activity_supported": true,
+        "cuda_synchronize_completed": true,
+        "cudagraph_step_marker_used": false,
+        "event_evidence_role": "CPU and CUDA-event timings corroborate completed stream work only; they do not prove CUDA Graph capture or replay",
+        "evidence_complete": true,
+        "invocation_context": {
+          "grad_enabled_inside_capture": false,
+          "grad_mode": "disabled via torch.no_grad",
+          "matches_timed_workload": true
+        },
+        "invocation_count_completed": 5,
+        "invocation_count_requested": 5,
+        "invocation_evidence_complete": true,
+        "invocation_policy": "same compiled callable and output-release policy as measured calls; profiler wraps untimed calls only",
+        "launch_event_policy": "named cudaGraphLaunch event in cuda_runtime or cuda_driver category; CPU/user annotations never count",
+        "output_lifetime": "released before each subsequent invocation",
+        "requested": true,
+        "required_scope": "seed 0 nested_break_depth8 only",
+        "status": "captured",
+        "trace_bytes": 422226,
+        "trace_event_count": 1326,
+        "trace_markers_complete": true,
+        "trace_path": "<result-root>/nested_break_depth8-seed0-flag0/profile.chrome.json",
+        "trace_sha256": "f178bdaca37b059b3f33356542ae8d20c31d511b737d853fef867fa52bef5290"
+      },
+      "seed": 0
+    },
+    {
+      "case": "nested_break_depth8",
+      "enabled": 1,
+      "profile": {
+        "asserted_cuda_graph_capture_count": false,
+        "compiler_counter_audit": {
+          "after_profile": {
+            "aot_autograd.ok": 2,
+            "aot_autograd.total": 2,
+            "frames.ok": 2,
+            "frames.total": 2,
+            "graph_break.Call to `torch._dynamo.graph_break()`\n  Explanation: User-inserted graph break. Message: None\n  Hint: Remove the `torch._dynamo.graph_break()` call.\n\n  Developer debug context: Called `torch._dynamo.graph_break()` with args `[]`, kwargs `{}`\n\n For more details about this graph break, please visit: https://meta-pytorch.github.io/compile-graph-break-site/gb/gb0025.html": 1,
+            "inductor.async_compile_cache_miss": 2,
+            "inductor.benchmarking.InductorBenchmarker.benchmark": 4,
+            "inductor.benchmarking.InductorBenchmarker.benchmark_gpu": 4,
+            "inductor.cudagraph_recorded_non_static_inputs": 2,
+            "resumes.torch_dynamo_resume_in_ngb_nested_break_depth8_frame_0_at_90": 1,
+            "resumes.torch_dynamo_resume_in_ngb_nested_break_depth8_frame_1_at_78": 1,
+            "resumes.torch_dynamo_resume_in_ngb_nested_break_depth8_frame_2_at_66": 1,
+            "resumes.torch_dynamo_resume_in_ngb_nested_break_depth8_frame_3_at_54": 1,
+            "resumes.torch_dynamo_resume_in_ngb_nested_break_depth8_frame_4_at_42": 1,
+            "resumes.torch_dynamo_resume_in_ngb_nested_break_depth8_frame_5_at_30": 1,
+            "resumes.torch_dynamo_resume_in_ngb_nested_break_depth8_frame_6_at_18": 1,
+            "resumes.torch_dynamo_resume_in_ngb_nested_break_depth8_frame_7_at_6": 1,
+            "stats.calls_captured": 64,
+            "stats.unique_graphs": 2
+          },
+          "before_profile": {
+            "aot_autograd.ok": 2,
+            "aot_autograd.total": 2,
+            "frames.ok": 2,
+            "frames.total": 2,
+            "graph_break.Call to `torch._dynamo.graph_break()`\n  Explanation: User-inserted graph break. Message: None\n  Hint: Remove the `torch._dynamo.graph_break()` call.\n\n  Developer debug context: Called `torch._dynamo.graph_break()` with args `[]`, kwargs `{}`\n\n For more details about this graph break, please visit: https://meta-pytorch.github.io/compile-graph-break-site/gb/gb0025.html": 1,
+            "inductor.async_compile_cache_miss": 2,
+            "inductor.benchmarking.InductorBenchmarker.benchmark": 4,
+            "inductor.benchmarking.InductorBenchmarker.benchmark_gpu": 4,
+            "inductor.cudagraph_recorded_non_static_inputs": 2,
+            "resumes.torch_dynamo_resume_in_ngb_nested_break_depth8_frame_0_at_90": 1,
+            "resumes.torch_dynamo_resume_in_ngb_nested_break_depth8_frame_1_at_78": 1,
+            "resumes.torch_dynamo_resume_in_ngb_nested_break_depth8_frame_2_at_66": 1,
+            "resumes.torch_dynamo_resume_in_ngb_nested_break_depth8_frame_3_at_54": 1,
+            "resumes.torch_dynamo_resume_in_ngb_nested_break_depth8_frame_4_at_42": 1,
+            "resumes.torch_dynamo_resume_in_ngb_nested_break_depth8_frame_5_at_30": 1,
+            "resumes.torch_dynamo_resume_in_ngb_nested_break_depth8_frame_6_at_18": 1,
+            "resumes.torch_dynamo_resume_in_ngb_nested_break_depth8_frame_7_at_6": 1,
+            "stats.calls_captured": 64,
+            "stats.unique_graphs": 2
+          },
+          "complete": true,
+          "delta": {},
+          "requested": true,
+          "role": "pre/post profile audit for recompilation; counter stability does not prove CUDA Graph capture or replay",
+          "stable": true
+        },
+        "cpu_call_durations_ns": [
+          1463532,
+          169007,
+          129208,
+          115679,
+          118458
+        ],
+        "cpu_call_evidence_complete": true,
+        "cuda_event_elapsed_ms": [
+          0.2853119969367981,
+          0.1390720009803772,
+          0.12137600034475327,
+          0.11273600161075592,
+          0.11372800171375275
+        ],
+        "cuda_event_evidence_complete": true,
+        "cuda_graph_launch_event_count": 10,
+        "cuda_graph_launch_event_names": [
+          "cudaGraphLaunch"
+        ],
+        "cuda_kernel_event_count": 20,
+        "cuda_kernel_event_names": [
+          "triton_poi_fused_add_cos_mul_sin_0",
+          "void at::native::(anonymous namespace)::multi_tensor_apply_kernel<at::native::(anonymous namespace)::TensorListMetadata<2>, at::native::(anonymous namespace)::UnaryOpFunctor<float, 2, 1, 1>, at::native::Copy<float, float> >(at::native::(anonymous namespace)::TensorListMetadata<2>, at::native::(anonymous namespace)::UnaryOpFunctor<float, 2, 1, 1>, at::native::Copy<float, float>)"
+        ],
+        "cuda_profiler_activity_supported": true,
+        "cuda_synchronize_completed": true,
+        "cudagraph_step_marker_used": false,
+        "event_evidence_role": "CPU and CUDA-event timings corroborate completed stream work only; they do not prove CUDA Graph capture or replay",
+        "evidence_complete": true,
+        "invocation_context": {
+          "grad_enabled_inside_capture": false,
+          "grad_mode": "disabled via torch.no_grad",
+          "matches_timed_workload": true
+        },
+        "invocation_count_completed": 5,
+        "invocation_count_requested": 5,
+        "invocation_evidence_complete": true,
+        "invocation_policy": "same compiled callable and output-release policy as measured calls; profiler wraps untimed calls only",
+        "launch_event_policy": "named cudaGraphLaunch event in cuda_runtime or cuda_driver category; CPU/user annotations never count",
+        "output_lifetime": "released before each subsequent invocation",
+        "requested": true,
+        "required_scope": "seed 0 nested_break_depth8 only",
+        "status": "captured",
+        "trace_bytes": 71482,
+        "trace_event_count": 266,
+        "trace_markers_complete": true,
+        "trace_path": "<result-root>/nested_break_depth8-seed0-flag1/profile.chrome.json",
+        "trace_sha256": "9457b012d1c3970f46b1d0fe025b6ac63bfff45d52fb85fee5e01c4bf4f1bb2f"
+      },
+      "seed": 0
+    }
+  ],
+  "retention": {
+    "raw_result_paths": [
+      "nested_break_depth4-seed0-flag0/result.json",
+      "nested_break_depth4-seed0-flag1/result.json",
+      "nested_break_depth4-seed1-flag0/result.json",
+      "nested_break_depth4-seed1-flag1/result.json",
+      "nested_break_depth4-seed2-flag0/result.json",
+      "nested_break_depth4-seed2-flag1/result.json",
+      "nested_break_depth4-seed3-flag0/result.json",
+      "nested_break_depth4-seed3-flag1/result.json",
+      "nested_break_depth8-seed0-flag0/result.json",
+      "nested_break_depth8-seed0-flag1/result.json",
+      "nested_break_depth8-seed1-flag0/result.json",
+      "nested_break_depth8-seed1-flag1/result.json",
+      "nested_break_depth8-seed2-flag0/result.json",
+      "nested_break_depth8-seed2-flag1/result.json",
+      "nested_break_depth8-seed3-flag0/result.json",
+      "nested_break_depth8-seed3-flag1/result.json",
+      "no_break_depth4-seed0-flag0/result.json",
+      "no_break_depth4-seed0-flag1/result.json",
+      "no_break_depth4-seed1-flag0/result.json",
+      "no_break_depth4-seed1-flag1/result.json",
+      "no_break_depth4-seed2-flag0/result.json",
+      "no_break_depth4-seed2-flag1/result.json",
+      "no_break_depth4-seed3-flag0/result.json",
+      "no_break_depth4-seed3-flag1/result.json"
+    ],
+    "raw_results_retained": true
+  },
+  "schema": "nested-graph-breaks-b200-analysis/v1",
+  "scope": "controlled compiler microbenchmark; no serving, model-throughput, or model-quality claim",
+  "validation": {
+    "all_correctness_passed": true,
+    "expected_matrix": {
+      "arms": [
+        0,
+        1
+      ],
+      "cases": [
+        "no_break_depth4",
+        "nested_break_depth4",
+        "nested_break_depth8"
+      ],
+      "seeds": [
+        0,
+        1,
+        2,
+        3
+      ]
+    },
+    "fresh_process_cache_paths_unique": true,
+    "graph_break_mechanism_validated": true,
+    "records": 24,
+    "status": "PASS"
+  }
+}
