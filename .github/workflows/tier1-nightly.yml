@@ -104,7 +104,31 @@ jobs:
           cache: pip
           cache-dependency-path: |
             code/requirements_latest.txt
-            code/vllm_no_deps.pin
+            code/requirements_torch2141_linux_x86_64.lock
+            code/vllm_source_build.json
+            code/native_torch_extensions.json
+            code/torch_dlpack_source_build.json
+            code/scripts/build_torch_dlpack_wheel.py
+            code/vendor/python-wheels/*.whl
+
+      - name: Create isolated Python environment
+        run: |
+          TIER1_VENV="${RUNNER_TEMP}/tier1-python-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          if [[ -e "${TIER1_VENV}" ]]; then
+            echo "Tier-1 virtual environment path already exists: ${TIER1_VENV}" >&2
+            exit 1
+          fi
+          python -m venv "${TIER1_VENV}"
+          echo "${TIER1_VENV}/bin" >> "${GITHUB_PATH}"
+          echo "VIRTUAL_ENV=${TIER1_VENV}" >> "${GITHUB_ENV}"
+
+      - name: Select pinned Rust toolchain
+        run: |
+          command -v rustup
+          rustup toolchain install 1.95.0 --profile minimal
+          echo "RUSTUP_TOOLCHAIN=1.95.0" >> "${GITHUB_ENV}"
+          RUSTUP_TOOLCHAIN=1.95.0 rustc --version
+          RUSTUP_TOOLCHAIN=1.95.0 cargo --version
 
       - name: Restore latest Tier-1 history
         env:
@@ -130,16 +154,155 @@ jobs:
 
       - name: Install Python dependencies
         run: |
-          python -m pip install --upgrade pip
           python -m pip install \
             --extra-index-url https://download.pytorch.org/whl/cu130 \
-            -r requirements_latest.txt
-          vllm_spec="$(grep -E '^vllm==' vllm_no_deps.pin)"
-          test -n "${vllm_spec}"
-          python -m pip install \
+            --find-links vendor/python-wheels \
+            --require-hashes \
             --no-deps \
-            --index-url https://wheels.vllm.ai/0.16.0/cu130 \
-            "${vllm_spec}"
+            -r requirements_torch2141_linux_x86_64.lock
+          python -m pip check
+
+      - name: Validate native source-build isolation
+        run: |
+          command -v unshare
+          unshare --net -- true
+          CUDA_NVCC="$(readlink -f "$(command -v nvcc)")"
+          CUDA_TOOLKIT_ROOT="$(dirname "$(dirname "${CUDA_NVCC}")")"
+          test -x "${CUDA_TOOLKIT_ROOT}/bin/nvcc"
+          test "$(readlink -f "${CUDA_TOOLKIT_ROOT}/bin/nvcc")" = "${CUDA_NVCC}"
+          "${CUDA_NVCC}" --version | grep -F "release 13.0"
+          echo "CUDA_HOME=${CUDA_TOOLKIT_ROOT}" >> "${GITHUB_ENV}"
+          echo "CUDA_PATH=${CUDA_TOOLKIT_ROOT}" >> "${GITHUB_ENV}"
+          echo "TORCH_CUDA_HOME=${CUDA_TOOLKIT_ROOT}" >> "${GITHUB_ENV}"
+          echo "CUDACXX=${CUDA_NVCC}" >> "${GITHUB_ENV}"
+          echo "CMAKE_CUDA_COMPILER=${CUDA_NVCC}" >> "${GITHUB_ENV}"
+
+      - name: Build and install pinned Transformer Engine Torch binding
+        env:
+          CUDA_VISIBLE_DEVICES: ""
+          TORCH_DEVICE_BACKEND_AUTOLOAD: "0"
+          NATIVE_EXTENSION_BUILD_ROOT: ${{ runner.temp }}/te-torch2141-${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          python scripts/build_torch_extensions.py \
+            --package transformer-engine-torch \
+            --output-dir "${NATIVE_EXTENSION_BUILD_ROOT}" \
+            --cuda-arch-list 10.0 \
+            --max-jobs 8 \
+            --nvcc-threads 2
+          TE_RECEIPT="${NATIVE_EXTENSION_BUILD_ROOT}/native-torch-extensions.manifest.json"
+          TE_WHEEL="$(python -c 'import json, sys; print(json.load(open(sys.argv[1], encoding="utf-8"))["packages"]["transformer-engine-torch"]["wheel"]["path"])' "${TE_RECEIPT}")"
+          test -f "${TE_WHEEL}"
+          python - "${TE_RECEIPT}" "${TE_WHEEL}" <<'PY'
+          import hashlib
+          import json
+          from pathlib import Path
+          import sys
+
+          receipt = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          wheel_path = Path(sys.argv[2]).resolve()
+          runtime = receipt["runtime"]
+          isolation = runtime["network_isolation"]
+          if isolation["mechanism"] != "linux-unshare-network-namespace":
+              raise SystemExit(f"Unexpected native-build isolation: {isolation}")
+          if isolation["preflight"] != "passed":
+              raise SystemExit(f"Native-build isolation preflight failed: {isolation}")
+
+          package = receipt["packages"]["transformer-engine-torch"]
+          build = package["build"]
+          if build["network_isolation"] != "linux-unshare-network-namespace":
+              raise SystemExit(f"Native build was not network-isolated: {build}")
+          toolkit = runtime["cuda_toolkit"]
+          expected_environment = {
+              "CMAKE_CUDA_COMPILER": toolkit["nvcc"],
+              "CUDACXX": toolkit["nvcc"],
+              "CUDA_HOME": toolkit["root"],
+              "CUDA_PATH": toolkit["root"],
+              "PIP_NO_INDEX": "1",
+              "TORCH_CUDA_HOME": toolkit["root"],
+          }
+          actual_environment = {
+              key: build["environment"].get(key) for key in expected_environment
+          }
+          if actual_environment != expected_environment:
+              raise SystemExit(
+                  "Native build did not bind the validated CUDA root and offline mode: "
+                  f"expected {expected_environment}, got {actual_environment}"
+              )
+          forbidden_search_paths = {
+              "CPATH",
+              "CPLUS_INCLUDE_PATH",
+              "C_INCLUDE_PATH",
+              "LIBRARY_PATH",
+              "LD_LIBRARY_PATH",
+              "PYTHONPATH",
+          }
+          leaked = sorted(forbidden_search_paths & build["environment"].keys())
+          if leaked:
+              raise SystemExit(f"Native build retained inherited search paths: {leaked}")
+          recorded_wheel = Path(package["wheel"]["path"]).resolve()
+          if recorded_wheel != wheel_path:
+              raise SystemExit(f"Native wheel path mismatch: {recorded_wheel} != {wheel_path}")
+          with wheel_path.open("rb") as stream:
+              actual_sha256 = hashlib.file_digest(stream, "sha256").hexdigest()
+          if actual_sha256 != package["wheel"]["sha256"]:
+              raise SystemExit("Native wheel SHA-256 does not match its build receipt")
+          PY
+          python -m pip install --no-deps "${TE_WHEEL}"
+          python -m pip check
+          python - <<'PY'
+          from importlib import metadata
+
+          assert metadata.version("transformer-engine") == "2.20.2"
+          assert metadata.version("transformer-engine-cu13") == "2.20.2"
+          assert metadata.version("transformer-engine-torch") == "2.20.2"
+          PY
+
+      - name: Build and install pinned vLLM source
+        env:
+          CUDA_VISIBLE_DEVICES: ""
+          TORCH_DEVICE_BACKEND_AUTOLOAD: "0"
+          VLLM_BUILD_ROOT: ${{ runner.temp }}/vllm-torch2141-${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          python scripts/build_vllm_for_torch.py \
+            --output-dir "${VLLM_BUILD_ROOT}" \
+            --cuda-arch-list 10.0 \
+            --max-jobs 4 \
+            --nvcc-threads 2
+          VLLM_WHEEL="$(python -c 'import json, sys; print(json.load(open(sys.argv[1], encoding="utf-8"))["wheel"]["path"])' "${VLLM_BUILD_ROOT}/vllm-source-wheel.manifest.json")"
+          test -f "${VLLM_WHEEL}"
+          python -m pip install --no-deps "${VLLM_WHEEL}"
+          python -m pip check
+          python - <<'PY'
+          import os
+          from importlib import metadata
+          from pathlib import Path
+
+          import torch
+          import triton
+          import vllm
+          import vllm._C_stable_libtorch
+          import vllm._moe_C_stable_libtorch
+
+          expected = {
+              "flashinfer-python": "0.7.2",
+              "torch": "2.14.1+cu130",
+              "torchao": "0.18.0+cu130",
+              "torchaudio": "2.11.0+cu130",
+              "torchtitan": "0.3.0",
+              "torchvision": "0.29.1+cu130",
+              "triton": "3.8.0",
+              "vllm": "0.33.0.dev0+cu130.torch2141",
+          }
+          actual = {name: metadata.version(name) for name in expected}
+          if actual != expected:
+              raise SystemExit(f"Tier-1 dependency mismatch: expected {expected}, got {actual}")
+          if torch.version.cuda != "13.0":
+              raise SystemExit(f"Tier-1 requires torch CUDA 13.0, got {torch.version.cuda!r}")
+          rust_frontend = Path(vllm.__file__).resolve().parent / "vllm-rs"
+          if not rust_frontend.is_file() or not os.access(rust_frontend, os.X_OK):
+              raise SystemExit(f"Tier-1 vLLM wheel lacks executable {rust_frontend}")
+          print(f"torch={torch.__version__} triton={triton.__version__} vllm={vllm.__version__}")
+          PY
 
       - name: Materialize and verify the validated CUTLASS source
         run: |

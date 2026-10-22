@@ -35,9 +35,11 @@ def test_actual_fp8_encode_roundtrip(values):
     torch.testing.assert_close(out.float() * scale, value, rtol=0, atol=0)
 
 
-def test_original_unscaled_cast_produces_nan_but_scaled_encoding_is_finite():
+def test_original_unscaled_cast_saturates_but_scaled_encoding_preserves_range():
     hidden = torch.tensor([500., 2000., -2000., 32000.])
-    assert torch.isnan(hidden.to(torch.float8_e4m3fn).float()).all()
+    unscaled = hidden.to(torch.float8_e4m3fn).float()
+    torch.testing.assert_close(unscaled, hidden.clamp(-448.0, 448.0), rtol=0, atol=0)
+    assert torch.isfinite(unscaled).all()
     encoded = torch.empty_like(hidden, dtype=torch.float8_e4m3fn)
     scale = quantize_e4m3(hidden, encoded)
     assert torch.isfinite(encoded.float()).all()

@@ -1383,7 +1383,8 @@ def test_run_tier1_cli_does_not_advertise_post_benchmark_promotion_options(
     result = CliRunner().invoke(app, args)
 
     assert result.exit_code != 0
-    assert "No such option" in result.stdout
+    assert "No such option" in result.stderr
+    assert option in result.stderr
 
 
 def test_run_tier1_cli_exits_nonzero_when_suite_summary_reports_failures(

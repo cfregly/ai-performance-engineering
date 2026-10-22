@@ -1,7 +1,7 @@
+import os
 import shutil
 import subprocess
 import sys
-import os
 from types import SimpleNamespace
 
 import pytest
@@ -142,14 +142,16 @@ def test_module_backed_torchrun_demo_launches_via_module(monkeypatch):
     )
 
     assert exit_code == 0
-    assert recorded["cmd"][:7] == [
+    assert recorded["cmd"][:9] == [
         sys.executable,
         "-m",
         "torch.distributed.run",
         "--nproc_per_node",
         "2",
+        "--local_addr",
+        "127.0.0.1",
         "-m",
         "ch15.tensor_parallel_demo",
     ]
-    assert recorded["cmd"][7:] == ["--batch", "1"]
+    assert recorded["cmd"][9:] == ["--batch", "1"]
     assert str(demos_commands.REPO_ROOT) in recorded["env"]["PYTHONPATH"].split(os.pathsep)

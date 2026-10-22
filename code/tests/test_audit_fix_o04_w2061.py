@@ -592,7 +592,14 @@ def test_bf16_model_reads_the_scaled_cache_in_its_dtype(scaled_storage: None) ->
 
     for cached, reference in _cached_and_recomputed_logits(model, cache, prompt, decode_steps):
         assert cached.dtype == torch.bfloat16
-        torch.testing.assert_close(cached, reference)
+        assert torch.isfinite(cached).all()
+        relative_error = float(
+            (cached.float() - reference.float()).norm() / reference.float().norm()
+        )
+        # The CPU path uses float16 as a lossy stand-in for E4M3 storage. Keep
+        # the cache's documented sub-0.5% logit-error contract explicit rather
+        # than relying on dtype-specific elementwise defaults near zero.
+        assert relative_error < 0.005, relative_error
 
 
 class _NoGeometryModel(nn.Module):

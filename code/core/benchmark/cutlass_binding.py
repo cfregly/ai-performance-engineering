@@ -82,7 +82,7 @@ def _load_cutlass_module(verbose: bool = False):
     except Exception:
         pass
     extra_flags = [
-        "-O3", "--use_fast_math", "-std=c++17",
+        "-O3", "--use_fast_math", "-std=c++20",
         "--expt-relaxed-constexpr", "--expt-extended-lambda",
         f"-gencode=arch=compute_{arch},code=sm_{arch}",
     ]

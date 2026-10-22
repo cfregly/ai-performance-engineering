@@ -24,7 +24,11 @@ from typing import Dict, List, Optional, Sequence, Set, Tuple
 
 import torch
 
-from core.harness.serving_stack import get_serving_stack_pins
+from core.harness.serving_stack import (
+    get_serving_stack_pins,
+    is_vllm_native_extension_abi_error,
+    load_vllm_native_extensions,
+)
 
 try:
     from vllm import EngineArgs, LLMEngine, SamplingParams
@@ -153,26 +157,24 @@ def emit_vllm_profile_output_receipt(
     )
 
 
-def _is_vllm_abi_mismatch_error(exc: BaseException) -> bool:
-    text = str(exc).lower()
-    return (
-        ("undefined symbol" in text and ("vllm/_c.abi3.so" in text or "vllm._c" in text))
-        or "c10_cuda_check_implementation" in text
-    )
-
-
 def _format_vllm_import_error(exc: BaseException) -> str:
-    if _is_vllm_abi_mismatch_error(exc):
+    if is_vllm_native_extension_abi_error(exc):
         return (
             "vLLM ABI mismatch detected while importing compiled extensions. "
             f"Pin and reinstall the benchmark-host stack ({_PINNED_SERVING_STACK}). "
             "Then verify with: "
             "`python -c \"import importlib, importlib.metadata as md, torch, vllm; "
-            "importlib.import_module('vllm._C'); "
+            "importlib.import_module('vllm._C_stable_libtorch'); "
+            "importlib.import_module('vllm._moe_C_stable_libtorch'); "
             "print(torch.__version__, md.version('vllm'), vllm.__version__)\"`.\n"
             f"Original error: {exc}"
         )
-    return f"vLLM import failed: {exc}"
+    return (
+        "vLLM runtime import failed. "
+        f"Pin and reinstall the benchmark-host stack ({_PINNED_SERVING_STACK}) "
+        "and verify both stable-libTorch native extensions.\n"
+        f"Original error: {exc}"
+    )
 
 
 def _distribution_version(dist_name: str) -> Optional[str]:
@@ -221,7 +223,7 @@ def _assert_vllm_runtime_ready() -> None:
     if _IMPORT_ERROR is not None:
         _skip(_format_vllm_import_error(_IMPORT_ERROR))
     try:
-        importlib.import_module("vllm._C")
+        load_vllm_native_extensions()
     except Exception as exc:  # pragma: no cover - optional dep/runtime ABI
         _skip(_format_vllm_import_error(exc))
 
@@ -527,9 +529,9 @@ class _RoutingTelemetry:
 def _build_vllm_engine(engine_cls, model_id: str, device_index: int, *, attention_backend: str | None = None):
     """Build a pinned-vLLM engine on one logical CUDA device.
 
-    vLLM 0.16 removed ``device`` from ``EngineArgs``. Its single-process
-    executor still selects a logical rank from ``VllmConfig.device_config``,
-    so set that current config field before constructing the engine.
+    The pinned vLLM single-process executor derives its local rank from
+    ``VllmConfig.device_config.device``. Set that field before constructing
+    each engine so the two in-process lab replicas use distinct visible GPUs.
     """
     if EngineArgs is None:
         _skip(_format_vllm_import_error(_IMPORT_ERROR or RuntimeError("EngineArgs is unavailable")))
@@ -812,6 +814,7 @@ class _VllmV1Wrapper(_VllmWrapper):
                     engine_core_outputs.outputs,
                     engine_core_timestamp=engine_core_outputs.timestamp,
                     iteration_stats=None,
+                    weight_version=engine_core_outputs.weight_version,
                 )
                 # Maintain abort parity with LLMEngine.step()
                 if processed.reqs_to_abort:

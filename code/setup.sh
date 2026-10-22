@@ -9,8 +9,8 @@
 #   2. Python 3.12
 #   3. CUDA 13.0.2 toolkit + cuBLAS 13.1.0.3 (Update 2) repository
 #   4. The canonical PyTorch/Triton stack pinned in requirements_latest.txt
-#      (torch==2.9.1+cu130, triton==3.5.1) for CUDA 13.0.2. The script reads
-#      these pins from requirements_latest.txt. Its fallback defaults match them.
+#      (torch==2.14.1+cu130, triton==3.8.0) for CUDA 13.0.2. The script requires
+#      these exact pins in requirements_latest.txt and the hash lock.
 #   5. NVIDIA Nsight Systems 2026.3.2 (for timeline profiling)
 #   6. NVIDIA Nsight Compute 2026.2.1 (for kernel metrics), the version that
 #      core/profiling/ncu_torchrun_capture.py accepts
@@ -35,10 +35,9 @@
 # What it does:
 #   - Adds official NVIDIA CUDA 13.0 (Update 2) repository
 #   - Configures APT to prefer official NVIDIA packages
-#   - Fixes Python APT module (python3-apt) compatibility
 #   - Disables problematic command-not-found APT hook
 #   - Removes duplicate deadsnakes repository entries
-#   - Upgrades Python to 3.12 for the pinned PyTorch stack
+#   - Creates a fresh isolated Python 3.12 runtime for the pinned PyTorch stack
 #   - Auto-upgrades NVIDIA driver to 580+ if needed (will prompt reboot)
 #   - Installs CUDA 13.0.2 toolkit and libraries
 #   - Installs pinned Nsight Systems 2026.3.2 and Nsight Compute 2026.2.1 and puts
@@ -46,7 +45,6 @@
 #   - Installs the pinned CMake and ninja wheels and stops if CMake is older
 #     than the newest cmake_minimum_required in first-party CMakeLists.txt files
 #   - Installs pinned PyTorch CUDA 13 wheels (no source build)
-#   - Removes conflicting system packages (python3-optree, etc.)
 #   - Installs nvidia-ml-py (replaces deprecated pynvml)
 #   - Configures NVIDIA kernel modules for profiling
 #   - Fixes hardware info script compatibility
@@ -55,7 +53,8 @@
 # Notes:
 #   - If driver upgrade is needed, script will exit and ask you to reboot
 #   - After reboot, simply re-run: sudo ./setup.sh
-#   - The script is idempotent and safe to re-run
+#   - Every run requires a fresh AISP_VENV_DIR so an earlier runtime cannot
+#     contaminate the hash-locked environment
 #   - Disk cleanup is enabled by default (CLEAN_APT_CACHE/CLEAN_PIP_CACHE/CLEAN_BUILD_ARTIFACTS)
 #   - Minimum free space thresholds: SETUP_MIN_FREE_GB / SETUP_MIN_TE_BUILD_FREE_GB
 #
@@ -128,7 +127,7 @@ if [ "${AISP_SETUP_BOOTSTRAP_ONLY:-0}" = "1" ]; then
 fi
 
 require_supported_host() {
-    local architecture distributor
+    local architecture distributor ID VERSION_ID
     architecture="$(uname -m)"
     if [ "${architecture}" != "x86_64" ]; then
         echo "ERROR: Architecture ${architecture} is not supported. This setup requires Ubuntu 22.04 or 24.04 on x86_64." >&2
@@ -141,8 +140,11 @@ require_supported_host() {
             return 1
         fi
     elif [ -r /etc/os-release ]; then
-        distributor="$(. /etc/os-release && printf '%s' "${ID:-}")"
-        UBUNTU_VERSION="$(. /etc/os-release && printf '%s' "${VERSION_ID:-}")"
+        # The fixed host file is the fallback when lsb_release is unavailable.
+        # shellcheck disable=SC1091
+        . /etc/os-release
+        distributor="${ID:-}"
+        UBUNTU_VERSION="${VERSION_ID:-}"
     else
         echo "ERROR: Cannot identify this host. Expected Ubuntu 22.04 or 24.04 on x86_64." >&2
         return 1
@@ -171,6 +173,19 @@ require_supported_host() {
 }
 
 require_supported_host
+
+# Reject an existing runtime before setup changes the host. A failed or
+# completed run is retained for inspection and never mutated in place.
+AISP_VENV_DIR="${AISP_VENV_DIR:-${PROJECT_ROOT}/.venv-torch2141}"
+if [[ "${AISP_VENV_DIR}" != /* ]]; then
+    echo "ERROR: AISP_VENV_DIR must be an absolute fresh path: ${AISP_VENV_DIR}" >&2
+    exit 1
+fi
+if [ -e "${AISP_VENV_DIR}" ] || [ -L "${AISP_VENV_DIR}" ]; then
+    echo "ERROR: AISP_VENV_DIR must be a fresh path: ${AISP_VENV_DIR}" >&2
+    echo "       Preserve the existing runtime and choose a new AISP_VENV_DIR." >&2
+    exit 1
+fi
 bootstrap_repository_checkout
 
 # =============================================================================
@@ -182,7 +197,7 @@ LOG_COMPRESS="${SETUP_LOG_COMPRESS:-1}"
 SETUP_MIN_FREE_GB="${SETUP_MIN_FREE_GB:-6}"
 SETUP_MIN_TE_BUILD_FREE_GB="${SETUP_MIN_TE_BUILD_FREE_GB:-8}"
 CLEAN_APT_CACHE="${CLEAN_APT_CACHE:-1}"
-CLEAN_PIP_CACHE="${CLEAN_PIP_CACHE:-1}"
+CLEAN_PIP_CACHE="${CLEAN_PIP_CACHE:-0}"
 CLEAN_BUILD_ARTIFACTS="${CLEAN_BUILD_ARTIFACTS:-1}"
 
 rotate_setup_log() {
@@ -224,9 +239,8 @@ reclaim_disk_space_basic() {
         apt-get clean >/dev/null 2>&1 || true
         rm -rf /var/lib/apt/lists/* >/dev/null 2>&1 || true
     fi
-    if [ "${CLEAN_PIP_CACHE}" -eq 1 ]; then
-        python3 -m pip cache purge >/dev/null 2>&1 || true
-        rm -rf /root/.cache/pip >/dev/null 2>&1 || true
+    if [ "${CLEAN_PIP_CACHE}" -eq 1 ] && [ -x "${AISP_VENV_DIR}/bin/python" ]; then
+        "${AISP_VENV_DIR}/bin/python" -m pip cache purge >/dev/null 2>&1 || true
     fi
 }
 
@@ -270,98 +284,32 @@ echo ""
 
 REQUIRED_DRIVER_VERSION="580.126.09"
 PYTHON_TARGET_VERSION="3.12"
-PYTHON_TARGET_MAJOR="${PYTHON_TARGET_VERSION%%.*}"
-PYTHON_TARGET_MINOR="${PYTHON_TARGET_VERSION##*.}"
 PYTHON_TARGET_BIN="python${PYTHON_TARGET_VERSION}"
-PYTHON_ABI_TAG="cp${PYTHON_TARGET_MAJOR}${PYTHON_TARGET_MINOR}"
-PYTHON_DIST_PACKAGES="/usr/local/lib/python${PYTHON_TARGET_VERSION}/dist-packages"
 CUDA_SHORT_VERSION="13.0"
-# cuBLAS is pinned to 13.1.0.3 (Update 2) via cuda-libraries; cuDNN latest in repo
-CUDNN_VERSION="9.16.0.29"
-NCCL_SHORT_VERSION="2.28.7"
+# The CUDA toolkit meta-package is pinned to the Update 2 repository version.
 CUDA_HOME_DIR="/usr/local/cuda-${CUDA_SHORT_VERSION}"
 THIRD_PARTY_DIR="${PROJECT_ROOT}/third_party"
-mkdir -p "${THIRD_PARTY_DIR}"
-FLASH_ATTN_TAG="${FLASH_ATTN_TAG:-v2.8.3}"
-FLASH_ATTN_ARCH="$(uname -m)"
-if [ "${FLASH_ATTN_ARCH}" = "arm64" ]; then
-    FLASH_ATTN_ARCH="aarch64"
+# Optional GPT-OSS dependencies use a separately pinned runtime.
+if [ "${INSTALL_GPT_OSS:-0}" = "1" ]; then
+    echo "ERROR: GPT-OSS requires a separately pinned runtime outside the shared torch 2.14 environment."
+    exit 1
 fi
-FLASH_ATTN_WHEEL_BASENAME="flash_attn-2.8.3-${PYTHON_ABI_TAG}-${PYTHON_ABI_TAG}-linux_${FLASH_ATTN_ARCH}.whl"
-FLASH_ATTN_EXPECTED_VERSION="${FLASH_ATTN_TAG#v}"
-detect_default_sm() {
-    if [ -n "${GPU_COMPUTE_SM_NUM:-}" ]; then
-        echo "${GPU_COMPUTE_SM_NUM}"
-        return
-    fi
-    if command -v nvidia-smi >/dev/null 2>&1; then
-        local cap
-        cap="$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader 2>/dev/null | head -n 1 | tr -d '[:space:]')"
-        if [ -n "${cap}" ]; then
-            local major="${cap%.*}"
-            local minor="${cap#*.}"
-            printf "%s%s\n" "${major}" "${minor}"
-            return
-        fi
-    fi
-    echo "121"
-}
-FLASH_ATTENTION_FORCE_CUDA_SM_VALUE="${FLASH_ATTENTION_FORCE_CUDA_SM_VALUE:-$(detect_default_sm)}"
-VLLM_REPO_URL="${VLLM_REPO_URL:-https://github.com/vllm-project/vllm.git}"
-VLLM_VERSION_TAG="${VLLM_VERSION_TAG:-main}"
-INSTALL_GPT_OSS="${INSTALL_GPT_OSS:-0}"
-VLLM_GIT_REF="${VLLM_GIT_REF:-${VLLM_VERSION_TAG}}"
-VLLM_SRC_DIR="${VLLM_SRC_DIR:-${THIRD_PARTY_DIR}/vllm-src}"
-VLLM_WHEEL_DIR="${THIRD_PARTY_DIR}/wheels"
-VLLM_WHEEL_INFO_PATH="${VLLM_WHEEL_INFO_PATH:-${VLLM_WHEEL_DIR}/vllm-build-info.json}"
-VLLM_WHEEL_ARCH="$(uname -m)"
 VLLM_PIN_FILE="${VLLM_PIN_FILE:-${PROJECT_ROOT}/vllm_no_deps.pin}"
 REQUIREMENTS_FILE="${PROJECT_ROOT}/requirements_latest.txt"
-VLLM_EXTRA_INDEX_URL=""
+VLLM_SOURCE_BUILD_MANIFEST="${PROJECT_ROOT}/vllm_source_build.json"
 VLLM_PIP_SPEC=""
-FLASHINFER_EXPECTED_VERSION="${FLASHINFER_EXPECTED_VERSION:-0.6.3}"
-TORCHTITAN_TOMLI_VERSION="${TORCHTITAN_TOMLI_VERSION:-2.4.0}"
-TORCHTITAN_TYRO_VERSION="${TORCHTITAN_TYRO_VERSION:-1.0.10}"
-TORCHTITAN_RUNTIME_DEPS=(
-    "tomli==${TORCHTITAN_TOMLI_VERSION}"
-    "tyro==${TORCHTITAN_TYRO_VERSION}"
-)
-VLLM_RUNTIME_DEPS=(
-    "cachetools==7.1.7"
-    "prometheus-fastapi-instrumentator==7.1.0"
-    "tiktoken==0.14.0"
-    "mistral-common[image]==1.11.7"
-    "opencv-python-headless==5.0.0.93"
-    "numba==0.61.2"
-    "lark==1.2.2"
-    "setuptools==80.10.2"
-    "cbor2==5.8.0"
-    "msgspec==0.20.0"
-    "gguf==0.18.0"
-    "ijson==3.5.0"
-    "pybase64==1.4.3"
-    "setproctitle==1.3.7"
-    "diskcache==5.6.3"
-    "partial-json-parser==0.2.1.1.post7"
-    "lm-format-enforcer==0.11.3"
-    "outlines_core==0.2.11"
-    "llguidance==1.3.0"
-    "xgrammar==0.1.29"
-    "compressed-tensors==0.13.0"
-    "depyf==0.20.0"
-    "watchfiles==1.1.1"
-    "blake3==1.0.8"
-    "anthropic==0.112.0"
-    "openai==2.44.0"
-    "openai-harmony==0.0.8"
-    "model-hosting-container-standards==0.1.13"
-    "mcp==1.28.0"
-    "grpcio-reflection==1.78.0"
-)
-if [ "${VLLM_WHEEL_ARCH}" = "arm64" ]; then
-    VLLM_WHEEL_ARCH="aarch64"
-fi
-VLLM_WHEEL_PATTERN="${VLLM_WHEEL_PATTERN:-${VLLM_WHEEL_DIR}/vllm-*-${PYTHON_ABI_TAG}-${PYTHON_ABI_TAG}-linux_${VLLM_WHEEL_ARCH}.whl}"
+FLASHINFER_EXPECTED_VERSION=""
+
+requirements_pin() {
+    local package="$1"
+    local version
+    version="$(sed -n -E "s/^${package}==([^[:space:]#]+).*/\1/p" "${REQUIREMENTS_FILE}" | head -n 1)"
+    if [ -z "${version}" ]; then
+        echo "ERROR: ${REQUIREMENTS_FILE} must pin ${package} with an exact == version." >&2
+        return 1
+    fi
+    printf '%s\n' "${version}"
+}
 # =============================================================================
 # DEPENDENCY VERSION PINS (update together, test after changes)
 # Run: python core/scripts/check_upstream_versions.py --check-te-cutlass
@@ -372,31 +320,18 @@ VLLM_WHEEL_PATTERN="${VLLM_WHEEL_PATTERN:-${VLLM_WHEEL_DIR}/vllm-*-${PYTHON_ABI_
 #   - Provides: tmem_allocator_sm100.hpp, mma_sm100_umma.hpp, copy_traits_sm100.hpp
 #   - Uses the release tag with corrected version metadata
 #
-# TransformerEngine v2.9 - Stable release with CUDA 13 wheels
-#   - IMPORTANT: TE v2.9 still bundles CUTLASS 4.2.0
-#   - CUTLASS 4.2.0 LACKS SM100a headers - symlink workaround REQUIRED
-#   - We replace TE's bundled CUTLASS with our 4.5.2 via symlink
-#   - Check: make verify-cutlass
-#
-# When to remove symlink workaround:
-#   - When TE bundles CUTLASS >= 4.5.2 with the validated Blackwell headers
-#   - Run: python core/scripts/check_upstream_versions.py --check-te-cutlass
-#   - Remove the override only after the bundled version passes make verify-cutlass
+# Transformer Engine's exact source archive and build contract live in
+# native_torch_extensions.json. The torch binding is rebuilt for this ABI.
 #
 # MLPerf v6 source trees
 #   - Inference README explicitly recommends the master branch for v6.0 submissions.
 #   - Training README carries a v6.0 section but does not publish a GitHub release tag,
 #     so we track its official branch ref and record the resolved commit at install time.
 #
-TE_REPO_URL="${TE_REPO_URL:-https://github.com/NVIDIA/TransformerEngine.git}"
-# TE v2.9 release (2025-11-11) - stable release with CUDA 13 support
-TE_GIT_COMMIT="${TE_GIT_COMMIT:-v2.9}"
-TE_VERSION="v2.9"
-TE_BUNDLED_CUTLASS_VERSION="4.2.0"  # What TE bundles (needs symlink override)
-TE_SRC_DIR="${TE_SRC_DIR:-${THIRD_PARTY_DIR}/TransformerEngine-src}"
 CUTLASS_REPO_URL="${CUTLASS_REPO_URL:-https://github.com/NVIDIA/cutlass.git}"
-# CUTLASS 4.5.2 release tag
-CUTLASS_REF="${CUTLASS_REF:-v4.5.2}"
+# Immutable commit behind the official CUTLASS 4.5.2 release.
+CUTLASS_REF="${CUTLASS_REF:-db1c288993354c88e551c40c19a8fb93a774a241}"
+CUTLASS_RELEASE_TAG="v4.5.2"
 CUTLASS_TARGET_VERSION="${CUTLASS_TARGET_VERSION:-4.5.2}"
 CUTLASS_SRC_DIR="${CUTLASS_SRC_DIR:-${THIRD_PARTY_DIR}/cutlass}"
 MLPERF_INFERENCE_REPO_URL="${MLPERF_INFERENCE_REPO_URL:-https://github.com/mlcommons/inference.git}"
@@ -406,34 +341,67 @@ MLPERF_TRAINING_REPO_URL="${MLPERF_TRAINING_REPO_URL:-https://github.com/mlcommo
 MLPERF_TRAINING_GIT_REF="${MLPERF_TRAINING_GIT_REF:-master}"
 MLPERF_TRAINING_SRC_DIR="${MLPERF_TRAINING_SRC_DIR:-${THIRD_PARTY_DIR}/mlperf_training}"
 PIP_ROOT_USER_ACTION="ignore"
-SOURCE_BUILD_ALLOWED=0
 GPU_COMPUTE_SM_NUM=""
-VLLM_PREBUILT_INSTALLED=0
-export PROJECT_ROOT REQUIRED_DRIVER_VERSION PYTHON_TARGET_VERSION PYTHON_TARGET_MAJOR PYTHON_TARGET_MINOR PYTHON_TARGET_BIN PYTHON_ABI_TAG PYTHON_DIST_PACKAGES PIP_ROOT_USER_ACTION
-
-PYTORCH_REPO_URL="${PYTORCH_REPO_URL:-https://github.com/pytorch/pytorch.git}"
-PYTORCH_COMMIT="${PYTORCH_COMMIT:-main}"
-PYTORCH_SRC_DIR="${PYTORCH_SRC_DIR:-${THIRD_PARTY_DIR}/pytorch-src}"
-PYTORCH_BUILD_DIR="${PYTORCH_SRC_DIR}"
-PYTORCH_DIST_DIR="${PYTORCH_BUILD_DIR}/dist"
-PYTORCH_WHEEL_DIR="${THIRD_PARTY_DIR}/wheels"
-PYTORCH_WHEEL_PATTERN="${PYTORCH_WHEEL_PATTERN:-torch-*-${PYTHON_ABI_TAG}-${PYTHON_ABI_TAG}-*.whl}"
-mkdir -p "${PYTORCH_WHEEL_DIR}"
-
-TORCH_CUDA_ARCH_LIST_VALUE="10.0;10.3;12.1;12.2+PTX"
-CMAKE_CUDA_ARCH_LIST_VALUE="100;103;121;122"
-TORCH_SM_ARCH_LIST_VALUE="sm_100;sm_103;sm_121;sm_122"
-CUTLASS_NVCC_ARCHS_VALUE_DEFAULT="100;103;121;122"
-CUTLASS_NVCC_ARCHS_VALUE="${CUTLASS_NVCC_ARCHS_VALUE_DEFAULT}"
-# Keep fallback defaults aligned with the requirements' supported stable stack.
-PYTORCH_TORCH_VERSION="2.9.1+cu130"
-PYTORCH_TORCHAUDIO_VERSION="2.9.1+cu130"
-PYTORCH_TORCHVISION_VERSION="0.24.1+cu130"
-# torchao 0.15.0 is the upstream ABI-compatible release for torch 2.9.1.
-PYTORCH_TORCHAO_VERSION="0.15.0+cu130"
-PYTORCH_TRITON_VERSION="3.5.1"
+export PROJECT_ROOT REQUIRED_DRIVER_VERSION PYTHON_TARGET_VERSION PYTHON_TARGET_BIN PIP_ROOT_USER_ACTION
+# These values must be populated from exact requirements_latest.txt pins.
+PYTORCH_TORCH_VERSION=""
+PYTORCH_TORCHAUDIO_VERSION=""
+PYTORCH_TORCHVISION_VERSION=""
+PYTORCH_TORCHAO_VERSION=""
+PYTORCH_TRITON_VERSION=""
 PYTORCH_STABLE_INDEX="https://download.pytorch.org/whl"
 PYTORCH_NIGHTLY_INDEX="https://download.pytorch.org/whl/nightly"
+
+if [ ! -f "${REQUIREMENTS_FILE}" ]; then
+    echo "ERROR: Required pin file is missing: ${REQUIREMENTS_FILE}" >&2
+    exit 1
+fi
+PYTORCH_TORCH_VERSION="$(requirements_pin torch)"
+PYTORCH_TORCHAUDIO_VERSION="$(requirements_pin torchaudio)"
+PYTORCH_TORCHVISION_VERSION="$(requirements_pin torchvision)"
+PYTORCH_TORCHAO_VERSION="$(requirements_pin torchao)"
+PYTORCH_TRITON_VERSION="$(requirements_pin triton)"
+FLASHINFER_EXPECTED_VERSION="$(requirements_pin flashinfer-python)"
+REQ_CMAKE_VERSION="$(requirements_pin cmake)"
+REQ_NINJA_VERSION="$(requirements_pin ninja)"
+PYTORCH_STACK_LOCK="${PROJECT_ROOT}/requirements_torch2141_linux_x86_64.lock"
+if [ ! -f "${PYTORCH_STACK_LOCK}" ]; then
+    echo "ERROR: The PyTorch runtime lock is missing: ${PYTORCH_STACK_LOCK}" >&2
+    exit 1
+fi
+python3 - "${PYTORCH_STACK_LOCK}" \
+    "torch=${PYTORCH_TORCH_VERSION}" \
+    "torchaudio=${PYTORCH_TORCHAUDIO_VERSION}" \
+    "torchvision=${PYTORCH_TORCHVISION_VERSION}" \
+    "torchao=${PYTORCH_TORCHAO_VERSION}" \
+    "triton=${PYTORCH_TRITON_VERSION}" \
+    "flashinfer-python=${FLASHINFER_EXPECTED_VERSION}" \
+    "cmake=${REQ_CMAKE_VERSION}" \
+    "ninja=${REQ_NINJA_VERSION}" <<'PYLOCKPINS'
+from pathlib import Path
+import re
+import sys
+
+
+def canonical(name: str) -> str:
+    return re.sub(r"[-_.]+", "-", name).lower()
+
+
+locked = {}
+for line in Path(sys.argv[1]).read_text(encoding="utf-8").splitlines():
+    match = re.match(r"^([A-Za-z0-9_.-]+)(?:\[[^]]+\])?==([^\s\\]+)", line)
+    if match:
+        locked[canonical(match.group(1))] = match.group(2)
+
+for pair in sys.argv[2:]:
+    name, expected = pair.split("=", 1)
+    actual = locked.get(canonical(name))
+    if actual != expected:
+        raise SystemExit(
+            f"Lock mismatch for {name}: requirements_latest.txt has {expected}, lock has {actual}"
+        )
+print("Core requirements pins match the hash lock")
+PYLOCKPINS
 
 pytorch_package_index() {
     local version="$1"
@@ -450,11 +418,11 @@ pytorch_package_index() {
 
 require_torchao_cuda_wheel_support() {
     local architecture="$1"
-    if [ "${architecture}" = "aarch64" ] && [ "${PYTORCH_TORCHAO_VERSION}" = "0.15.0+cu130" ]; then
+    if [ "${architecture}" = "aarch64" ] && [ "${PYTORCH_TORCHAO_VERSION}" = "0.18.0+cu130" ]; then
         echo "ERROR: No official aarch64 CUDA wheel is published for torchao==${PYTORCH_TORCHAO_VERSION}." >&2
         echo "       This binary-wheel setup cannot complete on that platform; no CPU substitute will be installed." >&2
-        echo "       A separate torchao v0.15.0 source build against torch 2.9.1 and CUDA 13 requires target validation." >&2
-        echo "       Upstream build instructions: https://github.com/pytorch/ao/tree/v0.15.0#installation" >&2
+        echo "       A separate torchao v0.18.0 source build against torch 2.14.1 and CUDA 13 requires target validation." >&2
+        echo "       Upstream build instructions: https://github.com/pytorch/ao/tree/v0.18.0#installation" >&2
         return 1
     fi
 }
@@ -470,6 +438,7 @@ else
    echo "This script requires root privileges. Please run with sudo."
    exit 1
 fi
+mkdir -p "${THIRD_PARTY_DIR}"
 
 lock_gpu_clocks_if_supported() {
     # Best-effort: lock SM clocks to the max supported value to reduce run-to-run noise.
@@ -559,27 +528,11 @@ install_gpu_clock_service
 apply_deferred_memory_lock_now
 
 pip_cmd() {
-    if [ -z "${PIP_SUPPORTS_BREAK_SYSTEM_PACKAGES:-}" ]; then
-        if python3 -m pip --help 2>&1 | grep -q -- '--break-system-packages'; then
-            PIP_SUPPORTS_BREAK_SYSTEM_PACKAGES=1
-        else
-            PIP_SUPPORTS_BREAK_SYSTEM_PACKAGES=0
-        fi
-    fi
-
-    if [ "${PIP_SUPPORTS_BREAK_SYSTEM_PACKAGES}" -eq 1 ]; then
-        python3 -m pip --break-system-packages "$@"
-    else
-        PIP_BREAK_SYSTEM_PACKAGES=1 python3 -m pip "$@"
-    fi
+    python3 -m pip "$@"
 }
 
 pip_install() {
     pip_cmd install "$@"
-}
-
-pip_uninstall() {
-    pip_cmd uninstall "$@"
 }
 
 pip_wheel() {
@@ -588,17 +541,6 @@ pip_wheel() {
 
 pip_show() {
     pip_cmd show "$@"
-}
-
-requirements_pin() {
-    local package="$1"
-    local version
-    version="$(sed -n -E "s/^${package}==([^[:space:]#]+).*/\1/p" "${REQUIREMENTS_FILE}" | head -n 1)"
-    if [ -z "${version}" ]; then
-        echo "ERROR: ${REQUIREMENTS_FILE} must pin ${package} with an exact == version." >&2
-        return 1
-    fi
-    printf '%s\n' "${version}"
 }
 
 # The floor is the newest cmake_minimum_required in tracked CMakeLists.txt files
@@ -730,34 +672,10 @@ ensure_tool_on_path() {
     return 1
 }
 
-# Reusable function to reassemble split wheels
-reassemble_split_wheel() {
-    local wheel_path="$1"
-    local tmp_dir="${2:-$(mktemp -d "${TMPDIR:-/tmp}/wheel-reassemble.XXXXXX")}"
-    
-    # If full wheel exists, return it
-    if [ -f "${wheel_path}" ]; then
-        echo "${wheel_path}"
-        return 0
-    fi
-    
-    # Check for split parts
-    if compgen -G "${wheel_path}.part*" >/dev/null 2>&1; then
-        local combined="${tmp_dir}/$(basename "${wheel_path}")"
-        mapfile -t PARTS < <(ls "${wheel_path}".part* | sort -V)
-        if cat "${PARTS[@]}" > "${combined}" 2>/dev/null; then
-            echo "${combined}"
-            return 0
-        fi
-    fi
-    
-    return 1
-}
-
-# Reusable function to verify PyTorch CUDA and restore if needed
-verify_and_restore_pytorch_cuda() {
+# Verify CUDA availability without changing the selected runtime
+verify_pytorch_cuda() {
     local context="$1"
-    python3 <<'PY'
+    if ! python3 <<'PY'; then
 import sys
 import torch
 if not torch.cuda.is_available():
@@ -766,151 +684,10 @@ if not torch.cuda.is_available():
     print(f"  torch.version.cuda = {torch.version.cuda}")
     sys.exit(1)
 PY
-    if [ $? -ne 0 ]; then
         echo "CRITICAL: PyTorch CUDA was not available during ${context}!"
         return 1
     fi
     return 0
-}
-
-ensure_wheel_root_pure() {
-    local wheel_path="$1"
-    if [ -z "${wheel_path}" ] || [ ! -f "${wheel_path}" ]; then
-        return 0
-    fi
-    python3 - "${wheel_path}" <<'PY'
-import shutil
-import sys
-import tempfile
-import zipfile
-from pathlib import Path
-
-wheel_path = Path(sys.argv[1])
-if not wheel_path.exists():
-    raise SystemExit(0)
-
-with zipfile.ZipFile(wheel_path, "r") as src:
-    wheel_entries = [name for name in src.namelist() if name.endswith(".dist-info/WHEEL")]
-    if not wheel_entries:
-        raise SystemExit(0)
-    with tempfile.TemporaryDirectory(dir=str(wheel_path.parent)) as tmpdir:
-        tmp_path = Path(tmpdir) / wheel_path.name
-        with zipfile.ZipFile(tmp_path, "w") as dst:
-            for info in src.infolist():
-                data = src.read(info.filename)
-                if info.filename in wheel_entries:
-                    text = data.decode("utf-8").splitlines()
-                    for idx, line in enumerate(text):
-                        if line.startswith("Root-Is-Purelib:"):
-                            if line.strip().lower() != "root-is-purelib: false":
-                                text[idx] = "Root-Is-Purelib: false"
-                            break
-                    else:
-                        text.append("Root-Is-Purelib: false")
-                    data = ("\n".join(text) + "\n").encode("utf-8")
-                dst.writestr(info, data)
-    shutil.move(tmp_path, wheel_path)
-PY
-}
-
-patch_installed_transformer_engine_metadata() {
-    python3 <<'PY'
-import importlib.metadata as metadata
-from importlib.metadata import PackageNotFoundError
-
-def patch_distribution(name: str) -> None:
-    try:
-        dist = metadata.distribution(name)
-    except PackageNotFoundError:
-        return
-
-    files = dist.files or []
-    wheel_entry = None
-    for file in files:
-        if file.name == "WHEEL":
-            wheel_entry = dist.locate_file(file)
-            break
-
-    if not wheel_entry:
-        return
-
-    lines = wheel_entry.read_text().splitlines()
-    for idx, line in enumerate(lines):
-        if line.startswith("Root-Is-Purelib:"):
-            if line.strip().lower() != "root-is-purelib: false":
-                lines[idx] = "Root-Is-Purelib: false"
-            break
-    else:
-        lines.append("Root-Is-Purelib: false")
-
-    wheel_entry.write_text("\n".join(lines) + "\n")
-
-for dist_name in ("transformer_engine", "transformer_engine_torch", "transformer_engine_cu12"):
-    patch_distribution(dist_name)
-PY
-}
-
-patch_transformer_engine_loader() {
-    python3 <<'PY'
-from importlib.metadata import PackageNotFoundError, distribution
-from pathlib import Path
-
-OLD_BLOCK = '''    if te_framework_installed:
-        assert te_installed_via_pypi, "Could not find `transformer-engine` PyPI package."
-        assert te_core_installed, "Could not find TE core package `transformer-engine-cu*`."
-
-        assert version(module_name) == version("transformer-engine") == te_core_version, (
-            "Transformer Engine package version mismatch. Found"
-            f" {module_name} v{version(module_name)}, transformer-engine"
-            f" v{version('transformer-engine')}, and {te_core_package_name}"
-            f" v{te_core_version}. Install transformer-engine using "
-            f"'pip3 install --no-build-isolation transformer-engine[{extra_dep_name}]==VERSION'"
-        )
-'''
-
-NEW_BLOCK = '''    if te_framework_installed:
-        if te_installed_via_pypi and te_core_installed:
-            assert version(module_name) == version("transformer-engine") == te_core_version, (
-                "Transformer Engine package version mismatch. Found"
-                f" {module_name} v{version(module_name)}, transformer-engine"
-                f" v{version('transformer-engine')}, and {te_core_package_name}"
-                f" v{te_core_version}. Install transformer-engine using "
-                f"'pip3 install --no-build-isolation transformer-engine[{extra_dep_name}]==VERSION'"
-            )
-        else:
-            pass
-'''
-
-patched = False
-for dist_name in ("transformer_engine", "transformer-engine"):
-    try:
-        dist = distribution(dist_name)
-    except PackageNotFoundError:
-        continue
-    path = Path(dist.locate_file("transformer_engine/common/__init__.py"))
-    if not path.exists():
-        continue
-    text = path.read_text()
-    if OLD_BLOCK in text:
-        text = text.replace(OLD_BLOCK, NEW_BLOCK, 1)
-        path.write_text(text)
-        patched = True
-
-if patched:
-    print("[setup] Patched Transformer Engine loader for local wheel support")
-else:
-    print("[setup] Transformer Engine loader patch skipped (already applied)")
-PY
-}
-
-install_proton_cli_stub() {
-    if command -v proton >/dev/null 2>&1; then
-        echo "Proton CLI already available (proton command found)"
-        return 0
-    fi
-    local target="/usr/local/bin/proton"
-    install -m 755 "${PROJECT_ROOT}/core/scripts/proton_stub.py" "${target}"
-    echo "Installed Proton stub CLI at ${target}"
 }
 
 install_aisp_cli_wrapper() {
@@ -918,7 +695,7 @@ install_aisp_cli_wrapper() {
     cat > "${target}" <<EOF
 #!/usr/bin/env bash
 set -euo pipefail
-exec python3 "${PROJECT_ROOT}/cli/aisp.py" "\$@"
+exec "${AISP_VENV_DIR}/bin/python" "${PROJECT_ROOT}/cli/aisp.py" "\$@"
 EOF
     chmod 755 "${target}"
     echo "Installed aisp CLI wrapper at ${target}"
@@ -929,25 +706,6 @@ ensure_codex_cli() {
         CODEX_BIN="$(command -v codex)"
         export CODEX_BIN
         echo "Codex CLI detected at ${CODEX_BIN}"
-        return 0
-    fi
-
-    if [ -z "${CODEX_INSTALL_CMD:-}" ]; then
-        echo "ERROR: codex CLI not found. Set CODEX_INSTALL_CMD to install it before MCP setup." >&2
-        exit 1
-    fi
-
-    echo "Installing Codex CLI..."
-    if [ -n "${SUDO_USER:-}" ] && [ "${SUDO_USER}" != "root" ] && [ "${CODEX_INSTALL_AS_USER:-1}" -eq 1 ]; then
-        sudo -H -u "${SUDO_USER}" bash -lc "${CODEX_INSTALL_CMD}"
-    else
-        bash -lc "${CODEX_INSTALL_CMD}"
-    fi
-
-    if command -v codex >/dev/null 2>&1; then
-        CODEX_BIN="$(command -v codex)"
-        export CODEX_BIN
-        echo "Codex CLI installed at ${CODEX_BIN}"
         return 0
     fi
 
@@ -962,94 +720,9 @@ ensure_codex_cli() {
         fi
     fi
 
-    echo "ERROR: codex CLI not found after install. Ensure it is in PATH or set CODEX_BIN to its full path." >&2
+    echo "ERROR: codex CLI not found. Install it separately before running MCP setup." >&2
     exit 1
 }
-
-remove_conflicting_user_triton() {
-    if [ -z "${SUDO_USER:-}" ] || [ "${SUDO_USER}" = "root" ]; then
-        return 0
-    fi
-    local user_site
-    user_site=$(sudo -H -u "${SUDO_USER}" python3 -c "import site; print(site.getusersitepackages())" 2>/dev/null) || true
-    if [ -z "${user_site}" ]; then
-        return 0
-    fi
-    if sudo -H -u "${SUDO_USER}" test -d "${user_site}/triton"; then
-        rm -rf "${user_site}/triton"
-    fi
-    sudo -H -u "${SUDO_USER}" sh -c "rm -rf ${user_site}/pytorch_triton-*.dist-info" 2>/dev/null || true
-}
-
-remove_usercustomize_shim() {
-    local targets=(
-        "$HOME/.local/lib/python3.12/site-packages/usercustomize.py"
-        "/usr/local/lib/python3.12/dist-packages/usercustomize.py"
-    )
-    for target in "${targets[@]}"; do
-        if [ -f "$target" ]; then
-            rm -f "$target"
-            echo "[setup] Removed legacy usercustomize shim at $target"
-        fi
-    done
-}
-
-disable_transformer_engine_sanity_check() {
-    python3 <<'PY'
-import ast
-import importlib.metadata as metadata
-from importlib.metadata import PackageNotFoundError
-from pathlib import Path
-
-def patch_module(module_path: Path) -> bool:
-    if not module_path.exists():
-        return False
-    source = module_path.read_text()
-    try:
-        tree = ast.parse(source)
-    except SyntaxError:
-        return False
-    target = None
-    for node in tree.body:
-        if isinstance(node, ast.FunctionDef) and node.name == "sanity_checks_for_pypi_installation":
-            target = node
-            break
-    if target is None or target.lineno is None or target.end_lineno is None:
-        return False
-    lines = source.splitlines()
-    replacement = [
-        "def sanity_checks_for_pypi_installation() -> None:",
-        "    \"\"\"Runtime environment bundles TE wheels directly; skip PyPI provenance checks.\"\"\"",
-        "    return None",
-        "",
-    ]
-    start = target.lineno - 1
-    end = target.end_lineno
-    lines[start:end] = replacement
-    module_path.write_text("\n".join(lines) + ("\n" if lines and lines[-1] else ""))
-    return True
-
-patched_any = False
-for dist_name in ("transformer_engine", "transformer-engine"):
-    try:
-        dist = metadata.distribution(dist_name)
-    except PackageNotFoundError:
-        continue
-    module_path = Path(dist.locate_file("transformer_engine/common/__init__.py"))
-    if patch_module(module_path):
-        print(f"[setup] Patched Transformer Engine sanity check at {module_path}")
-        patched_any = True
-
-if not patched_any:
-    print("[setup] Warning: transformer_engine.common not patched (module not found)")
-PY
-}
-
-patch_transformer_engine_loader
-install_proton_cli_stub
-install_aisp_cli_wrapper
-remove_conflicting_user_triton
-remove_usercustomize_shim
 
 verify_fp8_functionality() {
     python3 <<'PY'
@@ -1079,9 +752,6 @@ def te_fp8_check():
     try:
         import transformer_engine.pytorch as te
     except Exception as exc:
-        msg = str(exc)
-        if "flash_attn" in msg or "flash_attn_2_cuda" in msg or "undefined symbol" in msg:
-            return None, f"Transformer Engine import skipped due to FlashAttention issue: {exc}"
         return False, f"Transformer Engine import failed: {exc}"
     try:
         layer = te.Linear(128, 128, bias=False).to(torch.bfloat16).cuda()
@@ -1100,12 +770,10 @@ status["transformer_engine"]["ok"], status["transformer_engine"]["error"] = te_f
 for name, result in status.items():
     if result["ok"] is True:
         print(f"[setup] ✓ {name} FP8 runtime check passed")
-    elif result["ok"] is None:
-        print(f"[setup] ⚠ {name} FP8 runtime check skipped: {result['error']}")
     else:
         print(f"[setup] ERROR: {name} FP8 runtime check failed: {result['error']}")
 
-if not all(entry["ok"] or entry["ok"] is None for entry in status.values()):
+if not all(entry["ok"] for entry in status.values()):
     raise SystemExit(1)
 PY
 }
@@ -1158,39 +826,12 @@ fi
 
 GPU_COMPUTE_CAP_RAW=$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader 2>/dev/null | head -n 1 | tr -d '[:space:]')
 GPU_COMPUTE_SM_NUM=$(echo "${GPU_COMPUTE_CAP_RAW}" | tr -d '.')
-FLASH_ATTN_TARGET_SM="${GPU_COMPUTE_SM_NUM:-121}"
-FLASH_ATTN_TARGET_ARCHS="${FLASH_ATTENTION_CUDA_ARCHS:-${FLASH_ATTN_TARGET_SM}}"
-export FLASH_ATTN_TARGET_SM FLASH_ATTN_TARGET_ARCHS
 if [[ -n "${GPU_COMPUTE_SM_NUM}" ]]; then
     echo "Detected GPU compute capability: sm_${GPU_COMPUTE_SM_NUM}"
-    SOURCE_BUILD_ALLOWED=0
     export GPU_COMPUTE_SM_NUM
 else
-    SOURCE_BUILD_ALLOWED=0
-    echo "Could not detect GPU compute capability; defaulting to prebuilt wheels only."
-fi
-
-# Use current arch for CUTLASS build targets (fallback to defaults if unknown)
-if [ -n "${GPU_COMPUTE_SM_NUM}" ]; then
-    CUTLASS_NVCC_ARCHS_VALUE="${GPU_COMPUTE_SM_NUM}"
-else
-    CUTLASS_NVCC_ARCHS_VALUE="${CUTLASS_NVCC_ARCHS_VALUE_DEFAULT}"
-fi
-if [ -n "${GPU_COMPUTE_SM_NUM}" ]; then
-    sm_len=${#GPU_COMPUTE_SM_NUM}
-    sm_major="${GPU_COMPUTE_SM_NUM:0:$((sm_len-1))}"
-    sm_minor="${GPU_COMPUTE_SM_NUM: -1}"
-    # Use Blackwell 'a' suffix to enable TMA instructions in ptxas
-    if [ "${GPU_COMPUTE_SM_NUM}" -eq 100 ]; then
-        TE_TORCH_ARCH_LIST="${sm_major}.${sm_minor}a"
-        TE_CUTLASS_ARCHS="100a"
-    else
-        TE_TORCH_ARCH_LIST="${sm_major}.${sm_minor}"
-        TE_CUTLASS_ARCHS="${GPU_COMPUTE_SM_NUM}"
-    fi
-else
-    TE_TORCH_ARCH_LIST="10.0"
-    TE_CUTLASS_ARCHS="${CUTLASS_NVCC_ARCHS_VALUE_DEFAULT}"
+    echo "ERROR: Could not detect the GPU compute capability." >&2
+    exit 1
 fi
 
 # Ensure open kernel modules are enabled for Blackwell GPUs
@@ -1220,12 +861,6 @@ fi
 # Update system packages
 echo ""
 echo "Updating system packages..."
-
-# Fix apt_pkg module before apt update (if Python was upgraded)
-if ! python3 -c "import apt_pkg" 2>/dev/null; then
-    echo "Fixing apt_pkg module..."
-    apt install -y --reinstall python3-apt 2>/dev/null || true
-fi
 
 # Disable command-not-found APT hook if it's causing issues with Python upgrade
 if [ -f /etc/apt/apt.conf.d/50command-not-found ] && ! /usr/lib/cnf-update-db 2>/dev/null; then
@@ -1263,49 +898,6 @@ if command -v systemctl >/dev/null 2>&1 && systemctl list-unit-files | grep -q '
 else
     echo "nvidia-dcgm systemd unit not found; ensure the DCGM daemon is running on this host."
 fi
-
-python3 <<'PY'
-import os
-import shutil
-import site
-import sys
-
-candidates = [
-    "/usr/share/dcgm/bindings/python3",
-    "/usr/share/dcgm/bindings/python",
-    "/usr/share/dcgm/python3",
-    "/usr/share/dcgm/python",
-    "/usr/lib/dcgm/python3",
-    "/usr/lib/dcgm/python",
-]
-
-dest = None
-for path in site.getsitepackages():
-    if path.startswith("/usr/lib") or path.startswith("/usr/local/lib"):
-        dest = path
-        break
-
-if dest is None:
-    print("Unable to locate site-packages directory; skipping DCGM Python binding install.")
-    sys.exit(0)
-
-for cand in candidates:
-    if not os.path.isdir(cand):
-        continue
-    for entry in os.listdir(cand):
-        if entry == "__pycache__":
-            continue
-        src = os.path.join(cand, entry)
-        dst = os.path.join(dest, entry)
-        if os.path.isdir(src):
-            shutil.copytree(src, dst, dirs_exist_ok=True)
-        else:
-            shutil.copy2(src, dst)
-    print(f"DCGM Python bindings installed to {dest}")
-    break
-else:
-    print("DCGM Python bindings not found; pydcgm import may fail.")
-PY
 
 # Add NVIDIA CUDA ${CUDA_SHORT_VERSION} repository
 echo ""
@@ -1372,102 +964,18 @@ if ! command -v "${PYTHON_TARGET_BIN}" &> /dev/null; then
     fi
     
     apt update || true
-    apt install -y "${PYTHON_TARGET_BIN}" "${PYTHON_TARGET_BIN}-dev" "${PYTHON_TARGET_BIN}-venv" python3-pip
+    apt install -y "${PYTHON_TARGET_BIN}" "${PYTHON_TARGET_BIN}-dev" "${PYTHON_TARGET_BIN}-venv"
     echo "Python ${PYTHON_TARGET_VERSION} installed"
 else
     CURRENT_TARGET_VERSION=$("${PYTHON_TARGET_BIN}" --version 2>&1 | awk '{print $2}')
     echo "Python ${PYTHON_TARGET_VERSION} already installed (version $CURRENT_TARGET_VERSION)"
     # Still ensure dev packages are present
-    apt install -y "${PYTHON_TARGET_BIN}-dev" "${PYTHON_TARGET_BIN}-venv" python3-pip
+    apt install -y "${PYTHON_TARGET_BIN}-dev" "${PYTHON_TARGET_BIN}-venv"
 fi
 
-# Set target Python as default if not already
-CURRENT_PY3=$(python3 --version 2>&1 | awk '{print $2}')
-if [[ ! "$CURRENT_PY3" =~ ^${PYTHON_TARGET_MAJOR}\.${PYTHON_TARGET_MINOR}\. ]]; then
-    echo "Setting Python ${PYTHON_TARGET_VERSION} as default..."
-    update-alternatives --install /usr/bin/python3 python3 "/usr/bin/${PYTHON_TARGET_BIN}" 1
-    update-alternatives --set python3 "/usr/bin/${PYTHON_TARGET_BIN}"
-else
-    echo "Python ${PYTHON_TARGET_VERSION} is already the default"
-fi
-
-# Ensure `python` convenience shim follows target Python
-if ! command -v python >/dev/null 2>&1; then
-    echo "Creating python -> ${PYTHON_TARGET_BIN} alternative..."
-    update-alternatives --install /usr/bin/python python "/usr/bin/${PYTHON_TARGET_BIN}" 1
-    update-alternatives --set python "/usr/bin/${PYTHON_TARGET_BIN}"
-else
-    PYTHON_VERSION_OUTPUT="$(python --version 2>/dev/null || true)"
-    if [[ "$PYTHON_VERSION_OUTPUT" != "Python ${PYTHON_TARGET_VERSION}."* ]]; then
-        echo "Updating python alternative to point at ${PYTHON_TARGET_BIN}..."
-        update-alternatives --install /usr/bin/python python "/usr/bin/${PYTHON_TARGET_BIN}" 1
-        update-alternatives --set python "/usr/bin/${PYTHON_TARGET_BIN}"
-    else
-        echo "python points to $(python --version) (no change needed)"
-    fi
-fi
-
-# Ensure pip is installed for target Python
-if ! "${PYTHON_TARGET_BIN}" -m pip --version &> /dev/null; then
-    echo "Installing pip for Python ${PYTHON_TARGET_VERSION}..."
-    curl -sS https://bootstrap.pypa.io/get-pip.py | "${PYTHON_TARGET_BIN}"
-fi
-
-# Upgrade pip
-pip_install --upgrade --ignore-installed pip setuptools packaging
-
-# Ensure wheel build backend is available for manual builds
-pip_install --no-cache-dir --upgrade --ignore-installed wheel
-
-install_torchao_packages() {
-    echo "Installing torchao ${PYTORCH_TORCHAO_VERSION} from ${PYTORCH_TORCHAO_INDEX}..."
-    local install_args=(--no-cache-dir --upgrade --ignore-installed --only-binary=:all:
-        "torchao==${PYTORCH_TORCHAO_VERSION}" --index-url "${PYTORCH_TORCHAO_INDEX}"
-        --extra-index-url "https://pypi.org/simple")
-    if pip_install "${install_args[@]}"; then
-        echo "torchao installed in system Python site-packages"
-    else
-        echo "ERROR: torchao installation failed for system Python!"
-        exit 1
-    fi
-    python3 - <<'PY'
-try:
-    import torchao  # noqa: F401
-    print("[setup] torchao import verified (system)")
-except Exception as exc:
-    raise SystemExit(f"[setup] ERROR: torchao import failed after installation: {exc}")
-PY
-    if [ -n "${SUDO_USER:-}" ] && [ "${SUDO_USER}" != "root" ]; then
-        echo "Installing torchao for ${SUDO_USER}'s user site-packages..."
-        if sudo -H -u "${SUDO_USER}" PIP_BREAK_SYSTEM_PACKAGES=1 python3 -m pip install --user "${install_args[@]}"; then
-            echo "  ✓ torchao installed for ${SUDO_USER}"
-        else
-            echo "ERROR: Failed to install torchao for ${SUDO_USER}"
-            exit 1
-        fi
-    fi
-}
-
-# Fix python3-apt for the new Python version
-DISTUTILS_PTH="/usr/lib/python3/dist-packages/distutils-precedence.pth"
-if [ -f "$DISTUTILS_PTH" ]; then
-    echo "Removing distutils-precedence.pth shim (causes _distutils_hack errors)..."
-    rm -f "$DISTUTILS_PTH"
-fi
-
-echo ""
-echo "Fixing Python APT module..."
-apt install -y --reinstall python3-apt
-if [ -f "$DISTUTILS_PTH" ]; then
-    echo "Removing distutils-precedence.pth shim after python3-apt reinstall..."
-    rm -f "$DISTUTILS_PTH"
-fi
-
-# Remove distro flatbuffers package whose invalid version breaks pip metadata
-if dpkg -s python3-flatbuffers >/dev/null 2>&1; then
-    echo "Removing distro python3-flatbuffers package (invalid version metadata)..."
-    apt remove -y python3-flatbuffers
-fi
+# The base interpreter remains untouched. The isolated Python 3.12 runtime is
+# created after any driver upgrade has completed, so a reboot does not leave a
+# partially populated environment behind.
 
 # Upgrade NVIDIA driver to required version if needed (required for CUDA ${CUDA_SHORT_VERSION} Update 2)
 echo ""
@@ -1480,9 +988,12 @@ if command -v nvidia-smi &> /dev/null; then
         echo "Upgrading to NVIDIA driver 580 (open kernel modules)..."
         
         # Unhold any NVIDIA packages to avoid resolver conflicts
-        if apt-mark showhold 2>/dev/null | grep -Eq '^(nvidia|libnvidia|cuda)-'; then
+        mapfile -t held_nvidia_packages < <(
+            apt-mark showhold 2>/dev/null | grep -E '^(nvidia|libnvidia|cuda)-' || true
+        )
+        if [ "${#held_nvidia_packages[@]}" -gt 0 ]; then
             echo "Releasing held NVIDIA/CUDA packages..."
-            apt-mark unhold $(apt-mark showhold | grep -E '^(nvidia|libnvidia|cuda)-' | tr '\n' ' ') || true
+            apt-mark unhold "${held_nvidia_packages[@]}" || true
         fi
 
         # Remove old driver packages that might conflict
@@ -1524,106 +1035,29 @@ fi
 echo ""
 echo "Installing CUDA ${CUDA_FULL_VERSION} toolchain..."
 if ! apt install -y "cuda-toolkit-13-0=13.0.2-1"; then
-    echo "Pinned CUDA toolkit version unavailable; installing latest cuda-toolkit-13-0 package instead."
-    apt install -y cuda-toolkit-13-0
+    echo "ERROR: cuda-toolkit-13-0=13.0.2-1 is unavailable. Refusing to build with a different toolkit." >&2
+    exit 1
+fi
+INSTALLED_CUDA_TOOLKIT_VERSION="$(dpkg-query -W -f='${Version}' cuda-toolkit-13-0 2>/dev/null || true)"
+if [ "${INSTALLED_CUDA_TOOLKIT_VERSION}" != "13.0.2-1" ]; then
+    echo "ERROR: cuda-toolkit-13-0 resolved to ${INSTALLED_CUDA_TOOLKIT_VERSION:-missing}, expected 13.0.2-1." >&2
+    exit 1
 fi
 
-# Install NCCL for Blackwell optimizations
+# NCCL, cuDNN, and NVSHMEM are part of the hash-locked Python graph. Their
+# wheel libraries and headers are selected after that graph is installed. Do
+# not replace host packages or let an independently managed system copy define
+# this runtime.
+
+# Install TensorRT runtime libraries for standalone TensorRT workflows.
 echo ""
-echo "Installing NCCL ${NCCL_SHORT_VERSION} (Blackwell-optimized)..."
-if ! apt install -y --allow-downgrades "libnccl2=${NCCL_SHORT_VERSION}-1+cuda13.0" "libnccl-dev=${NCCL_SHORT_VERSION}-1+cuda13.0"; then
-    echo "Pinned NCCL ${NCCL_SHORT_VERSION} packages unavailable; installing default libnccl2/libnccl-dev from CUDA repo."
-    apt install -y libnccl2 libnccl-dev
-fi
-
-report_installed_cudnn() {
-    local package_info package_status package_version
-    if ! package_info="$(dpkg-query -W -f='${db:Status-Status}\t${Version}\n' libcudnn9-cuda-13)"; then
-        echo "ERROR: Cannot query installed libcudnn9-cuda-13 for the setup summary." >&2
-        return 1
-    fi
-    IFS=$'\t' read -r package_status package_version <<< "${package_info}"
-    if [ "${package_status}" != "installed" ] || [ -z "${package_version}" ]; then
-        echo "ERROR: libcudnn9-cuda-13 is not fully installed: ${package_info}" >&2
-        return 1
-    fi
-    printf 'cuDNN system package: libcudnn9-cuda-13 %s (requested %s-1)\n' \
-        "${package_version}" "${CUDNN_VERSION}"
-}
-
-# Install system cuDNN for build tools. PyTorch's bundled runtime is independent;
-# do not claim its version matches the system package without checking it.
-echo ""
-echo "Installing cuDNN ${CUDNN_VERSION}-1 for CUDA ${CUDA_SHORT_VERSION}..."
-# Remove any older cuDNN versions first
-apt remove -y libcudnn9-cuda-13 libcudnn9-dev-cuda-13 libcudnn9-headers-cuda-13 2>/dev/null || true
-# Install the exact version if available; otherwise fall back to repo latest
-if apt-cache madison libcudnn9-cuda-13 | grep -Fq "${CUDNN_VERSION}-1"; then
-    apt install -y "libcudnn9-cuda-13=${CUDNN_VERSION}-1" \
-                   "libcudnn9-dev-cuda-13=${CUDNN_VERSION}-1" \
-                   "libcudnn9-headers-cuda-13=${CUDNN_VERSION}-1"
-    echo "✓ Installed cuDNN ${CUDNN_VERSION}-1 (CUDA 13)"
-else
-    echo "WARNING: cuDNN ${CUDNN_VERSION}-1 not available, installing latest..."
-    apt install -y libcudnn9-cuda-13 libcudnn9-dev-cuda-13 libcudnn9-headers-cuda-13
-fi
-# Pin the version to prevent upgrades
-apt-mark hold libcudnn9-cuda-13 libcudnn9-dev-cuda-13 libcudnn9-headers-cuda-13
-
-# Update ldconfig cache to ensure correct cuDNN version is found
-echo "Updating ldconfig cache..."
-ldconfig 2>/dev/null || true
-
-# Install NVSHMEM for CUDA 13 (enables SymmetricMemory fast paths). These apt
-# packages are unpinned, so the CUDA repository's current release is installed.
-echo ""
-echo "Installing NVSHMEM runtime and headers (CUDA 13)..."
-apt install -y nvshmem-cuda-13 libnvshmem3-cuda-13 libnvshmem3-dev-cuda-13 libnvshmem3-static-cuda-13
-# Fix packaging bug that leaves nvshmem_transport_ibgda.so.3 alternative pointing at a non-existent file
-nvshmem_alt_file="/var/lib/dpkg/alternatives/nvshmem"
-nvshmem_bad_ibgda="/usr/lib/x86_64-linux-gnu/nvshmem/13/.3"
-nvshmem_good_ibgda="/usr/lib/x86_64-linux-gnu/nvshmem/13/nvshmem_transport_ibgda.so.3"
-if [ -f "${nvshmem_alt_file}" ] && grep -q "${nvshmem_bad_ibgda}" "${nvshmem_alt_file}"; then
-    sed -i "s#${nvshmem_bad_ibgda}#${nvshmem_good_ibgda}#" "${nvshmem_alt_file}"
-    if ! update-alternatives --auto nvshmem; then
-        echo "WARNING: update-alternatives failed for nvshmem; nvshmem_transport_ibgda.so.3 may be missing"
-    fi
-fi
-if [ ! -e "/usr/lib/x86_64-linux-gnu/nvshmem_transport_ibgda.so.3" ] && [ -e "${nvshmem_good_ibgda}.0.0" ]; then
-    ln -sf "${nvshmem_good_ibgda}.0.0" "/usr/lib/x86_64-linux-gnu/nvshmem_transport_ibgda.so.3"
-fi
-
-# Install TensorRT runtime + Python bindings (CUDA 13)
-echo ""
-echo "Installing TensorRT runtime and Python bindings (CUDA 13)..."
-apt install -y libnvinfer10 libnvinfer-plugin10 libnvinfer-vc-plugin10 libnvonnxparsers10 python3-libnvinfer
+echo "Installing TensorRT runtime libraries (CUDA 13)..."
+apt install -y libnvinfer10 libnvinfer-plugin10 libnvinfer-vc-plugin10 libnvonnxparsers10
 
 # TensorRT-LLM runtime helpers (MPI + audio deps)
 echo ""
 echo "Installing TensorRT-LLM system dependencies (OpenMPI, libsndfile)..."
 apt install -y openmpi-bin libsndfile1
-
-# Ensure nvshmemrun is on PATH for IBGDA/NVSHMEM binaries
-NVSHMEM_BIN_CANDIDATES=(
-    "${NVSHMEM_HOME:-/usr/lib/x86_64-linux-gnu}/bin"
-    "/usr/local/nvshmem/bin"
-    "/opt/nvidia/nvshmem/bin"
-    "/usr/lib/nvshmem/bin"
-    "/usr/lib/x86_64-linux-gnu/nvshmem/bin"
-    "/usr/bin/nvshmem_13"
-    "/usr/bin"
-)
-if ! ensure_tool_on_path "nvshmemrun" "${NVSHMEM_BIN_CANDIDATES[@]}"; then
-    if ensure_tool_on_path "nvshmrun.hydra" "/usr/bin/nvshmem_13" "/usr/bin"; then
-        ln -sf "/usr/local/bin/nvshmrun.hydra" "/usr/local/bin/nvshmemrun"
-        echo "Ensured nvshmemrun is on PATH via nvshmrun.hydra alias"
-    else
-        echo "WARNING: nvshmemrun not found on system PATH; set NVSHMEM_HOME or install nvshmemrun to enable NVSHMEM multi-GPU launchers"
-    fi
-fi
-if ! ensure_tool_on_path "hydra_pmi_proxy" "/usr/bin/nvshmem_13" "/usr/bin"; then
-    echo "WARNING: hydra_pmi_proxy not found on system PATH; nvshmemrun may fail to launch"
-fi
 
 # Install GPUDirect Storage (GDS) for high-performance I/O
 echo ""
@@ -1646,11 +1080,13 @@ fi
 # Load nvidia-fs kernel module for GDS
 echo "Loading nvidia-fs kernel module..."
 if ! lsmod | grep -q nvidia_fs; then
-    modprobe nvidia-fs 2>/dev/null && echo "nvidia-fs module loaded" || {
+    if modprobe nvidia-fs 2>/dev/null; then
+        echo "nvidia-fs module loaded"
+    else
         echo "Could not load nvidia-fs module (requires root)"
         echo "   Load it manually with: sudo modprobe nvidia-fs"
         echo "   Or run: sudo core/scripts/setup/load_gds_module.sh"
-    }
+    fi
 else
     echo "nvidia-fs module already loaded"
 fi
@@ -1684,55 +1120,31 @@ else
     echo "WARNING: No NVMe devices detected; GDS performance may be limited until NVMe storage is available."
 fi
 
-# Install kvikio Python library for GDS (required for Ch5 examples)
-echo ""
-echo "Installing kvikio Python library for GPUDirect Storage..."
-if pip_install --no-cache-dir --upgrade --ignore-installed kvikio-cu13==25.10.0 --extra-index-url https://download.pytorch.org/whl/cu130; then
-    echo "kvikio-cu13==25.10.0 installed (enables GPU Direct Storage in Python)"
-else
-    echo "kvikio installation failed, but continuing..."
-    echo "   Install manually with: pip install kvikio-cu13==25.10.0"
-fi
+# The hash-bound Python graph supplies KvikIO for the GDS examples.
 
-# Install CUDA sanitizers and debugging tools (compute-sanitizer, cuda-memcheck, etc.)
+# Install the CUDA 13.0 command-line tools from the same pinned toolkit release.
 echo ""
 echo "Installing CUDA sanitizers and debugging tools..."
-if apt install -y cuda-command-line-tools-13-0; then
-    echo "CUDA command-line tools 13.0 installed (compute-sanitizer, cuda-gdb, cuda-memcheck)"
-else
-        echo "Could not install cuda-command-line-tools-13-0, trying fallback packages..."
-    if apt install -y cuda-command-line-tools; then
-            echo "CUDA command-line tools (generic) installed"
-    else
-            echo "cuda-command-line-tools package unavailable. Trying NVIDIA CUDA toolkit..."
-        if apt install -y nvidia-cuda-toolkit; then
-                echo "NVIDIA CUDA toolkit installed (includes cuda-memcheck)"
-        else
-                echo "Could not install CUDA command-line tools. compute-sanitizer may be unavailable."
-        fi
-    fi
+if ! apt install -y "cuda-command-line-tools-13-0=13.0.2-1"; then
+    echo "ERROR: cuda-command-line-tools-13-0=13.0.2-1 is unavailable." >&2
+    exit 1
 fi
-
-# Ensure compute-sanitizer is present; install sanitizer package directly if needed
+INSTALLED_CUDA_TOOLS_VERSION="$(dpkg-query -W -f='${Version}' cuda-command-line-tools-13-0 2>/dev/null || true)"
+if [ "${INSTALLED_CUDA_TOOLS_VERSION}" != "13.0.2-1" ]; then
+    echo "ERROR: cuda-command-line-tools-13-0 resolved to ${INSTALLED_CUDA_TOOLS_VERSION:-missing}, expected 13.0.2-1." >&2
+    exit 1
+fi
 if ! command -v compute-sanitizer &> /dev/null; then
-    echo "compute-sanitizer not found after command-line tools install. Installing cuda-sanitizer package..."
-    if apt install -y cuda-sanitizer-13-0; then
-        echo "cuda-sanitizer-13-0 installed"
-    else
-        echo "Could not install cuda-sanitizer-13-0, attempting generic cuda-sanitizer package..."
-        if apt install -y cuda-sanitizer; then
-            echo "cuda-sanitizer package installed"
-        else
-            echo "compute-sanitizer installation failed; please install manually."
-        fi
-    fi
+    echo "ERROR: compute-sanitizer is missing after installing the pinned CUDA command-line tools." >&2
+    exit 1
 fi
+echo "CUDA command-line tools 13.0.2 installed"
 
 # Install pinned NVIDIA Nsight Systems and Compute
 echo ""
 echo "Installing pinned NVIDIA Nsight Systems and Compute..."
 
-# Update apt to ensure latest packages are available
+# Refresh package metadata before installing the two pinned Nsight packages.
 apt update -qq
 
 # Create temporary directory for downloads
@@ -1777,52 +1189,39 @@ echo "Nsight Compute pinned to ${NCU_VERSION} (${NCU_BIN})"
 # pinned Nsight directories ahead of it.
 NSIGHT_BIN_PATH="$(dirname "${NSYS_BIN}"):$(dirname "${NCU_BIN}")"
 
+# Create the runtime only after any driver-triggered reboot exit. The path was
+# rejected before setup made host changes.
+"${PYTHON_TARGET_BIN}" -m venv "${AISP_VENV_DIR}"
+export VIRTUAL_ENV="${AISP_VENV_DIR}"
+unset PYTHONHOME
+export PYTHONNOUSERSITE=1
+export TORCH_EXTENSIONS_DIR="${AISP_VENV_DIR}/torch_extensions"
+export TRITON_CACHE_DIR="${AISP_VENV_DIR}/triton_cache"
+export TORCHINDUCTOR_CACHE_DIR="${AISP_VENV_DIR}/inductor_cache"
+export PATH="${AISP_VENV_DIR}/bin:${PATH}"
+echo "Python runtime: ${AISP_VENV_DIR}"
+
 # Configure PATH and LD_LIBRARY_PATH for CUDA environment
 echo ""
 echo "Configuring CUDA ${CUDA_SHORT_VERSION} environment..."
-# Update /etc/environment for system-wide CUDA path
-if ! grep -q "${CUDA_HOME_DIR}/bin" /etc/environment; then
-    sed -i "s|PATH=\"\(.*\)\"|PATH=\"${CUDA_HOME_DIR}/bin:\1\"|" /etc/environment
-    echo "Added CUDA ${CUDA_SHORT_VERSION} to system PATH"
-fi
-if ! grep -qF "PATH=\"${NSIGHT_BIN_PATH}:" /etc/environment; then
-    sed -i "s|PATH=\"\(.*\)\"|PATH=\"${NSIGHT_BIN_PATH}:\1\"|" /etc/environment
-    echo "Added pinned Nsight tools ahead of CUDA ${CUDA_SHORT_VERSION} in system PATH"
-fi
-
-# Create profile.d script for CUDA
-CUDA_PROFILE_SCRIPT="/etc/profile.d/cuda-${CUDA_SHORT_VERSION}.sh"
+# Keep the runtime paths local to this environment. Existing shells and
+# independently pinned benchmark environments retain their configuration.
+CUDA_PROFILE_SCRIPT="${AISP_VENV_DIR}/cuda-env.sh"
 cat > "${CUDA_PROFILE_SCRIPT}" <<PROFILE_EOF
-# CUDA ${CUDA_SHORT_VERSION} environment variables
-export CUDA_HOME=${CUDA_HOME_DIR}
-export PATH=${NSIGHT_BIN_PATH}:${CUDA_HOME_DIR}/bin:\$PATH
-export CUDA_PATH=${CUDA_HOME_DIR}
-
-# Runtime library policy:
-#  - auto (default): prefer PyTorch's bundled runtime when present
-#  - torch: force PyTorch runtime precedence
-#  - system: force system runtime precedence
-export AISP_CUDNN_RUNTIME_POLICY="\${AISP_CUDNN_RUNTIME_POLICY:-auto}"
-export LD_LIBRARY_PATH="\${CUDA_HOME}/lib64:\${CUDA_HOME}/lib64/stubs\${LD_LIBRARY_PATH:+:\${LD_LIBRARY_PATH}}"
+export CUDA_HOME="${CUDA_HOME_DIR}"
+export CUDA_PATH="${CUDA_HOME_DIR}"
+export PATH="${AISP_VENV_DIR}/bin:${NSIGHT_BIN_PATH}:${CUDA_HOME_DIR}/bin:\$PATH"
+export AISP_CUDNN_RUNTIME_POLICY=torch
 PROFILE_EOF
-chmod +x "${CUDA_PROFILE_SCRIPT}"
-echo "Created ${CUDA_PROFILE_SCRIPT} for persistent CUDA ${CUDA_SHORT_VERSION} environment"
-
-# Update nvcc symlink to CUDA toolkit (override Ubuntu's default)
-rm -f /usr/bin/nvcc
-ln -s "${CUDA_HOME_DIR}/bin/nvcc" /usr/bin/nvcc
-echo "Updated /usr/bin/nvcc symlink to CUDA ${CUDA_SHORT_VERSION}"
-
-# Source the CUDA environment for current session
-source "${CUDA_PROFILE_SCRIPT}"
 
 # Persist CUDA toolchain settings for the remainder of the script
 export CUDA_HOME="${CUDA_HOME_DIR}"
+export CUDA_PATH="${CUDA_HOME_DIR}"
 export PATH="${NSIGHT_BIN_PATH}:$CUDA_HOME/bin:$PATH"
+export AISP_CUDNN_RUNTIME_POLICY=torch
 require_pinned_nsight_tools
 
 export AISP_CUDNN_RUNTIME_POLICY="${AISP_CUDNN_RUNTIME_POLICY:-auto}"
-export LD_LIBRARY_PATH="${CUDA_HOME_DIR}/lib64:${CUDA_HOME_DIR}/lib64/stubs${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
 
 echo ""
 echo "Verifying CUDA toolchain after installation..."
@@ -1834,65 +1233,7 @@ fi
 cat /tmp/nvcc_version.txt
 rm -f /tmp/nvcc_version.txt
 
-python3 - <<'PY'
-import sys
-try:
-    import torch
-    cuda_ver = getattr(torch.version, "cuda", None)
-    print(f"torch.version.cuda = {cuda_ver}")
-    if not cuda_ver:
-        print("PyTorch build does not have CUDA enabled")
-except ImportError:
-    print("PyTorch not yet installed (will be installed later in this script)")
-except Exception as exc:
-    print(f"Warning: Could not verify PyTorch CUDA support: {exc}")
-PY
-
-# Install runtime monitoring/precision dependencies that require CUDA headers
-echo ""
-echo "Installing CUDA-dependent Python packages (prometheus-client, transformer-engine)..."
-
-# Helper to ensure pip installs run with CUDA environment populated
-pip_cuda() {
-    local cuda_home="${CUDA_HOME:-${CUDA_HOME_DIR}}"
-    CUDA_HOME="${cuda_home}" \
-    TORCH_CUDA_HOME="${cuda_home}" \
-    CUDA_PATH="${cuda_home}" \
-    PATH="${cuda_home}/bin:${PATH}" \
-    LD_LIBRARY_PATH="${cuda_home}/lib64:${cuda_home}/lib64/stubs:${LD_LIBRARY_PATH:-}" \
-    PYTHONPATH="${PROJECT_ROOT}/.cuda_env:${PYTHONPATH:-}" \
-    pip_cmd "$@"
-}
-
-export PYTHONPATH="${PROJECT_ROOT}/.cuda_env:${PYTHONPATH:-}"
-
-# Ensure NumPy is present for torch's extension helper before building any wheels
-pip_cuda install --no-cache-dir --upgrade --ignore-installed numpy || true
-
-install_cuda_package() {
-    local package_spec="$1"
-    echo "Installing $package_spec"
-    if pip_cuda install \
-        --no-cache-dir --upgrade --ignore-installed --prefer-binary "$package_spec"; then
-        echo "Installed $package_spec"
-        return 0
-    fi
-
-    echo "Installing numpy inside pip build environment to satisfy torch setup requirements..."
-    pip_cuda install --no-cache-dir --upgrade --ignore-installed numpy || true
-
-    echo "Initial install of $package_spec failed, retrying without build isolation..."
-    if pip_cuda install \
-        --no-cache-dir --upgrade --ignore-installed --no-build-isolation --prefer-binary "$package_spec"; then
-        echo "Installed $package_spec (no-build-isolation)"
-        return 0
-    fi
-
-    echo "Failed to install $package_spec"
-    return 1
-}
-
-install_cuda_package "prometheus-client==0.21.0"
+# CUDA-dependent Python dependencies are installed from the same locked graph.
 
 # Clean up
 cd /
@@ -1910,8 +1251,8 @@ apt install -y \
     linux-tools-generic \
     "linux-tools-${KERNEL_RELEASE}" \
     gdb \
-    rustc \
-    cargo \
+    libdw-dev \
+    libelf-dev \
     perf-tools-unstable \
     infiniband-diags \
     perftest \
@@ -1923,68 +1264,30 @@ apt install -y \
     sysstat
 
 echo ""
-echo "Installing Rust nightly toolchain (edition2024 support)..."
-if ! command -v rustup >/dev/null 2>&1; then
-    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-    export PATH="${HOME}/.cargo/bin:${PATH}"
+echo "Installing the isolated Rust 1.95.0 toolchain..."
+export RUSTUP_HOME="${THIRD_PARTY_DIR}/rustup-torch2141"
+export CARGO_HOME="${THIRD_PARTY_DIR}/cargo-torch2141"
+export PATH="${CARGO_HOME}/bin:${PATH}"
+if [ ! -x "${CARGO_HOME}/bin/rustup" ]; then
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | \
+        sh -s -- -y --no-modify-path --default-toolchain 1.95.0
 fi
-if command -v rustup >/dev/null 2>&1; then
-    rustup toolchain install nightly
-    rustup default nightly
-else
-    echo "WARNING: rustup not available; edition2024 builds may fail."
-fi
+rustup toolchain install 1.95.0
+export RUSTUP_TOOLCHAIN=1.95.0
 
 echo ""
-echo "Installing detect-secrets (system-wide)..."
-pip_install --no-cache-dir --upgrade --ignore-installed detect-secrets
+# The dependency graph below supplies CMake, Ninja and Python tooling.
 
-# Install the CMake and ninja pins (required for CUDA extensions and CMake builds)
-echo ""
-REQ_CMAKE_VERSION="$(requirements_pin cmake)"
-REQ_NINJA_VERSION="$(requirements_pin ninja)"
-echo "Installing build tools pinned in requirements_latest.txt (cmake==${REQ_CMAKE_VERSION}, ninja==${REQ_NINJA_VERSION})..."
-pip_install --no-cache-dir --upgrade --ignore-installed \
-    "cmake==${REQ_CMAKE_VERSION}" \
-    "ninja==${REQ_NINJA_VERSION}"
-# Ubuntu's apt CMake (3.22 on 22.04, 3.28 on 24.04) is older than the repository's
-# CMake floor. The pip CMake must win every later lookup, including TE builds.
-CMAKE_PIP_BIN_DIR="$(python3 -c 'import cmake; print(cmake.CMAKE_BIN_DIR)')"
-export PATH="${CMAKE_PIP_BIN_DIR}:${PATH}"
-require_cmake_toolchain "${REQ_CMAKE_VERSION}"
+# Existing system/user torch installations belong to other environments.
+# The dedicated runtime receives the full pinned graph below.
 
-# Force remove ALL existing torch installations (CPU and CUDA) to prevent conflicts
 echo ""
-echo "Removing all existing torch installations..."
-pip_uninstall -y torch torchvision torchdata functorch pytorch-triton >/dev/null 2>&1 || true
-# Also remove any dist-info directories that pip couldn't clean up
-rm -rf /usr/local/lib/python3.12/dist-packages/torch* /usr/local/lib/python3.12/dist-packages/torchvision* /usr/local/lib/python3.12/dist-packages/torchdata* /usr/local/lib/python3.12/dist-packages/functorch* /usr/local/lib/python3.12/dist-packages/pytorch_triton* 2>/dev/null || true
-rm -rf /home/*/.local/lib/python3.12/site-packages/torch* /home/*/.local/lib/python3.12/site-packages/torchvision* 2>/dev/null || true
-
-# Ensure critical harness dependencies are present in the base (non-venv) environment
-echo ""
-echo "Installing pinned harness deps (pydantic/typer/typing_extensions) into system Python..."
-pip_install --no-cache-dir --upgrade --ignore-installed \
-    click==8.1.7 \
-    pydantic==2.12.4 \
-    pydantic-core==2.41.5 \
-    hypothesis==6.148.2 \
-    typing-extensions==4.15.0 \
-    typer==0.15.4
-
-# Build or reuse PyTorch wheel (SM100/103/121)
-echo ""
-find "${PYTORCH_WHEEL_DIR}" -maxdepth 1 -name "torch-*-manylinux*.whl" -delete 2>/dev/null || true
-PYTORCH_WHEEL_GLOB="${PYTORCH_WHEEL_DIR}/${PYTORCH_WHEEL_PATTERN}"
-echo ""
-echo "NOTE: PyTorch CUDA wheels will be installed AFTER core requirements"
-echo "      to prevent dependencies from overriding them with CPU versions"
+echo "The hash-bound graph includes the complete CUDA torch runtime."
 echo ""
 
 # Install project dependencies
 echo ""
 echo "Installing project dependencies..."
-pip_uninstall -y torchvision >/dev/null 2>&1 || true
 
 # Single-source serving stack pins from requirements_latest.txt and the
 # separately installed ABI-bound vLLM pin manifest.
@@ -2000,54 +1303,29 @@ if [ "$VLLM_PIN_COUNT" -ne 1 ] || [[ "$VLLM_PIP_SPEC" != vllm==* ]]; then
     exit 1
 fi
 REQ_VLLM_VERSION="${VLLM_PIP_SPEC#vllm==}"
-VLLM_RELEASE_VERSION="${REQ_VLLM_VERSION%%+*}"
-if [ -z "$VLLM_RELEASE_VERSION" ] || [ "$REQ_VLLM_VERSION" = "$VLLM_RELEASE_VERSION" ]; then
-    echo "ERROR: vLLM pin must include the CUDA local version suffix: $VLLM_PIP_SPEC"
+if [ ! -f "${VLLM_SOURCE_BUILD_MANIFEST}" ]; then
+    echo "ERROR: vLLM source-build contract is missing: ${VLLM_SOURCE_BUILD_MANIFEST}"
     exit 1
 fi
-VLLM_EXTRA_INDEX_URL="https://wheels.vllm.ai/${VLLM_RELEASE_VERSION}/cu130"
+python3 - "${VLLM_SOURCE_BUILD_MANIFEST}" "${REQ_VLLM_VERSION}" <<'PYCONTRACT'
+import json
+import sys
+with open(sys.argv[1], encoding="utf-8") as stream:
+    contract = json.load(stream)
+if contract["package"]["version"] != sys.argv[2]:
+    raise SystemExit("vLLM source-build version differs from vllm_no_deps.pin")
+PYCONTRACT
 
-if [ -f "$REQUIREMENTS_FILE" ]; then
-    REQ_TORCH_VERSION="$(grep -E '^torch==' "$REQUIREMENTS_FILE" | head -n 1 | cut -d= -f3 || true)"
-    REQ_TORCHAUDIO_VERSION="$(grep -E '^torchaudio==' "$REQUIREMENTS_FILE" | head -n 1 | cut -d= -f3 || true)"
-    REQ_TORCHVISION_VERSION="$(grep -E '^torchvision==' "$REQUIREMENTS_FILE" | head -n 1 | cut -d= -f3 || true)"
-    REQ_TORCHAO_VERSION="$(grep -E '^torchao==' "$REQUIREMENTS_FILE" | head -n 1 | cut -d= -f3 || true)"
-    REQ_TRITON_VERSION="$(grep -E '^triton==' "$REQUIREMENTS_FILE" | head -n 1 | cut -d= -f3 || true)"
-    REQ_FLASHINFER_VERSION="$(grep -E '^flashinfer-python==' "$REQUIREMENTS_FILE" | head -n 1 | cut -d= -f3 || true)"
+echo "Serving stack pins (from requirements_latest.txt and vllm_no_deps.pin):"
+echo "  torch==${PYTORCH_TORCH_VERSION}"
+echo "  torchaudio==${PYTORCH_TORCHAUDIO_VERSION}"
+echo "  torchvision==${PYTORCH_TORCHVISION_VERSION}"
+echo "  torchao==${PYTORCH_TORCHAO_VERSION}"
+echo "  triton==${PYTORCH_TRITON_VERSION}"
+echo "  ${VLLM_PIP_SPEC}"
+echo "  flashinfer-python==${FLASHINFER_EXPECTED_VERSION}"
 
-    if [ -n "${REQ_TORCH_VERSION}" ]; then
-        PYTORCH_TORCH_VERSION="${REQ_TORCH_VERSION}"
-    fi
-    if [ -n "${REQ_TORCHAUDIO_VERSION}" ]; then
-        PYTORCH_TORCHAUDIO_VERSION="${REQ_TORCHAUDIO_VERSION}"
-    fi
-    if [ -n "${REQ_TORCHVISION_VERSION}" ]; then
-        PYTORCH_TORCHVISION_VERSION="${REQ_TORCHVISION_VERSION}"
-    fi
-    if [ -n "${REQ_TORCHAO_VERSION}" ]; then
-        PYTORCH_TORCHAO_VERSION="${REQ_TORCHAO_VERSION}"
-    fi
-    # Single-source Triton too so setup-time installs match the requirements pin.
-    if [ -n "${REQ_TRITON_VERSION}" ]; then
-        PYTORCH_TRITON_VERSION="${REQ_TRITON_VERSION}"
-    fi
-    if [ -n "${REQ_FLASHINFER_VERSION}" ]; then
-        FLASHINFER_EXPECTED_VERSION="${REQ_FLASHINFER_VERSION}"
-    fi
-
-    echo "Serving stack pins (from requirements_latest.txt and vllm_no_deps.pin):"
-    echo "  torch==${PYTORCH_TORCH_VERSION}"
-    echo "  torchao==${PYTORCH_TORCHAO_VERSION}"
-    echo "  triton==${PYTORCH_TRITON_VERSION}"
-    echo "  ${VLLM_PIP_SPEC}"
-    echo "  flashinfer-python==${FLASHINFER_EXPECTED_VERSION}"
-fi
-
-# The official cu130 aarch64 wheel keeps the same torchaudio release version
-# without the +cu130 suffix used by its x86_64 wheel and by torch itself.
-if [ "${FLASH_ATTN_ARCH}" = "aarch64" ] && [ "${PYTORCH_TORCHAUDIO_VERSION}" = "2.9.1+cu130" ]; then
-    PYTORCH_TORCHAUDIO_VERSION="2.9.1"
-fi
+# TorchAudio 2.11 publishes +cu130 wheels for x86_64 and aarch64.
 
 # Resolve sources after the requirements pins above have replaced the defaults.
 # Each package chooses its own channel, including Triton's optional +git builds.
@@ -2056,156 +1334,116 @@ PYTORCH_TORCH_FIND_LINKS="${PYTORCH_TORCH_FIND_LINKS:-${PYTORCH_CU130_INDEX}/tor
 PYTORCH_TORCHAUDIO_INDEX="$(pytorch_package_index "${PYTORCH_TORCHAUDIO_VERSION}" cu130)"
 PYTORCH_TORCHAO_INDEX="$(pytorch_package_index "${PYTORCH_TORCHAO_VERSION}" cu130)"
 PYTORCH_TRITON_INDEX="$(pytorch_package_index "${PYTORCH_TRITON_VERSION}")"
+echo "Resolved package indexes:"
+echo "  torch: ${PYTORCH_CU130_INDEX}"
+echo "  torchaudio: ${PYTORCH_TORCHAUDIO_INDEX}"
+echo "  torchao: ${PYTORCH_TORCHAO_INDEX}"
+echo "  triton: ${PYTORCH_TRITON_INDEX}"
 
-# Detect FlashInfer availability (flashinfer-python wheels target Python 3.10-3.14)
-# Fail before bulk requirements or PyTorch replacement on unsupported platforms.
-require_torchao_cuda_wheel_support "${FLASH_ATTN_ARCH}"
-FLASHINFER_SPEC=""
-SKIP_FLASHINFER=0
-if [ -f "$REQUIREMENTS_FILE" ]; then
-    FLASHINFER_SPEC="$(grep -E '^flashinfer-python==' "$REQUIREMENTS_FILE" | head -n 1 || true)"
-    if [ -n "${FLASHINFER_SPEC}" ]; then
-        if python3 - <<'PY' >/dev/null 2>&1
-import sys
-v = sys.version_info[:2]
-raise SystemExit(0 if (3, 10) <= v <= (3, 14) else 1)
-PY
-        then
-            :
-        else
-            SKIP_FLASHINFER=1
-            echo "NOTE: ${FLASHINFER_SPEC} skipped in bulk install for Python $(python3 -c 'import sys; print(\"%d.%d\" % sys.version_info[:2])')."
-            echo "      Set FORCE_FLASHINFER_INSTALL=1 to attempt install anyway."
-        fi
-    fi
-fi
-
-# Create temporary requirements file without packages we install in a pinned
-# post-CUDA step (prevents CPU torch overrides and vLLM ABI drift).
-TEMP_REQUIREMENTS="/tmp/requirements_no_torch_deps.txt"
-if [ -f "$REQUIREMENTS_FILE" ]; then
-    REQUIREMENTS_EXCLUDE_REGEX='^(accelerate==|torchtitan==|torch==|torchao==|torchaudio==|torchvision==|vllm==)'
-    if [ "${SKIP_FLASHINFER}" -eq 1 ]; then
-        REQUIREMENTS_EXCLUDE_REGEX='^(accelerate==|torchtitan==|torch==|torchao==|torchaudio==|torchvision==|vllm==|flashinfer-python==)'
-    fi
-    grep -Ev "${REQUIREMENTS_EXCLUDE_REGEX}" "$REQUIREMENTS_FILE" > "$TEMP_REQUIREMENTS" || true
-    echo "Created temporary requirements file excluding torch/torchao/vLLM/accelerate/torchtitan"
-    echo "  (these are installed later in a pinned, post-CUDA compatibility step)"
-fi
-
-# Install dependencies with error handling (excluding accelerate/torchtitan)
-if [ -f "$TEMP_REQUIREMENTS" ]; then
-    echo "Installing Python packages from requirements file (excluding accelerate/torchtitan)..."
-    if ! pip_install --no-cache-dir --no-input --ignore-installed -r "$TEMP_REQUIREMENTS"; then
-        echo "Some packages failed to install from requirements file."
-        echo "Installing core packages individually..."
-            pip_install --no-cache-dir --no-input --ignore-installed \
-            blinker==1.9.0 \
-            nvidia-mathdx==25.6.0 \
-            nvidia-ml-py3 nvidia-ml-py==12.560.30 psutil==7.1.0 GPUtil==1.4.0 py-cpuinfo==9.0.0 \
-            numpy==2.1.2 pandas==2.3.2 scikit-learn==1.7.2 pillow==11.3.0 \
-            matplotlib==3.10.6 seaborn==0.13.2 tensorboard==2.20.0 wandb==0.22.0 plotly==6.3.0 bokeh==3.8.0 dash==3.2.0 \
-            click==8.1.7 \
-            jupyter==1.1.1 ipykernel==6.30.1 black==25.9.0 ruff==0.8.4 flake8==7.3.0 mypy==1.18.2 pytest==8.3.4 typer==0.15.4 rich==13.7.1 \
-            transformers==4.56.0 datasets==2.21.0 sentencepiece==0.2.0 tokenizers==0.22.2 \
-            onnx==1.19.0 \
-            py-spy==0.4.1 memory-profiler==0.61.0 line-profiler==5.0.0 pyinstrument==5.1.1 snakeviz==2.2.2 \
-            optuna==4.5.0 hyperopt==0.2.7 ray==2.49.2 \
-            dask==2025.9.1 xarray==2025.6.1 \
-            "fsspec[http]==2024.6.1"
-    fi
-    rm -f "$TEMP_REQUIREMENTS"
-else
-    echo "Requirements file not found at $REQUIREMENTS_FILE. Installing core packages directly..."
-    pip_install --no-cache-dir --no-input --ignore-installed \
-        blinker==1.9.0 \
-        nvidia-mathdx==25.6.0 \
-        nvidia-ml-py3 nvidia-ml-py==12.560.30 psutil==7.1.0 GPUtil==1.4.0 py-cpuinfo==9.0.0 \
-        numpy==2.1.2 pandas==2.3.2 scikit-learn==1.7.2 pillow==11.3.0 \
-        matplotlib==3.10.6 seaborn==0.13.2 tensorboard==2.20.0 wandb==0.22.0 plotly==6.3.0 bokeh==3.8.0 dash==3.2.0 \
-        click==8.1.7 \
-        jupyter==1.1.1 ipykernel==6.30.1 black==25.9.0 ruff==0.8.4 flake8==7.3.0 mypy==1.18.2 pytest==8.3.4 typer==0.15.4 rich==13.7.1 \
-        transformers==4.56.0 datasets==2.21.0 sentencepiece==0.2.0 tokenizers==0.22.2 \
-        onnx==1.19.0 \
-        py-spy==0.4.1 memory-profiler==0.61.0 line-profiler==5.0.0 pyinstrument==5.1.1 snakeviz==2.2.2 \
-        optuna==4.5.0 hyperopt==0.2.7 ray==2.49.2 \
-        dask==2025.9.1 xarray==2025.6.1 \
-        "fsspec[http]==2024.6.1"
-fi
-
-if [ -n "${FLASHINFER_SPEC}" ] && [ "${SKIP_FLASHINFER}" -eq 1 ] && [ "${FORCE_FLASHINFER_INSTALL:-0}" -eq 1 ]; then
-    echo "Attempting optional ${FLASHINFER_SPEC} install (forced)..."
-    if ! pip_install --no-cache-dir --upgrade --ignore-installed --only-binary=:all: "${FLASHINFER_SPEC}"; then
-        echo "Warning: ${FLASHINFER_SPEC} install failed; continuing without it."
-    fi
-fi
-
-# Install PyTorch CUDA 13 stack (binary wheels only, no source builds)
-echo ""
-echo "============================================================================"
-echo "Installing PyTorch ${PYTORCH_TORCH_VERSION} cu130 stack (binary wheels only)"
-echo "============================================================================"
-echo ""
-
-echo "Removing any existing PyTorch installations..."
-pip_uninstall -y torch torchvision torchdata functorch pytorch-triton >/dev/null 2>&1 || true
-
-echo "Installing torch ${PYTORCH_TORCH_VERSION} from ${PYTORCH_CU130_INDEX}..."
-if ! pip_install --no-cache-dir --upgrade --ignore-installed \
-    --index-url "${PYTORCH_CU130_INDEX}" \
-    --find-links "${PYTORCH_TORCH_FIND_LINKS}" \
-    --extra-index-url "https://pypi.org/simple" \
-    --only-binary=":all:" \
-    "torch==${PYTORCH_TORCH_VERSION}"; then
-    echo "ERROR: torch ${PYTORCH_TORCH_VERSION} install failed from ${PYTORCH_CU130_INDEX}"
+# This lock targets Linux x86_64 and Python 3.12. Reject unsupported hosts.
+HOST_ARCH="$(uname -m)"
+if [ "${HOST_ARCH}" = "arm64" ]; then HOST_ARCH="aarch64"; fi
+require_torchao_cuda_wheel_support "${HOST_ARCH}"
+if [ "${HOST_ARCH}" != "x86_64" ]; then
+    echo "ERROR: The shared runtime lock requires Linux x86_64. Resolve and qualify a separate platform lock."
     exit 1
 fi
 
-if ! pip_install --no-cache-dir --upgrade --ignore-installed \
-    --index-url "${PYTORCH_CU130_INDEX}" \
-    --extra-index-url "https://pypi.org/simple" \
-    --only-binary=":all:" \
-    "torchvision==${PYTORCH_TORCHVISION_VERSION}"; then
-    echo "ERROR: torchvision ${PYTORCH_TORCHVISION_VERSION} install failed from ${PYTORCH_CU130_INDEX}"
+# Install the preflight-validated Linux/Python 3.12 graph.
+if ! pip_install --require-hashes --no-deps \
+    --find-links "${PROJECT_ROOT}/vendor/python-wheels" \
+    --report "${AISP_VENV_DIR}/pytorch-stack-install-report.json" \
+    -r "${PYTORCH_STACK_LOCK}"; then
+    echo "ERROR: The locked PyTorch runtime installation failed."
     exit 1
 fi
 
-if ! pip_install --no-cache-dir --upgrade --ignore-installed \
-    --index-url "${PYTORCH_TORCHAUDIO_INDEX}" \
-    --extra-index-url "https://pypi.org/simple" \
-    --only-binary=":all:" \
-    "torchaudio==${PYTORCH_TORCHAUDIO_VERSION}"; then
-    echo "ERROR: torchaudio ${PYTORCH_TORCHAUDIO_VERSION} install failed from ${PYTORCH_TORCHAUDIO_INDEX}"
+# The graph includes the exact CUDA 13 torch family. Do not uninstall or
+# re-resolve those packages after the hash-checked installation.
+CMAKE_PIP_BIN_DIR="$(python3 -c 'import cmake; print(cmake.CMAKE_BIN_DIR)')"
+export PATH="${CMAKE_PIP_BIN_DIR}:${PATH}"
+require_cmake_toolchain "${REQ_CMAKE_VERSION}"
+
+# Select wheel runtime libraries without preloading a system NCCL build.
+if [[ "${LD_PRELOAD:-}" == *libnccl* || "${LD_PRELOAD:-}" == *libcudnn* || "${LD_PRELOAD:-}" == *libcublas* ]]; then
+    echo "ERROR: An external CUDA/NCCL preload would override the locked runtime. Launch setup without that preload."
     exit 1
 fi
-
-if ! pip_install --no-cache-dir --upgrade --ignore-installed \
-    --index-url "${PYTORCH_TORCHAO_INDEX}" \
-    --extra-index-url "https://pypi.org/simple" \
-    --only-binary=":all:" \
-    "torchao==${PYTORCH_TORCHAO_VERSION}"; then
-    echo "ERROR: torchao ${PYTORCH_TORCHAO_VERSION} install failed from ${PYTORCH_TORCHAO_INDEX}"
+RUNTIME_WHEEL_LIB_DIRS="$(PYTHONNOUSERSITE=1 python3 - <<'PYLIBS'
+from core.harness.serving_stack import configure_serving_stack_runtime_env
+print(":".join(configure_serving_stack_runtime_env()))
+PYLIBS
+)"
+if [ -z "${RUNTIME_WHEEL_LIB_DIRS}" ]; then
+    echo "ERROR: The locked CUDA wheel library directories were not found." >&2
     exit 1
 fi
+export LD_LIBRARY_PATH="${RUNTIME_WHEEL_LIB_DIRS}${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
+export AISP_CUDNN_RUNTIME_POLICY=torch
+mapfile -t CUDA_WHEEL_SDK_PATHS < <(python3 - <<'PYSDK'
+from importlib import metadata
+from pathlib import Path
 
-if ! pip_install --no-cache-dir --upgrade --ignore-installed \
-    --index-url "${PYTORCH_TRITON_INDEX}" \
-    --extra-index-url "https://pypi.org/simple" \
-    --only-binary=":all:" \
-    "triton==${PYTORCH_TRITON_VERSION}"; then
-    echo "ERROR: triton install failed"
+components = (
+    ("nvidia-nccl-cu13", "nccl", "nccl.h", "libnccl.so.2"),
+    ("nvidia-cudnn-cu13", "cudnn", "cudnn.h", "libcudnn.so.9"),
+    ("nvidia-nvshmem-cu13", "nvshmem", "nvshmem.h", "libnvshmem_host.so.3"),
+)
+for distribution_name, component, header_name, library_name in components:
+    distribution = metadata.distribution(distribution_name)
+    root = Path(distribution.locate_file(f"nvidia/{component}")).resolve()
+    include = root / "include"
+    library = root / "lib" / library_name
+    header = include / header_name
+    if not header.is_file() or not library.is_file():
+        raise SystemExit(
+            f"Locked {distribution_name} is missing {header.relative_to(root)} or "
+            f"{library.relative_to(root)}"
+        )
+    print(distribution.version)
+    print(root)
+    print(include)
+    print(library)
+PYSDK
+)
+if [ "${#CUDA_WHEEL_SDK_PATHS[@]}" -ne 12 ]; then
+    echo "ERROR: Could not resolve the locked NCCL, cuDNN, and NVSHMEM wheel assets." >&2
     exit 1
 fi
-
-# torchdata/torchtitan fallbacks (no cu130 wheels published)
-pip_uninstall -y torchdata torchtitan >/dev/null 2>&1 || true
-# Avoid re-pulling a CPU torch dependency: install these without deps.
-pip_install --no-cache-dir --upgrade --ignore-installed --no-deps torchdata==0.10.0 || {
-    echo "Warning: torchdata install failed; continuing"
-}
-pip_install --no-cache-dir --upgrade --ignore-installed --no-deps torchtitan==0.2.0 || {
-    echo "Warning: torchtitan 0.2.0 install failed; continuing without torchtitan"
-}
+NCCL_WHEEL_VERSION="${CUDA_WHEEL_SDK_PATHS[0]}"
+NCCL_WHEEL_ROOT="${CUDA_WHEEL_SDK_PATHS[1]}"
+NCCL_INCLUDE_DIR="${CUDA_WHEEL_SDK_PATHS[2]}"
+NCCL_LIB_PATH="${CUDA_WHEEL_SDK_PATHS[3]}"
+CUDNN_WHEEL_VERSION="${CUDA_WHEEL_SDK_PATHS[4]}"
+CUDNN_WHEEL_ROOT="${CUDA_WHEEL_SDK_PATHS[5]}"
+CUDNN_INCLUDE_DIR="${CUDA_WHEEL_SDK_PATHS[6]}"
+CUDNN_LIB_PATH="${CUDA_WHEEL_SDK_PATHS[7]}"
+NVSHMEM_WHEEL_VERSION="${CUDA_WHEEL_SDK_PATHS[8]}"
+NVSHMEM_WHEEL_ROOT="${CUDA_WHEEL_SDK_PATHS[9]}"
+NVSHMEM_INCLUDE_DIR="${CUDA_WHEEL_SDK_PATHS[10]}"
+NVSHMEM_LIB_PATH="${CUDA_WHEEL_SDK_PATHS[11]}"
+# Keep source-build helpers from inheriting SDK roots. They resolve build inputs
+# from their pinned contracts. The activation file exports these wheel roots for
+# direct extension builds after setup succeeds.
+unset NCCL_HOME CUDNN_HOME NVSHMEM_HOME
+export CPATH="${NCCL_INCLUDE_DIR}:${CUDNN_INCLUDE_DIR}:${NVSHMEM_INCLUDE_DIR}${CPATH:+:${CPATH}}"
+export NCCL_LIB_PATH
+RUNTIME_ENV_FILE="${AISP_VENV_DIR}/runtime-env.sh"
+cat > "${RUNTIME_ENV_FILE}" <<ENVEOF
+source "${AISP_VENV_DIR}/bin/activate"
+source "${CUDA_PROFILE_SCRIPT}"
+export PYTHONNOUSERSITE=1
+export TORCH_EXTENSIONS_DIR="${TORCH_EXTENSIONS_DIR}"
+export TRITON_CACHE_DIR="${TRITON_CACHE_DIR}"
+export TORCHINDUCTOR_CACHE_DIR="${TORCHINDUCTOR_CACHE_DIR}"
+export LD_LIBRARY_PATH="${RUNTIME_WHEEL_LIB_DIRS}\${LD_LIBRARY_PATH:+:\${LD_LIBRARY_PATH}}"
+export NCCL_HOME="${NCCL_WHEEL_ROOT}"
+export CUDNN_HOME="${CUDNN_WHEEL_ROOT}"
+export NVSHMEM_HOME="${NVSHMEM_WHEEL_ROOT}"
+export CPATH="${NCCL_INCLUDE_DIR}:${CUDNN_INCLUDE_DIR}:${NVSHMEM_INCLUDE_DIR}\${CPATH:+:\${CPATH}}"
+export NCCL_LIB_PATH="${NCCL_LIB_PATH}"
+ENVEOF
+echo "Activate the pinned runtime with: source ${RUNTIME_ENV_FILE}"
 
 if ! PYTORCH_EXPECTED_VERSION="${PYTORCH_TORCH_VERSION}" python3 - <<'PY'
 import sys
@@ -2284,259 +1522,194 @@ echo "✓ PyTorch CUDA installation and verification complete"
 echo "============================================================================"
 echo ""
 
-# NOW install accelerate and torchtitan (they depend on torch, but torch CUDA is already installed)
-echo ""
-echo "Installing accelerate and torchtitan (PyTorch CUDA is already installed)..."
-if [ -f "$REQUIREMENTS_FILE" ]; then
-    # Extract accelerate and torchtitan versions from original requirements
-    ACCELERATE_VERSION=$(grep "^accelerate==" "$REQUIREMENTS_FILE" | cut -d= -f3 || echo "0.29.0")
-    TORCHTITAN_VERSION=$(grep "^torchtitan==" "$REQUIREMENTS_FILE" | cut -d= -f3 || echo "0.2.0")
-    
-    echo "  Installing accelerate==${ACCELERATE_VERSION}..."
-    pip_install --no-input --no-deps "accelerate==${ACCELERATE_VERSION}" || {
-        echo "  Warning: accelerate installation failed, but continuing..."
-    }
-    
-    echo "  Installing torchtitan==${TORCHTITAN_VERSION}..."
-    pip_install --no-input --no-deps "torchtitan==${TORCHTITAN_VERSION}" || {
-        echo "  Warning: torchtitan installation failed, but continuing..."
-    }
-
-    echo "  Installing torchtitan runtime dependencies..."
-    pip_install --no-input "${TORCHTITAN_RUNTIME_DEPS[@]}" || {
-        echo "  ERROR: torchtitan runtime dependency install failed"
-        exit 1
-    }
-    
-    # CRITICAL: Verify PyTorch CUDA wasn't overridden by accelerate/torchtitan dependencies
-    echo "  Verifying PyTorch CUDA wasn't overridden..."
-    if ! verify_and_restore_pytorch_cuda "accelerate/torchtitan installation"; then
-        echo "  ERROR: Failed to restore PyTorch CUDA after accelerate/torchtitan!"
-        exit 1
-    fi
-    echo "  ✓ PyTorch CUDA verified"
-
-    echo "  Verifying torchtitan runtime imports..."
-    if ! python3 <<'PY'; then
+# Accelerate and TorchTitan are already installed by the hash-bound graph.
+# Verify their public imports without resolving or changing that graph.
+python3 <<'PYTRAINING'
+import accelerate
 import torchtitan
-from torchtitan.config.job_config import JobConfig
-from torchtitan.distributed.tensor_parallel import maybe_enable_async_tp
+from torchtitan.config import CompileConfig, ParallelismConfig
 
-print(f"  torchtitan: {torchtitan.__file__}")
-print(f"  JobConfig: {JobConfig.__module__}")
-print(f"  maybe_enable_async_tp: {maybe_enable_async_tp.__module__}")
-PY
-        echo "  ERROR: torchtitan runtime verification failed"
-        exit 1
-    fi
-    echo "  ✓ torchtitan runtime verified"
-    
-    echo "✓ accelerate and torchtitan installed (PyTorch CUDA + torchtitan runtime verified)"
-fi
+compile_config = CompileConfig()
+if not hasattr(compile_config, "enable_async_tensor_parallel"):
+    raise SystemExit("TorchTitan CompileConfig lacks enable_async_tensor_parallel")
+print(f"Accelerate: {accelerate.__version__}")
+print(f"TorchTitan: {torchtitan.__file__}")
+print(f"CompileConfig: {CompileConfig.__module__}")
+print(f"ParallelismConfig: {ParallelismConfig.__module__}")
+print(
+    "Async tensor parallelism default: "
+    f"{compile_config.enable_async_tensor_parallel}"
+)
+PYTRAINING
 
-# TRT-LLM dependencies
-echo ""
-echo "Installing TRT-LLM dependencies..."
-echo "Installing TensorRT-LLM Python packages..."
-pip_install --no-cache-dir --upgrade --no-deps \
-    "tensorrt-llm==1.1.0" \
-    "nvtx==0.2.14" \
-    "mpi4py==4.1.1" \
-    "soundfile==0.13.1" \
-    "onnx-graphsurgeon==0.5.8" \
-    "ordered-set==4.1.0" \
-    "strenum==0.4.15" \
-    "nvidia-modelopt==0.37.0" \
-    "pulp==3.3.0" \
-    "h5py==3.12.1" \
-    "torchprofile==0.0.4" || {
-    echo "Warning: TensorRT-LLM dependency install failed"
-}
-
-# Verify PyTorch CUDA wasn't overridden by TRT-LLM deps
-if ! verify_and_restore_pytorch_cuda "TRT-LLM installation"; then
-    echo "ERROR: PyTorch CUDA missing after TRT-LLM installs!"
+# TensorRT-LLM 1.1 was tied to the historical runtime. It is not part of this
+# shared torch 2.14 stack and must use a separately qualified environment.
+if [ "${INSTALL_TRTLLM:-0}" = "1" ]; then
+    echo "ERROR: TensorRT-LLM needs a separately pinned runtime. It cannot be installed into this torch 2.14 environment."
     exit 1
 fi
 
-# Single pin for shared deps to avoid dependency churn
-pip_install --no-cache-dir --upgrade --ignore-installed --no-deps "fsspec[http]==2024.6.1" || {
-    echo "Warning: failed to pin fsspec[http]==2024.6.1"
-}
-pip_install --no-cache-dir --upgrade --ignore-installed --no-deps tokenizers==0.22.2 huggingface-hub==0.34.6 onnx==1.19.0 onnxscript==0.1.0 einops==0.8.0 || {
-    echo "Warning: failed to pin tokenizers/huggingface-hub/onnx/onnxscript/einops"
-}
+# Triton is installed by the hash-bound graph and must match the torch build.
+python3 <<'PYTRITON'
+from importlib import metadata
+import os
+import triton
 
-# Ensure triton is available (required by Transformer Engine and other PyTorch extensions)
-# Triton should be bundled with PyTorch, but install it explicitly to ensure it's available
-echo "Verifying triton availability (required by Transformer Engine)..."
-if ! python3 -c "import triton" 2>/dev/null; then
-    echo "  Triton not found. Installing ${PYTORCH_TRITON_VERSION} from ${PYTORCH_TRITON_INDEX} (with --no-deps to prevent torch override)..."
-    pip_install --no-cache-dir --upgrade --no-deps \
-        --index-url "${PYTORCH_TRITON_INDEX}" \
-        --extra-index-url "https://pypi.org/simple" \
-        --only-binary=":all:" \
-        "triton==${PYTORCH_TRITON_VERSION}" || {
-        echo "  Warning: Failed to install triton. Transformer Engine may not work."
-    }
-else
-    TRITON_VERSION=$(python3 -c "import triton; print(triton.__version__)" 2>/dev/null || echo "unknown")
-    echo "  ✓ Triton version: ${TRITON_VERSION}"
-fi
+expected = "3.8.0"
+if metadata.version("triton") != expected:
+    raise SystemExit(f"Expected Triton {expected}, got {triton.__version__}")
+print(f"Triton: {triton.__version__}")
+PYTRITON
 
 # Verify the matched torchvision wheel did not replace the pinned CUDA torch.
-if ! verify_and_restore_pytorch_cuda "torchvision installation"; then
+if ! verify_pytorch_cuda "torchvision installation"; then
     echo "ERROR: PyTorch CUDA missing after torchvision!"
     exit 1
 fi
 
 echo ""
-echo "Refreshing CUTLASS source tree (${CUTLASS_REF}) for local CUDA builds..."
-CURRENT_CUTLASS_VERSION=$(CUTLASS_SRC_DIR="${CUTLASS_SRC_DIR}" python3 <<'PY' | tr -d '\n'
-from pathlib import Path
+echo "Resolving immutable CUTLASS source (${CUTLASS_REF}) for local CUDA builds..."
+validate_cutlass_source() {
+    local provenance
+    if ! provenance="$(
+        CUTLASS_SRC_DIR="${CUTLASS_SRC_DIR}" \
+        CUTLASS_REPO_URL="${CUTLASS_REPO_URL}" \
+        CUTLASS_REF="${CUTLASS_REF}" \
+        CUTLASS_RELEASE_TAG="${CUTLASS_RELEASE_TAG}" \
+        CUTLASS_TARGET_VERSION="${CUTLASS_TARGET_VERSION}" \
+        python3 <<'PYCUTLASS'
+import json
 import os
+from pathlib import Path
 import re
-root = Path(os.environ.get("CUTLASS_SRC_DIR", ""))
-version_path = root / "include" / "cutlass" / "version.h"
-if not version_path.exists():
-    print("")
-    raise SystemExit(0)
-text = version_path.read_text()
-def grab(name: str) -> str:
-    match = re.search(r"#define\\s+%s\\s+([0-9]+)" % name, text)
-    return match.group(1) if match else ""
-parts = [grab("CUTLASS_MAJOR"), grab("CUTLASS_MINOR"), grab("CUTLASS_PATCH")]
-if "" in parts:
-    print("")
-else:
-    print(".".join(parts))
-PY
-)
+import subprocess
 
-if [ ! -d "${CUTLASS_SRC_DIR}" ] || [ -z "${CURRENT_CUTLASS_VERSION}" ]; then
-    echo "  CUTLASS source missing or unreadable; installing ${CUTLASS_REF}..."
-    CUTLASS_REPO="${CUTLASS_REPO_URL}" CUTLASS_REF="${CUTLASS_REF}" "${PROJECT_ROOT}/core/scripts/install_cutlass.sh"
-    CURRENT_CUTLASS_VERSION="${CUTLASS_TARGET_VERSION}"
-elif [ "${CURRENT_CUTLASS_VERSION}" != "${CUTLASS_TARGET_VERSION}" ]; then
-    echo "  CUTLASS source is ${CURRENT_CUTLASS_VERSION} (target ${CUTLASS_TARGET_VERSION}); reinstalling..."
-    CUTLASS_REPO="${CUTLASS_REPO_URL}" CUTLASS_REF="${CUTLASS_REF}" "${PROJECT_ROOT}/core/scripts/install_cutlass.sh"
-    CURRENT_CUTLASS_VERSION="${CUTLASS_TARGET_VERSION}"
-else
-    echo "  CUTLASS source tree already at ${CURRENT_CUTLASS_VERSION}; keeping."
+root = Path(os.environ["CUTLASS_SRC_DIR"])
+receipt_path = root / ".git" / "aisp-source.json"
+version_path = root / "include" / "cutlass" / "version.h"
+if not receipt_path.is_file() or not version_path.is_file():
+    raise SystemExit("CUTLASS source lacks its Git provenance or version header")
+
+
+def git(*args: str) -> str:
+    return subprocess.run(
+        ["git", "-C", str(root), *args],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+
+
+commit = git("rev-parse", "HEAD")
+tree = git("rev-parse", "HEAD^{tree}")
+origin = git("remote", "get-url", "origin")
+dirty = git("status", "--porcelain", "--untracked-files=all")
+receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+text = version_path.read_text(encoding="utf-8")
+
+
+def value(name: str) -> str:
+    match = re.search(rf"^#define\s+{name}\s+([0-9]+)\s*$", text, re.MULTILINE)
+    if match is None:
+        raise SystemExit(f"CUTLASS version header is missing {name}")
+    return match.group(1)
+
+
+version = ".".join(
+    value(name) for name in ("CUTLASS_MAJOR", "CUTLASS_MINOR", "CUTLASS_PATCH")
+)
+expected = {
+    "schema_version": 1,
+    "repository": os.environ["CUTLASS_REPO_URL"],
+    "requested_commit": os.environ["CUTLASS_REF"],
+    "resolved_commit": commit,
+    "tree": tree,
+    "release_tag": os.environ["CUTLASS_RELEASE_TAG"],
+    "source_version": version,
+}
+if commit != os.environ["CUTLASS_REF"]:
+    raise SystemExit(f"CUTLASS commit is {commit}, expected {os.environ['CUTLASS_REF']}")
+if origin != os.environ["CUTLASS_REPO_URL"]:
+    raise SystemExit(f"CUTLASS origin is {origin}, expected {os.environ['CUTLASS_REPO_URL']}")
+if dirty:
+    raise SystemExit("CUTLASS source has tracked or untracked changes")
+if version != os.environ["CUTLASS_TARGET_VERSION"]:
+    raise SystemExit(
+        f"CUTLASS source version is {version}, expected {os.environ['CUTLASS_TARGET_VERSION']}"
+    )
+if receipt != expected:
+    raise SystemExit("CUTLASS source receipt does not match the checked-out tree")
+print(f"{commit}\t{tree}\t{version}")
+PYCUTLASS
+    )"; then
+        return 1
+    fi
+    IFS=$'\t' read -r CUTLASS_RESOLVED_COMMIT CUTLASS_RESOLVED_TREE CURRENT_CUTLASS_VERSION <<< "${provenance}"
+    [ -n "${CUTLASS_RESOLVED_COMMIT}" ] && \
+        [ -n "${CUTLASS_RESOLVED_TREE}" ] && \
+        [ "${CURRENT_CUTLASS_VERSION}" = "${CUTLASS_TARGET_VERSION}" ]
+}
+
+if ! validate_cutlass_source; then
+    if [ -d "${CUTLASS_SRC_DIR}/.git" ] && \
+        [ -n "$(git -C "${CUTLASS_SRC_DIR}" status --porcelain --untracked-files=all 2>/dev/null)" ]; then
+        echo "ERROR: Existing CUTLASS source has local changes: ${CUTLASS_SRC_DIR}" >&2
+        echo "       Preserve it and choose a fresh CUTLASS_SRC_DIR." >&2
+        exit 1
+    fi
+    echo "Installing a fresh verified CUTLASS source tree..."
+    CUTLASS_REPO="${CUTLASS_REPO_URL}" \
+        CUTLASS_REF="${CUTLASS_REF}" \
+        CUTLASS_RELEASE_TAG="${CUTLASS_RELEASE_TAG}" \
+        CUTLASS_EXPECTED_VERSION="${CUTLASS_TARGET_VERSION}" \
+        CUTLASS_SRC_DIR="${CUTLASS_SRC_DIR}" \
+        "${PROJECT_ROOT}/core/scripts/install_cutlass.sh"
+    if ! validate_cutlass_source; then
+        echo "ERROR: Installed CUTLASS source failed immutable provenance validation." >&2
+        exit 1
+    fi
 fi
+echo "  CUTLASS ${CURRENT_CUTLASS_VERSION} commit ${CUTLASS_RESOLVED_COMMIT}"
+echo "  CUTLASS tree ${CUTLASS_RESOLVED_TREE}"
 echo "  CUTLASS headers available at ${CUTLASS_SRC_DIR}/include"
 
-# Ensure monitoring/runtime dependencies are available even if requirements were cached
-echo ""
-echo "Ensuring monitoring/runtime packages (Prometheus, Transformer Engine)..."
-
-ensure_free_space_gb "${SETUP_MIN_TE_BUILD_FREE_GB}" "Transformer Engine build"
-
-echo ""
-echo "Installing Transformer Engine from source (cu13, arch sm_${GPU_COMPUTE_SM_NUM:-unknown})..."
-mkdir -p "${TE_SRC_DIR}"
-if [ ! -d "${TE_SRC_DIR}/.git" ]; then
-    rm -rf "${TE_SRC_DIR}"
-    git clone --recursive "${TE_REPO_URL}" "${TE_SRC_DIR}"
+# Build the exact Transformer Engine binding against this runtime. The core
+# library and build dependencies were installed from the hash-bound graph.
+if [ -z "${NATIVE_BUILD_ROOT:-}" ]; then
+    NATIVE_BUILD_PARENT="$(mktemp -d "${THIRD_PARTY_DIR}/torch2141-native-build.XXXXXX")"
+    NATIVE_BUILD_ROOT="${NATIVE_BUILD_PARENT}/build"
 fi
-git -C "${TE_SRC_DIR}" fetch --all --tags --prune --force
-git -C "${TE_SRC_DIR}" checkout "${TE_GIT_COMMIT}"
-git -C "${TE_SRC_DIR}" submodule sync --recursive
-git -C "${TE_SRC_DIR}" submodule update --init --recursive
-
-# =============================================================================
-# CRITICAL: CUTLASS Version Override for Blackwell (SM100a) Support
-# =============================================================================
-# TransformerEngine ${TE_VERSION} bundles CUTLASS ${TE_BUNDLED_CUTLASS_VERSION} which LACKS SM100a headers.
-# We MUST replace TE's bundled CUTLASS with our standalone CUTLASS ${CUTLASS_TARGET_VERSION}.
-#
-# Required SM100a headers in the validated CUTLASS 4.5.2 source:
-#   - cute/arch/tmem_allocator_sm100.hpp
-#   - cute/arch/mma_sm100_umma.hpp
-#   - cute/atom/copy_traits_sm100.hpp
-#
-# Without this symlink: Blackwell builds WILL FAIL with "missing header" errors.
-# Verification: make verify-cutlass
-# Check if still needed: python core/scripts/check_upstream_versions.py --check-te-cutlass
-# =============================================================================
-echo "  CUTLASS version override for SM100a (Blackwell) support:"
-echo "    TE ${TE_VERSION} bundles: CUTLASS ${TE_BUNDLED_CUTLASS_VERSION} (missing SM100a headers)"
-echo "    Standalone CUTLASS:   ${CUTLASS_TARGET_VERSION} (has SM100a headers)"
-echo "  Creating symlink to override TE's bundled CUTLASS..."
-
-if [ -d "${TE_SRC_DIR}/3rdparty/cutlass" ] || [ -L "${TE_SRC_DIR}/3rdparty/cutlass" ]; then
-    rm -rf "${TE_SRC_DIR}/3rdparty/cutlass"
-fi
-ln -s "${CUTLASS_SRC_DIR}" "${TE_SRC_DIR}/3rdparty/cutlass"
-
-# Verify the symlink is correct and SM100a headers exist
-if [ ! -L "${TE_SRC_DIR}/3rdparty/cutlass" ]; then
-    echo "ERROR: Failed to create CUTLASS symlink for TransformerEngine"
-    echo "       This will cause Blackwell builds to fail!"
-    echo "       Try: ./core/scripts/fix_cutlass_symlink.sh"
+if ! CUDA_VISIBLE_DEVICES="" TORCH_DEVICE_BACKEND_AUTOLOAD=0 \
+    python3 "${PROJECT_ROOT}/scripts/build_torch_extensions.py" \
+    --contract "${PROJECT_ROOT}/native_torch_extensions.json" \
+    --output-dir "${NATIVE_BUILD_ROOT}" \
+    --package transformer-engine-torch \
+    --cuda-arch-list 10.0 \
+    --max-jobs "${MAX_JOBS:-8}" --nvcc-threads "${NVCC_THREADS:-2}"; then
+    echo "ERROR: The pinned Transformer Engine binding build failed."
     exit 1
 fi
-if [ ! -f "${TE_SRC_DIR}/3rdparty/cutlass/include/cute/arch/tmem_allocator_sm100.hpp" ]; then
-    echo "ERROR: CUTLASS SM100a headers missing after symlink - Blackwell builds will fail"
-    echo "       Expected: ${TE_SRC_DIR}/3rdparty/cutlass/include/cute/arch/tmem_allocator_sm100.hpp"
-    echo "       Try: ./core/scripts/install_cutlass.sh && ./core/scripts/fix_cutlass_symlink.sh"
-    exit 1
-fi
-echo "  ✓ TE CUTLASS symlinked: ${TE_BUNDLED_CUTLASS_VERSION} → ${CUTLASS_TARGET_VERSION} (SM100a ready)"
-
-echo "Removing existing Transformer Engine installs to avoid dist-info skew..."
-pip_uninstall -y transformer_engine transformer-engine >/dev/null 2>&1 || true
-rm -rf "${PYTHON_DIST_PACKAGES}"/transformer_engine*.dist-info 2>/dev/null || true
-
-pip_install --no-input --upgrade --ignore-installed pybind11
-
-TE_BUILD_ARCH_LIST="${TE_TORCH_ARCH_LIST}"
-TE_BUILD_NVCC_ARCHS="${TE_CUTLASS_ARCHS}"
-if [ -z "${TE_BUILD_ARCH_LIST}" ]; then
-    TE_BUILD_ARCH_LIST="10.0"
-fi
-if [ -z "${TE_BUILD_NVCC_ARCHS}" ]; then
-    TE_BUILD_NVCC_ARCHS="${CUTLASS_NVCC_ARCHS_VALUE_DEFAULT}"
-fi
-
-if ! TORCH_CUDA_ARCH_LIST="${TE_BUILD_ARCH_LIST}" \
-       CUTLASS_NVCC_ARCHS="${TE_BUILD_NVCC_ARCHS}" \
-       NVTE_CUDA_ARCHS="${TE_BUILD_NVCC_ARCHS}" \
-       CMAKE_CUDA_ARCH_LIST="${TE_BUILD_NVCC_ARCHS}" \
-       NVCC_GENCODE="-gencode=arch=compute_${TE_BUILD_NVCC_ARCHS},code=sm_${TE_BUILD_NVCC_ARCHS}" \
-       NVTE_FRAMEWORK=pytorch \
-       NVTE_SKIP_SUBMODULE_CHECKS_DURING_BUILD=1 \
-       MAX_JOBS="${MAX_JOBS:-$(nproc)}" \
-       pip_install --no-cache-dir --upgrade --ignore-installed --no-build-isolation --no-deps "${TE_SRC_DIR}"; then
-    echo "ERROR: Transformer Engine source installation failed (arch list ${TE_BUILD_ARCH_LIST}, NVCC archs ${TE_BUILD_NVCC_ARCHS})."
-    exit 1
-fi
-
-if [ "${CLEAN_BUILD_ARTIFACTS}" -eq 1 ]; then
-    echo "Cleaning Transformer Engine build artifacts..."
-    rm -rf "${TE_SRC_DIR}/build" "${TE_SRC_DIR}/.eggs" "${TE_SRC_DIR}/dist" 2>/dev/null || true
-fi
-
-# Ensure TE runtime dependencies for FP8 tooling
-pip_uninstall -y onnx onnxscript einops >/dev/null 2>&1 || true
-pip_install --no-cache-dir --upgrade --ignore-installed --no-deps onnx==1.19.0 einops==0.8.0 onnxscript==0.1.0 || {
-    echo "Warning: failed to install TE runtime deps (onnx/onnxscript/einops)"
-}
-# TE FP8 requires ml_dtypes; install without deps to avoid torch overrides
-pip_uninstall -y ml_dtypes >/dev/null 2>&1 || true
-pip_install --no-cache-dir --upgrade --ignore-installed --no-deps ml_dtypes==0.5.1 || {
-    echo "Warning: failed to install ml_dtypes==0.5.1 required by Transformer Engine FP8 checks"
-}
-
-patch_installed_transformer_engine_metadata
-patch_transformer_engine_loader
-disable_transformer_engine_sanity_check
+TE_WHEEL_PATH="$(python3 - "${NATIVE_BUILD_ROOT}/native-torch-extensions.manifest.json" <<'PYNATIVE'
+import hashlib
+import json
+from pathlib import Path
+import sys
+with open(sys.argv[1], encoding="utf-8") as stream:
+    receipt = json.load(stream)
+wheel = receipt["packages"]["transformer-engine-torch"]["wheel"]
+path = Path(wheel["path"])
+if not path.is_file() or hashlib.sha256(path.read_bytes()).hexdigest() != wheel["sha256"]:
+    raise SystemExit("Transformer Engine wheel is missing or its hash does not match")
+print(path)
+PYNATIVE
+)"
+pip_install --no-deps "${TE_WHEEL_PATH}"
 
 # CRITICAL: Verify PyTorch CUDA after Transformer Engine installation
 echo ""
 echo "Verifying PyTorch CUDA after Transformer Engine installation..."
-if ! verify_and_restore_pytorch_cuda "Transformer Engine installation"; then
-    echo "ERROR: Failed to restore PyTorch CUDA after Transformer Engine!"
+if ! verify_pytorch_cuda "Transformer Engine installation"; then
+    echo "ERROR: PyTorch CUDA verification failed after Transformer Engine!"
     exit 1
 fi
 echo "✓ PyTorch CUDA verified after Transformer Engine"
@@ -2553,92 +1726,35 @@ echo "✓ FP8 runtime checks passed"
 echo ""
 echo "Capturing Transformer Engine capability snapshot..."
 
-# Ensure triton is available (required by Transformer Engine)
-echo "Checking for triton..."
-if ! python3 -c "import triton" 2>/dev/null; then
-    echo "  Triton not found. Installing triton (required by Transformer Engine)..."
-    # Try to install triton - it should match the PyTorch version
-    pip_install --no-cache-dir --upgrade triton || {
-        echo "  Warning: Failed to install triton. Transformer Engine capability check may fail."
-    }
-fi
-
-python3 <<'PY'
-import sys
+if ! python3 <<'PY'; then
 import warnings
 
-# Suppress FlashAttention kernel override warnings (harmless - happens when FlashAttention is imported multiple times)
 warnings.filterwarnings("ignore", message=".*Overriding a previously registered kernel.*")
 warnings.filterwarnings("ignore", message=".*Warning only once for all operators.*")
 
-# First check if PyTorch CUDA is available
-try:
-    import torch
-    if not torch.cuda.is_available():
-        print("Transformer Engine capability snapshot skipped: PyTorch CUDA not available")
-        print("  torch.version.cuda = {}".format(getattr(torch.version, 'cuda', None)))
-        print("  torch.__version__ = {}".format(torch.__version__))
-        print("  Transformer Engine requires CUDA-enabled PyTorch.")
-        print("  This check will be retried after PyTorch verification.")
-        sys.exit(0)
-except ImportError:
-    print("Transformer Engine capability snapshot skipped: PyTorch not available")
-    sys.exit(0)
+import torch
+import triton
+import transformer_engine.pytorch as te
 
-# Check if triton is available (required by Transformer Engine)
-try:
-    import triton
-    print(f"  Triton version: {triton.__version__}")
-except ImportError:
-    print("  Warning: triton not found. It should be bundled with PyTorch.")
-    print("  Transformer Engine capability check may fail without triton.")
-    print("  Note: triton should be available via PyTorch. If missing, this may indicate an incomplete PyTorch installation.")
+if not torch.cuda.is_available():
+    raise SystemExit("Transformer Engine capability check requires PyTorch CUDA")
 
-try:
-    import transformer_engine.pytorch as te
-except ImportError as exc:
-    print(f"Transformer Engine capability snapshot skipped: {exc}")
-    if "triton" in str(exc).lower():
-        print("  Triton is required for Transformer Engine. Please ensure PyTorch is fully installed.")
-    elif "undefined symbol" in str(exc).lower() and "cuda" in str(exc).lower():
-        print("  This error indicates PyTorch CUDA libraries are incompatible or not available.")
-        print("  Transformer Engine check will be retried after PyTorch verification.")
-    else:
-        print("  Transformer Engine may not be fully installed yet.")
-    sys.exit(0)
-except Exception as exc:
-    print(f"Transformer Engine capability snapshot skipped: {exc}")
-    if "CUDA" in str(exc):
-        print("  This may be due to PyTorch CUDA not being available.")
-        print("  Transformer Engine check will be retried after PyTorch verification.")
-    sys.exit(0)
+nvfp4_available, nvfp4_reason = te.is_nvfp4_available(return_reason=True)
+mxfp8_available, mxfp8_reason = te.is_mxfp8_available(return_reason=True)
 
-try:
-    nvfp4_available, nvfp4_reason = te.is_nvfp4_available(return_reason=True)
-    mxfp8_available, mxfp8_reason = te.is_mxfp8_available(return_reason=True)
-    def format_status(flag, reason):
-        return "yes" if flag else f"no ({reason or 'not supported on this stack'})"
-    print("Transformer Engine capability snapshot:")
-    print(f"  NVFP4 available: {format_status(nvfp4_available, nvfp4_reason)}")
-    print(f"  MXFP8 available: {format_status(mxfp8_available, mxfp8_reason)}")
-except Exception as exc:
-    print(f"Transformer Engine capability check failed: {exc}")
-    print("  This may be normal if CUDA runtime is not available.")
+
+def format_status(flag, reason):
+    return "yes" if flag else f"no ({reason or 'not supported on this stack'})"
+
+
+print(f"  Triton version: {triton.__version__}")
+print("Transformer Engine capability snapshot:")
+print(f"  NVFP4 available: {format_status(nvfp4_available, nvfp4_reason)}")
+print(f"  MXFP8 available: {format_status(mxfp8_available, mxfp8_reason)}")
 PY
-
-# Refresh hardware capability cache now so subsequent non-root runs do not need
-# to invoke the probe with elevated privileges.
-echo ""
-echo "Refreshing GPU hardware capability cache..."
-if python3 "${PROJECT_ROOT}/core/scripts/utilities/probe_hardware_capabilities.py" --allow-unavailable 2>/tmp/probe_hardware.log; then
-    cat /tmp/probe_hardware.log
-else
-    cat /tmp/probe_hardware.log
-    echo "Warning: GPU hardware capability probe failed; CUDA may be unavailable."
-    echo "This is expected if PyTorch CUDA is not yet properly installed."
-    echo "The capability cache will be refreshed after PyTorch verification."
+    echo "ERROR: Transformer Engine capability verification failed."
+    exit 1
 fi
-rm -f /tmp/probe_hardware.log
 
 # Ensure artifacts and wheel caches are writable by the invoking user for future runs.
 if [ -n "${SUDO_USER:-}" ]; then
@@ -2647,14 +1763,14 @@ if [ -n "${SUDO_USER:-}" ]; then
     chown -R "${SUDO_USER}:${SUDO_USER}" "${THIRD_PARTY_DIR}/wheels" 2>/dev/null || true
 fi
 
-# Final verification: Ensure our custom PyTorch wheel remains installed after all package installations
+# Verify the selected PyTorch runtime after native package installation
 echo ""
 echo "============================================================================"
 echo "Final verification: PyTorch CUDA installation"
 echo "============================================================================"
 
-if ! verify_and_restore_pytorch_cuda "final verification (after all installations)"; then
-    echo "ERROR: Failed to restore PyTorch CUDA during final verification!"
+if ! verify_pytorch_cuda "final verification (after all installations)"; then
+    echo "ERROR: PyTorch CUDA verification failed during final verification!"
     exit 1
 fi
 
@@ -2665,308 +1781,26 @@ import torch
 print(f"✓ Final PyTorch CUDA verification: {torch.__version__} with CUDA {torch.version.cuda}")
 PY
 
-# Clean up Transformer Engine wheel conflicts
-python3 <<'PY'
-import importlib.util
-from pathlib import Path
-
-spec = importlib.util.find_spec("transformer_engine")
-if not spec:
-    raise SystemExit(0)
-pkg_root = Path(spec.origin).parent
-wheel_dir = pkg_root / "wheel_lib"
-if not wheel_dir.exists():
-    raise SystemExit(0)
-for so_path in pkg_root.glob("*.so"):
-    if (wheel_dir / so_path.name).exists():
-        so_path.unlink()
-PY
-
-python3 <<'PY'
-from importlib.metadata import PackageNotFoundError, distribution
-
-def mark_non_pure(dist_name: str) -> None:
-    try:
-        dist = distribution(dist_name)
-    except PackageNotFoundError:
-        return
-    files = dist.files or []
-    wheel_file = None
-    for entry in files:
-        if entry.name == "WHEEL":
-            wheel_file = dist.locate_file("") / entry
-            break
-    if wheel_file is None:
-        return
-    lines = wheel_file.read_text().splitlines()
-    changed = False
-    for idx, line in enumerate(lines):
-        if line.startswith("Root-Is-Purelib:"):
-            value = line.split(":", 1)[1].strip().lower()
-            if value != "false":
-                lines[idx] = "Root-Is-Purelib: false"
-                changed = True
-            break
-    else:
-        lines.append("Root-Is-Purelib: false")
-        changed = True
-    if changed:
-        wheel_file.write_text("\n".join(lines) + "\n")
-
-for name in (
-    "transformer_engine",
-    "transformer_engine_cu12",
-    "transformer_engine_cu13",
-    "transformer_engine_torch",
-    "transformer-engine",
-):
-    mark_non_pure(name)
-PY
-
-python3 <<'PY'
-from importlib.metadata import PackageNotFoundError, distribution
-from pathlib import Path
-
-def ensure_te_import_tolerant(dist_name: str) -> bool:
-    try:
-        dist = distribution(dist_name)
-    except PackageNotFoundError:
-        return False
-    init_path = Path(dist.locate_file("transformer_engine/__init__.py"))
-    if not init_path.exists():
-        return False
-    source = init_path.read_text()
-    marker = "import transformer_engine.common"
-    if marker not in source:
-        return False
-    injection = (
-        "\ntry:\n"
-        "    from importlib.metadata import PackageNotFoundError, distribution\n"
-        "    TE_METADATA_AVAILABLE = True\n"
-        "except ImportError:\n"
-        "    TE_METADATA_AVAILABLE = False\n"
-        "_IN_TREE_TRANSFORMER_ENGINE = False\n"
-        "if TE_METADATA_AVAILABLE:\n"
-        "    try:\n"
-        "        distribution(\"transformer-engine\")\n"
-        "        _IN_TREE_TRANSFORMER_ENGINE = True\n"
-        "    except PackageNotFoundError:\n"
-        "        _IN_TREE_TRANSFORMER_ENGINE = True\n"
-        "else:\n"
-        "    _IN_TREE_TRANSFORMER_ENGINE = True\n"
-    )
-    if marker + injection in source:
-        return True
-    if injection in source:
-        source = source.replace(injection, "", 1)
-    source = source.replace(marker, marker + injection, 1)
-    init_path.write_text(source)
-    return True
-
-ensure_te_import_tolerant("transformer_engine")
-ensure_te_import_tolerant("transformer-engine")
-PY
-
-# Install FlashAttention for optimized SDPA paths
-
-echo ""
-echo "Ensuring FlashAttention (flash-attn ${FLASH_ATTN_TAG}) is available..."
-FLASH_ATTN_CACHE_PATH="${THIRD_PARTY_DIR}/wheels/${FLASH_ATTN_WHEEL_BASENAME}"
-FLASH_ATTN_SPLIT_PREFIX="${FLASH_ATTN_CACHE_PATH}.part"
-
-flash_attn_filter_warning() {
-    python3 - <<'PY'
-import importlib.util
-from pathlib import Path
-spec = importlib.util.find_spec("flash_attn.flash_attn_interface")
-if not spec or not spec.origin:
-    raise SystemExit
-path = Path(spec.origin)
-lines = path.read_text().splitlines()
-marker = "Overriding a previously registered kernel for the same operator"
-if any(marker in ln for ln in lines):
-    raise SystemExit
-inject = [
-    "import warnings",
-    "",
-    'warnings.filterwarnings(',
-    '    "ignore",',
-    '    message=".*Overriding a previously registered kernel for the same operator.*flash_attn.*",',
-    '    category=UserWarning,',
-    '    module="torch.library",',
-    ')',
-    'warnings.filterwarnings(',
-    '    "ignore",',
-    '    message="Warning only once for all operators,\\s+other operators may also be overridden.",',
-    '    category=UserWarning,',
-    '    module="torch.library",',
-    ')',
-]
-out = []
-inserted = False
-for ln in lines:
-    out.append(ln)
-    if not inserted and ln.strip() == "import os":
-        out.extend(inject)
-        inserted = True
-if not inserted:
-    out = inject + [""] + lines
-path.write_text("\n".join(out) + "\n")
-print(f"Patched FlashAttention warning filters at {path}")
-PY
-}
-
-flash_attn_import_check() {
-    python3 - <<'PY'
+# Shared serving uses FA4. FA2 builds belong in a separate training runtime
+# because the two distributions own the same flash_attn namespace.
+python3 <<'PYATTENTION'
+from importlib import metadata
 try:
-    import flash_attn_2_cuda  # type: ignore
-except Exception as exc:
-    print(f"[setup] FlashAttention import check failed: {exc}")
-    raise SystemExit(1)
-print("[setup] FlashAttention CUDA extension import OK")
-PY
-}
-
-install_flash_attention() {
-    FLASH_ATTN_AVAILABLE=0
-    local force_source="${FLASH_ATTN_FORCE_SOURCE:-0}"
-    local fa_sm="${FLASH_ATTN_TARGET_SM:-${GPU_COMPUTE_SM_NUM:-121}}"
-    local fa_arch_list
-    if [ -n "${GPU_COMPUTE_SM_NUM:-}" ]; then
-        fa_arch_list="${GPU_COMPUTE_SM_NUM}"
-    else
-        fa_arch_list="${TE_TORCH_ARCH_LIST:-12.1}"
-    fi
-    local fa_archs_env="${FLASH_ATTN_TARGET_ARCHS:-${fa_sm}}"
-    local fa_max_jobs="${FLASH_ATTN_MAX_JOBS:-8}"
-    local fa_nvcc_threads="${FLASH_ATTN_NVCC_THREADS:-1}"
-    if [[ "${fa_arch_list}" == *a ]]; then
-        fa_arch_list="${fa_arch_list%a}"
-    fi
-    if [[ "${fa_archs_env}" == *a ]]; then
-        fa_archs_env="${fa_archs_env%a}"
-    fi
-
-    echo "Installing FlashAttention ${FLASH_ATTN_EXPECTED_VERSION} (torch $(python3 - <<'PY'
-import torch
-print(torch.__version__)
-PY
-))..."
-    # Force reinstall to ensure ABI matches current torch
-    pip_uninstall -y flash-attn >/dev/null 2>&1 || true
-
-    if [ "${force_source}" -ne 1 ]; then
-        if pip_install --no-cache-dir --upgrade --force-reinstall --ignore-installed --no-deps --prefer-binary --only-binary=:all: \
-            flash-attn=="${FLASH_ATTN_EXPECTED_VERSION}"; then
-            if flash_attn_import_check; then
-                FLASH_ATTN_AVAILABLE=1
-                return 0
-            fi
-            echo "FlashAttention binary wheel installed but import failed; rebuilding from source..."
-            pip_uninstall -y flash-attn >/dev/null 2>&1 || true
-        else
-            echo "Binary FlashAttention wheel unavailable; building from source..."
-        fi
-    else
-        echo "FLASH_ATTN_FORCE_SOURCE=${force_source}; building FlashAttention from source..."
-    fi
-
-    if TORCH_CUDA_ARCH_LIST="${fa_arch_list}" \
-       FLASH_ATTENTION_FORCE_CUDA_SM="${fa_sm}" \
-       FLASH_ATTN_CUDA_ARCHS="${fa_archs_env}" \
-       MAX_JOBS="${fa_max_jobs}" \
-       NVCC_THREADS="${fa_nvcc_threads}" \
-       FLASH_ATTENTION_FORCE_BUILD=TRUE \
-       pip_install --no-cache-dir --upgrade --force-reinstall --ignore-installed --no-build-isolation --no-deps \
-       "flash-attn @ git+https://github.com/Dao-AILab/flash-attention.git@${FLASH_ATTN_TAG}"; then
-        if flash_attn_import_check; then
-            FLASH_ATTN_AVAILABLE=1
-            return 0
-        fi
-        echo "FlashAttention source build succeeded but import failed."
-        pip_uninstall -y flash-attn >/dev/null 2>&1 || true
-    fi
-    echo "Warning: FlashAttention not available (install/import failed)."
-    return 1
-}
-
-install_flash_attention_from_parts() {
-    local tmp_dir
-    local combined
-    local status
-    local -a PARTS=()
-    tmp_dir=$(mktemp -d "${TMPDIR:-/tmp}/flashattn-wheel.XXXXXX")
-    combined="${tmp_dir}/${FLASH_ATTN_WHEEL_BASENAME}"
-    mapfile -t PARTS < <(ls "${FLASH_ATTN_SPLIT_PREFIX}"* | sort -V)
-    if [ "${#PARTS[@]}" -eq 0 ]; then
-        rm -rf "${tmp_dir}"
-        return 1
-    fi
-    if cat "${PARTS[@]}" > "${combined}"; then
-        pip_install --no-cache-dir --upgrade --ignore-installed --no-deps "${combined}"
-        status=$?
-    else
-        status=1
-    fi
-    rm -rf "${tmp_dir}"
-    return "${status}"
-}
-
-cache_flash_attention_wheel() {
-    rm -f "${FLASH_ATTN_SPLIT_PREFIX}"* 2>/dev/null || true
-    if [ -f "${FLASH_ATTN_CACHE_PATH}" ]; then
-        echo "Splitting FlashAttention wheel into <50MB chunks under ${THIRD_PARTY_DIR}/wheels";
-        split -b 45m -d -a 2 "${FLASH_ATTN_CACHE_PATH}" "${FLASH_ATTN_SPLIT_PREFIX}"
-    fi
-}
-
-rebuild_flash_attention_cache() {
-    echo "Skipping FlashAttention wheel rebuild; binary-only mode."
-    return 0
-}
-
-current_flash_attn_version="$(pip_show flash-attn 2>/dev/null | awk '/Version/ {print $2}' || true)"
-if [ -n "${current_flash_attn_version}" ] && [ "${current_flash_attn_version}" != "${FLASH_ATTN_EXPECTED_VERSION}" ]; then
-    echo "FlashAttention version mismatch (${current_flash_attn_version} != ${FLASH_ATTN_EXPECTED_VERSION}), reinstalling..."
-    pip_uninstall -y flash-attn >/dev/null 2>&1 || true
-    current_flash_attn_version=""
-fi
-
-detect_gpu_sm() {
-    if command -v nvidia-smi >/dev/null 2>&1; then
-        local cc
-        cc=$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader | head -n1 | tr -d '.')
-        if [[ -n "${cc}" ]]; then
-            echo "${cc}"
-            return 0
-        fi
-    fi
-    return 1
-}
-
-echo "Installing FlashAttention (binary wheel preferred, source fallback)..."
-if ! install_flash_attention; then
-    echo "Warning: FlashAttention installation failed; continuing without FlashAttention."
-fi
-if [ "${FLASH_ATTN_AVAILABLE:-0}" -eq 1 ]; then
-    # Filter FlashAttention warnings, if present
-    flash_attn_filter_warning
-else
-    echo "FlashAttention unavailable; skipping warning filter."
-fi
-
-echo ""
-echo "Verifying PyTorch CUDA after FlashAttention installation..."
-if ! verify_and_restore_pytorch_cuda "FlashAttention installation"; then
-    echo "ERROR: Failed to restore PyTorch CUDA after FlashAttention!"
-    exit 1
-fi
-echo "✓ PyTorch CUDA verified after FlashAttention"
+    metadata.distribution("flash-attn")
+except metadata.PackageNotFoundError:
+    pass
+else:
+    raise SystemExit("FlashAttention-2 must use a separate environment from shared FA4")
+from flash_attn.cute import flash_attn_func
+if metadata.version("flash-attn-4") != "4.0.0b36":
+    raise SystemExit("The shared FlashAttention-4 version differs from the locked graph")
+print("Shared FlashAttention-4 frontend import verified")
+PYATTENTION
 
 # Install pinned vLLM serving stack and verify ABI against torch.
 echo ""
 echo "Installing pinned vLLM serving stack (${VLLM_PIP_SPEC}) for this CUDA/toolchain..."
-VLLM_ARCH_LIST="12.1"
+VLLM_ARCH_LIST="10.0"
 if [ -n "${GPU_COMPUTE_SM:-}" ]; then
     if [ "${#GPU_COMPUTE_SM}" -ge 3 ]; then
         major="${GPU_COMPUTE_SM:0:2}"
@@ -2976,72 +1810,53 @@ if [ -n "${GPU_COMPUTE_SM:-}" ]; then
 fi
 VLLM_EXPECTED_VERSION="${VLLM_PIP_SPEC#vllm==}"
 
-# Binary-only mode: skip vLLM source sync/caching
-VLLM_WHEEL_PATH=""
-VLLM_WHEEL_HAS_PARTS=0
-
-echo "Installing vLLM from cu13 wheels (binary only, no deps)..."
-pip_uninstall -y vllm >/dev/null 2>&1 || true
-if ! pip_install --no-cache-dir --upgrade --ignore-installed --prefer-binary --only-binary=:all: --no-deps \
-    --index-url "${VLLM_EXTRA_INDEX_URL}" \
-    "${VLLM_PIP_SPEC}"; then
-    echo "ERROR: Failed to install prebuilt ${VLLM_PIP_SPEC} wheel from index ${VLLM_EXTRA_INDEX_URL:-PyPI}."
+# No published wheel targets this torch ABI. Rebuild the fixed source, retain
+# its source/metadata/hash receipt, then install only the verified local wheel.
+if [ -z "${VLLM_BUILD_ROOT:-}" ]; then
+    VLLM_BUILD_PARENT="$(mktemp -d "${THIRD_PARTY_DIR}/vllm-torch2141-build.XXXXXX")"
+    VLLM_BUILD_ROOT="${VLLM_BUILD_PARENT}/build"
+fi
+if ! CUDA_VISIBLE_DEVICES="" TORCH_DEVICE_BACKEND_AUTOLOAD=0 \
+    python3 "${PROJECT_ROOT}/scripts/build_vllm_for_torch.py" \
+    --contract "${VLLM_SOURCE_BUILD_MANIFEST}" \
+    --output-dir "${VLLM_BUILD_ROOT}" \
+    --cuda-arch-list "${VLLM_ARCH_LIST}" \
+    --max-jobs "${MAX_JOBS:-8}" \
+    --nvcc-threads "${NVCC_THREADS:-2}"; then
+    echo "ERROR: The pinned vLLM source build failed. No binary substitute will be installed."
     exit 1
 fi
-VLLM_WHEEL_PATH=""
-VLLM_WHEEL_HAS_PARTS=0
-VLLM_PREBUILT_INSTALLED=1
-
-if [ "${VLLM_PREBUILT_INSTALLED}" -ne 1 ]; then
-    if [ -z "${VLLM_WHEEL_PATH}" ] || { [ ! -f "${VLLM_WHEEL_PATH}" ] && [ "${VLLM_WHEEL_HAS_PARTS}" -eq 0 ]; }; then
-        echo "ERROR: vLLM wheel is missing (expected under ${VLLM_WHEEL_DIR})"
-        exit 1
-    fi
-
-    if [ "${VLLM_WHEEL_HAS_PARTS}" -eq 0 ] && ! compgen -G "${VLLM_WHEEL_PATH}.part*" >/dev/null; then
-        echo "Splitting vLLM wheel into <50MB chunks under ${VLLM_WHEEL_DIR}"
-        split -b 45m -d -a 2 "${VLLM_WHEEL_PATH}" "${VLLM_WHEEL_PATH}.part"
-    fi
-    if compgen -G "${VLLM_WHEEL_PATH}.part*" >/dev/null; then
-        VLLM_WHEEL_HAS_PARTS=1
-    fi
-
-    tmp_vllm_install_dir=$(mktemp -d "${TMPDIR:-/tmp}/vllm-wheel-install.XXXXXX")
-    vllm_wheel_to_install=$(reassemble_split_wheel "${VLLM_WHEEL_PATH}" "${tmp_vllm_install_dir}")
-
-    if [ -z "${vllm_wheel_to_install}" ] || [ ! -f "${vllm_wheel_to_install}" ]; then
-        echo "ERROR: Could not reassemble vLLM wheel from ${VLLM_WHEEL_PATH}"
-        rm -rf "${tmp_vllm_install_dir}"
-        exit 1
-    fi
-
-    pip_uninstall -y vllm >/dev/null 2>&1 || true
-    TORCH_CUDA_ARCH_LIST="${VLLM_ARCH_LIST}" \
-    VLLM_TARGET_DEVICE="cuda" \
-    pip_install --no-cache-dir --force-reinstall --upgrade --no-deps "${vllm_wheel_to_install}"
-    rm -rf "${tmp_vllm_install_dir}"
-else
-    echo "vLLM prebuilt wheel installed from ${VLLM_EXTRA_INDEX_URL:-PyPI}; skipping local wheel cache handling."
-fi
-
-echo "Installing pinned vLLM runtime dependencies (required when vLLM is installed with --no-deps)..."
-# Preserve the selected CUDA torch build while dependencies such as xgrammar
-# resolve their own torch requirement. Keep the local +cu130 tag: constraining
-# only X.Y.Z also permits a different build from PyPI.
-VLLM_DEPS_CONSTRAINTS="$(mktemp -t aisp-vllm-deps.XXXXXX)"
-printf 'torch==%s\n' "${PYTORCH_TORCH_VERSION}" > "${VLLM_DEPS_CONSTRAINTS}"
-if ! pip_install --no-cache-dir --upgrade --ignore-installed \
-    --extra-index-url "${PYTORCH_CU130_INDEX}" \
-    --constraint "${VLLM_DEPS_CONSTRAINTS}" "${VLLM_RUNTIME_DEPS[@]}"; then
-    rm -f "${VLLM_DEPS_CONSTRAINTS}"
-    echo "ERROR: Failed to install pinned vLLM runtime dependencies."
+VLLM_WHEEL_PATH="$(python3 - "${VLLM_BUILD_ROOT}/vllm-source-wheel.manifest.json" <<'PYWHEEL'
+import hashlib
+import json
+from pathlib import Path
+import sys
+with open(sys.argv[1], encoding="utf-8") as stream:
+    receipt = json.load(stream)
+wheel = Path(receipt["wheel"]["path"])
+if not wheel.is_file():
+    raise SystemExit("The vLLM build receipt wheel is missing")
+if hashlib.sha256(wheel.read_bytes()).hexdigest() != receipt["wheel"]["sha256"]:
+    raise SystemExit("The vLLM build receipt wheel hash does not match")
+print(wheel)
+PYWHEEL
+)"
+if [ ! -f "${VLLM_WHEEL_PATH}" ]; then
+    echo "ERROR: The verified vLLM source wheel is missing."
     exit 1
 fi
-rm -f "${VLLM_DEPS_CONSTRAINTS}"
+if ! pip_install --no-deps "${VLLM_WHEEL_PATH}"; then
+    echo "ERROR: The verified vLLM source wheel could not be installed."
+    exit 1
+fi
 
+# The full vLLM runtime dependency graph was installed with hashes above.
+# Install no second dependency graph after building the native wheel.
 python3 <<PY
 import importlib
 import importlib.metadata
+import os
+from pathlib import Path
 try:
     import torch
     import vllm  # type: ignore
@@ -3078,7 +1893,8 @@ if flashinfer_dist_version != expected_flashinfer:
     raise SystemExit(1)
 
 try:
-    importlib.import_module("vllm._C")
+    importlib.import_module("vllm._C_stable_libtorch")
+    importlib.import_module("vllm._moe_C_stable_libtorch")
 except Exception as exc:
     print("ERROR: vLLM extension import failed (ABI mismatch likely):")
     print(exc)
@@ -3087,27 +1903,21 @@ except Exception as exc:
 print(f"✓ torch installed: {torch_version}")
 print(f"✓ vLLM installed: {vllm_dist_version} (module reports {vllm.__version__})")
 print(f"✓ flashinfer-python installed: {flashinfer_dist_version}")
-print("✓ vLLM extension import succeeded: vllm._C")
+print("✓ vLLM stable native extension imports succeeded")
+
+rust_frontend = Path(vllm.__file__).resolve().parent / "vllm-rs"
+if not rust_frontend.is_file() or not os.access(rust_frontend, os.X_OK):
+    raise SystemExit(f"ERROR: vLLM Rust frontend is missing or not executable: {rust_frontend}")
+print(f"✓ vLLM Rust frontend: {rust_frontend}")
 PY
 
 echo ""
 echo "Verifying PyTorch CUDA after vLLM installation..."
-if ! verify_and_restore_pytorch_cuda "vLLM installation"; then
-    echo "ERROR: Failed to restore PyTorch CUDA after vLLM!"
+if ! verify_pytorch_cuda "vLLM installation"; then
+    echo "ERROR: PyTorch CUDA verification failed after vLLM!"
     exit 1
 fi
 echo "✓ PyTorch CUDA verified after vLLM"
-
-# Remove conflicting system packages that interfere with PyTorch
-echo ""
-echo "Removing conflicting system packages..."
-# Remove python3-optree which conflicts with torch.compile
-if dpkg -s python3-optree >/dev/null 2>&1; then
-    echo "Removing python3-optree (conflicts with torch.compile)..."
-    apt remove -y python3-optree python3-keras 2>/dev/null || true
-fi
-# Clean up other conflicting Lambda Labs packages
-apt autoremove -y 2>/dev/null || true
 
 # Verify installation
 echo ""
@@ -3175,6 +1985,7 @@ else:
             )
     else:
         print("CUDA runtime not available. Ensure the NVIDIA driver meets CUDA 13.0 Update 2 requirements and reboot if this is a fresh install.")
+    raise SystemExit("ERROR: PyTorch CUDA is unavailable during installation verification")
 PY
 
 # Check CUDA tools
@@ -3183,7 +1994,8 @@ echo "Checking CUDA tools..."
 if command -v nvcc &> /dev/null; then
     echo "NVCC: $(nvcc --version | head -1)"
 else
-    echo "NVCC not found"
+    echo "ERROR: NVCC not found"
+    exit 1
 fi
 
 # Check Nsight tools
@@ -3218,7 +2030,7 @@ echo ""
 echo "Checking system tools..."
 tools=("numactl" "perf" "htop" "iostat" "ibstat")
 for tool in "${tools[@]}"; do
-    if command -v $tool &> /dev/null; then
+    if command -v "$tool" &> /dev/null; then
         echo "$tool: installed"
     else
         echo "$tool: not found"
@@ -3228,19 +2040,17 @@ done
 # Run basic performance test
 echo ""
 echo "Running basic performance test..."
-python3 <<'PY'
+if ! python3 <<'PY'; then
 import sys
 import time
 
 try:
     import torch
 except Exception as exc:
-    print(f"Skipping performance test: failed to import torch ({exc})")
-    sys.exit(0)
+    raise SystemExit(f"ERROR: failed to import torch for performance test: {exc}") from exc
 
 if not torch.cuda.is_available():
-    print("Skipping performance test: torch.cuda.is_available() is False")
-    sys.exit(0)
+    raise SystemExit("ERROR: torch.cuda.is_available() is False for performance test")
 
 device = torch.device("cuda")
 x = torch.randn(1000, 1000, device=device)
@@ -3259,6 +2069,9 @@ print(f"Matrix multiplication (1000x1000): {(end - start) * 1000 / 100:.2f} ms p
 print(f"GPU memory allocated: {torch.cuda.memory_allocated() / 1024**2:.2f} MB")
 print(f"GPU memory cached: {torch.cuda.memory_reserved() / 1024**2:.2f} MB")
 PY
+    echo "ERROR: Basic GPU performance verification failed."
+    exit 1
+fi
 
 # Test example scripts
 echo ""
@@ -3300,74 +2113,6 @@ else
     echo "Chapter 3 example not present, skipping."
 fi
 
-# Detect NCCL shared library for LD_PRELOAD
-NCCL_LIB_PATH=""
-for candidate in \
-    /usr/lib/x86_64-linux-gnu/libnccl.so.2 \
-    /usr/lib/aarch64-linux-gnu/libnccl.so.2 \
-    /usr/local/lib/libnccl.so.2 \
-    /usr/lib/libnccl.so.2
-    do
-    if [ -f "${candidate}" ]; then
-        NCCL_LIB_PATH="${candidate}"
-        break
-    fi
-done
-export NCCL_LIB_PATH
-
-# Set up environment variables for optimal performance
-echo ""
-echo "Setting up environment variables..."
-cat >> ~/.bashrc <<EOF
-
-# AI Performance Engineering Environment Variables
-export CUDA_LAUNCH_BLOCKING=0
-export CUDA_CACHE_DISABLE=0
-export NCCL_P2P_LEVEL=NVL
-export NCCL_P2P_DISABLE=0
-export NCCL_IB_DISABLE=1
-export NCCL_SHM_DISABLE=0
-export NCCL_NVLS_ENABLE=1
-export TORCH_CUDNN_V8_API_ENABLED=1
-export PYTORCH_ALLOC_CONF=max_split_size_mb:128,expandable_segments:True
-export TORCH_SHOW_CPP_STACKTRACES=1
-export PYTHONFAULTHANDLER=1
-export CUDA_DEVICE_MAX_CONNECTIONS=1
-
-# PyTorch optimization
-export TORCH_COMPILE_DEBUG=0
-export TORCH_LOGS="+dynamo"
-
-# CUDA paths
-export CUDA_HOME="${CUDA_HOME_DIR}"
-export PATH=${NSIGHT_BIN_PATH}:${CUDA_HOME_DIR}/bin:\$PATH
-export AISP_CUDNN_RUNTIME_POLICY="\${AISP_CUDNN_RUNTIME_POLICY:-auto}"
-export LD_LIBRARY_PATH="\${CUDA_HOME_DIR}/lib64:\${CUDA_HOME_DIR}/lib64/stubs\${LD_LIBRARY_PATH:+:\${LD_LIBRARY_PATH}}"
-
-# NCCL preload configuration
-export NCCL_LIB_PATH="${NCCL_LIB_PATH}"
-if [ -n "\${NCCL_LIB_PATH}" ]; then
-    export LD_PRELOAD="\${NCCL_LIB_PATH}:\${LD_PRELOAD:-}"
-else
-    echo "WARNING: NCCL library not found; skipping LD_PRELOAD setup."
-fi
-EOF
-
-echo "Environment variables added to ~/.bashrc"
-
-# Source the environment variables for current session
-if [ -n "${NCCL_LIB_PATH}" ]; then
-    export LD_PRELOAD="${NCCL_LIB_PATH}:${LD_PRELOAD:-}"
-    echo "NCCL 2.28.7 activated for current session (${NCCL_LIB_PATH})"
-else
-    echo "NCCL library not found for current session; continuing without LD_PRELOAD."
-fi
-export NCCL_P2P_LEVEL=NVL
-export NCCL_P2P_DISABLE=0
-export NCCL_IB_DISABLE=1
-export NCCL_SHM_DISABLE=0
-export NCCL_NVLS_ENABLE=1
-
 # Comprehensive setup verification
 echo ""
 echo "Running comprehensive setup verification..."
@@ -3375,7 +2120,7 @@ echo "=============================================="
 
 # Test 1: PyTorch and CUDA
 echo "Testing PyTorch and CUDA..."
-python3 <<'PY'
+if ! python3 <<'PY'; then
 import os
 import ctypes
 import sys
@@ -3395,49 +2140,41 @@ print(f"  CUDA version in PyTorch: {torch.version.cuda}")
 print(f"  CUDA available: {torch.cuda.is_available()}")
 
 if not torch.cuda.is_available():
-    print("WARNING: CUDA runtime not available.")
-    print("  This may be due to:")
-    print("    1. NVIDIA driver not loaded")
-    print("    2. CUDA libraries not in LD_LIBRARY_PATH")
-    print("    3. GPU not accessible")
-    print("  However, PyTorch CUDA build is correctly installed.")
-    sys.exit(0)  # Don't fail the test if CUDA runtime isn't available
+    print("ERROR: CUDA runtime is not available")
+    sys.exit(1)
 
 print(f"  GPU count: {torch.cuda.device_count()}")
 print(f"  GPU name: {torch.cuda.get_device_name(0)}")
 
 nccl_path = os.environ.get("NCCL_LIB_PATH")
 try:
-    if nccl_path and os.path.exists(nccl_path):
-        libnccl = ctypes.CDLL(nccl_path)
-        nv = ctypes.c_int()
-        libnccl.ncclGetVersion(ctypes.byref(nv))
-        print(f"  NCCL version: {nv.value}")
-    else:
-        print("  NCCL version: unavailable (library not found)")
+    if not nccl_path or not os.path.exists(nccl_path):
+        raise RuntimeError(f"locked NCCL library is unavailable: {nccl_path!r}")
+    libnccl = ctypes.CDLL(nccl_path)
+    nv = ctypes.c_int()
+    libnccl.ncclGetVersion(ctypes.byref(nv))
+    print(f"  NCCL version: {nv.value}")
 except Exception as exc:
-    print(f"  NCCL version: error ({exc})")
+    raise SystemExit(f"ERROR: NCCL runtime verification failed: {exc}") from exc
 
 print("PyTorch and CUDA working correctly")
 PY
-
-# Don't fail if CUDA runtime isn't available, but verify CUDA build is correct
-if [ $? -ne 0 ]; then
-    echo "PyTorch/CUDA test completed with warnings (CUDA runtime may not be available)"
+    echo "ERROR: PyTorch/CUDA runtime verification failed."
+    exit 1
 fi
 
 # Test 2: Performance test
 echo ""
 echo "Testing GPU performance..."
-python3 <<'PY'
+if ! python3 <<'PY'; then
 import sys
 import time
 
 import torch
 
 if not torch.cuda.is_available():
-    print("  Skipping GPU performance test: CUDA runtime not available")
-    sys.exit(0)
+    print("ERROR: CUDA runtime is unavailable for the GPU performance test")
+    sys.exit(1)
 
 device = torch.device("cuda")
 x = torch.randn(1000, 1000, device=device)
@@ -3456,22 +2193,22 @@ print(f"  Matrix multiplication: {(end - start) * 1000 / 100:.2f} ms per operati
 print(f"  GPU memory: {torch.cuda.memory_allocated() / 1024**2:.2f} MB allocated")
 print("GPU performance test passed")
 PY
-
-# Don't fail if CUDA runtime isn't available
-if [ $? -ne 0 ]; then
-    echo "GPU performance test skipped (CUDA runtime not available)"
+    echo "ERROR: GPU performance verification failed."
+    exit 1
 fi
 
 # Test 3: torch.compile test
 echo ""
 echo "Testing torch.compile..."
-python3 <<'PY'
+if ! python3 <<'PY'; then
 import sys
 import time
 import traceback
 
 import torch
 
+if not torch.cuda.is_available():
+    raise SystemExit("ERROR: CUDA runtime is unavailable for torch.compile verification")
 device = torch.device("cuda")
 
 def simple_model(x):
@@ -3488,10 +2225,6 @@ uncompiled_time = time.time() - start
 try:
     compiled_model = torch.compile(simple_model, mode="reduce-overhead")
 except AssertionError as exc:
-    if "duplicate template name" in str(exc):
-        print("torch.compile skipped due to known PyTorch nightly issue: duplicate kernel template name")
-        print(f"   Details: {exc}")
-        sys.exit(0)
     print("torch.compile failed with assertion error:")
     print(exc)
     sys.exit(1)
@@ -3519,36 +2252,26 @@ if compiled_time < uncompiled_time:
     print(f"  Speedup: {speedup:.2f}x")
 print("torch.compile test passed")
 PY
-
-compile_status=$?
-if [ $compile_status -ne 0 ]; then
-    echo "torch.compile test failed!"
+    echo "ERROR: torch.compile verification failed."
     exit 1
 fi
 
-# Step 11: Install the validated CUTLASS 4.5.2 backend for torch.compile
+# Verify the locked CUTLASS DSL backend for torch.compile
 echo ""
-echo "Step 11: Installing CUTLASS 4.5.2 Backend (nvidia-cutlass-dsl)..."
+echo "Verifying CUTLASS DSL 4.8.0 backend..."
 echo "================================================================="
 
-# Install the validated CUTLASS DSL and CUDA Python bindings system-wide
-# The Python package (nvidia-cutlass-dsl) includes:
-#   - Python API for torch.compile CUTLASS backend
-#   - C++ headers for direct CUDA C++ kernel development
-#   - All CUTLASS library headers (1000+ header files)
-echo "Installing nvidia-cutlass-dsl and cuda-python (pinned versions)..."
-pip_install --no-cache-dir --upgrade --ignore-installed "nvidia-cutlass-dsl[cu13]==4.5.2" "cuda-python==13.0.3"
-pip_install --no-cache-dir --upgrade --force-reinstall --no-deps "cuda-bindings==13.0.3"
-
-if [ $? -eq 0 ]; then
+# The graph already installed CUTLASS DSL and CUDA Python bindings.
+# Verify availability without resolving a second dependency graph.
+if python3 -c 'import cutlass, cuda.bindings'; then
     echo "CUTLASS backend packages installed (pinned versions)"
-    echo "   - nvidia-cutlass-dsl[cu13]==4.5.2: CUTLASS kernels for torch.compile"
+    echo "   - nvidia-cutlass-dsl[cu13]==4.8.0: CUTLASS kernels for torch.compile"
     
     # Verify PyTorch CUDA after CUTLASS installation
     echo ""
     echo "Verifying PyTorch CUDA after CUTLASS installation..."
-    if ! verify_and_restore_pytorch_cuda "CUTLASS installation"; then
-        echo "ERROR: Failed to restore PyTorch CUDA after CUTLASS!"
+    if ! verify_pytorch_cuda "CUTLASS installation"; then
+        echo "ERROR: PyTorch CUDA verification failed after CUTLASS!"
         exit 1
     fi
     echo "✓ PyTorch CUDA verified after CUTLASS"
@@ -3569,13 +2292,14 @@ if [ $? -eq 0 ]; then
         echo "CUTLASS C++ headers are in site-packages (normal for Python package installation)"
     fi
 else
-    echo "CUTLASS backend installation had issues, but continuing..."
+    echo "ERROR: Locked CUTLASS backend import failed."
+    exit 1
 fi
 
 echo ""
 
 echo "Capturing hardware capabilities..."
-if python3 "${PROJECT_ROOT}/core/scripts/utilities/probe_hardware_capabilities.py" --allow-unavailable 2>/tmp/probe_hardware.log; then
+if python3 "${PROJECT_ROOT}/core/scripts/utilities/probe_hardware_capabilities.py" 2>/tmp/probe_hardware.log; then
     cat /tmp/probe_hardware.log
     echo ""
     echo "Hardware capabilities summary:"
@@ -3592,6 +2316,8 @@ try:
             devices = data
         else:
             devices = []
+        if not devices:
+            raise RuntimeError("capability artifact contains no GPU devices")
         for device in devices:
             name = device.get('name', 'Unknown')
             device_index = device.get('device_index', '?')
@@ -3610,10 +2336,11 @@ try:
                 if joined:
                     print(f"    Features: {joined}")
 except Exception as e:
-    print(f"  Error reading capabilities: {e}", file=sys.stderr)
+    raise SystemExit(f"Error reading capabilities: {e}") from e
 PY
     else
-        echo "  Warning: hardware_capabilities.json not found"
+        echo "ERROR: hardware_capabilities.json was not created." >&2
+        exit 1
     fi
 else
     cat /tmp/probe_hardware.log
@@ -3634,7 +2361,8 @@ echo "Regenerating CUDA arch detection header..."
 if python3 "$PROJECT_ROOT/core/scripts/utilities/generate_arch_detection_header.py"; then
     echo "arch_detection.cuh regenerated from live hardware probe"
 else
-    echo "WARNING: Failed to regenerate arch_detection.cuh (continuing with existing header)"
+    echo "ERROR: Failed to regenerate arch_detection.cuh from the live GPU."
+    exit 1
 fi
 
 echo ""
@@ -3643,8 +2371,7 @@ echo ""
 echo ""
 echo "Testing hardware detection..."
 if [ -f "$PROJECT_ROOT/ch02/hardware_info.py" ]; then
-    python3 "$PROJECT_ROOT/ch02/hardware_info.py" > /dev/null 2>&1
-    if [ $? -eq 0 ]; then
+    if python3 "$PROJECT_ROOT/ch02/hardware_info.py" > /dev/null 2>&1; then
         echo "Hardware detection working"
     else
         echo "ERROR: Hardware detection failed"
@@ -3739,17 +2466,14 @@ echo "Running Verification Checks..."
 echo "=================================="
 echo ""
 
-VERIFICATION_FAILED=0
-
 # Verify PyTorch installation
 echo "Verifying PyTorch installation..."
 export AISP_CUDNN_RUNTIME_POLICY="${AISP_CUDNN_RUNTIME_POLICY:-auto}"
-export LD_LIBRARY_PATH="${CUDA_HOME_DIR}/lib64:${CUDA_HOME_DIR}/lib64/stubs${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
 if python3 core/verification/verify_pytorch.py; then
     echo "PyTorch verification passed"
 else
-    echo "PyTorch verification failed"
-    VERIFICATION_FAILED=1
+    echo "ERROR: PyTorch verification failed"
+    exit 1
 fi
 
 echo ""
@@ -3800,12 +2524,7 @@ fi
 
 echo ""
 
-# Summary of verification
-if [ $VERIFICATION_FAILED -eq 0 ]; then
-    echo "All critical verifications passed!"
-else
-    echo "Some verifications failed - review output above"
-fi
+echo "All critical verifications passed!"
 
 # Run peak performance benchmark
 echo ""
@@ -3864,145 +2583,27 @@ else
     exit 1
 fi
 
-# Final hard pins to ensure dependency consistency
-echo ""
-echo "Reinforcing final dependency pins (HF + TE runtime)..."
-pip_uninstall -y tokenizers huggingface-hub onnx onnxscript einops fsspec >/dev/null 2>&1 || true
-pip_install --no-cache-dir --force-reinstall --ignore-installed --no-deps \
-    tokenizers==0.22.2 \
-    huggingface-hub==0.34.6 \
-    onnx==1.19.0 \
-    onnxscript==0.1.0 \
-    einops==0.8.0 \
-    fsspec==2024.6.1 || {
-    echo "Warning: final dependency pinning failed"
-}
-pip_install --no-cache-dir --upgrade --ignore-installed \
-    --extra-index-url "https://pypi.org/simple" \
-    transformers==4.56.0 \
-    datasets==2.21.0 \
-    sentencepiece==0.2.0 || {
-    echo "Warning: final transformers/datasets/sentencepiece pinning failed"
-}
+# Reject dependency drift after every native build and optional setup path.
+python3 -m pip check
+python3 - "${PYTORCH_STACK_LOCK}" <<'PYLOCK'
+from importlib import metadata
+from packaging.requirements import Requirement
+from pathlib import Path
+import re
+import sys
+mismatches = []
+for line in Path(sys.argv[1]).read_text(encoding="utf-8").splitlines():
+    if not re.match(r"^[A-Za-z0-9_.-]+(?:\[[^]]+\])?==", line):
+        continue
+    requirement = Requirement(line.removesuffix("\\").strip())
+    actual = metadata.version(requirement.name)
+    if not requirement.specifier.contains(actual, prereleases=True):
+        mismatches.append(f"{requirement.name}: expected {requirement.specifier}, found {actual}")
+if mismatches:
+    raise SystemExit("Locked runtime drift:\n" + "\n".join(mismatches))
+print("Every locked runtime version matches")
+PYLOCK
 
-# ------------------------------------------------------------------------------
-# Transformer Engine (FP8/FP4/TMA) rebuild for Blackwell (sm_100a)
-# ------------------------------------------------------------------------------
-echo ""
-echo "Rebuilding Transformer Engine for sm_100a with FP8/FP4/TMA..."
-
-# Ensure CUDA 13-only runtime is visible to cudnn-frontend (avoid multiple libcudart)
-disable_cuda12_cudart() {
-    local cuda12_libdir="/usr/local/cuda-12/targets/x86_64-linux/lib"
-    if [ -d "${cuda12_libdir}" ]; then
-        for lib in libcudart.so libcudart.so.12 libcudart.so.12.*; do
-            if [ -f "${cuda12_libdir}/${lib}" ] && [ ! -f "${cuda12_libdir}/${lib}.bak" ]; then
-                mv "${cuda12_libdir}/${lib}" "${cuda12_libdir}/${lib}.bak"
-            fi
-        done
-    fi
-}
-disable_cuda12_cudart
-
-TE_ENV_VARS_BASE=(
-    "TRITON_CODEGEN_ARCH=sm_100a"
-    "TRITON_OVERRIDE_ARCH=sm100"
-    "CMAKE_CUDA_ARCHITECTURES=100a"
-    "NVTE_CUDA_ARCHS=100a"
-    "NVTE_ENABLE_FP8=1"
-    "NVTE_ENABLE_FP4=1"
-    "NVTE_ENABLE_TMA=1"
-)
-
-run_with_te_env() {
-    TRITON_CODEGEN_ARCH=sm_100a \
-    TRITON_OVERRIDE_ARCH=sm100 \
-    CMAKE_CUDA_ARCHITECTURES=100a \
-    NVTE_CUDA_ARCHS=100a \
-    NVTE_ENABLE_FP8=1 \
-    NVTE_ENABLE_FP4=1 \
-    NVTE_ENABLE_TMA=1 \
-    "$@"
-}
-
-TE_WHEEL_DIR="${THIRD_PARTY_DIR}/wheels"
-mkdir -p "${TE_WHEEL_DIR}"
-
-# Keep the same pinned cu130 wheel and resolved source for TE builds.
-if ! pip_install --no-cache-dir --force-reinstall --ignore-installed --no-deps \
-    --index-url "${PYTORCH_CU130_INDEX}" \
-    --find-links "${PYTORCH_TORCH_FIND_LINKS}" \
-    --extra-index-url "https://pypi.org/simple" \
-    --only-binary=":all:" \
-    "torch==${PYTORCH_TORCH_VERSION}"; then
-    echo "ERROR: torch ${PYTORCH_TORCH_VERSION} install failed for TE rebuild"
-    exit 1
-fi
-pip_install --upgrade pydantic==2.12.4 pydantic-core==2.41.5
-
-# Clone/update TransformerEngine source under third_party
-if [ ! -d "${TE_SRC_DIR}" ]; then
-    git clone "${TE_REPO_URL}" "${TE_SRC_DIR}"
-fi
-git -C "${TE_SRC_DIR}" fetch --all
-git -C "${TE_SRC_DIR}" checkout "${TE_GIT_COMMIT}"
-git -C "${TE_SRC_DIR}" submodule update --init --recursive
-
-# Build a wheel and install it (stores wheel in third_party/wheels for reuse)
-(
-    cd "${TE_SRC_DIR}"
-    run_with_te_env pip_wheel . -w "${TE_WHEEL_DIR}" --no-build-isolation --no-deps
-)
-LATEST_TE_WHEEL="$(ls -t "${TE_WHEEL_DIR}"/transformer_engine-*.whl | head -n 1)"
-if [ -z "${LATEST_TE_WHEEL}" ]; then
-    echo "ERROR: TransformerEngine wheel not built."
-    exit 1
-fi
-run_with_te_env pip_install --force-reinstall --no-build-isolation --no-deps "${LATEST_TE_WHEEL}"
-
-# Persist runtime environment for future shells
-TE_ENV_FILE="${THIRD_PARTY_DIR}/te_sm100a_env.sh"
-CU13_LIBDIR="$(python3 - <<'PY'
-import site, pathlib
-paths = []
-for sp in site.getsitepackages() + [site.getusersitepackages()]:
-    if sp:
-        paths.append(pathlib.Path(sp) / 'nvidia' / 'cu13' / 'lib')
-for candidate in paths:
-    if candidate.exists():
-        print(candidate)
-        raise SystemExit(0)
-print('')
-PY
-)"
-CUSPARSELT_LIBDIR="$(python3 - <<'PY'
-import site, pathlib
-paths = []
-for sp in site.getsitepackages() + [site.getusersitepackages()]:
-    if sp:
-        paths.append(pathlib.Path(sp) / 'nvidia' / 'cusparselt' / 'lib')
-for candidate in paths:
-    if candidate.exists():
-        print(candidate)
-        raise SystemExit(0)
-print('')
-PY
-)"
-if [ -z "${CU13_LIBDIR}" ] || [ -z "${CUSPARSELT_LIBDIR}" ]; then
-    echo "ERROR: Could not locate cu13 or cusparselt library paths."
-    exit 1
-fi
-cat > "${TE_ENV_FILE}" <<EOF
-# TransformerEngine sm_100a FP8/FP4/TMA environment
-export TRITON_CODEGEN_ARCH=sm_100a
-export TRITON_OVERRIDE_ARCH=sm100
-export NVTE_ENABLE_FP8=1
-export NVTE_ENABLE_FP4=1
-export NVTE_ENABLE_TMA=1
-export LD_LIBRARY_PATH=${CUSPARSELT_LIBDIR}:${CU13_LIBDIR}:\${LD_LIBRARY_PATH}
-EOF
-chmod +x "${TE_ENV_FILE}"
-echo "To use TE FP8/FP4 fast paths on Blackwell, run: source ${TE_ENV_FILE}"
 
 echo ""
 if [[ -n "${GPU_COMPUTE_SM_NUM:-}" && "${GPU_COMPUTE_SM_NUM}" -ge 100 ]]; then
@@ -4012,81 +2613,23 @@ if [[ -n "${GPU_COMPUTE_SM_NUM:-}" && "${GPU_COMPUTE_SM_NUM}" -ge 100 ]]; then
         echo "✓ All Blackwell features verified successfully!"
         echo "  Results saved to: artifacts/blackwell_verification/verification_results.json"
     else
-        echo "WARNING: Some Blackwell features may need attention."
+        echo "ERROR: Blackwell feature verification failed."
         echo "  Review: artifacts/blackwell_verification/verification_results.json"
-        # Don't exit - this is informational, not critical
+        exit 1
     fi
 else
     echo "Skipping Blackwell verification (non-Blackwell GPU detected)."
 fi
 
-if [ "${INSTALL_GPT_OSS}" -eq 1 ]; then
-    echo ""
-    echo "Downloading GPT-OSS model and installing CLI..."
-    GPT_OSS_MODEL_DIR="${GPT_OSS_MODEL_DIR:-${PROJECT_ROOT}/gpt-oss-20b}"
-    huggingface-cli download openai/gpt-oss-20b --include "original/*" --local-dir "${GPT_OSS_MODEL_DIR}/" || {
-        echo "ERROR: Failed to download gpt-oss-20b model"
-        exit 1
-    }
-    if ! pip_install --no-cache-dir --upgrade gpt-oss; then
-        echo "ERROR: Failed to install gpt-oss package"
-        exit 1
-    fi
-    TRITON_KERNELS_SRC_DIR="${TRITON_KERNELS_SRC_DIR:-${PROJECT_ROOT}/third_party/triton-kernels}"
-    if [ -z "${TRITON_KERNELS_SPEC:-}" ]; then
-        if [ ! -d "${TRITON_KERNELS_SRC_DIR}" ]; then
-            if ! git clone --depth 1 https://github.com/openai/triton-kernels.git "${TRITON_KERNELS_SRC_DIR}"; then
-                echo "WARNING: Failed to clone https://github.com/openai/triton-kernels.git into ${TRITON_KERNELS_SRC_DIR}."
-            fi
-        fi
-        if [ -f "${TRITON_KERNELS_SRC_DIR}/pyproject.toml" ] || [ -f "${TRITON_KERNELS_SRC_DIR}/setup.py" ]; then
-            TRITON_KERNELS_SPEC="${TRITON_KERNELS_SRC_DIR}"
-        else
-            TRITON_KERNELS_SPEC="git+https://github.com/openai/triton-kernels.git"
-        fi
-    fi
-    if [[ "${TRITON_KERNELS_SPEC}" == git+https://github.com/openai/triton-kernels.git ]]; then
-        if ! git ls-remote https://github.com/openai/triton-kernels.git >/dev/null 2>&1; then
-            echo "WARNING: Cannot access https://github.com/openai/triton-kernels.git without credentials."
-            echo "         Provide TRITON_KERNELS_SPEC (wheel/URL) or clone into ${TRITON_KERNELS_SRC_DIR}."
-        fi
-    fi
-    if ! pip_install --no-cache-dir --upgrade --no-deps "${TRITON_KERNELS_SPEC}"; then
-        echo "WARNING: Failed to install ${TRITON_KERNELS_SPEC}; gpt_oss chat may not work."
-    fi
-    GPT_OSS_BACKEND="${GPT_OSS_BACKEND:-triton}"
-    if [ "${GPT_OSS_BACKEND}" = "triton" ]; then
-        if ! python3 - <<'PY'
-import importlib
-modules = [
-    "triton_kernels.swiglu",
-    "triton_kernels.numerics_details.mxfp",
-    "triton_kernels.matmul_ogs",
-    "triton_kernels.routing",
-    "triton_kernels.tensor",
-]
-for name in modules:
-    importlib.import_module(name)
-PY
-        then
-            echo "WARNING: triton_kernels missing required modules; falling back to torch backend."
-            GPT_OSS_BACKEND="torch"
-        fi
-    fi
-    if ! python3 -m gpt_oss.chat --backend "${GPT_OSS_BACKEND}" "${GPT_OSS_MODEL_DIR}"; then
-        echo "WARNING: gpt_oss chat invocation failed; skipping."
-    fi
-else
-    echo ""
-    echo "Skipping GPT-OSS model/CLI install (set INSTALL_GPT_OSS=1 to enable)."
-fi
+# Point the global CLI at this runtime only after every installation, benchmark,
+# lock, and architecture validation has succeeded.
+install_aisp_cli_wrapper
 
 echo ""
 echo "Final cleanup (APT/pip caches)..."
 reclaim_disk_space_basic
 
 # Final summary
-CUDNN_INSTALL_SUMMARY="$(report_installed_cudnn)"
 echo ""
 echo "Setup Complete!"
 echo "=================="
@@ -4094,8 +2637,10 @@ echo ""
 echo "Installed:"
 echo "  • PyTorch ${PYTORCH_TORCH_VERSION} CUDA wheel from ${PYTORCH_CU130_INDEX}"
 echo "  • CUDA ${CUDA_FULL_VERSION} toolchain and development tools"
-echo "  • NCCL ${NCCL_SHORT_VERSION} (Blackwell-optimized with NVLS support)"
-echo "  • NVSHMEM runtime and headers (CUDA 13)"
+echo "  • NCCL ${NCCL_WHEEL_VERSION} from the locked nvidia-nccl-cu13 wheel"
+echo "  • cuDNN ${CUDNN_WHEEL_VERSION} from the locked nvidia-cudnn-cu13 wheel"
+echo "  • NVSHMEM ${NVSHMEM_WHEEL_VERSION} from the locked nvidia-nvshmem-cu13 wheel"
+echo "  • CUTLASS ${CURRENT_CUTLASS_VERSION} commit ${CUTLASS_RESOLVED_COMMIT} tree ${CUTLASS_RESOLVED_TREE}"
 echo "  • GPUDirect Storage (GDS) tools, drivers, kvikio library, and boot-time nvidia-fs load config"
 echo "  • NVIDIA Nsight Systems ${NSYS_VERSION}"
 echo "  • NVIDIA Nsight Compute ${NCU_VERSION}"
@@ -4105,9 +2650,10 @@ echo "  • System performance tools (numactl, perf, etc.)"
 echo ""
 echo "Verified:"
 echo "  • PyTorch installation and CUDA functionality"
-echo "  • NVLink connectivity (if multi-GPU)"
-echo "  • CUTLASS backend configuration"
-echo "  • GPUDirect Storage (GDS) functionality"
+echo "  • Locked NCCL, cuDNN, and NVSHMEM wheel libraries and headers"
+echo "  • NVLink check executed when multiple GPUs were present"
+echo "  • CUTLASS source provenance and backend configuration"
+echo "  • GDS checks executed when an NVMe device was present"
 echo "  • Blackwell features (if SM 10.0+): TMEM, TMA, Clusters, DSMEM, FP8, FP4"
 echo ""
 echo "Post-Run Checklist:"
@@ -4120,9 +2666,11 @@ echo "  • Verify PyTorch arch coverage:   python - <<'PY'"
 echo "                                      import torch"
 echo "                                      print(torch.cuda.get_arch_list())"
 echo "                                    PY"
-echo "                                    (expect ['sm_100', 'sm_103', 'sm_121', 'compute_121'])"
-echo "  • ${CUDNN_INSTALL_SUMMARY}"
-echo "  • Before additional builds: source /etc/profile.d/cuda-${CUDA_SHORT_VERSION}.sh (or start a new shell)"
+echo "                                    (must include sm_${GPU_COMPUTE_SM_NUM})"
+echo "  • NCCL library:                   ${NCCL_LIB_PATH}"
+echo "  • cuDNN library:                  ${CUDNN_LIB_PATH}"
+echo "  • NVSHMEM library:                ${NVSHMEM_LIB_PATH}"
+echo "  • Before additional builds: source ${AISP_VENV_DIR}/bin/activate and ${AISP_VENV_DIR}/runtime-env.sh"
 echo "For more information, see the README.md file and chapter-specific documentation."
 echo ""
 echo "Happy performance engineering!"

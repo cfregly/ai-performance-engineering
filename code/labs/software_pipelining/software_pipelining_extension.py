@@ -16,5 +16,5 @@ def load_software_pipelining_extension():
         name="software_pipelining_kernels_ext",
         sources=[_EXTENSION_DIR / "software_pipelining_kernels.cu"],
         extra_cuda_cflags=["-O3", "-lineinfo"],
-        extra_cflags=["-O3", "-std=c++17"],
+        extra_cflags=["-O3", "-std=c++20"],
     )

@@ -10,17 +10,18 @@ Demonstrates optimized vLLM v1 usage with:
 
 from __future__ import annotations
 
+import argparse
 import gc
 import importlib
 import importlib.metadata
-import os
 import random
 import time
 from collections.abc import Sequence
-from pathlib import Path
 from typing import Any, Optional
 
 import torch
+
+from ch18.vllm_process_cleanup import shutdown_vllm_runtime
 from core.benchmark.verification import PrecisionFlags, simple_signature
 from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig, WorkloadMetadata
@@ -29,24 +30,14 @@ from core.harness.serving_stack import (
     configure_serving_stack_cache_env,
     configure_serving_stack_runtime_env,
     get_serving_stack_pins,
+    is_vllm_native_extension_abi_error,
+    load_vllm_native_extensions,
     preload_serving_stack_shared_libs,
 )
 from core.utils.logger import get_logger
-from core.utils.python_entrypoints import build_repo_python_env, install_local_module_override
-
-from ch18.vllm_process_cleanup import shutdown_vllm_runtime
 
 logger = get_logger(__name__)
-_REPO_ROOT = Path(__file__).resolve().parents[1]
-_HACK_PATH = _REPO_ROOT / "hack"
 _TOKEN_PREVIEW_CAPACITY = 16
-
-
-def _is_vllm_abi_mismatch_error(exc: BaseException) -> bool:
-    text = str(exc).lower()
-    return (
-        "undefined symbol" in text and ("vllm/_c.abi3.so" in text or "vllm._c" in text)
-    ) or "c10_cuda_check_implementation" in text
 
 
 def _dist_version(name: str) -> str | None:
@@ -85,13 +76,14 @@ def _assert_vllm_runtime_ready(
 ) -> None:
     _assert_serving_stack_versions(serving_stack)
     if import_error is not None:
-        if _is_vllm_abi_mismatch_error(import_error):
+        if is_vllm_native_extension_abi_error(import_error):
             raise RuntimeError(
                 "FAIL FAST: vLLM ABI mismatch detected while importing vLLM. "
                 f"Remediation: pin and reinstall {serving_stack.pinned_stack_str}. "
                 "Then verify with: "
                 '`python -c "import importlib, importlib.metadata as md, torch, vllm; '
-                "importlib.import_module('vllm._C'); "
+                "importlib.import_module('vllm._C_stable_libtorch'); "
+                "importlib.import_module('vllm._moe_C_stable_libtorch'); "
                 "print(torch.__version__, md.version('vllm'), vllm.__version__)\"`. "
                 f"Original error: {import_error}"
             )
@@ -101,20 +93,22 @@ def _assert_vllm_runtime_ready(
             f"Original error: {import_error}"
         )
     try:
-        importlib.import_module("vllm._C")
+        load_vllm_native_extensions()
     except Exception as exc:
-        if _is_vllm_abi_mismatch_error(exc):
+        if is_vllm_native_extension_abi_error(exc):
             raise RuntimeError(
-                "FAIL FAST: vLLM ABI mismatch detected while loading vllm._C. "
+                "FAIL FAST: vLLM ABI mismatch detected while loading the required "
+                "stable-libTorch native extensions. "
                 f"Remediation: pin and reinstall {serving_stack.pinned_stack_str}. "
                 "Then verify with: "
                 '`python -c "import importlib, importlib.metadata as md, torch, vllm; '
-                "importlib.import_module('vllm._C'); "
+                "importlib.import_module('vllm._C_stable_libtorch'); "
+                "importlib.import_module('vllm._moe_C_stable_libtorch'); "
                 "print(torch.__version__, md.version('vllm'), vllm.__version__)\"`. "
                 f"Original error: {exc}"
             ) from exc
         raise RuntimeError(
-            "FAIL FAST: vllm._C failed to import. "
+            "FAIL FAST: Required vLLM stable-libTorch native extensions failed to import. "
             f"Remediation: pin and reinstall {serving_stack.pinned_stack_str}. "
             f"Original error: {exc}"
         ) from exc
@@ -123,14 +117,6 @@ def _assert_vllm_runtime_ready(
 def _prepare_vllm_runtime() -> tuple[type[Any], type[Any], type[Any], ServingStackPins]:
     """Prepare the serving process immediately before importing vLLM."""
     serving_stack = get_serving_stack_pins()
-    os.environ.update(
-        build_repo_python_env(
-            _REPO_ROOT,
-            base_env=os.environ,
-            extra_pythonpath=[_HACK_PATH],
-        )
-    )
-    install_local_module_override("numba", _HACK_PATH / "numba")
     configure_serving_stack_runtime_env()
     configure_serving_stack_cache_env()
     preload_serving_stack_shared_libs()
@@ -138,10 +124,9 @@ def _prepare_vllm_runtime() -> tuple[type[Any], type[Any], type[Any], ServingSta
 
     try:
         vllm_module = importlib.import_module("vllm")
-        inputs_module = importlib.import_module("vllm.inputs.data")
         llm_cls = vllm_module.LLM
         sampling_params_cls = vllm_module.SamplingParams
-        tokens_prompt_cls = inputs_module.TokensPrompt
+        tokens_prompt_cls = vllm_module.TokensPrompt
     except Exception as exc:
         _assert_vllm_runtime_ready(exc, serving_stack)
         raise AssertionError("unreachable") from exc
@@ -157,7 +142,42 @@ def _fixed_kv_cache_memory_bytes() -> int:
     free memory changes mid-profile in shared/containerized environments.
     Supplying kv_cache_memory_bytes skips that fragile profiling path.
     """
-    return 2 * 1024**3  # 2 GiB is sufficient for opt-125m @ max_model_len=512
+    return 2 * 1024**3  # Fixed across paired runs; sized for the supported small-model target.
+
+
+def _parse_target_overrides(
+    argv: Sequence[str],
+    *,
+    default_model: str,
+    default_max_model_len: int,
+    max_tokens: int,
+) -> tuple[str, int]:
+    """Parse the model/context selectors supported by this benchmark pair."""
+    parser = argparse.ArgumentParser(
+        add_help=False,
+        allow_abbrev=False,
+        exit_on_error=False,
+    )
+    parser.add_argument("--model", default=default_model)
+    parser.add_argument("--max-model-len", type=int, default=default_max_model_len)
+    try:
+        args, unknown = parser.parse_known_args(list(argv))
+    except (argparse.ArgumentError, SystemExit) as exc:
+        raise ValueError(
+            "vLLM target overrides require --model NAME and "
+            "--max-model-len INTEGER"
+        ) from exc
+    if unknown:
+        raise ValueError(f"unsupported vLLM target override(s): {' '.join(unknown)}")
+    model_name = str(args.model).strip()
+    if not model_name:
+        raise ValueError("--model must be a non-empty model ID or local path")
+    max_model_len = int(args.max_model_len)
+    if max_model_len <= max_tokens:
+        raise ValueError(
+            f"--max-model-len must be greater than max_tokens ({max_tokens})"
+        )
+    return model_name, max_model_len
 
 
 class OptimizedVLLMV1Integration:
@@ -166,12 +186,18 @@ class OptimizedVLLMV1Integration:
     def __init__(
         self,
         model_name: str = "facebook/opt-125m",
+        max_model_len: int = 512,
         max_tokens: int = 128,
         batch_size: int = 8,
         use_vllm: bool = True,
         enable_chunked_prefill: bool = True,
     ):
-        self.model_name = model_name
+        self.model_name, self.max_model_len = _parse_target_overrides(
+            [],
+            default_model=model_name,
+            default_max_model_len=max_model_len,
+            max_tokens=max_tokens,
+        )
         self.max_tokens = max_tokens
         self.batch_size = batch_size
         if not use_vllm:
@@ -220,7 +246,7 @@ class OptimizedVLLMV1Integration:
             kv_cache_memory_bytes=_fixed_kv_cache_memory_bytes(),
             dtype="bfloat16",
             tensor_parallel_size=1,
-            max_model_len=512,
+            max_model_len=self.max_model_len,
         )
 
     def setup(self) -> None:
@@ -296,7 +322,7 @@ class OptimizedVLLMV1Integration:
         if not base_ids:
             raise RuntimeError("Tokenizer returned empty token IDs for prefix")
 
-        max_prompt_len = 512 - self.max_tokens
+        max_prompt_len = self.max_model_len - self.max_tokens
         suffix_ids: list[list[int]] = []
         for i in range(self.batch_size):
             ids = tokenizer.encode(f"there was a {i}.", add_special_tokens=False)
@@ -403,10 +429,35 @@ class OptimizedVLLMV1IntegrationBenchmark(VerificationPayloadMixin, BaseBenchmar
         self._token_id_buffer: Optional[torch.Tensor] = None
         self._batch_size_tensor: Optional[torch.Tensor] = None
         self._max_tokens_tensor: Optional[torch.Tensor] = None
+        self._max_model_len_tensor: Optional[torch.Tensor] = None
+        self._target_override_error: str | None = None
         self._verification_payload = None
-        self.register_workload_metadata(requests_per_iteration=8.0)
+        self.register_workload_metadata(
+            requests_per_iteration=float(self.runner.batch_size),
+            tokens_per_iteration=float(self.runner.batch_size * self.runner.max_tokens),
+        )
+
+    def apply_target_overrides(self, argv: list[str]) -> None:
+        """Select the offline model and context bound before vLLM setup."""
+        if hasattr(self.runner, "llm"):
+            raise RuntimeError("vLLM target overrides must be applied before setup()")
+        try:
+            model_name, max_model_len = _parse_target_overrides(
+                argv,
+                default_model=self.runner.model_name,
+                default_max_model_len=self.runner.max_model_len,
+                max_tokens=self.runner.max_tokens,
+            )
+        except ValueError as exc:
+            self._target_override_error = str(exc)
+            raise
+        self._target_override_error = None
+        self.runner.model_name = model_name
+        self.runner.max_model_len = max_model_len
 
     def setup(self) -> None:
+        if self._target_override_error is not None:
+            raise ValueError(f"Invalid target override: {self._target_override_error}")
         self.runner.setup()
         self._metrics = {}
         self.output = None
@@ -414,8 +465,10 @@ class OptimizedVLLMV1IntegrationBenchmark(VerificationPayloadMixin, BaseBenchmar
         self._token_id_buffer = torch.empty(_TOKEN_PREVIEW_CAPACITY, dtype=torch.int32)
         self._batch_size_tensor = torch.empty((), dtype=torch.int64)
         self._max_tokens_tensor = torch.empty((), dtype=torch.int64)
+        self._max_model_len_tensor = torch.empty((), dtype=torch.int64)
         self._batch_size_tensor.fill_(int(self.runner.batch_size))
         self._max_tokens_tensor.fill_(int(self.runner.max_tokens))
+        self._max_model_len_tensor.fill_(int(self.runner.max_model_len))
 
     def _materialize_token_ids(self, token_ids: Sequence[int]) -> torch.Tensor:
         num_ids = len(token_ids)
@@ -441,12 +494,17 @@ class OptimizedVLLMV1IntegrationBenchmark(VerificationPayloadMixin, BaseBenchmar
     def capture_verification_payload(self) -> None:
         if self._last_token_ids is None:
             raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
-        if self._batch_size_tensor is None or self._max_tokens_tensor is None:
+        if (
+            self._batch_size_tensor is None
+            or self._max_tokens_tensor is None
+            or self._max_model_len_tensor is None
+        ):
             raise RuntimeError("setup() must initialize verification metadata tensors")
         self._set_verification_payload(
             inputs={
                 "batch_size": self._batch_size_tensor,
                 "max_tokens": self._max_tokens_tensor,
+                "max_model_len": self._max_model_len_tensor,
             },
             output=self.output,
             batch_size=self.runner.batch_size,
@@ -465,6 +523,7 @@ class OptimizedVLLMV1IntegrationBenchmark(VerificationPayloadMixin, BaseBenchmar
         self._token_id_buffer = None
         self._batch_size_tensor = None
         self._max_tokens_tensor = None
+        self._max_model_len_tensor = None
         super().teardown()
 
     def get_config(self) -> BenchmarkConfig:
@@ -479,8 +538,8 @@ class OptimizedVLLMV1IntegrationBenchmark(VerificationPayloadMixin, BaseBenchmar
 
     def get_workload_metadata(self) -> WorkloadMetadata | None:
         return WorkloadMetadata(
-            requests_per_iteration=8.0,
-            tokens_per_iteration=float(8 * 128),
+            requests_per_iteration=float(self.runner.batch_size),
+            tokens_per_iteration=float(self.runner.batch_size * self.runner.max_tokens),
         )
 
     def get_input_signature(self) -> dict:

@@ -72,6 +72,12 @@ NanoChat is intentionally bigger than a single benchmark pair. This lab entry pr
 - Use [speedrun.sh](speedrun.sh) when you want the broader "train and talk to a small model" experience.
 - Use [rustbpe/README.md](rustbpe/README.md) for the tokenizer-specific component work.
 
+The project scripts create a lab-local `.venv` with `uv sync --extra gpu`.
+That extra resolves the exact stable Torch 2.14.1 CUDA 13.0 wheel from the
+official cu130 index. Activate this lab-local environment only for the NanoChat
+workflow. The CPU extra selects the matching stable 2.14.1 CPU index on Linux
+x86-64.
+
 ## Notes
 - This README covers the harness pair. Use `README_FAST.md` and the project scripts for the broader training and serving walkthrough.
 - The decode microbenchmarks live separately in `labs/decode_optimization`; this lab is the broader inference-stack companion.

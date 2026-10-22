@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import Callable, Optional, Tuple
+from typing import Callable, Optional
 
 import torch
+
+from core.harness.serving_stack import load_vllm_native_extensions
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 COMPILE_MODE = "reduce-overhead" if torch.cuda.is_available() else "default"
@@ -26,46 +28,51 @@ class DecodeKernel:
 
 
 class VLLMDecodeKernel:
-    """Small PagedAttention-backed decode step.
+    """Small vLLM unified-attention decode step.
 
-    Uses vLLM's CUDA custom op (paged_attention_v1) with the vLLM v1 KV-cache
+    Uses vLLM's current Triton unified-attention op with its block-table KV-cache
     layout. This is intentionally a minimal wrapper to keep the benchmark
-    self-contained while still exercising the fused decode kernel.
+    self-contained while still exercising a fused decode kernel.
     """
 
     def __init__(self, hidden: int, max_batch: int = 32, device: str = DEVICE) -> None:
         try:
-            from vllm import _custom_ops as vllm_ops
-            from vllm.v1.attention.ops.paged_attn import PagedAttention
+            load_vllm_native_extensions()
+            from vllm.v1.attention.ops.triton_unified_attention import (
+                unified_attention,
+            )
         except Exception as exc:  # pragma: no cover - optional dependency
             raise RuntimeError(
-                f"FAIL FAST: vLLM PagedAttention unavailable ({exc}). "
-                "Install the pinned serving stack and verify vllm._C import."
+                f"FAIL FAST: vLLM unified attention unavailable ({exc}). "
+                "Install the pinned serving stack and verify both stable-libTorch "
+                "native extensions."
             ) from exc
 
-        self._ops = vllm_ops
-        self._paged_attention = vllm_ops.paged_attention_v1
+        self._unified_attention = unified_attention
 
         self.device = device
         self.hidden = hidden
         self.num_heads = 1
         self.head_size = hidden
-        self.kv_cache_dtype = "auto"
         self.scale = 1.0 / math.sqrt(float(self.head_size))
 
         self.max_batch = max_batch
-        # vLLM paged attention requires block_size >= 8 (typically 8, 16, or 32)
+        # Match the pinned vLLM unified-attention block-table layout.
         self.block_size = 16
         self.num_blocks = 4
-        self.max_seq_len = self.num_blocks * self.block_size
 
-        # Allocate the v1 KV cache layout: [2, num_blocks, num_heads * head_size * block_size].
-        kv_elems = self.num_heads * self.head_size * self.block_size
-        self.kv_cache = torch.randn(
-            (2, self.num_blocks, kv_elems), device=self.device, dtype=torch.float16
+        # Unified attention consumes [num_blocks, block_size, num_heads, head_size].
+        cache_shape = (
+            self.num_blocks,
+            self.block_size,
+            self.num_heads,
+            self.head_size,
         )
-        self.key_cache, self.value_cache = PagedAttention.split_kv_cache(
-            self.kv_cache, num_kv_heads=self.num_heads, head_size=self.head_size
+        self.key_cache = torch.randn(
+            cache_shape, device=self.device, dtype=torch.float16
+        )
+        self.value_cache = torch.randn(
+            cache_shape, device=self.device, dtype=torch.float16
         )
 
         # Block tables: each sequence gets assigned blocks.
@@ -81,10 +88,9 @@ class VLLMDecodeKernel:
         self.seq_lens = torch.full(
             (self.max_batch,), self.block_size, dtype=torch.int32, device=self.device
         )
-
-        # K/V scale factors (1.0 = no scaling) - required by vLLM API.
-        self.k_scale = torch.tensor(1.0, dtype=torch.float32, device=self.device)
-        self.v_scale = torch.tensor(1.0, dtype=torch.float32, device=self.device)
+        self.query_start_loc = torch.arange(
+            self.max_batch + 1, dtype=torch.int32, device=self.device
+        )
 
     def ensure_capacity(self, batch: int) -> None:
         if batch <= self.max_batch:
@@ -98,6 +104,9 @@ class VLLMDecodeKernel:
         )
         self.seq_lens = torch.full(
             (batch,), self.block_size, dtype=torch.int32, device=self.device
+        )
+        self.query_start_loc = torch.arange(
+            batch + 1, dtype=torch.int32, device=self.device
         )
         self.max_batch = batch
 
@@ -119,21 +128,24 @@ class VLLMDecodeKernel:
             dtype=torch.float16,
         )
 
-        self._paged_attention(
+        self._unified_attention(
+            q=query,
+            k=self.key_cache,
+            v=self.value_cache,
             out=out,
-            query=query,
-            key_cache=self.key_cache,
-            value_cache=self.value_cache,
-            num_kv_heads=self.num_heads,
-            scale=self.scale,
-            block_tables=self.block_tables[:batch],
-            seq_lens=self.seq_lens[:batch],
-            block_size=self.block_size,
-            max_seq_len=self.max_seq_len,
+            cu_seqlens_q=self.query_start_loc[: batch + 1],
+            max_seqlen_q=1,
+            seqused_k=self.seq_lens[:batch],
+            max_seqlen_k=self.block_size,
+            softmax_scale=self.scale,
+            causal=True,
+            window_size=(-1, -1),
+            block_table=self.block_tables[:batch],
+            softcap=0.0,
+            q_descale=None,
+            k_descale=None,
+            v_descale=None,
             alibi_slopes=None,
-            kv_cache_dtype=self.kv_cache_dtype,
-            k_scale=self.k_scale,
-            v_scale=self.v_scale,
         )
 
         flat = out.view(batch, self.hidden)
@@ -143,7 +155,10 @@ class VLLMDecodeKernel:
 
     @property
     def bytes(self) -> int:
-        return self.kv_cache.numel() * self.kv_cache.element_size()
+        return sum(
+            cache.numel() * cache.element_size()
+            for cache in (self.key_cache, self.value_cache)
+        )
 
 
 

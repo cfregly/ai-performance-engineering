@@ -23,10 +23,13 @@ CODE = Path(__file__).resolve().parents[1]
 CUDA = pytest.mark.skipif(not torch.cuda.is_available(), reason="Actual CUDA runtime required; host checks are not GPU qualification")
 
 _CUTE_ENVIRONMENT_VERSIONS = {
-    "torch": "2.9.1+cu130",
-    "flash-attn-4": "4.0.0b19",
-    "nvidia-cutlass-dsl": "4.5.2",
-    "quack-kernels": "0.5.0",
+    "torch": "2.14.1+cu130",
+    "triton": "3.8.0",
+    "flash-attn-4": "4.0.0b36",
+    "nvidia-cutlass-dsl": "4.8.0",
+    "quack-kernels": "0.6.5",
+    "apache-tvm-ffi": "0.1.11",
+    "torch-c-dlpack-ext": "0.1.5+torch2141.nobackend1",
 }
 
 
@@ -50,7 +53,7 @@ def _run_cute_resolver(
     for distribution, version in versions.items():
         _write_distribution(tmp_path, distribution, version)
     if include_flash_attn_2:
-        _write_distribution(tmp_path, "flash-attn", "2.8.3")
+        _write_distribution(tmp_path, "flash-attn", "2.8.3.post2")
 
     cute_package = tmp_path / "flash_attn" / "cute"
     cute_package.mkdir(parents=True)
@@ -70,7 +73,7 @@ def _run_cute_resolver(
         python_path.append(inherited)
     environment = os.environ | {"PYTHONPATH": os.pathsep.join(python_path)}
     # Import the real tool first, then isolate metadata lookup to the fixture.
-    # Installed FA2 must not leak into a control for a separate FA4 environment.
+    # Installed FA2 must not leak into a control for the shared FA4 environment.
     return subprocess.run(
         [
             sys.executable,
@@ -252,31 +255,64 @@ def test_cute_public_pair_rejects_invalid_logsumexp():
         extract_cute_output((torch.ones(1), "invalid"))
 
 
-def test_cute_environment_lock_preserves_default_fa2_stack():
+def test_cute_environment_uses_shared_fa4_stack_and_preserves_separate_fa2_contract():
+    import json
+
     from labs.flexattention.flex_attention_cute import CUTE_ENVIRONMENT_VERSIONS
 
     requirements = (CODE / "labs/flexattention/requirements_cute.txt").read_text(encoding="utf-8")
-    assert "--extra-index-url https://download.pytorch.org/whl/cu130" in requirements
-    requirement_lines = {
-        line for line in requirements.splitlines() if line and not line.startswith(("#", "--"))
-    }
-    assert {
-        "torch==2.9.1+cu130",
-        "nvidia-cutlass-dsl[cu13]==4.5.2",
-        "quack-kernels==0.5.0",
-        "apache-tvm-ffi==0.1.12",
-        "torch-c-dlpack-ext==0.1.5",
-        "flash-attn-4[cu13]==4.0.0b19",
-    } <= requirement_lines
-    assert all("==" in line for line in requirement_lines)
+    active_lines = [
+        line for line in requirements.splitlines() if line and not line.startswith("#")
+    ]
+    assert active_lines == ["-r ../../requirements_torch2141_linux_x86_64.lock"]
+
+    lock = (CODE / "requirements_torch2141_linux_x86_64.lock").read_text(encoding="utf-8")
+    assert "--extra-index-url https://download.pytorch.org/whl/cu130" in lock
+    assert "--find-links vendor/python-wheels" in lock
+    for distribution, version in CUTE_ENVIRONMENT_VERSIONS.items():
+        assert f"{distribution}=={version} " in lock
     assert CUTE_ENVIRONMENT_VERSIONS == _CUTE_ENVIRONMENT_VERSIONS
 
     setup = (CODE / "setup.sh").read_text(encoding="utf-8")
     default_requirements = (CODE / "requirements_latest.txt").read_text(encoding="utf-8")
-    assert 'FLASH_ATTN_TAG="${FLASH_ATTN_TAG:-v2.8.3}"' in setup
-    assert '"nvidia-cutlass-dsl[cu13]==4.5.2"' in setup
-    assert "flash-attn-4" not in setup
-    assert "flash-attn-4" not in default_requirements
+    default_requirement_lines = {
+        line
+        for line in default_requirements.splitlines()
+        if line and not line.startswith(("#", "--"))
+    }
+    assert "torch==2.14.1+cu130" in default_requirement_lines
+    assert "flash-attn-4[cu13]==4.0.0b36" in default_requirement_lines
+    assert not any(line.startswith("flash-attn==") for line in default_requirement_lines)
+
+    # The shared runtime installs FA4 and only rebuilds Transformer Engine.
+    # FA2 owns the same flash_attn namespace, so its source build is an explicit
+    # contract for a separate, otherwise fresh environment.
+    assert '--package transformer-engine-torch' in setup
+    assert '--package flash-attn' not in setup
+    assert 'metadata.distribution("flash-attn")' in setup
+    assert 'metadata.version("flash-attn-4") != "4.0.0b36"' in setup
+
+    native_contract = json.loads(
+        (CODE / "native_torch_extensions.json").read_text(encoding="utf-8")
+    )
+    assert native_contract["runtime"]["torch"] == "2.14.1+cu130"
+    fa2 = next(
+        package
+        for package in native_contract["packages"]
+        if package["id"] == "flash-attn"
+    )
+    assert (
+        fa2["source"]["declared_upstream_commit"]
+        == "49774b31c8d1172a5b28f72e9aed0f322bf4ccba"
+    )
+    assert (
+        fa2["sdist"]["sha256"]
+        == "d0f9f0b08a986cdeadbffcf5ec8b3a8f514366c68ad1853d3ab061bc83cc340b"
+    )
+    assert fa2["expected_metadata"]["version"] == "2.8.3.post2"
+    assert fa2["forbidden_distributions"] == ["flash-attn", "flash-attn-4"]
+    assert fa2["build_environment"]["FLASH_ATTENTION_FORCE_BUILD"] == "TRUE"
+    assert fa2["build_environment"]["FLASH_ATTN_CUDA_ARCHS"] == "100"
 
 
 def test_cute_resolver_uses_public_fa4_api_from_exact_isolated_environment(tmp_path):
@@ -288,8 +324,8 @@ def test_cute_resolver_uses_public_fa4_api_from_exact_isolated_environment(tmp_p
     "defect,expected_error",
     [
         ("private_api_only", "must export public flash_attn.cute.flash_attn_func"),
-        ("wrong_fa4_version", "flash-attn-4==4.0.0b18, expected 4.0.0b19"),
-        ("fa2_overlap", "must not contain flash-attn==2.8.3"),
+        ("wrong_fa4_version", "flash-attn-4==4.0.0b19, expected 4.0.0b36"),
+        ("fa2_overlap", "must not contain flash-attn==2.8.3.post2"),
     ],
 )
 def test_cute_resolver_rejects_private_or_nonisolated_environments(
@@ -298,7 +334,7 @@ def test_cute_resolver_rejects_private_or_nonisolated_environments(
     result = _run_cute_resolver(
         tmp_path,
         public_api=defect != "private_api_only",
-        version_overrides={"flash-attn-4": "4.0.0b18"}
+        version_overrides={"flash-attn-4": "4.0.0b19"}
         if defect == "wrong_fa4_version"
         else None,
         include_flash_attn_2=defect == "fa2_overlap",

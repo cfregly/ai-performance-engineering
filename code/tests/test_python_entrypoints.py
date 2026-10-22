@@ -63,6 +63,7 @@ def test_build_torchrun_entry_command_supports_module_launch() -> None:
         argv=["--batch", "1"],
         nproc_per_node=2,
         nnodes=1,
+        local_addr="127.0.0.1",
     )
     assert cmd == [
         sys.executable,
@@ -72,6 +73,8 @@ def test_build_torchrun_entry_command_supports_module_launch() -> None:
         "2",
         "--nnodes",
         "1",
+        "--local_addr",
+        "127.0.0.1",
         "-m",
         "ch15.tensor_parallel_demo",
         "--batch",
