@@ -834,6 +834,13 @@ def test_cutlass_dsl_and_source_pins_match_their_validated_releases() -> None:
     assert re.search(r"^nvidia-cutlass-dsl==4\.8\.0 \\$", lock, re.MULTILINE)
     assert 'DEFAULT_COMMIT="db1c288993354c88e551c40c19a8fb93a774a241"' in installer
     assert 'CUTLASS_RELEASE_TAG="v4.5.2"' in setup
+    for workflow_name in ("dual-arch-compare.yml", "tier1-nightly.yml"):
+        workflow = (WORKFLOW_ROOT / workflow_name).read_text(encoding="utf-8")
+        assert (
+            "bash core/scripts/install_cutlass.sh db1c288993354c88e551c40c19a8fb93a774a241"
+            in workflow
+        )
+        assert "install_cutlass.sh v4.5.2" not in workflow
 
 
 def test_uv_metadata_matches_supported_python_contract() -> None:

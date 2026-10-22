@@ -4,6 +4,7 @@ import json
 import os
 from pathlib import Path
 
+from click import unstyle
 import core.benchmark.bench_commands as bench_commands
 import core.harness.run_benchmarks as run_benchmarks_module
 import pytest
@@ -1383,8 +1384,9 @@ def test_run_tier1_cli_does_not_advertise_post_benchmark_promotion_options(
     result = CliRunner().invoke(app, args)
 
     assert result.exit_code != 0
-    assert "No such option" in result.stderr
-    assert option in result.stderr
+    error = unstyle(result.stderr)
+    assert "No such option" in error
+    assert option in error
 
 
 def test_run_tier1_cli_exits_nonzero_when_suite_summary_reports_failures(

@@ -307,7 +307,7 @@ jobs:
 
       - name: Materialize and verify the validated CUTLASS source
         run: |
-          bash core/scripts/install_cutlass.sh v4.5.2
+          bash core/scripts/install_cutlass.sh db1c288993354c88e551c40c19a8fb93a774a241
           python core/verification/verify_cutlass_setup.py
 
       - name: GPU preflight
