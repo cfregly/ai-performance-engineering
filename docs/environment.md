@@ -44,7 +44,7 @@ explicit skip.
 
 | Component | Configured baseline | Source/qualification |
 | --- | --- | --- |
-| Operating system | Ubuntu 22.04 or 24.04, x86-64 | `setup.sh` stops on other releases. It is tested on 22.04. NVIDIA publishes no CUDA 13.0 packages for 20.04 |
+| Operating system | Ubuntu 22.04 or 24.04, x86-64 | `setup.sh` stops on other releases. A configured version does not establish a full setup validation |
 | Python | 3.12 | `setup.sh` |
 | CUDA toolkit | 13.0.2 | `setup.sh`. Local toolkit and wheel runtime versions are distinct |
 | PyTorch | 2.14.1+cu130 | Exact stable wheel pin in `requirements_latest.txt` and the Linux hash lock, not a nightly |
@@ -52,6 +52,7 @@ explicit skip.
 | TorchVision | 0.29.1+cu130 | Exact stable CUDA 13 wheel pin matched to the default PyTorch environment |
 | TorchAudio | 2.11.0+cu130 | Exact CUDA 13 stable-ABI wheel pin. Its stable ABI supports PyTorch 2.11 and later |
 | TorchAO | 0.18.0+cu130 | Exact stable CUDA 13 wheel pin for the PyTorch 2.14.1 environment |
+| TorchCodec | 0.17.0+cu130 | Exact CUDA 13 wheel pin. Media decoding requires FFmpeg shared libraries from Ubuntu's `ffmpeg` package, which `setup.sh` installs |
 | TorchTitan | 0.3.0 | Exact package pin in `requirements_latest.txt` and the Linux hash lock |
 | FlashInfer Python | 0.7.2 | Exact package pin in `requirements_latest.txt` and the Linux hash lock |
 | FlashAttention | `flash-attn-4[cu13]` 4.0.0b36 | Shared default. FA2 2.8.3.post2 uses the same Python/native namespace and is built only in a separate validation environment |

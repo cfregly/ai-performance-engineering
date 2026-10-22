@@ -13,14 +13,21 @@ import importlib
 import importlib.metadata
 import io
 import json
+import math
+import multiprocessing
 import os
+import pickle
+import select
+import socket
+import struct
 import sys
 import time
+import traceback
 from contextlib import redirect_stdout
 from dataclasses import dataclass
 from functools import wraps
 from pathlib import Path
-from typing import Dict, List, Optional, Sequence, Set, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
 
 import torch
 
@@ -30,16 +37,30 @@ from core.harness.serving_stack import (
     load_vllm_native_extensions,
 )
 
-try:
-    from vllm import EngineArgs, LLMEngine, SamplingParams
-    from vllm.sampling_params import RequestOutputKind
-except Exception as exc:  # pragma: no cover - optional dep
-    EngineArgs = None  # type: ignore
-    LLMEngine = None  # type: ignore
-    SamplingParams = None  # type: ignore
-    RequestOutputKind = None  # type: ignore
-    _IMPORT_ERROR = exc
-else:
+EngineArgs = None
+LLMEngine = None
+SamplingParams = None
+RequestOutputKind = None
+_IMPORT_ERROR: Optional[BaseException] = None
+
+
+def _load_vllm_api() -> None:
+    """Import vLLM only after a spawned worker binds its visible GPU."""
+    global EngineArgs, LLMEngine, RequestOutputKind, SamplingParams, _IMPORT_ERROR
+    if all(value is not None for value in (EngineArgs, LLMEngine, SamplingParams, RequestOutputKind)):
+        return
+    try:
+        from vllm import EngineArgs as imported_engine_args
+        from vllm import LLMEngine as imported_llm_engine
+        from vllm import SamplingParams as imported_sampling_params
+        from vllm.sampling_params import RequestOutputKind as imported_output_kind
+    except Exception as exc:  # pragma: no cover - optional dep
+        _IMPORT_ERROR = exc
+        return
+    EngineArgs = imported_engine_args
+    LLMEngine = imported_llm_engine
+    SamplingParams = imported_sampling_params
+    RequestOutputKind = imported_output_kind
     _IMPORT_ERROR = None
 
 from labs.dynamic_router.router_policy import EWMA, Router, SequenceInfo
@@ -62,7 +83,7 @@ STEADY_STATE_ITERATIONS = 3
 VLLM_PROFILE_RECEIPT_DIR_ENV = "AISP_VLLM_PROFILE_RECEIPT_DIR"
 VLLM_PROFILE_RUNTIME_SCHEMA = "aisp.dynamic-router-vllm-profile-runtime.v1"
 VLLM_PROFILE_OUTPUT_SCHEMA = "aisp.dynamic-router-vllm-profile-output.v1"
-VLLM_PROFILE_LIFECYCLE_SCHEMA = "aisp.dynamic-router-vllm-profile-lifecycle.v1"
+VLLM_PROFILE_LIFECYCLE_SCHEMA = "aisp.dynamic-router-vllm-profile-lifecycle.v2"
 ROUTING_ARRIVAL_ALL_UPFRONT = "all-upfront"
 ROUTING_ARRIVAL_TWO_WAVE_IMBALANCE = "two-wave-imbalance"
 
@@ -292,7 +313,10 @@ def _build_cli_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--use-v1-core-loop",
         action="store_true",
-        help="Drive vLLM V1 EngineCore directly with the optimized polling loop (Inproc only).",
+        help=(
+            "Drive vLLM V1 EngineCore directly inside each isolated GPU worker "
+            "with the optimized polling loop."
+        ),
     )
     return parser
 
@@ -530,8 +554,8 @@ def _build_vllm_engine(engine_cls, model_id: str, device_index: int, *, attentio
     """Build a pinned-vLLM engine on one logical CUDA device.
 
     The pinned vLLM single-process executor derives its local rank from
-    ``VllmConfig.device_config.device``. Set that field before constructing
-    each engine so the two in-process lab replicas use distinct visible GPUs.
+    ``VllmConfig.device_config.device``. Spawned engine workers expose one GPU,
+    so production sessions pass child-local device zero here.
     """
     if EngineArgs is None:
         _skip(_format_vllm_import_error(_IMPORT_ERROR or RuntimeError("EngineArgs is unavailable")))
@@ -572,6 +596,7 @@ class _VllmWrapper:
 
     def __init__(self, gpu_id: str, device_index: int, model_id: str, *, attention_backend: str | None = None) -> None:
         _assert_vllm_runtime_ready()
+        _load_vllm_api()
         if EngineArgs is None or LLMEngine is None or SamplingParams is None:
             _skip(_format_vllm_import_error(_IMPORT_ERROR or RuntimeError("unknown vLLM import failure")))
 
@@ -631,6 +656,9 @@ class _VllmWrapper:
             arrival_time=rt.admitted_at,
         )
         self._inflight[rt.req.req_id] = rt
+
+    def flush_requests(self) -> None:
+        """Keep the direct wrapper API aligned with spawned worker proxies."""
 
     def step(self, now: Optional[float] = None) -> Tuple[List[str], List[Tuple[str, float]], int]:
         """
@@ -757,12 +785,14 @@ class _VllmV1Wrapper(_VllmWrapper):
     """
     V1 EngineCore path that uses the optimized polling loop semantics.
 
-    This is intentionally limited to the in-process EngineCore (multiprocess off)
-    so we can access ``engine_core.step_fn()`` and surface the executed flag.
+    Each wrapper lives in its own spawned GPU worker. Within that worker the
+    EngineCore stays in-process so ``engine_core.step_fn()`` remains directly
+    accessible and can surface the executed flag.
     """
 
     def __init__(self, gpu_id: str, device_index: int, model_id: str, *, attention_backend: str | None = None) -> None:
         _assert_vllm_runtime_ready()
+        _load_vllm_api()
         if EngineArgs is None or SamplingParams is None:
             _skip(f"vLLM import failed: {_IMPORT_ERROR}")
         try:
@@ -833,6 +863,744 @@ class _VllmV1Wrapper(_VllmWrapper):
         return finished_ids, ttft_samples, tokens_emitted
 
 
+_WORKER_RANK_ENV_KEYS = (
+    "LOCAL_RANK",
+    "RANK",
+    "WORLD_SIZE",
+    "LOCAL_WORLD_SIZE",
+    "GROUP_RANK",
+    "ROLE_RANK",
+    "ROLE_WORLD_SIZE",
+    "MASTER_ADDR",
+    "MASTER_PORT",
+    "TORCHELASTIC_RUN_ID",
+    "TORCHELASTIC_RESTART_COUNT",
+    "TORCHELASTIC_MAX_RESTARTS",
+)
+_WORKER_JOIN_TIMEOUT_SECONDS = 30.0
+_WORKER_STARTUP_TIMEOUT_SECONDS = 900.0
+_WORKER_OPERATION_TIMEOUT_SECONDS = 300.0
+_WORKER_STARTUP_TIMEOUT_ENV = "AISP_VLLM_WORKER_STARTUP_TIMEOUT_SECONDS"
+_WORKER_OPERATION_TIMEOUT_ENV = "AISP_VLLM_WORKER_OPERATION_TIMEOUT_SECONDS"
+_WORKER_JOIN_TIMEOUT_ENV = "AISP_VLLM_WORKER_JOIN_TIMEOUT_SECONDS"
+_WORKER_RPC_HEADER = struct.Struct("!Q")
+_WORKER_RPC_MAX_MESSAGE_BYTES = 1 << 30
+
+
+class _VllmWorkerRPCTimeout(TimeoutError):
+    """A spawned engine worker did not answer before its RPC deadline."""
+
+
+def _worker_timeout_seconds(
+    explicit: Optional[float],
+    *,
+    environment_name: str,
+    default: float,
+) -> float:
+    """Resolve one positive finite worker timeout without starting a child."""
+    raw: object = explicit
+    if raw is None:
+        raw = os.environ.get(environment_name, str(default))
+    try:
+        value = float(raw)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{environment_name} must be a positive finite number") from exc
+    if not math.isfinite(value) or value <= 0:
+        raise ValueError(f"{environment_name} must be a positive finite number")
+    return value
+
+
+def _cuda_visible_device_token(device_index: int) -> str:
+    """Map a parent logical device index to one child-visible CUDA token."""
+    if device_index < 0:
+        raise ValueError("device_index must be non-negative")
+    visible = os.environ.get("CUDA_VISIBLE_DEVICES")
+    if visible is None:
+        return str(device_index)
+    tokens = [token.strip() for token in visible.split(",") if token.strip()]
+    if device_index >= len(tokens):
+        raise RuntimeError(
+            f"Logical CUDA device {device_index} is outside CUDA_VISIBLE_DEVICES={visible!r}"
+        )
+    return tokens[device_index]
+
+
+def _worker_os_command_line() -> Tuple[str, ...]:
+    """Return Linux process argv for guard receipts when procfs is available."""
+    path = Path("/proc/self/cmdline")
+    try:
+        raw = path.read_bytes()
+    except OSError:
+        return ()
+    return tuple(part.decode("utf-8", errors="replace") for part in raw.split(b"\0") if part)
+
+
+def _worker_error_payload(exc: BaseException) -> Dict[str, str]:
+    return {
+        "type": type(exc).__name__,
+        "message": str(exc),
+        "traceback": traceback.format_exc(),
+    }
+
+
+def _serialize_worker_message(message: object) -> bytes:
+    payload = pickle.dumps(message, protocol=pickle.HIGHEST_PROTOCOL)
+    if len(payload) > _WORKER_RPC_MAX_MESSAGE_BYTES:
+        raise ValueError(
+            "vLLM worker RPC message exceeds the one-gibibyte protocol limit"
+        )
+    return _WORKER_RPC_HEADER.pack(len(payload)) + payload
+
+
+def _worker_socket_recv_exact(connection: socket.socket, size: int) -> bytes:
+    chunks = bytearray()
+    while len(chunks) < size:
+        chunk = connection.recv(size - len(chunks))
+        if not chunk:
+            raise EOFError("vLLM worker control socket closed during a message")
+        chunks.extend(chunk)
+    return bytes(chunks)
+
+
+def _worker_socket_receive(connection: socket.socket) -> object:
+    header = _worker_socket_recv_exact(connection, _WORKER_RPC_HEADER.size)
+    (payload_size,) = _WORKER_RPC_HEADER.unpack(header)
+    if payload_size > _WORKER_RPC_MAX_MESSAGE_BYTES:
+        raise ValueError(
+            "vLLM worker RPC message exceeds the one-gibibyte protocol limit"
+        )
+    payload = _worker_socket_recv_exact(connection, payload_size)
+    return pickle.loads(payload)
+
+
+def _worker_socket_send(connection: socket.socket, message: object) -> None:
+    connection.sendall(_serialize_worker_message(message))
+
+
+def _vllm_engine_worker(
+    connection: socket.socket,
+    wrapper_cls: type[_VllmWrapper],
+    gpu_id: str,
+    cuda_visible_device: str,
+    model_id: str,
+    attention_backend: Optional[str],
+) -> None:
+    """Own one single-GPU vLLM engine and serve synchronous control RPCs."""
+    wrapper: Optional[_VllmWrapper] = None
+    try:
+        cuda_initialized_before_binding = torch.cuda.is_initialized()
+        vllm_imported_before_binding = any(
+            name == "vllm" or name.startswith("vllm.") for name in sys.modules
+        )
+        worker_python_argv = tuple(sys.argv)
+        worker_os_command_line = _worker_os_command_line()
+        if cuda_initialized_before_binding:
+            raise RuntimeError("CUDA initialized before spawned vLLM worker device binding")
+        if vllm_imported_before_binding:
+            raise RuntimeError("vLLM imported before spawned worker device binding")
+        os.environ["CUDA_VISIBLE_DEVICES"] = cuda_visible_device
+        os.environ["VLLM_ENABLE_V1_MULTIPROCESSING"] = "0"
+        for key in _WORKER_RANK_ENV_KEYS:
+            os.environ.pop(key, None)
+
+        wrapper = wrapper_cls(
+            gpu_id,
+            0,
+            model_id,
+            attention_backend=attention_backend,
+        )
+        _worker_socket_send(
+            connection,
+            {
+                "id": 0,
+                "ok": True,
+                "result": {
+                    "pid": os.getpid(),
+                    "cuda_initialized_before_binding": cuda_initialized_before_binding,
+                    "vllm_imported_before_binding": vllm_imported_before_binding,
+                    "python_argv": worker_python_argv,
+                    "os_command_line": worker_os_command_line,
+                    "cuda_visible_devices": os.environ["CUDA_VISIBLE_DEVICES"],
+                    "vllm_enable_v1_multiprocessing": os.environ[
+                        "VLLM_ENABLE_V1_MULTIPROCESSING"
+                    ],
+                    "present_rank_env": tuple(
+                        key for key in _WORKER_RANK_ENV_KEYS if key in os.environ
+                    ),
+                },
+            }
+        )
+
+        while True:
+            message = _worker_socket_receive(connection)
+            request_id = int(message["id"])
+            operation = str(message["operation"])
+            arguments = message.get("arguments", {})
+            for runtime, prompt_token_ids in message.get("pending_requests", ()):
+                wrapper.add_request(runtime, prompt_token_ids)
+
+            if operation == "flush_requests":
+                result: Any = None
+            elif operation == "step":
+                result = wrapper.step()
+            elif operation == "reset_request_state":
+                wrapper.reset_request_state()
+                result = None
+            elif operation == "snapshot_metrics":
+                result = wrapper.snapshot_metrics(
+                    arguments.get("ttft_ema"),
+                    float(arguments["tpot_ema"]),
+                )
+            elif operation == "close":
+                wrapper.close(force=bool(arguments.get("force", False)))
+                result = None
+            else:
+                raise RuntimeError(f"Unknown vLLM worker operation: {operation}")
+
+            finished_ids = result[0] if operation == "step" else ()
+            completed = {
+                request_id: wrapper._completed_output_token_ids[request_id]
+                for request_id in finished_ids
+            }
+            queue_depth = 0 if operation == "close" else wrapper.queue_depth()
+            _worker_socket_send(
+                connection,
+                {
+                    "id": request_id,
+                    "ok": True,
+                    "result": result,
+                    "queue_depth": queue_depth,
+                    "completed_output_token_ids": completed,
+                }
+            )
+            if operation == "close":
+                wrapper = None
+                break
+    except EOFError:
+        pass
+    except BaseException as exc:
+        try:
+            _worker_socket_send(
+                connection,
+                {
+                    "id": locals().get("request_id", 0),
+                    "ok": False,
+                    "error": _worker_error_payload(exc),
+                }
+            )
+        except (BrokenPipeError, EOFError, OSError):
+            pass
+        raise SystemExit(1) from exc
+    finally:
+        if wrapper is not None:
+            try:
+                wrapper.close(force=True)
+            except BaseException:
+                pass
+        connection.close()
+
+
+class _SpawnedVllmWrapper:
+    """Synchronous proxy for a vLLM wrapper in an isolated spawn worker."""
+
+    def __init__(
+        self,
+        gpu_id: str,
+        device_index: int,
+        model_id: str,
+        *,
+        attention_backend: Optional[str],
+        wrapper_cls: type[_VllmWrapper],
+        startup_timeout_seconds: Optional[float] = None,
+        operation_timeout_seconds: Optional[float] = None,
+        join_timeout_seconds: Optional[float] = None,
+    ) -> None:
+        self.gpu_id = gpu_id
+        self.device_index = device_index
+        self._startup_timeout_seconds = _worker_timeout_seconds(
+            startup_timeout_seconds,
+            environment_name=_WORKER_STARTUP_TIMEOUT_ENV,
+            default=_WORKER_STARTUP_TIMEOUT_SECONDS,
+        )
+        self._operation_timeout_seconds = _worker_timeout_seconds(
+            operation_timeout_seconds,
+            environment_name=_WORKER_OPERATION_TIMEOUT_ENV,
+            default=_WORKER_OPERATION_TIMEOUT_SECONDS,
+        )
+        self._join_timeout_seconds = _worker_timeout_seconds(
+            join_timeout_seconds,
+            environment_name=_WORKER_JOIN_TIMEOUT_ENV,
+            default=_WORKER_JOIN_TIMEOUT_SECONDS,
+        )
+        self._pending_requests: List[Tuple[_RequestRuntime, Optional[Tuple[int, ...]]]] = []
+        self._completed_output_token_ids: Dict[str, Tuple[int, ...]] = {}
+        self._queue_depth = 0
+        self._closed = False
+        self._process_finished = False
+        self._request_id = 0
+        self.worker_pid: Optional[int] = None
+        self.worker_exitcode: Optional[int] = None
+        self.worker_termination = "running"
+        self.worker_residual_alive = True
+        self.worker_startup_completed = False
+        self.worker_failure_operation: Optional[str] = None
+        self.worker_failure_reason: Optional[str] = None
+        self.worker_cuda_initialized_before_binding: Optional[bool] = None
+        self.worker_vllm_imported_before_binding: Optional[bool] = None
+        self.worker_python_argv: Tuple[str, ...] = ()
+        self.worker_os_command_line: Tuple[str, ...] = ()
+        self.worker_cuda_visible_devices = _cuda_visible_device_token(device_index)
+        self.worker_v1_multiprocessing: Optional[str] = None
+        self.worker_rank_environment: Optional[Tuple[str, ...]] = None
+
+        context = multiprocessing.get_context("spawn")
+        self.worker_start_method = context.get_start_method()
+        parent_connection, child_connection = socket.socketpair()
+        parent_connection.setblocking(False)
+        self._connection = parent_connection
+        self._process = context.Process(
+            target=_vllm_engine_worker,
+            args=(
+                child_connection,
+                wrapper_cls,
+                gpu_id,
+                self.worker_cuda_visible_devices,
+                model_id,
+                attention_backend,
+            ),
+            name=f"vllm-engine-{gpu_id}",
+        )
+        try:
+            self._process.start()
+            self.worker_pid = self._process.pid
+            child_connection.close()
+            startup = self._receive_response(
+                0,
+                "startup",
+                deadline=time.monotonic() + self._startup_timeout_seconds,
+                timeout_seconds=self._startup_timeout_seconds,
+            )
+            metadata = startup["result"]
+            self.worker_pid = int(metadata["pid"])
+            self.worker_cuda_initialized_before_binding = bool(
+                metadata["cuda_initialized_before_binding"]
+            )
+            self.worker_vllm_imported_before_binding = bool(
+                metadata["vllm_imported_before_binding"]
+            )
+            self.worker_python_argv = tuple(metadata["python_argv"])
+            self.worker_os_command_line = tuple(metadata["os_command_line"])
+            self.worker_cuda_visible_devices = str(metadata["cuda_visible_devices"])
+            self.worker_v1_multiprocessing = str(
+                metadata["vllm_enable_v1_multiprocessing"]
+            )
+            self.worker_rank_environment = tuple(metadata["present_rank_env"])
+            self.worker_startup_completed = True
+        except BaseException as exc:
+            self.worker_failure_operation = "startup"
+            self.worker_failure_reason = str(exc)
+            child_connection.close()
+            self._closed = True
+            try:
+                self._finish_process(
+                    force=True,
+                    wait_for_clean_exit=not isinstance(exc, _VllmWorkerRPCTimeout),
+                )
+            except BaseException as cleanup_exc:
+                if hasattr(exc, "add_note"):
+                    exc.add_note(f"vLLM worker startup cleanup failed: {cleanup_exc}")
+            self._attach_lifecycle_metadata(exc)
+            raise
+
+    def _receive_response(
+        self,
+        request_id: int,
+        operation: str,
+        *,
+        deadline: float,
+        timeout_seconds: float,
+    ) -> Dict[str, Any]:
+        header = self._receive_rpc_bytes(
+            _WORKER_RPC_HEADER.size,
+            deadline=deadline,
+            timeout_seconds=timeout_seconds,
+            operation=operation,
+            phase="receiving response header",
+        )
+        (payload_size,) = _WORKER_RPC_HEADER.unpack(header)
+        if payload_size > _WORKER_RPC_MAX_MESSAGE_BYTES:
+            raise RuntimeError(
+                "vLLM worker RPC response exceeds the one-gibibyte protocol limit"
+            )
+        payload = self._receive_rpc_bytes(
+            payload_size,
+            deadline=deadline,
+            timeout_seconds=timeout_seconds,
+            operation=operation,
+            phase="receiving response body",
+        )
+        if time.monotonic() >= deadline:
+            raise self._rpc_timeout(operation, "decoding response", timeout_seconds)
+        try:
+            response = pickle.loads(payload)
+        except Exception as exc:
+            raise RuntimeError(
+                f"vLLM worker {self.gpu_id} returned an invalid {operation} response"
+            ) from exc
+        if time.monotonic() >= deadline:
+            raise self._rpc_timeout(operation, "decoding response", timeout_seconds)
+        if not isinstance(response, dict):
+            raise RuntimeError(
+                f"vLLM worker {self.gpu_id} returned a non-mapping {operation} response"
+            )
+        if int(response.get("id", -1)) != request_id:
+            raise RuntimeError(
+                f"vLLM worker {self.gpu_id} returned an out-of-order {operation} response"
+            )
+        if not response.get("ok", False):
+            error = response.get("error", {})
+            raise RuntimeError(
+                f"vLLM worker {self.gpu_id} failed during {operation}: "
+                f"{error.get('type', 'Exception')}: {error.get('message', '')}\n"
+                f"{error.get('traceback', '')}"
+            )
+        return response
+
+    def _rpc_timeout(
+        self,
+        operation: str,
+        phase: str,
+        timeout_seconds: float,
+    ) -> _VllmWorkerRPCTimeout:
+        return _VllmWorkerRPCTimeout(
+            f"vLLM worker {self.gpu_id} timed out during {operation} "
+            f"while {phase} after {timeout_seconds:g} seconds"
+        )
+
+    def _wait_for_rpc_socket(
+        self,
+        *,
+        writable: bool,
+        deadline: float,
+        timeout_seconds: float,
+        operation: str,
+        phase: str,
+    ) -> None:
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise self._rpc_timeout(operation, phase, timeout_seconds)
+            readers = () if writable else (self._connection,)
+            writers = (self._connection,) if writable else ()
+            try:
+                ready_readers, ready_writers, _ = select.select(
+                    readers,
+                    writers,
+                    (),
+                    min(0.1, remaining),
+                )
+            except (OSError, ValueError) as exc:
+                raise RuntimeError(
+                    f"vLLM worker {self.gpu_id} control socket failed during {operation}"
+                ) from exc
+            if ready_readers or ready_writers:
+                return
+            if not self._process.is_alive():
+                raise RuntimeError(
+                    f"vLLM worker {self.gpu_id} exited during {operation} "
+                    f"with code {self._process.exitcode}"
+                )
+
+    def _receive_rpc_bytes(
+        self,
+        size: int,
+        *,
+        deadline: float,
+        timeout_seconds: float,
+        operation: str,
+        phase: str,
+    ) -> bytes:
+        chunks = bytearray()
+        while len(chunks) < size:
+            self._wait_for_rpc_socket(
+                writable=False,
+                deadline=deadline,
+                timeout_seconds=timeout_seconds,
+                operation=operation,
+                phase=phase,
+            )
+            try:
+                chunk = self._connection.recv(size - len(chunks))
+            except BlockingIOError:
+                continue
+            except OSError as exc:
+                raise RuntimeError(
+                    f"vLLM worker {self.gpu_id} closed its control socket during {operation}"
+                ) from exc
+            if not chunk:
+                raise RuntimeError(
+                    f"vLLM worker {self.gpu_id} closed its control socket during {operation}"
+                )
+            chunks.extend(chunk)
+        return bytes(chunks)
+
+    def _send_rpc_message(
+        self,
+        message: object,
+        *,
+        deadline: float,
+        timeout_seconds: float,
+        operation: str,
+    ) -> None:
+        framed = _serialize_worker_message(message)
+        if time.monotonic() >= deadline:
+            raise self._rpc_timeout(operation, "serializing request", timeout_seconds)
+        remaining = memoryview(framed)
+        while remaining:
+            self._wait_for_rpc_socket(
+                writable=True,
+                deadline=deadline,
+                timeout_seconds=timeout_seconds,
+                operation=operation,
+                phase="sending request",
+            )
+            try:
+                sent = self._connection.send(remaining)
+            except BlockingIOError:
+                continue
+            except OSError as exc:
+                raise RuntimeError(
+                    f"vLLM worker {self.gpu_id} closed its control socket during {operation}"
+                ) from exc
+            if sent <= 0:
+                raise RuntimeError(
+                    f"vLLM worker {self.gpu_id} closed its control socket during {operation}"
+                )
+            remaining = remaining[sent:]
+
+    def _attach_lifecycle_metadata(self, exc: BaseException) -> None:
+        try:
+            setattr(exc, "vllm_worker_lifecycle_metadata", self.lifecycle_metadata())
+        except BaseException:
+            pass
+
+    def _call(
+        self,
+        operation: str,
+        *,
+        arguments: Optional[Dict[str, Any]] = None,
+        include_pending: bool = False,
+    ) -> Dict[str, Any]:
+        if self._closed:
+            raise RuntimeError(f"vLLM worker {self.gpu_id} is already closed")
+        self._request_id += 1
+        request_id = self._request_id
+        pending = tuple(self._pending_requests) if include_pending else ()
+        deadline = time.monotonic() + self._operation_timeout_seconds
+        try:
+            self._send_rpc_message(
+                {
+                    "id": request_id,
+                    "operation": operation,
+                    "arguments": arguments or {},
+                    "pending_requests": pending,
+                },
+                deadline=deadline,
+                timeout_seconds=self._operation_timeout_seconds,
+                operation=operation,
+            )
+            response = self._receive_response(
+                request_id,
+                operation,
+                deadline=deadline,
+                timeout_seconds=self._operation_timeout_seconds,
+            )
+        except _VllmWorkerRPCTimeout as exc:
+            self.worker_failure_operation = operation
+            self.worker_failure_reason = str(exc)
+            self._closed = True
+            try:
+                self._finish_process(force=True, wait_for_clean_exit=False)
+            except BaseException as cleanup_exc:
+                if hasattr(exc, "add_note"):
+                    exc.add_note(f"vLLM worker timeout cleanup failed: {cleanup_exc}")
+            self._attach_lifecycle_metadata(exc)
+            raise
+        if include_pending:
+            self._pending_requests.clear()
+        self._queue_depth = int(response["queue_depth"])
+        self._completed_output_token_ids.update(
+            {
+                str(key): tuple(value)
+                for key, value in response["completed_output_token_ids"].items()
+            }
+        )
+        return response
+
+    def add_request(
+        self,
+        rt: _RequestRuntime,
+        prompt_token_ids: Optional[Sequence[int]] = None,
+    ) -> None:
+        if self._closed:
+            raise RuntimeError(f"vLLM worker {self.gpu_id} is already closed")
+        if rt.req.expected_new_tokens <= 0:
+            raise ValueError("expected_new_tokens must be positive")
+        if rt.req.prompt_tokens <= 0:
+            raise ValueError("prompt_tokens must be positive")
+        prompt_ids = None
+        if prompt_token_ids is not None:
+            prompt_ids = tuple(int(token_id) for token_id in prompt_token_ids)
+            if len(prompt_ids) != rt.req.prompt_tokens:
+                raise ValueError(
+                    f"Request {rt.req.req_id} received {len(prompt_ids)} prompt tokens; "
+                    f"expected {rt.req.prompt_tokens}"
+                )
+            if any(token_id < 0 for token_id in prompt_ids):
+                raise ValueError("prompt token ids must be non-negative")
+        self._pending_requests.append((rt, prompt_ids))
+
+    def flush_requests(self) -> None:
+        if self._pending_requests:
+            self._call("flush_requests", include_pending=True)
+
+    def step(self, now: Optional[float] = None) -> Tuple[List[str], List[Tuple[str, float]], int]:
+        del now
+        response = self._call("step", include_pending=True)
+        return response["result"]
+
+    def queue_depth(self) -> int:
+        return self._queue_depth + len(self._pending_requests)
+
+    def reset_request_state(self) -> None:
+        if self._pending_requests:
+            raise RuntimeError(
+                f"Cannot reset vLLM worker {self.gpu_id} with buffered requests"
+            )
+        self._call("reset_request_state")
+        self._completed_output_token_ids.clear()
+
+    def snapshot_metrics(
+        self,
+        ttft_ema: Optional[float],
+        tpot_ema: float,
+    ) -> Dict[str, float]:
+        response = self._call(
+            "snapshot_metrics",
+            arguments={"ttft_ema": ttft_ema, "tpot_ema": tpot_ema},
+            include_pending=True,
+        )
+        return response["result"]
+
+    def _finish_process(
+        self,
+        *,
+        force: bool,
+        wait_for_clean_exit: bool = True,
+    ) -> None:
+        if self._process_finished:
+            return
+        if self._process.pid is None:
+            self.worker_termination = "not_started"
+            self.worker_residual_alive = False
+            self._connection.close()
+            self._process.close()
+            self._process_finished = True
+            return
+        if wait_for_clean_exit:
+            self._process.join(timeout=self._join_timeout_seconds)
+        if self._process.is_alive() and force:
+            self.worker_termination = "terminated"
+            self._process.terminate()
+            self._process.join(timeout=self._join_timeout_seconds)
+        if self._process.is_alive() and force:
+            self.worker_termination = "killed"
+            self._process.kill()
+            self._process.join(timeout=self._join_timeout_seconds)
+        self.worker_residual_alive = self._process.is_alive()
+        if self.worker_residual_alive:
+            raise RuntimeError(f"vLLM worker {self.gpu_id} did not exit")
+        if self.worker_termination == "running":
+            self.worker_termination = "clean"
+        self.worker_exitcode = self._process.exitcode
+        self._connection.close()
+        self._process.close()
+        self._process_finished = True
+
+    def lifecycle_metadata(self) -> Dict[str, object]:
+        return {
+            "gpu_id": self.gpu_id,
+            "worker_pid": self.worker_pid,
+            "parent_logical_device_index": self.device_index,
+            "cuda_visible_devices": self.worker_cuda_visible_devices,
+            "child_device": "cuda:0",
+            "cuda_initialized_before_binding": (
+                self.worker_cuda_initialized_before_binding
+            ),
+            "vllm_imported_before_binding": self.worker_vllm_imported_before_binding,
+            "rank_environment": (
+                list(self.worker_rank_environment)
+                if self.worker_rank_environment is not None
+                else None
+            ),
+            "vllm_enable_v1_multiprocessing": self.worker_v1_multiprocessing,
+            "multiprocessing_start_method": self.worker_start_method,
+            "fallback_enabled": False,
+            "python_argv": list(self.worker_python_argv),
+            "os_command_line": list(self.worker_os_command_line),
+            "exitcode": self.worker_exitcode,
+            "termination": self.worker_termination,
+            "residual_alive": self.worker_residual_alive,
+            "startup_completed": self.worker_startup_completed,
+            "failure_operation": self.worker_failure_operation,
+            "failure_reason": self.worker_failure_reason,
+            "rpc_deadlines_seconds": {
+                "startup": self._startup_timeout_seconds,
+                "operation": self._operation_timeout_seconds,
+                "join": self._join_timeout_seconds,
+            },
+        }
+
+    def close(self, *, force: bool = False) -> None:
+        if self._closed:
+            return
+        if self._pending_requests and not force:
+            raise RuntimeError(
+                f"Cannot close vLLM worker {self.gpu_id} with buffered requests"
+            )
+        if force:
+            self._pending_requests.clear()
+        remote_error: Optional[BaseException] = None
+        try:
+            self._call("close", arguments={"force": force})
+        except BaseException as exc:
+            remote_error = exc
+        finally:
+            self._closed = True
+            self._finish_process(force=True)
+        if remote_error is not None:
+            raise remote_error
+
+
+def _requires_spawned_worker(wrapper_cls: type[_VllmWrapper]) -> bool:
+    """Keep production vLLM engines isolated while allowing explicit unit doubles."""
+    if wrapper_cls is _VllmV1Wrapper:
+        return True
+    if wrapper_cls is not _VllmWrapper:
+        return False
+    if LLMEngine is None:
+        return True
+    engine_module = str(getattr(LLMEngine, "__module__", ""))
+    if engine_module == "vllm" or engine_module.startswith("vllm."):
+        return True
+    if engine_module.startswith("test_") or engine_module.startswith("tests."):
+        return False
+    raise RuntimeError(
+        "Canonical _VllmWrapper requires a vllm.LLMEngine implementation; "
+        f"refusing an in-process engine from {engine_module or '<unknown>'}"
+    )
+
+
 @dataclass
 class _GPUHandle:
     gpu_id: str
@@ -877,20 +1645,35 @@ class VllmEngineSession:
         self._teardown_ms: Optional[float] = None
         self._end_to_end_ms: Optional[float] = None
         self.engine_startup_ms = 0.0
-        self.engines: Dict[str, _VllmWrapper] = {}
+        self.engines: Dict[str, Any] = {}
+        self._startup_worker_attempts: Dict[str, Dict[str, object]] = {}
 
         startup_start = time.perf_counter()
         try:
             for handle in self.handles:
-                self.engines[handle.gpu_id] = wrapper_cls(
-                    handle.gpu_id,
-                    handle.device_index,
-                    model_id,
-                    attention_backend=attention_backend,
-                )
+                if _requires_spawned_worker(wrapper_cls):
+                    engine = _SpawnedVllmWrapper(
+                        handle.gpu_id,
+                        handle.device_index,
+                        model_id,
+                        attention_backend=attention_backend,
+                        wrapper_cls=wrapper_cls,
+                    )
+                else:
+                    engine = wrapper_cls(
+                        handle.gpu_id,
+                        handle.device_index,
+                        model_id,
+                        attention_backend=attention_backend,
+                    )
+                self.engines[handle.gpu_id] = engine
         except BaseException as exc:
             self.engine_startup_ms = (time.perf_counter() - startup_start) * 1000.0
             self._primary_failure = exc
+            failed_worker = getattr(exc, "vllm_worker_lifecycle_metadata", None)
+            if isinstance(failed_worker, dict):
+                failed_gpu_id = str(failed_worker.get("gpu_id", handle.gpu_id))
+                self._startup_worker_attempts[failed_gpu_id] = dict(failed_worker)
             cleanup_start = time.perf_counter()
             cleanup_errors: List[str] = []
             for engine in self.engines.values():
@@ -1017,6 +1800,22 @@ class VllmEngineSession:
 
     def _emit_lifecycle(self, disposition: str, errors: Sequence[str]) -> None:
         failure = self._primary_failure
+        workers_by_gpu = dict(getattr(self, "_startup_worker_attempts", {}))
+        for engine in getattr(self, "engines", {}).values():
+            metadata = getattr(engine, "lifecycle_metadata", None)
+            if callable(metadata):
+                workers_by_gpu[engine.gpu_id] = metadata()
+        engine_workers = []
+        recorded_gpu_ids: Set[str] = set()
+        for handle in getattr(self, "handles", ()):
+            if handle.gpu_id in workers_by_gpu:
+                engine_workers.append(workers_by_gpu[handle.gpu_id])
+                recorded_gpu_ids.add(handle.gpu_id)
+        engine_workers.extend(
+            metadata
+            for gpu_id, metadata in workers_by_gpu.items()
+            if gpu_id not in recorded_gpu_ids
+        )
         payload = {
             "schema": VLLM_PROFILE_LIFECYCLE_SCHEMA,
             "event": "vllm_engine_lifecycle",
@@ -1039,6 +1838,10 @@ class VllmEngineSession:
                 else None
             ),
             "shutdown_errors": list(errors),
+            "engine_workers": engine_workers,
+            "engine_worker_residual_count": sum(
+                bool(worker["residual_alive"]) for worker in engine_workers
+            ),
         }
         print(
             json.dumps(payload, sort_keys=True),
@@ -1539,6 +2342,8 @@ def _run_vllm_two_wave_imbalance(
         admit_request(index, loaded_gpu, "background_long")
     for index in range(background_long, background_end):
         admit_request(index, idle_gpu, "background_short")
+    for engine in engines.values():
+        engine.flush_requests()
     for gid in engine_ids:
         update_router_from_engine(gid)
 
@@ -1580,6 +2385,8 @@ def _run_vllm_two_wave_imbalance(
             first_foreground_gpu = gid
         admit_request(index, gid, "foreground_short")
         update_router_from_engine(gid)
+    for engine in engines.values():
+        engine.flush_requests()
 
     while len(completed_ids) < len(prompt_lengths):
         if not step_engines():
@@ -1742,6 +2549,8 @@ def run_vllm_routing_with_topology(
                 gid,
                 {"queue_depth": float(admitted_by_gpu[gid])},
             )
+    for engine in engines.values():
+        engine.flush_requests()
 
     active = True
     while active:
@@ -1976,6 +2785,8 @@ def run_dual_pool_vllm_with_topology(
         )
         requests[req.req_id] = rt
         req_roles[req.req_id] = route
+    for engine in engines.values():
+        engine.flush_requests()
 
     ttft_samples: List[float] = []
     pool_ttft: Dict[str, List[float]] = {"prefill": [], "decode": []}

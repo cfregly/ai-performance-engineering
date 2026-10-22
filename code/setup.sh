@@ -1287,6 +1287,7 @@ apt install -y \
     linux-tools-generic \
     "linux-tools-${KERNEL_RELEASE}" \
     gdb \
+    ffmpeg \
     libdw-dev \
     libelf-dev \
     perf-tools-unstable \
