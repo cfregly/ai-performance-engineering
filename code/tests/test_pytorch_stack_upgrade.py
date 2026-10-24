@@ -22,12 +22,15 @@ REPOSITORY_ROOT = CODE_ROOT.parent
 
 EXPECTED_STACK = {
     "torch": "2.14.1+cu130",
+    "torch-c-dlpack-ext": "0.1.5+torch2141.nobackend1",
     "torchaudio": "2.11.0+cu130",
     "torchvision": "0.29.1+cu130",
     "torchao": "0.18.0+cu130",
     "triton": "3.8.0",
     "torchtitan": "0.3.0",
+    "cuda-python": "13.0.3",
     "flashinfer-python": "0.7.2",
+    "transformer-engine": "2.20.2",
 }
 
 
@@ -124,7 +127,7 @@ def test_requirements_select_the_supported_pytorch_214_stack() -> None:
 
 def test_linux_x86_64_lock_resolves_the_supported_pytorch_214_stack() -> None:
     pins = _locked_exact_pins(
-        CODE_ROOT / "requirements_torch2141_linux_x86_64.lock"
+        CODE_ROOT / "requirements_torch2141_linux_x86_64.txt"
     )
 
     assert {name: pins.get(name) for name in EXPECTED_STACK} == EXPECTED_STACK
@@ -138,7 +141,7 @@ def test_vllm_builder_requirements_are_present_in_the_active_lock() -> None:
     contract = _vllm_source_contract()
     requirements = _active_exact_pins(CODE_ROOT / "requirements_latest.txt")
     lock = _locked_exact_pins(
-        CODE_ROOT / "requirements_torch2141_linux_x86_64.lock"
+        CODE_ROOT / "requirements_torch2141_linux_x86_64.txt"
     )
     build_requirements = contract["build"]["resolved_python_requirements"]
 
@@ -162,7 +165,7 @@ def test_setup_requires_core_versions_from_the_supported_stack() -> None:
     for package, variable in fallback_names.items():
         assert f'{variable}="$(requirements_pin {package})"' in setup
 
-    lock = _locked_exact_pins(CODE_ROOT / "requirements_torch2141_linux_x86_64.lock")
+    lock = _locked_exact_pins(CODE_ROOT / "requirements_torch2141_linux_x86_64.txt")
     assert lock["torchtitan"] == EXPECTED_STACK["torchtitan"]
 
 
@@ -265,7 +268,7 @@ def test_vllm_source_builder_refuses_a_nonempty_output_directory_before_building
 
 def test_shared_lock_has_one_harmony_module_provider() -> None:
     requirements = _active_exact_pins(CODE_ROOT / "requirements_latest.txt")
-    lock = _locked_exact_pins(CODE_ROOT / "requirements_torch2141_linux_x86_64.lock")
+    lock = _locked_exact_pins(CODE_ROOT / "requirements_torch2141_linux_x86_64.txt")
     # Both distributions own openai_harmony and its native binary. The pinned
     # vLLM source requires oss-harmony, so retaining the old provider corrupts it.
     assert requirements["oss-harmony"] == "0.0.11"
@@ -301,7 +304,7 @@ def test_cluster_stack_dry_run_selects_only_the_hash_bound_graph(tmp_path: Path)
     installs = [command for command in commands if "install" in command]
     assert installs == [[str(venv / "bin/python"), "-m", "pip", "install",
                          "--require-hashes", "--no-deps", "-r",
-                         str(CODE_ROOT / "requirements_torch2141_linux_x86_64.lock")]]
+                         str(CODE_ROOT / "requirements_torch2141_linux_x86_64.txt")]]
     assert not venv.exists()
     assert "Build and validate those source wheels" in result.stdout
 

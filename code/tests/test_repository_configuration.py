@@ -639,14 +639,14 @@ def test_tier1_builds_and_installs_pinned_native_sources_as_no_deps_phases() -> 
 
     assert setup_python["with"]["cache-dependency-path"].splitlines() == [
         "code/requirements_latest.txt",
-        "code/requirements_torch2141_linux_x86_64.lock",
+        "code/requirements_torch2141_linux_x86_64.txt",
         "code/vllm_source_build.json",
         "code/native_torch_extensions.json",
         "code/torch_dlpack_source_build.json",
         "code/scripts/build_torch_dlpack_wheel.py",
         "code/vendor/python-wheels/*.whl",
     ]
-    assert "-r requirements_torch2141_linux_x86_64.lock" in install
+    assert "-r requirements_torch2141_linux_x86_64.txt" in install
     assert "--require-hashes" in install
     assert "--no-deps" in install
     assert "-r requirements_latest.txt" not in install
@@ -726,6 +726,38 @@ def test_tier1_builds_and_installs_pinned_native_sources_as_no_deps_phases() -> 
     )
 
 
+def test_tier1_runs_bounded_b200_compatibility_before_the_full_gpu_suite() -> None:
+    steps = _load_workflow("tier1-nightly.yml")["jobs"]["tier1"]["steps"]
+    smoke_step = next(
+        step
+        for step in steps
+        if step["name"] == "Run bounded PyTorch stack B200 compatibility smoke"
+    )
+    full_gpu_step = next(
+        step
+        for step in steps
+        if step["name"] == "Run verification tests on the attested GPU runner"
+    )
+    upload_step = next(
+        step for step in steps if step["name"] == "Upload GPU test evidence"
+    )
+
+    assert steps.index(smoke_step) < steps.index(full_gpu_step) < steps.index(upload_step)
+    assert smoke_step["timeout-minutes"] == "5"
+    assert "timeout --signal=TERM --kill-after=15s 210s" in smoke_step["run"]
+    assert "python -m core.scripts.b200_torch2141_smoke" in smoke_step["run"]
+    assert "--deadline-seconds 180" in smoke_step["run"]
+    assert "--format json" in smoke_step["run"]
+    assert "artifacts/b200-torch2141-smoke.json" in smoke_step["run"]
+    assert "smoke_status=$?" in smoke_step["run"]
+    assert upload_step["if"] == "always()"
+    assert upload_step["with"]["path"].splitlines() == [
+        "code/artifacts/pytest-gpu.xml",
+        "code/artifacts/b200-torch2141-smoke.json",
+    ]
+    assert full_gpu_step["env"]["AISP_RUN_FAST_CU_NVFP4_SM100_GPU_TEST"] == "1"
+    assert full_gpu_step["env"]["AISP_RUN_TE_CUDA_TESTS"] == "1"
+
 
 def test_cpu_ci_installs_direct_collection_dependencies() -> None:
     workflow = _load_workflow("benchmark-validation.yml")
@@ -797,7 +829,7 @@ def test_workflow_path_filters_are_root_relative() -> None:
             "code/Makefile",
             "code/dashboard/**",
             "code/requirements_latest.txt",
-            "code/requirements_torch2141_linux_x86_64.lock",
+            "code/requirements_torch2141_linux_x86_64.txt",
             "code/scripts/build_vllm_for_torch.py",
             "code/setup.sh",
             "code/uv.lock",
@@ -830,7 +862,7 @@ def test_cutlass_dsl_and_source_pins_match_their_validated_releases() -> None:
     assert re.search(r"^nvidia-cutlass-dsl\[cu13\]==4\.8\.0$", requirements, re.MULTILINE)
     assert 'CUTLASS_REF="${CUTLASS_REF:-db1c288993354c88e551c40c19a8fb93a774a241}"' in setup
     assert 'CUTLASS_TARGET_VERSION="${CUTLASS_TARGET_VERSION:-4.5.2}"' in setup
-    lock = (CODE_ROOT / "requirements_torch2141_linux_x86_64.lock").read_text()
+    lock = (CODE_ROOT / "requirements_torch2141_linux_x86_64.txt").read_text()
     assert re.search(r"^nvidia-cutlass-dsl==4\.8\.0 \\$", lock, re.MULTILINE)
     assert 'DEFAULT_COMMIT="db1c288993354c88e551c40c19a8fb93a774a241"' in installer
     assert 'CUTLASS_RELEASE_TAG="v4.5.2"' in setup

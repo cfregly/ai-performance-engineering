@@ -1,7 +1,7 @@
 # AI Performance Engineering - Blackwell Requirements
 # Target: Blackwell B200 (SM100) with PyTorch 2.14.1+cu130, CUDA 13.0, Triton 3.8.0
 # The exact direct dependencies below resolve into the hash-bound Linux x86_64
-# Python 3.12 graph in requirements_torch2141_linux_x86_64.lock. The ABI-bound
+# Python 3.12 graph in requirements_torch2141_linux_x86_64.txt. The ABI-bound
 # vLLM and Transformer Engine torch bindings are rebuilt from the reviewed source
 # contracts against this exact torch, then installed without dependency resolution.
 # uv.lock contains only the repository's Python compatibility metadata. It is

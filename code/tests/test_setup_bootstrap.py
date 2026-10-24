@@ -516,7 +516,7 @@ def test_aarch64_missing_torchao_cuda_wheel_fails_with_source_build_guidance() -
 def test_hash_locked_environment_includes_the_exact_torch_ecosystem() -> None:
     setup = SETUP_SCRIPT.read_text(encoding="utf-8")
     requirements = (CODE_ROOT / "requirements_latest.txt").read_text(encoding="utf-8")
-    lock = (CODE_ROOT / "requirements_torch2141_linux_x86_64.lock").read_text(encoding="utf-8")
+    lock = (CODE_ROOT / "requirements_torch2141_linux_x86_64.txt").read_text(encoding="utf-8")
     assert f"torchao=={EXPECTED_TORCHAO}" in requirements.splitlines()
     assert re.search(rf"^torch=={re.escape(EXPECTED_TORCH)} \\$", lock, re.MULTILINE)
     assert re.search(rf"^torchao=={re.escape(EXPECTED_TORCHAO)} \\$", lock, re.MULTILINE)
@@ -576,7 +576,7 @@ def test_locked_install_failure_stops_before_native_builds(tmp_path: Path) -> No
     section = setup.split("# Install the preflight-validated Linux/Python 3.12 graph", 1)[1]
     section = section.split("# The graph includes the exact CUDA 13 torch family", 1)[0]
     section = section.split("\n", 1)[1]
-    (tmp_path / "requirements_torch2141_linux_x86_64.lock").write_text("fixture")
+    (tmp_path / "requirements_torch2141_linux_x86_64.txt").write_text("fixture")
     log = tmp_path / "pip-args.json"
     script = (
         """set -eu
@@ -593,7 +593,7 @@ pip_install() {
         env={
             **os.environ,
             "PROJECT_ROOT": str(tmp_path),
-            "PYTORCH_STACK_LOCK": str(tmp_path / "requirements_torch2141_linux_x86_64.lock"),
+            "PYTORCH_STACK_LOCK": str(tmp_path / "requirements_torch2141_linux_x86_64.txt"),
             "AISP_VENV_DIR": str(tmp_path / "venv"),
             "AISP_TEST_PIP_ARGS": str(log),
         },
@@ -610,11 +610,11 @@ pip_install() {
         "--find-links",
         str(tmp_path / "vendor/python-wheels"),
     ]
-    assert args[-2:] == ["-r", str(tmp_path / "requirements_torch2141_linux_x86_64.lock")]
+    assert args[-2:] == ["-r", str(tmp_path / "requirements_torch2141_linux_x86_64.txt")]
 
 
 def test_locked_dlpack_wheel_is_bound_to_the_vendored_artifact() -> None:
-    lock = (CODE_ROOT / "requirements_torch2141_linux_x86_64.lock").read_text(
+    lock = (CODE_ROOT / "requirements_torch2141_linux_x86_64.txt").read_text(
         encoding="utf-8"
     )
     wheel = next(
@@ -690,7 +690,7 @@ def test_vllm_dependencies_are_resolved_by_the_shared_lock() -> None:
     from packaging.requirements import Requirement
     from packaging.version import Version
 
-    lock = (CODE_ROOT / "requirements_torch2141_linux_x86_64.lock").read_text()
+    lock = (CODE_ROOT / "requirements_torch2141_linux_x86_64.txt").read_text()
     setup = SETUP_SCRIPT.read_text()
     torch_line = next(line for line in lock.splitlines() if line.startswith("torch=="))
     requirement = Requirement(torch_line.rstrip("\\ "))
@@ -706,7 +706,7 @@ def test_vllm_dependencies_are_resolved_by_the_shared_lock() -> None:
 def test_setup_uses_hash_locked_cli_pins_without_fallback_installs() -> None:
     setup = SETUP_SCRIPT.read_text(encoding="utf-8")
     requirements = (CODE_ROOT / "requirements_latest.txt").read_text(encoding="utf-8")
-    lock = (CODE_ROOT / "requirements_torch2141_linux_x86_64.lock").read_text(encoding="utf-8")
+    lock = (CODE_ROOT / "requirements_torch2141_linux_x86_64.txt").read_text(encoding="utf-8")
     expected = {
         "typer": "0.27.3",
         "click": "8.5.0",

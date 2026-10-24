@@ -37,7 +37,7 @@ RUN python -c 'import sys; assert sys.version_info[:2] == (3, 12), sys.version' 
         --find-links vendor/python-wheels \
         --require-hashes \
         --no-deps \
-        -r requirements_torch2141_linux_x86_64.lock && \
+        -r requirements_torch2141_linux_x86_64.txt && \
     "${AISP_VENV}/bin/python" -m pip check && \
     RUNTIME_WHEEL_LIB_DIRS="$("${AISP_VENV}/bin/python" -c 'from pathlib import Path; import sys; from core.harness.serving_stack import configure_serving_stack_runtime_env; paths = configure_serving_stack_runtime_env(); prefix = Path(sys.prefix).resolve(); assert paths and all(Path(path).resolve().is_relative_to(prefix) for path in paths), paths; print(":".join(paths))')" && \
     test -n "${RUNTIME_WHEEL_LIB_DIRS}" && \

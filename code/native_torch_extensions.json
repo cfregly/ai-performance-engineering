@@ -8,7 +8,7 @@
     "torch_cuda": "13.0"
   },
   "build": {
-    "active_lock": "requirements_torch2141_linux_x86_64.lock",
+    "active_lock": "requirements_torch2141_linux_x86_64.txt",
     "cuda_arch_list": "10.0",
     "cuda_sm": "100",
     "maximum_jobs": 8,

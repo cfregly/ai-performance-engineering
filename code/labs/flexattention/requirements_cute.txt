@@ -1,3 +1,3 @@
 # FlexAttention CuTe uses the repository's current Torch 2.14.1 and FA4 graph.
 # The included lock carries the CUDA index, vendored-wheel link, and hashes.
--r ../../requirements_torch2141_linux_x86_64.lock
+-r ../../requirements_torch2141_linux_x86_64.txt

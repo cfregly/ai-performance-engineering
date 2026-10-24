@@ -176,7 +176,7 @@ def test_contract_pins_sources_patch_and_disjoint_fa_namespaces() -> None:
     assert contract["build"]["cuda_sm"] == "100"
     assert contract["build"]["maximum_jobs"] == 8
     assert contract["build"]["maximum_nvcc_threads"] == 2
-    assert contract["build"]["active_lock"] == "requirements_torch2141_linux_x86_64.lock"
+    assert contract["build"]["active_lock"] == "requirements_torch2141_linux_x86_64.txt"
     assert "unshare" in contract["build"]["required_commands"]
     assert contract["build"]["native_wheel_sdks"] == {
         "nvidia-cudnn-cu13": {
@@ -247,7 +247,7 @@ def test_package_contract_cannot_override_verified_native_sdk_search_paths() -> 
 def test_native_builder_requirements_match_active_source_and_linux_lock() -> None:
     contract = _contract()
     source = _exact_pins(CODE_ROOT / "requirements_latest.txt")
-    lock = _exact_pins(CODE_ROOT / "requirements_torch2141_linux_x86_64.lock", locked=True)
+    lock = _exact_pins(CODE_ROOT / "requirements_torch2141_linux_x86_64.txt", locked=True)
     te = _packages_by_id()["transformer-engine-torch"]
     required = {
         **contract["build"]["resolved_python_requirements"],

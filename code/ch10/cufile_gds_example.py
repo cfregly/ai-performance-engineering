@@ -503,7 +503,7 @@ def main():
     
     if not TORCH_AVAILABLE:
         print("✗ PyTorch with CUDA not available")
-        print("  Use torch==2.14.1+cu130 from requirements_torch2141_linux_x86_64.lock")
+        print("  Use torch==2.14.1+cu130 from requirements_torch2141_linux_x86_64.txt")
     
     # Run demonstration
     if CUFILE_AVAILABLE and TORCH_AVAILABLE:

@@ -104,7 +104,7 @@ jobs:
           cache: pip
           cache-dependency-path: |
             code/requirements_latest.txt
-            code/requirements_torch2141_linux_x86_64.lock
+            code/requirements_torch2141_linux_x86_64.txt
             code/vllm_source_build.json
             code/native_torch_extensions.json
             code/torch_dlpack_source_build.json
@@ -159,7 +159,7 @@ jobs:
             --find-links vendor/python-wheels \
             --require-hashes \
             --no-deps \
-            -r requirements_torch2141_linux_x86_64.lock
+            -r requirements_torch2141_linux_x86_64.txt
           python -m pip check
 
       - name: Validate native source-build isolation
@@ -348,9 +348,31 @@ jobs:
               handle.write("```\n")
           PY
 
+      - name: Run bounded PyTorch stack B200 compatibility smoke
+        timeout-minutes: 5
+        run: |
+          mkdir -p artifacts
+          SMOKE_JSON="${RUNNER_TEMP}/b200-torch2141-smoke-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.json"
+          set +e
+          timeout --signal=TERM --kill-after=15s 210s \
+            python -m core.scripts.b200_torch2141_smoke \
+              --deadline-seconds 180 \
+              --format json \
+              > "${SMOKE_JSON}"
+          smoke_status=$?
+          set -e
+          if [[ -f "${SMOKE_JSON}" ]]; then
+            cp "${SMOKE_JSON}" artifacts/b200-torch2141-smoke.json
+            cat artifacts/b200-torch2141-smoke.json
+          fi
+          exit "${smoke_status}"
+
       - name: Run verification tests on the attested GPU runner
         # Serialized by the existing tier1-nightly-producer concurrency group.
         # Skips in JUnit are missing hardware/feature coverage, never passes.
+        env:
+          AISP_RUN_FAST_CU_NVFP4_SM100_GPU_TEST: "1"
+          AISP_RUN_TE_CUDA_TESTS: "1"
         run: |
           python -m pytest tests -q -ra -o timeout=600 --junitxml=artifacts/pytest-gpu.xml
 
@@ -359,7 +381,9 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: pytest-b200-${{ github.run_id }}-${{ github.run_attempt }}
-          path: code/artifacts/pytest-gpu.xml
+          path: |
+            code/artifacts/pytest-gpu.xml
+            code/artifacts/b200-torch2141-smoke.json
           if-no-files-found: warn
 
       - name: Run canonical tier-1 suite
