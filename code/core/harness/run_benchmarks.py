@@ -4958,6 +4958,8 @@ def profile_python_benchmark_torch(
     benchmark_path: Path,
     chapter_dir: Path,
     output_dir: Path,
+    *,
+    config: BenchmarkConfig,
     variant: str = "baseline",
     output_stem: Optional[str] = None,
 ) -> Optional[Path]:
@@ -4968,6 +4970,7 @@ def profile_python_benchmark_torch(
         benchmark_path: Path to Python benchmark file (for naming)
         chapter_dir: Path to chapter directory
         output_dir: Directory to save torch trace file
+        config: Merged run configuration used for the timed benchmark
         variant: 'baseline' or 'optimized' for naming
         
     Returns:
@@ -4988,41 +4991,38 @@ def profile_python_benchmark_torch(
     benchmark_name = output_stem or benchmark_path.stem
     torch_output = output_dir / f"{benchmark_name}__{variant}_torch_trace.json"
     log_base = output_dir / f"{benchmark_name}__{variant}__torch"
-    existing_cfg = getattr(benchmark, "_config", None)
-    if existing_cfg is None and hasattr(benchmark, "get_config"):
-        existing_cfg = benchmark.get_config()
-    validity_view = existing_cfg.validity if existing_cfg else None
-    timing_view = existing_cfg.timing if existing_cfg else None
-    validity_profile = validity_view.validity_profile if validity_view else "strict"
+    validity_view = config.validity
+    timing_view = config.timing
+    validity_profile = validity_view.validity_profile
     if validity_profile not in {"strict", "portable"}:
         validity_profile = "strict"
-    lock_gpu_clocks_flag = validity_view.lock_gpu_clocks if validity_view else True
+    lock_gpu_clocks_flag = validity_view.lock_gpu_clocks
     if validity_profile != "strict":
         lock_gpu_clocks_flag = False
     profile_timeout_seconds = 900
-    maybe_timeout = timing_view.timeout_for("torch") if timing_view else None
+    maybe_timeout = timing_view.timeout_for("torch")
     if maybe_timeout:
         profile_timeout_seconds = int(maybe_timeout)
-    target_label = getattr(existing_cfg, "target_label", None) if existing_cfg else None
-    target_override_argv = _resolve_target_override_argv(existing_cfg)
+    target_label = getattr(config, "target_label", None)
+    target_override_argv = _resolve_target_override_argv(config)
 
     # Run torch profiling in an isolated subprocess so a profiler-side hang
     # cannot wedge the parent benchmark sweep.
     repo_root = Path(__file__).resolve().parents[2]
     torchrun_profile_spec = None
-    if existing_cfg is not None and _is_torchrun_launch(existing_cfg):
+    if _is_torchrun_launch(config):
         torchrun_profile_spec = _resolve_profile_torchrun_spec(
             benchmark,
             profiler="torch",
-            config=existing_cfg,
+            config=config,
             output_path=torch_output,
         )
     with ExitStack() as stack:
-        if torchrun_profile_spec is not None and existing_cfg is not None:
-            cmd, base_env = _build_torchrun_profile_command(existing_cfg, spec=torchrun_profile_spec)
+        if torchrun_profile_spec is not None:
+            cmd, base_env = _build_torchrun_profile_command(config, spec=torchrun_profile_spec)
             env = _apply_profile_env_overrides(
                 _harden_profile_env(base_env, repo_root=repo_root, chapter_dir=chapter_dir),
-                config=existing_cfg,
+                config=config,
                 benchmark=benchmark,
             )
         else:
@@ -5033,15 +5033,15 @@ def profile_python_benchmark_torch(
                 target_override_argv=target_override_argv,
                 validity_profile=validity_profile,
                 lock_gpu_clocks_flag=lock_gpu_clocks_flag,
-                gpu_sm_clock_mhz=validity_view.gpu_sm_clock_mhz if validity_view else None,
-                gpu_mem_clock_mhz=validity_view.gpu_mem_clock_mhz if validity_view else None,
+                gpu_sm_clock_mhz=validity_view.gpu_sm_clock_mhz,
+                gpu_mem_clock_mhz=validity_view.gpu_mem_clock_mhz,
             )
             _wrapper_path, cmd, env, _use_torchrun = stack.enter_context(
                 _temporary_python_profile_launch(
                     wrapper_source,
                     chapter_dir=chapter_dir,
                     repo_root=repo_root,
-                    config=existing_cfg,
+                    config=config,
                     benchmark=benchmark,
                     allow_torchrun=False,
                 )
@@ -5205,6 +5205,8 @@ def _compute_locked_fields(
     for field_name in runner_locked_when_true:
         if getattr(base_config, field_name, None):
             locked_fields.add(field_name)
+    if base_config.validity_profile == "portable":
+        locked_fields.add("lock_gpu_clocks")
 
     return locked_fields
 
@@ -5327,6 +5329,8 @@ def _merge_benchmark_config(
         "validity_profile",
         getattr(merged, "validity_profile", "strict"),
     )
+    if merged.validity_profile == "portable":
+        merged.lock_gpu_clocks = False
 
     return merged
 
@@ -5922,6 +5926,8 @@ def _test_chapter_impl(
         env_passthrough=env_passthrough or None,
         target_extra_args=target_extra_args or {},
     )
+    if validity_profile == "portable":
+        config_kwargs["lock_gpu_clocks"] = False
     if nsys_timeout_seconds is not None:
         config_kwargs["nsys_timeout_seconds"] = int(nsys_timeout_seconds)
     if ncu_timeout_seconds is not None:
@@ -6864,6 +6870,7 @@ def _test_chapter_impl(
                             baseline_path,
                             chapter_dir,
                             baseline_profile_dir,
+                            config=baseline_config,
                             variant="baseline",
                             output_stem=example_profile_stem,
                         )
@@ -7816,6 +7823,7 @@ def _test_chapter_impl(
                                 optimized_path,
                                 chapter_dir,
                                 pair_dir,
+                                config=optimized_config,
                                 variant="optimized",
                                 output_stem=example_profile_stem,
                             )
@@ -8346,6 +8354,7 @@ def _test_chapter_impl(
                                     optimized_path,
                                     chapter_dir,
                                     pair_dir,
+                                    config=optimized_config,
                                     variant="optimized",
                                     output_stem=example_profile_stem,
                                 )
@@ -13218,7 +13227,9 @@ def main():
         allow_mixed_provenance=args.allow_mixed_provenance,
         output_json=str(args.output),
         events_file=str(event_log_path),
-        gpu_clock_lock_enabled=defaults.lock_gpu_clocks,
+        gpu_clock_lock_enabled=(
+            False if args.validity_profile == "portable" else defaults.lock_gpu_clocks
+        ),
         gpu_sm_clock_mhz=defaults.gpu_sm_clock_mhz,
         gpu_mem_clock_mhz=defaults.gpu_mem_clock_mhz,
         gpu_app_clock_mhz=gpu_state.get("gpu_app_clock_mhz"),

@@ -1,3 +1,4 @@
+import ast
 import sys
 import os
 import json
@@ -400,6 +401,110 @@ def test_temporary_python_profile_launch_can_disable_torchrun(tmp_path: Path) ->
         assert wrapper_path.exists()
         assert command == [sys.executable, str(wrapper_path)]
         assert use_torchrun is False
+
+
+def test_torch_profiler_uses_merged_config_for_child_contract(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    target_label = "ch18:vllm_v1_integration"
+    target_argv = [
+        "--model",
+        "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+        "--max-model-len",
+        "256",
+    ]
+    merged = BenchmarkConfig(
+        validity_profile="portable",
+        lock_gpu_clocks=False,
+        profiling_timeout_seconds=37,
+        target_label=target_label,
+        target_extra_args={target_label: target_argv},
+        profile_env_overrides={"AISP_TEST_PROFILE_CONTROL": "merged"},
+    )
+
+    class _RawConfigBenchmark:
+        def get_config(self):
+            pytest.fail("Torch profiling must not reconstruct the raw benchmark config")
+
+    observed: dict[str, object] = {}
+
+    def capture_wrapper(**kwargs):
+        observed["wrapper"] = kwargs
+        return "print('profile wrapper control')\n"
+
+    @contextmanager
+    def capture_launch(wrapper_source, **kwargs):
+        observed["wrapper_source"] = wrapper_source
+        observed["launch_config"] = kwargs["config"]
+        yield tmp_path / "wrapper.py", [sys.executable, "wrapper.py"], {}, False
+
+    class _ProfileLaunchObserved(BaseException):
+        pass
+
+    def capture_subprocess(**kwargs):
+        observed["subprocess"] = kwargs
+        raise _ProfileLaunchObserved
+
+    monkeypatch.setattr(run_benchmarks, "TORCH_PROFILER_AVAILABLE", True)
+    monkeypatch.setattr(
+        run_benchmarks,
+        "render_torch_python_profile_wrapper",
+        capture_wrapper,
+    )
+    monkeypatch.setattr(
+        run_benchmarks,
+        "_temporary_python_profile_launch",
+        capture_launch,
+    )
+    monkeypatch.setattr(run_benchmarks, "_run_profile_subprocess", capture_subprocess)
+
+    with pytest.raises(_ProfileLaunchObserved):
+        run_benchmarks.profile_python_benchmark_torch(
+            _RawConfigBenchmark(),
+            tmp_path / "baseline_vllm_v1_integration.py",
+            tmp_path,
+            tmp_path / "profiles",
+            config=merged,
+        )
+
+    wrapper = observed["wrapper"]
+    assert isinstance(wrapper, dict)
+    assert wrapper["target_label"] == target_label
+    assert wrapper["target_override_argv"] == target_argv
+    assert wrapper["validity_profile"] == "portable"
+    assert wrapper["lock_gpu_clocks_flag"] is False
+    assert observed["launch_config"] is merged
+    subprocess_call = observed["subprocess"]
+    assert isinstance(subprocess_call, dict)
+    assert subprocess_call["timeout_seconds"] == 37.0
+
+
+def test_all_torch_profiler_callsites_pass_the_merged_variant_config() -> None:
+    module_path = Path(run_benchmarks.__file__)
+    tree = ast.parse(module_path.read_text(encoding="utf-8"))
+    calls = sorted(
+        (
+            node
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "profile_python_benchmark_torch"
+        ),
+        key=lambda node: node.lineno,
+    )
+
+    assert len(calls) == 3
+    config_names = []
+    for call in calls:
+        config_keyword = next(
+            (keyword for keyword in call.keywords if keyword.arg == "config"),
+            None,
+        )
+        assert config_keyword is not None
+        assert isinstance(config_keyword.value, ast.Name)
+        config_names.append(config_keyword.value.id)
+    assert config_names == ["baseline_config", "optimized_config", "optimized_config"]
 
 
 def test_resolve_profile_torchrun_spec_prefers_benchmark_profile_spec(tmp_path: Path) -> None:

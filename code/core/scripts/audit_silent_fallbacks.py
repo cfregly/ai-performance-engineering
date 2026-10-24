@@ -185,7 +185,8 @@ def _iter_python_files(repo_root: Path, scan_patterns: Sequence[str]) -> Iterabl
             if not root.is_dir():
                 continue
             for path in sorted(root.rglob("*.py")):
-                if any(part in EXCLUDED_DIR_NAMES for part in path.parts):
+                relative_parts = path.relative_to(repo_root).parts
+                if any(part in EXCLUDED_DIR_NAMES for part in relative_parts):
                     continue
                 resolved = path.resolve()
                 if resolved not in seen:

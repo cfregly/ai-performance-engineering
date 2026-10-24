@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from contextlib import contextmanager
 import os
 import sys
+from contextlib import contextmanager
 from importlib import util as importlib_util
 from pathlib import Path
 from types import ModuleType
@@ -136,6 +136,7 @@ def build_torchrun_entry_command(
     nnodes: Optional[int] = None,
     rdzv_backend: Optional[str] = None,
     rdzv_endpoint: Optional[str] = None,
+    local_addr: Optional[str] = None,
     python_executable: Optional[str] = None,
 ) -> List[str]:
     """Launch distributed workers using the selected Python environment."""
@@ -154,6 +155,8 @@ def build_torchrun_entry_command(
         cmd.extend(["--rdzv_backend", str(rdzv_backend)])
     if rdzv_endpoint is not None:
         cmd.extend(["--rdzv_endpoint", str(rdzv_endpoint)])
+    if local_addr is not None:
+        cmd.extend(["--local_addr", str(local_addr)])
     if module_name:
         cmd.extend(["-m", module_name])
     else:

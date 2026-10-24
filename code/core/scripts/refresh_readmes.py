@@ -859,7 +859,7 @@ ENTRIES["README.md"] = Entry(
     ],
     goals=[
         "Understand how the chapters, labs, and shared tooling fit together.",
-        "Stand up a reproducible environment with the pinned PyTorch 2.9.1 + CUDA 13 stack for Blackwell workloads.",
+        "Stand up a reproducible environment with the pinned PyTorch 2.14.1 + CUDA 13 stack for Blackwell workloads.",
         "Run the benchmark harness directly or through the Typer CLI for automated artifact capture.",
         "Validate peak hardware characteristics before grading optimizations against stored expectations.",
     ],
@@ -873,16 +873,15 @@ ENTRIES["README.md"] = Entry(
     run=RunSection(
         commands=[
             "cd ai-performance-engineering/code",
-            "python3 -m venv .venv && source .venv/bin/activate",
-            "pip install -r requirements_latest.txt",
-            "# Optional ABI-bound CUDA 13 serving wheel; setup.sh performs this exact phase.",
-            "pip install --no-deps --index-url https://wheels.vllm.ai/0.16.0/cu130 \\\n  'vllm==0.16.0+cu130'",
+            "python3.12 -m venv .venv-torch2141 && source .venv-torch2141/bin/activate",
+            "python -m pip install --extra-index-url https://download.pytorch.org/whl/cu130 \\\n  --find-links vendor/python-wheels \\\n  --require-hashes --no-deps \\\n  -r requirements_torch2141_linux_x86_64.lock",
+            "python -m pip check",
             "python -m cli.aisp bench list-targets --chapter ch01",
             "python -m cli.aisp bench run --targets ch01 --profile minimal",
             "python -m cli.aisp bench run-tier1 --single-gpu --profile minimal",
         ],
         notes=[
-            "`setup.sh` installs system prerequisites (drivers, CUDA, Nsight) and should be rerun after driver upgrades.",
+            "`setup.sh` installs the shared CUDA 13.0 and PyTorch 2.14.1 environment only on B200/GB200 compute capability 10.0, and should be rerun after driver upgrades. It rejects B300/GB300 10.3 and every other capability before repository checkout or compiler work. Historical and standalone SM103 profiles keep their separate environment and qualification paths.",
             "Benchmark validity profile defaults to strict. Virtualization is warning-only; use `--validity-profile portable` for broader compatibility on hardware-limited hosts.",
             "Use `python -m cli.aisp bench expectations --hardware b200 --min-speedup 1.05` to report expectation entries below a target threshold.",
             "Repeat `--targets` for multi-scope runs, for example `python -m cli.aisp bench run --targets ch01 --targets ch02 --profile minimal`; use `python -m cli.aisp bench run-tier1 --single-gpu --profile minimal` for the canonical regression suite.",
@@ -896,25 +895,89 @@ ENTRIES["README.md"] = Entry(
     ],
     extra_sections=[
         dedent(r"""
-            ## Optional vLLM and FlashAttention 4 compatibility
+            ## Native source builds and historical vLLM wheel reproduction
 
-            For the qualified FlashAttention 4 (`flash-attn-4==4.0.0b19`) environment on
-            Linux x86_64, backport the merged vLLM rotary-import fix into the pinned wheel:
+            `setup.sh` installs the hash-locked Python graph in its isolated environment,
+            then resolves the NCCL, cuDNN and NVSHMEM headers and libraries from those
+            same wheels. Its environment-local `runtime-env.sh` records the matching
+            include and library paths for later builds without changing shell profiles or
+            system-wide environment files. This native-build path requires B200/GB200
+            compute capability 10.0 and fails before repository checkout on B300/GB300
+            10.3 or any other capability. Missing wheel assets and external NCCL, cuDNN,
+            or cuBLAS preloads are hard errors.
+
+            The hash lock selects the reviewed
+            `torch-c-dlpack-ext==0.1.5+torch2141.nobackend1` adapter from
+            `vendor/python-wheels`. `scripts/build_torch_dlpack_wheel.py` derives that
+            pure-Python wheel reproducibly from the verified upstream sdist. The adapter
+            uses Torch 2.14.1's built-in DLPack exchange API and removes the unused
+            top-level `build_backend` module that would collide with FlashInfer. It has no
+            legacy native fallback and fails clearly when the built-in Torch API is absent.
+
+            The default PyTorch 2.14.1 environment builds
+            `vllm==0.33.0.dev0+cu130.torch2141` from the commit in
+            `vllm_source_build.json` with `scripts/build_vllm_for_torch.py`. No published
+            stable vLLM wheel matched the PyTorch 2.14.1 ABI when this environment was
+            pinned. Build and install the serving runtime only after activating the exact
+            requirements:
+
             ```bash
-            mkdir -p third_party/wheels/vllm-upstream
-            python -m pip download --no-deps --only-binary=:all: \
-              --index-url https://wheels.vllm.ai/0.16.0/cu130 \
-              --dest third_party/wheels/vllm-upstream 'vllm==0.16.0+cu130'
-            python scripts/build_vllm_fa4_compat_wheel.py \
-              --input-wheel third_party/wheels/vllm-upstream/vllm-0.16.0+cu130-cp38-abi3-manylinux_2_35_x86_64.whl \
-              --output-dir third_party/wheels/vllm-fa4-backport \
-              --install-python "$VIRTUAL_ENV/bin/python"
+            export VLLM_BUILD_ROOT=/absolute/path/to/new-vllm-torch2141-build
+            CUDA_VISIBLE_DEVICES="" TORCH_DEVICE_BACKEND_AUTOLOAD=0 PYTORCH_NVML_BASED_CUDA_CHECK=1 \
+              python scripts/build_vllm_for_torch.py \
+                --output-dir "${VLLM_BUILD_ROOT}" \
+                --cuda-arch-list 10.0 \
+                --max-jobs 4 \
+                --nvcc-threads 2
+            VLLM_WHEEL="$(python -c 'import json, sys; print(json.load(open(sys.argv[1], encoding="utf-8"))["wheel"]["path"])' "${VLLM_BUILD_ROOT}/vllm-source-wheel.manifest.json")"
+            python -m pip install --no-deps "${VLLM_WHEEL}"
+            python -m pip check
             ```
-            The tool accepts only the qualified wheel hash, preserves the Torch and FA4
-            versions, installs with `--no-deps`, and writes a provenance manifest. Retire
-            the backport after `vllm_no_deps.pin` advances to a wheel containing
-            [vLLM PR #42679](https://github.com/vllm-project/vllm/pull/42679) and that wheel
-            passes the same FA4 import and full-model gates.
+
+            The helper requires the exact build dependencies and Rust 1.95.0 declared in
+            its contract. It verifies the pinned source identity and upstream file hashes.
+            The output directory must be new and empty because existing receipts are not
+            reused. The receipt records the source tree, build environment, wheel metadata,
+            native members and SHA-256. A successful build and native import still require
+            the applicable serving correctness and GPU gates before use as performance evidence.
+
+            The shared environment keeps `flash-attn-4[cu13]==4.0.0b36`. Rebuild the
+            Transformer Engine PyTorch binding against Torch 2.14.1 without touching that
+            FlashAttention installation:
+
+            ```bash
+            export NATIVE_EXTENSION_BUILD_ROOT=/absolute/path/to/new-te-torch2141-build
+            CUDA_VISIBLE_DEVICES="" TORCH_DEVICE_BACKEND_AUTOLOAD=0 PYTORCH_NVML_BASED_CUDA_CHECK=1 \
+              python scripts/build_torch_extensions.py \
+                --package transformer-engine-torch \
+                --output-dir "${NATIVE_EXTENSION_BUILD_ROOT}" \
+                --cuda-arch-list 10.0 \
+                --max-jobs 8 \
+                --nvcc-threads 2
+            ```
+
+            `--package flash-attn` builds FA2 2.8.3.post2 only in a fresh nested
+            environment containing neither `flash-attn` nor `flash-attn-4`. Never install
+            that FA2 wheel into the shared FA4 environment because both distributions own
+            the `flash_attn` Python namespace. The helper verifies the sdist, rejects
+            embedded native binaries, binds one validated CUDA 13.0 toolkit, sanitizes
+            inherited compiler and search-path inputs, and runs the build under Linux
+            `unshare --net` with package-index access disabled. It builds only and records
+            the isolation preflight, CUDA tools, explicit FA2 C++20 patch, metadata, native
+            ELF members, and hashes in `native-torch-extensions.manifest.json`. `MAX_JOBS`
+            may be lowered from 8 to 1 and `NVCC_THREADS` from 2 to 1. The receipt records
+            the actual values. GPU-runtime qualification remains a separate hardware gate.
+
+            The shared environment rejects `INSTALL_GPT_OSS=1` and `INSTALL_TRTLLM=1`.
+            Those stacks require separately resolved and qualified runtimes because their
+            package constraints conflict with the shared Torch 2.14.1 graph.
+
+            `scripts/build_vllm_fa4_compat_wheel.py` remains for reproducing the earlier
+            PyTorch 2.9.1, vLLM 0.16.0 and FA4 wheel environment. Keep that path separate
+            from the current Torch 2.14.1 source builds; it is unrelated to the shared
+            environment's current FA4 package pin. The
+            [dated validation checkpoint](../docs/reviews/2026-09-06-codebase-repair-checkpoint.md)
+            retains its measurements and limits.
         """),
         WALL_OF_SHAME,
     ],
@@ -2061,7 +2124,7 @@ ENTRIES["ch09"] = chapter_entry(
     ],
     notes=[
         "`inline_ptx_example.cu` demonstrates how to wrap tcgen05 intrinsics safely with architecture guards.",
-        "`requirements.txt` includes the shared `requirements_latest.txt` pins for PyTorch 2.9.1 and its compatible Triton release.",
+        "`requirements.txt` includes the shared source pins for PyTorch 2.14.1 and Triton 3.8.0. Current Linux x86-64 CPython 3.12 installs consume `requirements_torch2141_linux_x86_64.lock`.",
         "`optimized_cublaslt_gemm_fp4` is intentionally capability-gated: if cuBLASLt cannot provide the native block-scaled NVFP4 heuristic, the benchmark reports a clean skip instead of silently falling back to a different FP4 mode.",
     ],
     trailing_sections=[FAST_CU_RELATED_SECTION],
@@ -5397,7 +5460,7 @@ ENTRIES["labs/nanochat_fullstack"] = lab_entry(
     title="Lab - NanoChat Fullstack",
     summary=dedent(
         """\
-        Provides a harness-comparable NanoChat inference pair for a fixed prefill-plus-decode workload. The baseline launches the eager model for both phases; the optimized path replays the complete request in one CUDA graph."""
+        Provides a harness-comparable NanoChat inference pair for a fixed prefill-plus-decode workload. The baseline launches the eager model for both phases. The optimized path replays the complete request in one CUDA graph."""
     ),
     lead_sections=[
         MarkdownSection(
@@ -5422,7 +5485,7 @@ ENTRIES["labs/nanochat_fullstack"] = lab_entry(
                 """\
                 - Runs the same model configuration, inputs, attention path, KV cache, and decode loop as the baseline.
                 - Captures the fixed 512-token prefill and all 64 ordered decode steps in one CUDA graph, preserving the baseline kernels and supplied decode tokens.
-                - Warms and captures during setup; reports those costs separately from steady-state replay. Inputs remain mutable in place, and each replay overwrites the complete request's KV-cache state."""
+                - Warms and captures during setup and reports those costs separately from steady-state replay. Inputs remain mutable in place, and each replay overwrites the complete request's KV-cache state."""
             ),
         ),
         MarkdownSection(
@@ -5443,7 +5506,7 @@ ENTRIES["labs/nanochat_fullstack"] = lab_entry(
                 python -m cli.aisp bench run -t labs/nanochat_fullstack:nanochat_inference --profile deep_dive --single-gpu
                 ```
 
-                Use this path to compare eager kernel launches with whole-request CUDA graph replay. A successful correctness run alone does not establish a performance win. Keep the `speedrun.sh` workflow separate from this harness pair; they exercise different scopes."""
+                Use this path to compare eager kernel launches with whole-request CUDA graph replay. A successful correctness run alone does not establish a performance win. Keep the `speedrun.sh` workflow separate from this harness pair because they exercise different scopes."""
             ),
         ),
         MarkdownSection(
@@ -5478,7 +5541,7 @@ ENTRIES["labs/nanochat_fullstack"] = lab_entry(
         ],
         notes=[
             "The benchmark requires CUDA and uses one visible GPU with `--single-gpu`.",
-            "Benchmark validity defaults to `strict`; use `portable` only when its documented compatibility tradeoffs are acceptable.",
+            "Benchmark validity defaults to `strict`. Use `portable` only when its documented compatibility tradeoffs are acceptable.",
             "Treat the retained expectation files as historical until current-source measurements pass the verification and evidence gates above.",
         ],
     ),
@@ -5488,17 +5551,23 @@ ENTRIES["labs/nanochat_fullstack"] = lab_entry(
     ],
     notes=[
         "This README covers the harness pair. Use `README_FAST.md` and the project scripts for the broader training and serving walkthrough.",
-        "The decode microbenchmarks live separately in `labs/decode_optimization`; this lab is the broader inference-stack companion.",
+        "The decode microbenchmarks live separately in `labs/decode_optimization`. This lab is the broader inference-stack companion.",
     ],
     extra_sections=[
         dedent(
             """\
             ## Project Context
-            NanoChat is intentionally bigger than a single benchmark pair. This lab entry provides one narrow, auditable inference comparison inside that tree; it does not replace the broader NanoChat project documentation.
+            NanoChat is intentionally bigger than a single benchmark pair. This lab entry provides one narrow, auditable inference comparison inside that tree. It does not replace the broader NanoChat project documentation.
 
             - Use [README_FAST.md](README_FAST.md) for the faster end-to-end project walkthrough.
             - Use [speedrun.sh](speedrun.sh) when you want the broader "train and talk to a small model" experience.
             - Use [rustbpe/README.md](rustbpe/README.md) for the tokenizer-specific component work.
+
+            The project scripts create a lab-local `.venv` with `uv sync --extra gpu`.
+            That extra resolves the exact stable Torch 2.14.1 CUDA 13.0 wheel from the
+            official cu130 index. Activate this lab-local environment only for the NanoChat
+            workflow. The CPU extra selects the matching stable 2.14.1 CPU index on Linux
+            x86-64.
             """
         ),
     ],
@@ -6359,7 +6428,7 @@ ENTRIES["labs/flexattention"] = lab_entry(
     title="Lab - FlexAttention Harness",
     summary=dedent(
         """\
-        Runs eager versus compiled FlexAttention with shared masks and score modifiers. A separate FlashAttention-4 CuTe tool checks the public FA4 path in its own pinned environment."""
+        Runs eager versus compiled FlexAttention with shared masks and score modifiers. A FlashAttention-4 CuTe tool checks the public FA4 path in the repository's current pinned environment."""
     ),
     lead_sections=[
         MarkdownSection(
@@ -6408,28 +6477,41 @@ ENTRIES["labs/flexattention"] = lab_entry(
                 python -m cli.aisp bench run --targets labs/flexattention:flex_attention --profile deep_dive --single-gpu
                 ```
 
-                The harness run gives you the artifacted baseline and optimized pair. Run the CuTe tool from the dedicated environment below as a separate correctness and timing diagnostic. Its result is not part of the harness comparison."""
+                The harness run gives you the artifacted baseline and optimized pair. Run the CuTe tool from the shared environment below as a separate correctness and timing diagnostic. Its result is not part of the harness comparison."""
             ),
         ),
         MarkdownSection(
-            "Dedicated FlashAttention-4 CuTe environment",
+            "Shared FlashAttention-4 CuTe environment",
             dedent(
                 """\
-                The repository's default environment intentionally keeps FlashAttention 2.8.3 for NanoChat and CUTLASS DSL 4.5.2 for the B200 and GB300 labs. FlashAttention 2 also ships legacy `flash_attn/cute` files that do not use the CUTLASS 4.5.2 API. Do not install FlashAttention-4 over that environment because both distributions own many of the same package paths.
+                The current shared graph pins Torch 2.14.1+cu130, Triton 3.8.0,
+                `flash-attn-4[cu13]` 4.0.0b36 and CUTLASS DSL 4.8.0. The CuTe tool uses that
+                same graph. Its `requirements_cute.txt` includes the repository's complete
+                Linux x86-64 hash lock instead of resolving a second set of direct dependencies.
 
-                Create a separate Python 3.12 CUDA 13 environment from `code/`. Do not run the repository-wide `setup.sh` in this environment. The dedicated requirements keep Torch 2.9.1+cu130, CUTLASS DSL 4.5.2, and the newest FA4 release declared compatible with that DSL version.
+                Activate the environment created by `setup.sh`, or create a fresh Python 3.12
+                environment and install the include file from `code/`. The nested lock supplies
+                the CUDA index, the repository's vendored DLPack adapter, and every artifact
+                hash. A successful install does not qualify the GPU path.
 
                 ```bash
-                python3.12 -m venv .venv-flexattention-cute
-                source .venv-flexattention-cute/bin/activate
-                python -m pip install -r labs/flexattention/requirements_cute.txt
+                python3.12 -m venv .venv-torch2141
+                source .venv-torch2141/bin/activate
+                python -m pip install --require-hashes --no-deps \
+                  -r labs/flexattention/requirements_cute.txt
 
                 # Run these commands only on an allocated CUDA 13 B200 host.
                 python -m labs.flexattention.flex_attention_cute --batch 2 --seq-len 1024
                 python -m pytest -q tests/test_audit_wave1_attention_regressions.py -k real_cute_layout_and_attention
                 ```
 
-                The tool checks the Torch, FlashAttention-4, CUTLASS DSL, and Quack pins. It rejects an environment that also contains the `flash-attn` distribution. It imports the supported `flash_attn.cute.flash_attn_func` API and fails before timing when the critical environment does not match."""
+                The tool checks the Torch, Triton, FlashAttention-4, CUTLASS DSL, Quack,
+                TVM FFI and DLPack-adapter pins. It rejects an environment that also contains
+                the `flash-attn` distribution because FA2 and FA4 own the same `flash_attn`
+                namespace. It imports the supported `flash_attn.cute.flash_attn_func` API and
+                fails before timing when the critical environment does not match. FA2
+                2.8.3.post2 is built and validated only in the separate environment described
+                by `native_torch_extensions.json`."""
             ),
         ),
         MarkdownSection(
@@ -6446,23 +6528,23 @@ ENTRIES["labs/flexattention"] = lab_entry(
     ],
     goals=[
         "Benchmark FlexAttention eager mode against compiled variants using identical masks/score mods.",
-        "Validate the public FlashAttention-4 CuTe forward path in an isolated environment.",
+        "Validate the public FlashAttention-4 CuTe forward path in the shared environment.",
         "Sweep sparsity knobs (block size, doc span) without editing source.",
         "Collect Nsight traces showing kernel fusion improvements after compiling.",
     ],
     contents=[
         ("`baseline_flex_attention.py`, `optimized_flex_attention.py`", "FlexAttention DSL workloads toggling `torch.compile` for fused kernels."),
-        ("`flex_attention_cute.py`, `requirements_cute.txt`", "Public FlashAttention-4 CuTe tool and its isolated CUDA 13 dependency lock."),
+        ("`flex_attention_cute.py`, `requirements_cute.txt`", "Public FlashAttention-4 CuTe tool and an include of the shared Torch 2.14.1 hash lock."),
         ("`flexattention_common.py`, `expectations_{hardware_key}.json`", "Shared input builders, score modifiers, and regression thresholds."),
     ],
     validation=[
         "`python -m cli.aisp bench run --targets labs/flexattention:flex_attention --profile minimal` captures the eager vs compiled delta and stores artifacts.",
         "`BLOCK_SIZE=64 DOC_SPAN=128 python -m cli.aisp bench run --targets labs/flexattention:flex_attention` demonstrates masked sparsity sweeps.",
-        "In the dedicated environment, `python -m pytest -q tests/test_audit_wave1_attention_regressions.py -k real_cute_layout_and_attention` checks the public FA4 result against an independent full-output reference on CUDA.",
+        "In the shared environment, `python -m pytest -q tests/test_audit_wave1_attention_regressions.py -k real_cute_layout_and_attention` checks the public FA4 result against an independent full-output reference on CUDA.",
     ],
     notes=[
         "Environment variables such as `BLOCK_SIZE`, `DOC_SPAN`, and `TORCH_COMPILE_MODE` are read at runtime for quick experiments.",
-        "Keep FlashAttention 2 in the default repository environment so NanoChat continues to use the `flash_attn_2_cuda` extension.",
+        "Keep FlashAttention 2 in its separate validation environment. Installing it beside shared FA4 would overwrite their common Python and native namespace.",
         "Artifacts include NVTX traces. Feed them to `core/analysis/deep_profiling_report.py` for convenience.",
     ],
 )

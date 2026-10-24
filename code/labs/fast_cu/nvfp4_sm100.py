@@ -44,7 +44,7 @@ def load_sm100_extension():
         [_LAB_DIR / "nvfp4_native.cu"],
         dependencies=[_LAB_DIR / "nvfp4_sm100.cuh"],
         extra_cuda_cflags=[
-            "-std=c++17",
+            "-std=c++20",
             "-O3",
             "-DNDEBUG",
             "-DFAST_CU_NVFP4_SM100=1",

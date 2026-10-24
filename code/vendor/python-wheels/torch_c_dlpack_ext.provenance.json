@@ -1,0 +1,164 @@
+{
+  "build": {
+    "cuda_execution": false,
+    "dependency_installation": "disabled by python -m build --no-isolation",
+    "network_isolation": "linux-unshare-network-namespace",
+    "reproducibility": {
+      "byte_identical": true,
+      "independent_fresh_source_builds": 2,
+      "wheel_sha256": "ecb10c1629aea86a24b652f16b811933bcf34c20f53605eae704cf9af13bffc9"
+    },
+    "source_date_epoch": "1768217108"
+  },
+  "builder": {
+    "path": "scripts/build_torch_dlpack_wheel.py",
+    "sha256": "45a2994744f85400449e14e04585feb37b6eba0865ffd5e24ef2434ccfd15bfe"
+  },
+  "contract": {
+    "path": "torch_dlpack_source_build.json",
+    "sha256": "46db6b3e1718498514b5d0b160763d6c7673c1b1d8315eb427aca331d7bbbd9a"
+  },
+  "patches": [
+    {
+      "after_sha256": "b6d9e3aef40f0fd4ede62e9cb9d4b77fd510ac39141c9f0591c1cdafd5b212b8",
+      "before_sha256": "03562c2a2e9b7782c8bd2ac83002dffa94696d703a1fac6864614be524709fa6",
+      "id": "torch2141-pure-wheel-metadata",
+      "path": "pyproject.toml",
+      "replacements": [
+        {
+          "after_sha256": "5dcf85957281edaf6ce790bee3f0979237d96672ba5d8ffbd96d6cb8ae787dd7",
+          "before_sha256": "eb0d4529d2dd8a4df85b4dcd171eae3641ef293987a7d328121749717af5da7c",
+          "count": 1
+        },
+        {
+          "after_sha256": "07d4fdfb251d5c8e952491b42e48c73a9d0b472f66e5368370018cd9f3a573ff",
+          "before_sha256": "c058fb895eef356ef2d1b13381f838418a3c5f04d68b635862f2ca7a4cda0085",
+          "count": 1
+        },
+        {
+          "after_sha256": "6ff9fbb9c5b64560f4ab90120ab388366c8cc3693ada4fec770d12414840255e",
+          "before_sha256": "91b84ef3707ef3ef516c76c7a599322941eee0f99b1d1ccffd220753044281b9",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "after_sha256": "1d65fe82da1f6254400a6d9897cbb066828113b641833500afb292777ca5c9d4",
+      "before_sha256": "5804ca0f3aa3fd8feaac429f57bfb5711c7ad4d988f03c21d2eee73c11d970ff",
+      "id": "torch2141-no-legacy-fallback",
+      "path": "torch_c_dlpack_ext/core.py",
+      "replacements": [
+        {
+          "after_sha256": "c13ccd9b5a668350336268aad999eaaad7d22568b53f4c2a9d936c58fb6b550b",
+          "before_sha256": "fab2db02107aa1c9f52edb2b4cd0e041e5820702bf6f63c083d1392f09e22e0b",
+          "count": 1
+        }
+      ]
+    }
+  ],
+  "post_patch_pre_build_tree": {
+    "algorithm": "sha256-file-manifest-v1",
+    "file_count": 14,
+    "sha256": "e5dcec38a929985efb4710f72ece016efb3c03dd681f5921a85fa0ab695bdc83",
+    "total_bytes": 52676
+  },
+  "purpose": "Torch 2.14.1 built-in DLPack adapter without an installed generic build_backend module",
+  "runtime": {
+    "build_distribution_versions": {
+      "apache-tvm-ffi": "0.1.11",
+      "build": "1.6.1",
+      "packaging": "26.2",
+      "setuptools": "80.10.2",
+      "torch": "2.14.1+cu130",
+      "wheel": "0.48.0"
+    },
+    "platform_machine": "x86_64",
+    "platform_system": "Linux",
+    "python": "3.12.3",
+    "required_tensor_attribute": "__dlpack_c_exchange_api__",
+    "required_tensor_attribute_present": true,
+    "torch": "2.14.1+cu130"
+  },
+  "schema": "aisp.vendored-python-wheel.v1",
+  "sdist": {
+    "archive": {
+      "directory_count": 3,
+      "expanded_file_bytes": 52523,
+      "file_count": 14,
+      "member_count": 17,
+      "root": "torch_c_dlpack_ext-0.1.5"
+    },
+    "filename": "torch_c_dlpack_ext-0.1.5.tar.gz",
+    "sha256": "d06f0357d575d22a168cc77acb9020fc4bae30968ceb6718a055dcbe92bacabe",
+    "size": 12913,
+    "url": "https://files.pythonhosted.org/packages/37/de/921b6491efce5c389a5ef9bbed3d2d6660005840dae488124173180859ab/torch_c_dlpack_ext-0.1.5.tar.gz"
+  },
+  "upstream": {
+    "declared_upstream_commit": "dcd07cfe27465287ee5b203b742e85dcfb99606a",
+    "pypi_project": "https://pypi.org/project/torch-c-dlpack-ext/0.1.5/",
+    "pypi_provenance": "https://pypi.org/project/torch-c-dlpack-ext/0.1.5/#provenance",
+    "repository": "https://github.com/apache/tvm-ffi",
+    "selection": "The PyPI-attested 0.1.5 sdist is the source authority. The declared Git commit is the publishing identity reported by PyPI provenance. The local patch narrows the package to Torch 2.14.1, removes its development-only generic build_backend module from the installed wheel, and fails clearly if the required built-in DLPack C exchange API is absent.",
+    "upstream_version": "0.1.5"
+  },
+  "wheel": {
+    "filename": "torch_c_dlpack_ext-0.1.5+torch2141.nobackend1-py3-none-any.whl",
+    "members": [
+      {
+        "path": "torch_c_dlpack_ext-0.1.5+torch2141.nobackend1.dist-info/METADATA",
+        "sha256": "1bd58eb1e2ecec47f764e8e03604d2a1d36df14b8e7ce11c4eef260e90e2a447",
+        "size": 14985
+      },
+      {
+        "path": "torch_c_dlpack_ext-0.1.5+torch2141.nobackend1.dist-info/RECORD",
+        "sha256": "e9b2aae8721d77efa5df1c9e1680885d75031de01d6b65084ad1f2ef121df6c1",
+        "size": 853
+      },
+      {
+        "path": "torch_c_dlpack_ext-0.1.5+torch2141.nobackend1.dist-info/WHEEL",
+        "sha256": "c14c80f0e6ae95195b7f032d990b2f367806af140702f90a72f466762ce5262d",
+        "size": 92
+      },
+      {
+        "path": "torch_c_dlpack_ext-0.1.5+torch2141.nobackend1.dist-info/licenses/LICENSE",
+        "sha256": "b40930bbcf80744c86c46a12bc9da056641d722716c378f5659b9e555ef833e1",
+        "size": 11357
+      },
+      {
+        "path": "torch_c_dlpack_ext-0.1.5+torch2141.nobackend1.dist-info/licenses/NOTICE",
+        "sha256": "f3b4f47f4a9ce94936770335500563f49ced15993dd5ac2bc97075512fbd5cd6",
+        "size": 181
+      },
+      {
+        "path": "torch_c_dlpack_ext-0.1.5+torch2141.nobackend1.dist-info/top_level.txt",
+        "sha256": "231569e20f1447891532e1faa4543811720f960378ff45e865f59bd63a865911",
+        "size": 19
+      },
+      {
+        "path": "torch_c_dlpack_ext/__init__.py",
+        "sha256": "b583dbbec872c77eea2564f4216062cf324d8b0b7c93d5e77628bf9b46e6a13e",
+        "size": 839
+      },
+      {
+        "path": "torch_c_dlpack_ext/core.py",
+        "sha256": "1d65fe82da1f6254400a6d9897cbb066828113b641833500afb292777ca5c9d4",
+        "size": 3120
+      }
+    ],
+    "metadata": {
+      "name": "torch-c-dlpack-ext",
+      "requires_dist": [
+        "torch==2.14.1"
+      ],
+      "requires_python": ">=3.9",
+      "root_is_purelib": true,
+      "tag": "py3-none-any",
+      "version": "0.1.5+torch2141.nobackend1"
+    },
+    "native_members": [],
+    "record_validated": true,
+    "sha256": "ecb10c1629aea86a24b652f16b811933bcf34c20f53605eae704cf9af13bffc9",
+    "size": 12757,
+    "source_date_epoch": 1768217108
+  }
+}

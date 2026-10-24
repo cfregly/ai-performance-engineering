@@ -3,9 +3,9 @@ from __future__ import annotations
 
 from core.utils import compile_utils as _compile_utils_patch  # noqa: F401
 """
-Compiled Autograd with PyTorch 2.10
+Compiled Autograd with PyTorch 2.14.1
 
-PyTorch 2.10 can compile the backward pass for improved training efficiency.
+PyTorch can compile the backward pass for improved training efficiency.
 Requires PyTorch 2.10+ and CUDA 13.0+.
 """
 import torch
@@ -295,14 +295,14 @@ def main() -> None:
     if not COMPILED_AUTOGRAD_AVAILABLE:
         print("\n" + "!" * 80)
         print("Compiled autograd not available in your PyTorch installation.")
-        print("This feature requires PyTorch 2.10-dev or later.")
-        print("\nTo install PyTorch 2.10 nightly:")
-        print("  pip install torch==2.10.0.dev*+cu130 --index-url https://download.pytorch.org/whl/nightly/cu130")
+        print("Use the pinned PyTorch 2.14.1 runtime for this example.")
+        print("\nInstall the isolated runtime described in docs/environment.md:")
+        print("  python -m pip install --require-hashes --no-deps -r requirements_torch2141_linux_x86_64.lock")
         print("!" * 80)
         return
     
     print("=" * 80)
-    print("Compiled Autograd Benchmark (PyTorch 2.10-dev)")
+    print("Compiled Autograd Benchmark (PyTorch 2.14.1)")
     print("=" * 80)
     print()
     
@@ -335,8 +335,8 @@ def main() -> None:
     print("\n" + "=" * 80)
     print("Summary: Compiled Autograd")
     print("=" * 80)
-    print("PyTorch 2.10 compiled autograd provides:")
-    print(" 20-30% faster backward pass")
+    print("Compiled autograd capabilities to validate:")
+    print(" Backward-pass compilation with workload-specific performance")
     print(" Better kernel fusion")
     print(" Reduced Python overhead")
     print(" Compatible with torch.compile for forward pass")

@@ -23,6 +23,6 @@ def load_top_k_kernel_extension():
             "--use_fast_math",
             "--expt-relaxed-constexpr",
             "--expt-extended-lambda",
-            "-std=c++17",
+            "-std=c++20",
         ],
     )

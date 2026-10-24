@@ -821,13 +821,13 @@ class VLLMConfigGenerator:
                 "strengths": ["Continuous batching", "PagedAttention", "Easy deployment"],
                 "weaknesses": ["Not fastest for single request"],
                 "best_for": "High-throughput serving",
-                "setup": "pip install vllm",
+                "setup": "Build the pinned vLLM source wheel in the isolated runtime. See docs/environment.md.",
             },
             "tensorrt_llm": {
                 "strengths": ["Fastest inference", "INT8/FP8 optimization"],
                 "weaknesses": ["Complex setup", "Model conversion required"],
                 "best_for": "Maximum throughput with fixed models",
-                "setup": "pip install tensorrt_llm",
+                "setup": "Use a separately pinned TensorRT-LLM environment. See docs/environment.md.",
             },
             "text_generation_inference": {
                 "strengths": ["Flash Attention", "Easy HF integration"],

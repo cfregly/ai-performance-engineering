@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 from __future__ import annotations
+
 from core.utils import compile_utils as _compile_utils_patch  # noqa: F401
 
 """
@@ -14,24 +15,17 @@ Run it with torchrun on a node with multiple CUDA devices, e.g.:
 
 The script:
   * creates a simple MLP and shards it with torch.distributed.tensor.parallel,
-  * enables Async-TP via torchtitan.distributed.tensor_parallel.maybe_enable_async_tp,
+  * enables Async-TP via the pinned TorchTitan compile helper,
   * compiles the model with torch.compile so micro-pipelining can overlap
     communication with compute, and
   * runs a few warm-up/training steps while logging overlap-friendly timings.
 
 Async-TP currently requires:
-  * CUDA build of PyTorch 2.10+ (nightly or stable with CUDA 13),
-  * TorchTitan >= 0.2.0 (pip install torchtitan),
+  * The pinned PyTorch 2.14.1 CUDA 13 runtime,
+  * TorchTitan 0.3.0 from the repository runtime lock,
   * NCCL backend (infers symmetric memory collectives automatically),
   * torch.compile mode that includes the model ("max-autotune" by default below).
 """
-
-from core.common.device_utils import resolve_local_rank
-
-from ch04.distributed_helper import run_main_with_skip_status, setup_single_gpu_env
-
-from core.benchmark.gpu_requirements import require_min_gpus, warn_optimal_gpu_count
-
 
 import argparse
 import time
@@ -47,12 +41,16 @@ from torch.distributed.tensor.parallel import (
     parallelize_module,
 )
 
+from ch04.distributed_helper import run_main_with_skip_status, setup_single_gpu_env
+from core.benchmark.gpu_requirements import require_min_gpus, warn_optimal_gpu_count
+from core.common.device_utils import resolve_local_rank
+
 try:
-    from torchtitan.config.job_config import JobConfig
-    from torchtitan.distributed.tensor_parallel import maybe_enable_async_tp
+    from torchtitan.config import CompileConfig
+    from torchtitan.distributed.compile import _maybe_enable_async_tp
 except ImportError as err:  # pragma: no cover - informative error path
     raise SystemExit(
-        "torchTitan is required for this example. Install with `pip install torchtitan`."
+        "TorchTitan 0.3.0 is required. Install the isolated runtime from docs/environment.md."
     ) from err
 
 
@@ -103,23 +101,18 @@ class ToyMLP(torch.nn.Module):
         return x
 
 
-def enable_async_tp(tp_mesh, compile_mode: str) -> JobConfig:
-    job_cfg = JobConfig()
-    job_cfg.parallelism.tensor_parallel_degree = tp_mesh.size()
-    job_cfg.parallelism.enable_async_tensor_parallel = True
-    job_cfg.compile.enable = True
-    job_cfg.compile.components = ["model"]
-    job_cfg.compile.backend = "inductor"
-    
-    # PyTorch 2.10: Enhanced compilation options
-    job_cfg.compile.mode = compile_mode
-    if hasattr(job_cfg.compile, "inductor_config"):
-        # Enable CUDA graph trees (PyTorch 2.10)
-        job_cfg.compile.inductor_config.triton_cudagraphs = True
-        job_cfg.compile.inductor_config.triton_cudagraph_trees = True
-
-    maybe_enable_async_tp(job_cfg, tp_mesh)
-    return job_cfg
+def enable_async_tp(tp_mesh) -> CompileConfig:
+    """Enable the async pass through the pinned TorchTitan 0.3 configuration."""
+    compile_config = CompileConfig(
+        enable=True,
+        enable_async_tensor_parallel=True,
+        components=["model"],
+        backend="inductor",
+    )
+    # TorchTitan 0.3 moved this helper into distributed.compile. The shared
+    # dependency lock binds that private API to the version exercised here.
+    _maybe_enable_async_tp(compile_config, tp_mesh)
+    return compile_config
 
 
 def shard_model(model: torch.nn.Module, tp_mesh) -> None:
@@ -150,7 +143,7 @@ def main() -> None:
     device = torch.device("cuda", local_rank)
 
     tp_mesh = init_device_mesh("cuda", (args.tp_degree,), mesh_dim_names=("tp",))
-    enable_async_tp(tp_mesh, args.compile_mode)
+    enable_async_tp(tp_mesh)
 
     model = ToyMLP(hidden_dim=args.hidden_dim).to(device)
     shard_model(model, tp_mesh)

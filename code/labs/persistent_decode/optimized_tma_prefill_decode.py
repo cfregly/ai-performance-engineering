@@ -245,17 +245,19 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
 
     try:
         from torch.utils.cpp_extension import load_inline
+
+        from labs.persistent_decode.tma_extension import _torch_extension_cache_name
     except ImportError as exc:  # pragma: no cover - torch always available in CI
         raise RuntimeError(f"SKIPPED: torch extension loader unavailable ({exc})") from exc
 
     try:
         _TMA_CP_ASYNC_EXT = load_inline(
-            name="persistent_decode_tma_cp_async_ext",
+            name=_torch_extension_cache_name("persistent_decode_tma_cp_async_ext"),
             cpp_sources=cpp_src,
             cuda_sources=cuda_src,
             functions=None,
             extra_cuda_cflags=[
-                "--std=c++17",
+                "--std=c++20",
                 "--use_fast_math",
                 "-lineinfo",
                 "-gencode=arch=compute_100,code=sm_100",

@@ -14,7 +14,7 @@ from core.utils.extension_loader_template import load_cuda_extension
 def _load_module():
     package_root = Path(__file__).resolve().parent
     source = package_root / "cuda" / "memory_patterns_extension.cu"
-    extra_flags = ["-O3", "--use_fast_math", "-std=c++17", "--extended-lambda"]
+    extra_flags = ["-O3", "--use_fast_math", "-std=c++20", "--extended-lambda"]
     return load_cuda_extension(
         extension_name="memory_patterns_ext",
         cuda_source_file=str(source),

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from functools import lru_cache
+import os
 from pathlib import Path
 from typing import Optional
 
@@ -11,45 +12,71 @@ import torch
 from core.utils.extension_loader_template import load_cuda_extension
 
 
-def _detect_cutlass_include() -> Path:
-    """Resolve a usable CUTLASS include directory for extension builds.
+_CUTLASS_REQUIRED_HEADERS = (
+    Path("include/cutlass/cutlass.h"),
+    Path("tools/util/include/cutlass/util/packed_stride.hpp"),
+)
 
-    Preferred order:
-    1) nvidia-cutlass-dsl Python package include path
-    2) repository local third_party/cutlass/include
-    3) CUTLASS_PATH/include (if exported)
-    """
-    candidates: list[Path] = []
 
-    # Option 1: packaged CUTLASS headers from nvidia-cutlass-dsl.
+def _cutlass_include_dirs(root: Path) -> tuple[Path, Path] | None:
+    resolved_root = root.expanduser().resolve()
+    if not all(
+        (resolved_root / relative).is_file() for relative in _CUTLASS_REQUIRED_HEADERS
+    ):
+        return None
+    return (
+        resolved_root / "include",
+        resolved_root / "tools" / "util" / "include",
+    )
+
+
+def _detect_cutlass_include_dirs(*, repo_root: Optional[Path] = None) -> list[Path]:
+    """Resolve main and utility headers from one complete CUTLASS source root."""
+    explicit_value = os.environ.get("CUTLASS_PATH")
+    if explicit_value is not None:
+        if not explicit_value.strip():
+            raise RuntimeError("CUTLASS_PATH is set but empty")
+        explicit_root = Path(explicit_value)
+        include_dirs = _cutlass_include_dirs(explicit_root)
+        if include_dirs is None:
+            resolved_root = explicit_root.expanduser().resolve()
+            missing = [
+                str(resolved_root / relative)
+                for relative in _CUTLASS_REQUIRED_HEADERS
+                if not (resolved_root / relative).is_file()
+            ]
+            raise RuntimeError(
+                "CUTLASS_PATH must name one complete CUTLASS source root. "
+                f"Missing required headers: {', '.join(missing)}"
+            )
+        return list(include_dirs)
+
+    repository_root = repo_root or Path(__file__).resolve().parents[2]
+    repository_cutlass = repository_root / "third_party" / "cutlass"
+    include_dirs = _cutlass_include_dirs(repository_cutlass)
+    if include_dirs is not None:
+        return list(include_dirs)
+
+    package_root: Optional[Path] = None
     try:
         import cutlass_library
     except ImportError:
-        cutlass_library = None  # type: ignore[assignment]
+        pass
+    else:
+        package_file = getattr(cutlass_library, "__file__", None)
+        if package_file:
+            package_root = Path(package_file).resolve().parent / "source"
+            include_dirs = _cutlass_include_dirs(package_root)
+            if include_dirs is not None:
+                return list(include_dirs)
 
-    if cutlass_library is not None:
-        candidates.append(Path(cutlass_library.__file__).resolve().parent / "source" / "include")
-
-    repo_root = Path(__file__).resolve().parents[2]
-    # Option 2: vendored CUTLASS headers in this repository.
-    candidates.append(repo_root / "third_party" / "cutlass" / "include")
-
-    # Option 3: explicit CUTLASS_PATH from the environment.
-    import os
-
-    cutlass_path = os.environ.get("CUTLASS_PATH")
-    if cutlass_path:
-        candidates.append(Path(cutlass_path).expanduser().resolve() / "include")
-
-    for include_dir in candidates:
-        if include_dir.exists():
-            return include_dir
-
-    searched = ", ".join(str(path) for path in candidates) if candidates else "<none>"
+    required = ", ".join(str(path) for path in _CUTLASS_REQUIRED_HEADERS)
+    searched = [str(repository_cutlass.resolve())]
+    if package_root is not None:
+        searched.append(str(package_root.resolve()))
     raise RuntimeError(
-        "CUTLASS include directory not found. Install nvidia-cutlass-dsl>=4.2 "
-        "or ensure third_party/cutlass/include exists. "
-        f"Searched: {searched}"
+        "No complete CUTLASS source root was found. Each root must contain "
+        f"{required}. Searched: {', '.join(searched)}"
     )
 
 
@@ -58,18 +85,7 @@ def _load_cutlass_module(verbose: bool = False):
     """Compile and cache the CUTLASS GEMM extension."""
     repo_root = Path(__file__).resolve().parents[2]
     cuda_source = repo_root / "core" / "benchmark" / "cuda" / "cutlass_gemm_extension.cu"
-    include_dir = _detect_cutlass_include()
-    # make_cute_packed_stride lives in cutlass/tools/util/include (not the main
-    # include dir), so add it alongside, preferring the sibling of the detected
-    # include then the repo-vendored copy.
-    include_dirs = [include_dir]
-    for util in (
-        include_dir.parent / "tools" / "util" / "include",
-        repo_root / "third_party" / "cutlass" / "tools" / "util" / "include",
-    ):
-        if util.exists() and util not in include_dirs:
-            include_dirs.append(util)
-            break
+    include_dirs = _detect_cutlass_include_dirs(repo_root=repo_root)
     # The CUTLASS 3.x Sm100 collective (tcgen05 / TMA) must be built for the arch
     # 'a' variant (sm_103a on GB300, sm_100a on B200); torch auto-detect emits plain
     # sm_103, which cannot compile the tcgen05/TMA path. An explicit -gencode makes
@@ -82,7 +98,7 @@ def _load_cutlass_module(verbose: bool = False):
     except Exception:
         pass
     extra_flags = [
-        "-O3", "--use_fast_math", "-std=c++17",
+        "-O3", "--use_fast_math", "-std=c++20",
         "--expt-relaxed-constexpr", "--expt-extended-lambda",
         f"-gencode=arch=compute_{arch},code=sm_{arch}",
     ]

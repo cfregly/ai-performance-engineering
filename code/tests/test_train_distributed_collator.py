@@ -195,6 +195,7 @@ def test_fixed_length_collator_with_real_huggingface_tokenizer(
         unk_token="[UNK]",
         truncation_side=truncation_side,
         padding_side="right" if padding_side == "left" else "left",
+        model_input_names=["input_ids", "token_type_ids", "attention_mask"],
     )
     batch = [
         dict(tokenizer(" ".join(words), return_special_tokens_mask=True), labels=1),
@@ -208,6 +209,7 @@ def test_fixed_length_collator_with_real_huggingface_tokenizer(
             labels=0,
         ),
     ]
+    assert all("token_type_ids" in feature for feature in batch)
     original = copy.deepcopy(batch)
     assert [len(feature["input_ids"]) for feature in batch] == [131, 128]
     # Repad on the opposite side to make removal of existing padding observable.

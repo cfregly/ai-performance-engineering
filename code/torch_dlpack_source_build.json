@@ -1,0 +1,196 @@
+{
+  "schema": "aisp.torch-dlpack-source-build.v1",
+  "source": {
+    "repository": "https://github.com/apache/tvm-ffi",
+    "declared_upstream_commit": "dcd07cfe27465287ee5b203b742e85dcfb99606a",
+    "upstream_version": "0.1.5",
+    "pypi_project": "https://pypi.org/project/torch-c-dlpack-ext/0.1.5/",
+    "pypi_provenance": "https://pypi.org/project/torch-c-dlpack-ext/0.1.5/#provenance",
+    "selection": "The PyPI-attested 0.1.5 sdist is the source authority. The declared Git commit is the publishing identity reported by PyPI provenance. The local patch narrows the package to Torch 2.14.1, removes its development-only generic build_backend module from the installed wheel, and fails clearly if the required built-in DLPack C exchange API is absent."
+  },
+  "sdist": {
+    "url": "https://files.pythonhosted.org/packages/37/de/921b6491efce5c389a5ef9bbed3d2d6660005840dae488124173180859ab/torch_c_dlpack_ext-0.1.5.tar.gz",
+    "filename": "torch_c_dlpack_ext-0.1.5.tar.gz",
+    "size": 12913,
+    "sha256": "d06f0357d575d22a168cc77acb9020fc4bae30968ceb6718a055dcbe92bacabe",
+    "published_at": "2026-01-12T11:25:08.484157Z",
+    "root": "torch_c_dlpack_ext-0.1.5",
+    "member_count": 17,
+    "file_count": 14,
+    "directory_count": 3,
+    "expanded_file_bytes": 52523
+  },
+  "verified_files": {
+    "LICENSE": {
+      "size": 11357,
+      "sha256": "b40930bbcf80744c86c46a12bc9da056641d722716c378f5659b9e555ef833e1"
+    },
+    "NOTICE": {
+      "size": 181,
+      "sha256": "f3b4f47f4a9ce94936770335500563f49ced15993dd5ac2bc97075512fbd5cd6"
+    },
+    "PKG-INFO": {
+      "size": 14956,
+      "sha256": "7b320b8b0f9a541a2a6b20aa73088a0ec667515399a3b2725e26c4ca1eacb18d"
+    },
+    "README.md": {
+      "size": 1477,
+      "sha256": "ce435fdfe997ac4cfe657d2ec0afaaa4a653bcc0fe4c134cbc92bee4b679cde3"
+    },
+    "build_backend.py": {
+      "size": 3802,
+      "sha256": "59480145c7bb8be2bb86d4dda092763953d22d550056ff03bfe704b5af204f89"
+    },
+    "pyproject.toml": {
+      "size": 1573,
+      "sha256": "03562c2a2e9b7782c8bd2ac83002dffa94696d703a1fac6864614be524709fa6"
+    },
+    "setup.cfg": {
+      "size": 38,
+      "sha256": "1c473cbaee8da5fc46e7f0158794af5cea4414c34a3cf3f180c2001f5e38bd3e"
+    },
+    "torch_c_dlpack_ext/__init__.py": {
+      "size": 839,
+      "sha256": "b583dbbec872c77eea2564f4216062cf324d8b0b7c93d5e77628bf9b46e6a13e"
+    },
+    "torch_c_dlpack_ext/core.py": {
+      "size": 2981,
+      "sha256": "5804ca0f3aa3fd8feaac429f57bfb5711c7ad4d988f03c21d2eee73c11d970ff"
+    },
+    "torch_c_dlpack_ext.egg-info/PKG-INFO": {
+      "size": 14956,
+      "sha256": "7b320b8b0f9a541a2a6b20aa73088a0ec667515399a3b2725e26c4ca1eacb18d"
+    },
+    "torch_c_dlpack_ext.egg-info/SOURCES.txt": {
+      "size": 323,
+      "sha256": "52f1035bba8c6799482c485d9e2df098b1dcd2ea92b83ffa0d0a44ce947ac718"
+    },
+    "torch_c_dlpack_ext.egg-info/dependency_links.txt": {
+      "size": 1,
+      "sha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b"
+    },
+    "torch_c_dlpack_ext.egg-info/requires.txt": {
+      "size": 6,
+      "sha256": "6647b8314a965c8c1c888a358ad46dcd51955fdad5bc439a26fe0efd6aca8933"
+    },
+    "torch_c_dlpack_ext.egg-info/top_level.txt": {
+      "size": 33,
+      "sha256": "ef9cf165ab89ecd3856e35ed85d3589ac6abe2eb9efd7bc6d607396b972c344f"
+    }
+  },
+  "patches": [
+    {
+      "id": "torch2141-pure-wheel-metadata",
+      "path": "pyproject.toml",
+      "before_sha256": "03562c2a2e9b7782c8bd2ac83002dffa94696d703a1fac6864614be524709fa6",
+      "after_sha256": "b6d9e3aef40f0fd4ede62e9cb9d4b77fd510ac39141c9f0591c1cdafd5b212b8",
+      "reason": "Publish a distinct Torch 2.14-only local version, bind its runtime dependency to the public Torch 2.14.1 version, and keep the source-root PEP 517 backend out of the installed wheel.",
+      "replacements": [
+        {
+          "count": 1,
+          "before": "version = \"0.1.5\"",
+          "after": "version = \"0.1.5+torch2141.nobackend1\""
+        },
+        {
+          "count": 1,
+          "before": "dependencies = [\"torch\"]",
+          "after": "dependencies = [\"torch==2.14.1\"]"
+        },
+        {
+          "count": 1,
+          "before": "py-modules = [\"build_backend\"]",
+          "after": "py-modules = []"
+        }
+      ]
+    },
+    {
+      "id": "torch2141-no-legacy-fallback",
+      "path": "torch_c_dlpack_ext/core.py",
+      "before_sha256": "5804ca0f3aa3fd8feaac429f57bfb5711c7ad4d988f03c21d2eee73c11d970ff",
+      "after_sha256": "1d65fe82da1f6254400a6d9897cbb066828113b641833500afb292777ca5c9d4",
+      "reason": "The derived wheel carries no Torch 2.4 through 2.9 native fallbacks. Preserve the Torch 2.14 built-in path and raise a clear error when that API is absent.",
+      "replacements": [
+        {
+          "count": 1,
+          "before": "    if hasattr(torch.Tensor, \"__dlpack_c_exchange_api__\") or hasattr(\n        torch.Tensor, \"__c_dlpack_exchange_api__\"\n    ):\n        return None\n",
+          "after": "    if hasattr(torch.Tensor, \"__dlpack_c_exchange_api__\"):\n        return None\n    raise RuntimeError(\n        \"torch-c-dlpack-ext 0.1.5+torch2141.nobackend1 requires \"\n        \"torch.Tensor.__dlpack_c_exchange_api__. Legacy native fallbacks \"\n        \"are intentionally absent.\"\n    )\n"
+        }
+      ]
+    }
+  ],
+  "expected_post_patch_tree": {
+    "algorithm": "sha256-file-manifest-v1",
+    "sha256": "e5dcec38a929985efb4710f72ece016efb3c03dd681f5921a85fa0ab695bdc83",
+    "file_count": 14,
+    "total_bytes": 52676
+  },
+  "runtime": {
+    "platform_system": "Linux",
+    "platform_machine": "x86_64",
+    "python": "3.12",
+    "torch": "2.14.1+cu130",
+    "required_tensor_attribute": "__dlpack_c_exchange_api__"
+  },
+  "build": {
+    "frontend": [
+      "python",
+      "-m",
+      "build",
+      "--wheel",
+      "--no-isolation"
+    ],
+    "resolved_python_requirements": {
+      "apache-tvm-ffi": "0.1.11",
+      "build": "1.6.1",
+      "packaging": "26.2",
+      "setuptools": "80.10.2",
+      "wheel": "0.48.0"
+    },
+    "required_commands": [
+      "unshare"
+    ],
+    "required_host_environment": {
+      "CUDA_VISIBLE_DEVICES": "",
+      "TORCH_DEVICE_BACKEND_AUTOLOAD": "0"
+    },
+    "source_date_epoch": 1768217108,
+    "network_isolation": "linux-unshare-network-namespace",
+    "dependency_installation": "disabled"
+  },
+  "expected_wheel": {
+    "name": "torch-c-dlpack-ext",
+    "version": "0.1.5+torch2141.nobackend1",
+    "filename": "torch_c_dlpack_ext-0.1.5+torch2141.nobackend1-py3-none-any.whl",
+    "tag": "py3-none-any",
+    "root_is_purelib": true,
+    "requires_python": ">=3.9",
+    "requires_dist": [
+      "torch==2.14.1"
+    ],
+    "top_level": "torch_c_dlpack_ext\n",
+    "forbidden_top_level_modules": [
+      "build_backend.py",
+      "build_utils.py"
+    ],
+    "package_files": {
+      "torch_c_dlpack_ext/__init__.py": {
+        "size": 839,
+        "sha256": "b583dbbec872c77eea2564f4216062cf324d8b0b7c93d5e77628bf9b46e6a13e"
+      },
+      "torch_c_dlpack_ext/core.py": {
+        "size": 3120,
+        "sha256": "1d65fe82da1f6254400a6d9897cbb066828113b641833500afb292777ca5c9d4"
+      }
+    },
+    "license_files": {
+      "LICENSE": {
+        "size": 11357,
+        "sha256": "b40930bbcf80744c86c46a12bc9da056641d722716c378f5659b9e555ef833e1"
+      },
+      "NOTICE": {
+        "size": 181,
+        "sha256": "f3b4f47f4a9ce94936770335500563f49ced15993dd5ac2bc97075512fbd5cd6"
+      }
+    }
+  }
+}

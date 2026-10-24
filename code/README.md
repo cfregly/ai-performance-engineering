@@ -141,7 +141,7 @@ The current published canonical package lives under `cluster/published/current/`
 
 ## Learning Goals
 - Understand how the chapters, labs, and shared tooling fit together.
-- Stand up a reproducible environment with the pinned PyTorch 2.9.1 + CUDA 13 stack for Blackwell workloads.
+- Stand up a reproducible environment with the pinned PyTorch 2.14.1 + CUDA 13 stack for Blackwell workloads.
 - Run the benchmark harness directly or through the Typer CLI for automated artifact capture.
 - Validate peak hardware characteristics before grading optimizations against stored expectations.
 
@@ -158,16 +158,17 @@ The current published canonical package lives under `cluster/published/current/`
 Use the benchmark harness for quick comparisons or drive the Typer CLI when you need repeatable artifact capture.
 ```bash
 cd ai-performance-engineering/code
-python3 -m venv .venv && source .venv/bin/activate
-pip install -r requirements_latest.txt
-# Optional ABI-bound CUDA 13 serving wheel; setup.sh performs this exact phase.
-pip install --no-deps --index-url https://wheels.vllm.ai/0.16.0/cu130 \
-  'vllm==0.16.0+cu130'
+python3.12 -m venv .venv-torch2141 && source .venv-torch2141/bin/activate
+python -m pip install --extra-index-url https://download.pytorch.org/whl/cu130 \
+  --find-links vendor/python-wheels \
+  --require-hashes --no-deps \
+  -r requirements_torch2141_linux_x86_64.lock
+python -m pip check
 python -m cli.aisp bench list-targets --chapter ch01
 python -m cli.aisp bench run --targets ch01 --profile minimal
 python -m cli.aisp bench run-tier1 --single-gpu --profile minimal
 ```
-- `setup.sh` installs system prerequisites (drivers, CUDA, Nsight) and should be rerun after driver upgrades.
+- `setup.sh` installs the shared CUDA 13.0 and PyTorch 2.14.1 environment only on B200/GB200 compute capability 10.0, and should be rerun after driver upgrades. It rejects B300/GB300 10.3 and every other capability before repository checkout or compiler work. Historical and standalone SM103 profiles keep their separate environment and qualification paths.
 - Benchmark validity profile defaults to strict. Virtualization is warning-only; use `--validity-profile portable` for broader compatibility on hardware-limited hosts.
 - Use `python -m cli.aisp bench expectations --hardware b200 --min-speedup 1.05` to report expectation entries below a target threshold.
 - Repeat `--targets` for multi-scope runs, for example `python -m cli.aisp bench run --targets ch01 --targets ch02 --profile minimal`; use `python -m cli.aisp bench run-tier1 --single-gpu --profile minimal` for the canonical regression suite.
@@ -178,25 +179,89 @@ python -m cli.aisp bench run-tier1 --single-gpu --profile minimal
 - `pytest tests/integration` succeeds to confirm harness discovery and CLI plumbing.
 - `python core/benchmark/benchmark_peak.py` reports TFLOP/s, bandwidth, and NVLink numbers close to the published ceilings.
 
-## Optional vLLM and FlashAttention 4 compatibility
+## Native source builds and historical vLLM wheel reproduction
 
-For the qualified FlashAttention 4 (`flash-attn-4==4.0.0b19`) environment on
-Linux x86_64, backport the merged vLLM rotary-import fix into the pinned wheel:
+`setup.sh` installs the hash-locked Python graph in its isolated environment,
+then resolves the NCCL, cuDNN and NVSHMEM headers and libraries from those
+same wheels. Its environment-local `runtime-env.sh` records the matching
+include and library paths for later builds without changing shell profiles or
+system-wide environment files. This native-build path requires B200/GB200
+compute capability 10.0 and fails before repository checkout on B300/GB300
+10.3 or any other capability. Missing wheel assets and external NCCL, cuDNN,
+or cuBLAS preloads are hard errors.
+
+The hash lock selects the reviewed
+`torch-c-dlpack-ext==0.1.5+torch2141.nobackend1` adapter from
+`vendor/python-wheels`. `scripts/build_torch_dlpack_wheel.py` derives that
+pure-Python wheel reproducibly from the verified upstream sdist. The adapter
+uses Torch 2.14.1's built-in DLPack exchange API and removes the unused
+top-level `build_backend` module that would collide with FlashInfer. It has no
+legacy native fallback and fails clearly when the built-in Torch API is absent.
+
+The default PyTorch 2.14.1 environment builds
+`vllm==0.33.0.dev0+cu130.torch2141` from the commit in
+`vllm_source_build.json` with `scripts/build_vllm_for_torch.py`. No published
+stable vLLM wheel matched the PyTorch 2.14.1 ABI when this environment was
+pinned. Build and install the serving runtime only after activating the exact
+requirements:
+
 ```bash
-mkdir -p third_party/wheels/vllm-upstream
-python -m pip download --no-deps --only-binary=:all: \
-  --index-url https://wheels.vllm.ai/0.16.0/cu130 \
-  --dest third_party/wheels/vllm-upstream 'vllm==0.16.0+cu130'
-python scripts/build_vllm_fa4_compat_wheel.py \
-  --input-wheel third_party/wheels/vllm-upstream/vllm-0.16.0+cu130-cp38-abi3-manylinux_2_35_x86_64.whl \
-  --output-dir third_party/wheels/vllm-fa4-backport \
-  --install-python "$VIRTUAL_ENV/bin/python"
+export VLLM_BUILD_ROOT=/absolute/path/to/new-vllm-torch2141-build
+CUDA_VISIBLE_DEVICES="" TORCH_DEVICE_BACKEND_AUTOLOAD=0 PYTORCH_NVML_BASED_CUDA_CHECK=1 \
+  python scripts/build_vllm_for_torch.py \
+    --output-dir "${VLLM_BUILD_ROOT}" \
+    --cuda-arch-list 10.0 \
+    --max-jobs 4 \
+    --nvcc-threads 2
+VLLM_WHEEL="$(python -c 'import json, sys; print(json.load(open(sys.argv[1], encoding="utf-8"))["wheel"]["path"])' "${VLLM_BUILD_ROOT}/vllm-source-wheel.manifest.json")"
+python -m pip install --no-deps "${VLLM_WHEEL}"
+python -m pip check
 ```
-The tool accepts only the qualified wheel hash, preserves the Torch and FA4
-versions, installs with `--no-deps`, and writes a provenance manifest. Retire
-the backport after `vllm_no_deps.pin` advances to a wheel containing
-[vLLM PR #42679](https://github.com/vllm-project/vllm/pull/42679) and that wheel
-passes the same FA4 import and full-model gates.
+
+The helper requires the exact build dependencies and Rust 1.95.0 declared in
+its contract. It verifies the pinned source identity and upstream file hashes.
+The output directory must be new and empty because existing receipts are not
+reused. The receipt records the source tree, build environment, wheel metadata,
+native members and SHA-256. A successful build and native import still require
+the applicable serving correctness and GPU gates before use as performance evidence.
+
+The shared environment keeps `flash-attn-4[cu13]==4.0.0b36`. Rebuild the
+Transformer Engine PyTorch binding against Torch 2.14.1 without touching that
+FlashAttention installation:
+
+```bash
+export NATIVE_EXTENSION_BUILD_ROOT=/absolute/path/to/new-te-torch2141-build
+CUDA_VISIBLE_DEVICES="" TORCH_DEVICE_BACKEND_AUTOLOAD=0 PYTORCH_NVML_BASED_CUDA_CHECK=1 \
+  python scripts/build_torch_extensions.py \
+    --package transformer-engine-torch \
+    --output-dir "${NATIVE_EXTENSION_BUILD_ROOT}" \
+    --cuda-arch-list 10.0 \
+    --max-jobs 8 \
+    --nvcc-threads 2
+```
+
+`--package flash-attn` builds FA2 2.8.3.post2 only in a fresh nested
+environment containing neither `flash-attn` nor `flash-attn-4`. Never install
+that FA2 wheel into the shared FA4 environment because both distributions own
+the `flash_attn` Python namespace. The helper verifies the sdist, rejects
+embedded native binaries, binds one validated CUDA 13.0 toolkit, sanitizes
+inherited compiler and search-path inputs, and runs the build under Linux
+`unshare --net` with package-index access disabled. It builds only and records
+the isolation preflight, CUDA tools, explicit FA2 C++20 patch, metadata, native
+ELF members, and hashes in `native-torch-extensions.manifest.json`. `MAX_JOBS`
+may be lowered from 8 to 1 and `NVCC_THREADS` from 2 to 1. The receipt records
+the actual values. GPU-runtime qualification remains a separate hardware gate.
+
+The shared environment rejects `INSTALL_GPT_OSS=1` and `INSTALL_TRTLLM=1`.
+Those stacks require separately resolved and qualified runtimes because their
+package constraints conflict with the shared Torch 2.14.1 graph.
+
+`scripts/build_vllm_fa4_compat_wheel.py` remains for reproducing the earlier
+PyTorch 2.9.1, vLLM 0.16.0 and FA4 wheel environment. Keep that path separate
+from the current Torch 2.14.1 source builds; it is unrelated to the shared
+environment's current FA4 package pin. The
+[dated validation checkpoint](../docs/reviews/2026-09-06-codebase-repair-checkpoint.md)
+retains its measurements and limits.
 
 ## Wall of Shame
 The benchmark harness includes a strict set of correctness and validity checks to prevent misleading speedups.

@@ -101,7 +101,11 @@ def test_torch_does_not_emit_a_parent_only_trace_for_a_compiled_child(tmp_path, 
     monkeypatch.setattr(run_benchmarks, "render_torch_python_profile_wrapper", lambda **kw: pytest.fail("parent-only trace must not be launched"))
     output = tmp_path / "reports"
     assert run_benchmarks.profile_python_benchmark_torch(
-        benchmark, tmp_path / "baseline_example.py", tmp_path, output,
+        benchmark,
+        tmp_path / "baseline_example.py",
+        tmp_path,
+        output,
+        config=BenchmarkConfig(validity_profile="portable", lock_gpu_clocks=False),
     ) is None
     assert "compiled child process" in run_benchmarks._get_profile_failure_detail("torch")
     assert not output.exists()

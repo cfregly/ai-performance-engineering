@@ -1,4 +1,4 @@
-"""Focused vLLM 0.16 API contracts for all dynamic-router benchmark modes."""
+"""Focused pinned vLLM control-plane contracts for all dynamic-router benchmark modes."""
 
 from __future__ import annotations
 
@@ -30,7 +30,7 @@ class _FakeSamplingParams:
 
 
 class _FakeEngineArgs:
-    """The vLLM 0.16 EngineArgs surface used by this lab (no ``device`` kwarg)."""
+    """The pinned EngineArgs surface used by this lab (no ``device`` kwarg)."""
 
     created: list[_FakeEngineArgs] = []
 
@@ -113,7 +113,7 @@ class _FakeLLMEngine:
 
 
 @pytest.fixture
-def vllm_016_api(monkeypatch: pytest.MonkeyPatch) -> None:
+def pinned_vllm_api(monkeypatch: pytest.MonkeyPatch) -> None:
     # This CPU fake models two devices. Match its visibility contract even when
     # the surrounding real-GPU test shard was launched with a single device.
     monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "0,1")
@@ -166,7 +166,7 @@ def _topology() -> TopologySnapshot:
     )
 
 
-def test_wrapper_uses_vllm_016_engine_and_request_signatures(vllm_016_api: None) -> None:
+def test_wrapper_uses_pinned_engine_and_request_signatures(pinned_vllm_api: None) -> None:
     wrapper = vllm_runner._VllmWrapper("gpu1", 1, "/models/local-test-model")
     request = vllm_runner.Request(req_id="req-0", prompt_tokens=4, expected_new_tokens=2)
     runtime = vllm_runner._RequestRuntime(
@@ -189,7 +189,7 @@ def test_wrapper_uses_vllm_016_engine_and_request_signatures(vllm_016_api: None)
     assert _FakeLLMEngine.created[0].pending["req-0"][1].ignore_eos is True
 
 
-def test_explicit_attention_backend_reaches_engine_config(vllm_016_api: None) -> None:
+def test_explicit_attention_backend_reaches_engine_config(pinned_vllm_api: None) -> None:
     vllm_runner._VllmWrapper("gpu0", 0, "/models/local-test-model", attention_backend="TRITON_ATTN")
     assert _FakeEngineArgs.created[-1].attention_backend == "TRITON_ATTN"
 
@@ -216,7 +216,7 @@ def test_long_spillover_cli_is_bounded_opt_in() -> None:
 
 
 def test_uuid_cuda_visibility_fails_before_cuda_or_engine_construction(
-    vllm_016_api: None,
+    pinned_vllm_api: None,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     visible = (
@@ -249,7 +249,7 @@ def test_uuid_cuda_visibility_fails_before_cuda_or_engine_construction(
 
 
 def test_mig_cuda_visibility_rejects_parent_gpu_substitution(
-    vllm_016_api: None,
+    pinned_vllm_api: None,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     visible = "MIG-GPU-7f4a68da-6dbf-a5df-0493-5f3f6e7786fd/1/0"
@@ -308,6 +308,23 @@ def test_pinned_api_mismatch_fails_explicitly_without_fallback(
         vllm_runner._build_vllm_engine(_FakeLLMEngine, "/models/local-test-model", 0)
 
 
+def test_runtime_readiness_calls_shared_native_loader(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[str] = []
+    monkeypatch.setattr(vllm_runner, "_IMPORT_ERROR", None)
+    monkeypatch.setattr(vllm_runner, "_assert_serving_stack_versions", lambda: None)
+    monkeypatch.setattr(
+        vllm_runner,
+        "load_vllm_native_extensions",
+        lambda: calls.append("loaded"),
+    )
+
+    vllm_runner._assert_vllm_runtime_ready()
+
+    assert calls == ["loaded"]
+
+
 @pytest.mark.parametrize(
     ("call_path", "mode"),
     [
@@ -318,7 +335,7 @@ def test_pinned_api_mismatch_fails_explicitly_without_fallback(
     ],
 )
 def test_all_four_benchmark_call_paths_use_current_vllm_api(
-    vllm_016_api: None,
+    pinned_vllm_api: None,
     call_path: str,
     mode: str,
 ) -> None:
@@ -362,7 +379,7 @@ def test_all_four_benchmark_call_paths_use_current_vllm_api(
 
 
 def test_optimized_routing_uses_run_local_admission_depth_without_cuda_polling(
-    vllm_016_api: None,
+    pinned_vllm_api: None,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     synchronize_calls: list[int] = []
@@ -457,7 +474,7 @@ def test_optimized_routing_uses_run_local_admission_depth_without_cuda_polling(
     ],
 )
 def test_dual_pool_uses_run_local_admission_depth_across_reused_runs(
-    vllm_016_api: None,
+    pinned_vllm_api: None,
     monkeypatch: pytest.MonkeyPatch,
     mode: str,
     decode_gpus: str,
@@ -573,7 +590,7 @@ def test_dual_pool_uses_run_local_admission_depth_across_reused_runs(
     ],
 )
 def test_blocking_vllm_loops_do_not_add_poll_delay(
-    vllm_016_api: None,
+    pinned_vllm_api: None,
     monkeypatch: pytest.MonkeyPatch,
     call_path: str,
     mode: str,
@@ -619,7 +636,7 @@ def test_explicit_zero_request_groups_do_not_restore_default_work() -> None:
         vllm_runner.dual_pool_prompt_lengths(args, long_prompt_tokens=0)
 
 
-def test_zero_request_groups_reach_actual_admission_loop(vllm_016_api: None) -> None:
+def test_zero_request_groups_reach_actual_admission_loop(pinned_vllm_api: None) -> None:
     summary = vllm_runner.run_dual_pool_vllm(
         "shared", cli_args=_args(), topology_snapshot=_topology(),
         prefill_burst=0, decode_requests=1, continue_requests=0,
@@ -653,7 +670,7 @@ def test_request_admission_rejects_non_cpu_prompt_ids_before_conversion() -> Non
 
 @pytest.mark.parametrize("call_path", ["dynamic", "dual_pool"])
 def test_changed_prompt_ids_change_complete_generated_outputs(
-    vllm_016_api: None,
+    pinned_vllm_api: None,
     call_path: str,
 ) -> None:
     args = _args()
@@ -721,7 +738,7 @@ def test_changed_prompt_ids_change_complete_generated_outputs(
     ],
 )
 def test_vllm_wrappers_declare_multigpu_and_bind_live_prompt_input(
-    vllm_016_api: None,
+    pinned_vllm_api: None,
     monkeypatch: pytest.MonkeyPatch,
     tmp_path,
     module_name: str,
@@ -788,7 +805,7 @@ def test_vllm_verification_rejects_metric_only_summary() -> None:
     ],
 )
 def test_full_vllm_pair_verification_uses_live_generated_outputs(
-    vllm_016_api: None,
+    pinned_vllm_api: None,
     monkeypatch: pytest.MonkeyPatch,
     tmp_path,
     baseline_module_name: str,
@@ -837,6 +854,45 @@ def test_v1_direct_loop_completes_required_engine_post_step(
     assert wrapper.step() == ([], [], 0)
     assert post_steps == [False]
     assert sleep_calls == [0.0]
+
+
+def test_v1_direct_loop_forwards_engine_weight_version() -> None:
+    process_calls: list[dict[str, object]] = []
+
+    class _OutputProcessor:
+        def process_outputs(self, outputs, **kwargs):
+            process_calls.append({"outputs": outputs, **kwargs})
+            return SimpleNamespace(reqs_to_abort=[], request_outputs=[])
+
+        def update_scheduler_stats(self, _stats) -> None:
+            return None
+
+    engine_core_outputs = SimpleNamespace(
+        outputs=[object()],
+        timestamp=123.0,
+        scheduler_stats=None,
+        weight_version="weights-v2",
+    )
+    wrapper = vllm_runner._VllmV1Wrapper.__new__(vllm_runner._VllmV1Wrapper)
+    wrapper._core = SimpleNamespace(
+        step_fn=lambda: ({0: engine_core_outputs}, True),
+        post_step=lambda *, model_executed: None,
+    )
+    wrapper.engine = SimpleNamespace(
+        engine_core=SimpleNamespace(abort_requests=lambda _request_ids: None),
+        output_processor=_OutputProcessor(),
+    )
+    wrapper._inflight = {}
+
+    assert wrapper.step() == ([], [], 0)
+    assert process_calls == [
+        {
+            "outputs": engine_core_outputs.outputs,
+            "engine_core_timestamp": 123.0,
+            "iteration_stats": None,
+            "weight_version": "weights-v2",
+        }
+    ]
 
 
 def test_finished_request_cannot_verify_without_declared_model_output() -> None:

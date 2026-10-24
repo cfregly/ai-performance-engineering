@@ -498,12 +498,12 @@ def main():
     
     if not CUFILE_AVAILABLE:
         print("✗ cuFile bindings not available")
-        print("  Install: pip install cuda-python (requires CUDA 13.0+)")
+        print("  Install the isolated CUDA 13 runtime from docs/environment.md")
         print("  Note: Requires cuda-bindings package, not just cuda-python")
     
     if not TORCH_AVAILABLE:
         print("✗ PyTorch with CUDA not available")
-        print("  Install: pip install torch --index-url https://download.pytorch.org/whl/cu130")
+        print("  Use torch==2.14.1+cu130 from requirements_torch2141_linux_x86_64.lock")
     
     # Run demonstration
     if CUFILE_AVAILABLE and TORCH_AVAILABLE:

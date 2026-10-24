@@ -1,0 +1,324 @@
+{
+  "schema": "aisp.native-torch-extensions.v1",
+  "runtime": {
+    "platform_system": "Linux",
+    "platform_machine": "x86_64",
+    "python": "3.12",
+    "torch": "2.14.1+cu130",
+    "torch_cuda": "13.0"
+  },
+  "build": {
+    "active_lock": "requirements_torch2141_linux_x86_64.lock",
+    "cuda_arch_list": "10.0",
+    "cuda_sm": "100",
+    "maximum_jobs": 8,
+    "maximum_nvcc_threads": 2,
+    "required_host_environment": {
+      "CUDA_VISIBLE_DEVICES": "",
+      "TORCH_DEVICE_BACKEND_AUTOLOAD": "0"
+    },
+    "resolved_python_requirements": {
+      "build": "1.6.1",
+      "cmake": "4.4.4",
+      "ninja": "1.13.2",
+      "packaging": "26.2",
+      "pip": "26.2.2",
+      "pybind11": "3.1.0",
+      "setuptools": "80.10.2",
+      "wheel": "0.48.0"
+    },
+    "native_wheel_sdks": {
+      "nvidia-cudnn-cu13": {
+        "version": "9.24.0.43",
+        "root": "nvidia/cudnn",
+        "include_directory": "nvidia/cudnn/include",
+        "library_directory": "nvidia/cudnn/lib",
+        "assets": {
+          "headers": [
+            "nvidia/cudnn/include/cudnn.h"
+          ],
+          "libraries": [
+            "nvidia/cudnn/lib/libcudnn.so.9"
+          ]
+        }
+      },
+      "nvidia-nccl-cu13": {
+        "version": "2.30.7",
+        "root": "nvidia/nccl",
+        "include_directory": "nvidia/nccl/include",
+        "library_directory": "nvidia/nccl/lib",
+        "assets": {
+          "headers": [
+            "nvidia/nccl/include/nccl.h"
+          ],
+          "libraries": [
+            "nvidia/nccl/lib/libnccl.so.2"
+          ]
+        }
+      },
+      "nvidia-nvshmem-cu13": {
+        "version": "3.4.5",
+        "root": "nvidia/nvshmem",
+        "include_directory": "nvidia/nvshmem/include",
+        "library_directory": "nvidia/nvshmem/lib",
+        "assets": {
+          "headers": [
+            "nvidia/nvshmem/include/nvshmem.h"
+          ],
+          "libraries": [
+            "nvidia/nvshmem/lib/libnvshmem_host.so.3"
+          ]
+        }
+      }
+    },
+    "required_commands": [
+      "cmake",
+      "gcc",
+      "g++",
+      "ninja",
+      "nvcc",
+      "unshare"
+    ],
+    "minimum_gcc_major": 13,
+    "nvcc_release": "13.0",
+    "frontend": [
+      "python",
+      "-m",
+      "build",
+      "--wheel",
+      "--no-isolation"
+    ]
+  },
+  "packages": [
+    {
+      "id": "transformer-engine-torch",
+      "source": {
+        "repository": "https://github.com/NVIDIA/TransformerEngine.git",
+        "declared_upstream_commit": "6ea2a74a9e98c99e6d7b164a33775cc457520027",
+        "declared_upstream_tree": "c43ee996a60d08147625e36af73bcb0a99c3d3bf",
+        "declared_upstream_commit_url": "https://github.com/NVIDIA/TransformerEngine/commit/6ea2a74a9e98c99e6d7b164a33775cc457520027"
+      },
+      "sdist": {
+        "url": "https://files.pythonhosted.org/packages/3d/fb/c9ce298a38c22ed1059923a01cac7e1f4e4f7281d39a8679c8118febe079/transformer_engine_torch-2.20.2.tar.gz",
+        "filename": "transformer_engine_torch-2.20.2.tar.gz",
+        "sha256": "4c40ced8a6261649e689076f198d4feaf02277b1ba18931a66eccdaceb33c43e",
+        "size": 498055,
+        "root": "transformer_engine_torch-2.20.2",
+        "member_count": 217,
+        "file_count": 180,
+        "directory_count": 37,
+        "expanded_file_bytes": 2779011
+      },
+      "verified_files": {
+        "PKG-INFO": {
+          "size": 523,
+          "sha256": "383bca98e689b3f59a471dae46a8af97cb34a8bdfd6996d260c106a161574b92"
+        },
+        "pyproject.toml": {
+          "size": 302,
+          "sha256": "037b6d4e1b3bc7356589fe652b078ddf8ba9747148078285378519c26f4dddd0"
+        },
+        "setup.py": {
+          "size": 7534,
+          "sha256": "7af9597ef45ab0aef0e10b614bc9621c8180a97f6fdd49508f6ca05428b86d40"
+        },
+        "build_tools/VERSION.txt": {
+          "size": 7,
+          "sha256": "8f90a42103736ebc57714fb567cd75e91bbe73be639b5f823766a97fae7f0275"
+        },
+        "build_tools/pytorch.py": {
+          "size": 3744,
+          "sha256": "3e4d0fed0699adc3fe3b16ac605f160a9fd7d9a2a1b5c4d5988daf332bd97d06"
+        },
+        "build_tools/build_ext.py": {
+          "size": 11647,
+          "sha256": "bf6968019c99eca3427c0cab2ff3b413aa72c29adc79e6994fbe00cb8d031bfc"
+        },
+        "csrc/extensions/pybind.cpp": {
+          "size": 55012,
+          "sha256": "be2520c346c414f3acce41526bc298d6001dc18a26584fe8ec6184e66d6b4889"
+        },
+        "common_headers/common/common.h": {
+          "size": 54717,
+          "sha256": "2153ac69c65d79f04b27648ab397b00d44741c8acb48b2077dee00cc4726b48d"
+        }
+      },
+      "patches": [],
+      "preinstalled_distributions": {
+        "transformer-engine": "2.20.2",
+        "transformer-engine-cu13": "2.20.2"
+      },
+      "forbidden_distributions": [
+        "transformer-engine-torch"
+      ],
+      "build_environment": {
+        "NVTE_BUILD_DEBUG": "0",
+        "NVTE_BUILD_USE_NVIDIA_WHEELS": "0",
+        "NVTE_CUDA_ARCHS": "100",
+        "NVTE_ENABLE_NVSHMEM": "0",
+        "NVTE_NO_LOCAL_VERSION": "1",
+        "NVTE_PYTORCH_FORCE_BUILD": "TRUE",
+        "NVTE_PYTORCH_FORCE_CXX11_ABI": "FALSE",
+        "NVTE_PYTORCH_SKIP_CUDA_BUILD": "FALSE",
+        "NVTE_UB_WITH_MPI": "0",
+        "NVTE_USE_CCACHE": "0",
+        "NVTE_USE_PYTORCH_TRITON": "0",
+        "NVTE_WITH_CUBLASMP": "0",
+        "NVTE_WITH_NCCL_EP": "1"
+      },
+      "expected_metadata": {
+        "name": "transformer-engine-torch",
+        "version": "2.20.2",
+        "requires_python": ">=3.10.0",
+        "requires_dist": [
+          "torch>=2.1",
+          "einops",
+          "onnxscript",
+          "onnx",
+          "packaging",
+          "pydantic",
+          "nvdlfw-inspect",
+          "nvidia-cudnn-frontend>=1.29.0",
+          "transformer_engine_cu13==2.20.2"
+        ],
+        "wheel_tag": "cp312-cp312-linux_x86_64",
+        "required_native_member_prefixes": [
+          "transformer_engine/wheel_lib/transformer_engine_torch"
+        ],
+        "native_member_count": 1,
+        "minimum_native_member_bytes": 100000
+      }
+    },
+    {
+      "id": "flash-attn",
+      "source": {
+        "repository": "https://github.com/Dao-AILab/flash-attention.git",
+        "declared_upstream_commit": "49774b31c8d1172a5b28f72e9aed0f322bf4ccba",
+        "declared_upstream_tree": "4b7a8ffb9ca6effd2bf2cd8a03c6d7de7c5ef505",
+        "declared_upstream_commit_url": "https://github.com/Dao-AILab/flash-attention/commit/49774b31c8d1172a5b28f72e9aed0f322bf4ccba",
+        "vendored_sources": {
+          "cutlass": {
+            "repository": "https://github.com/NVIDIA/cutlass.git",
+            "declared_upstream_commit": "dc4817921edda44a549197ff3a9dcf5df0636e7b",
+            "declared_upstream_tree": "8f6e65731573e48b6770e8b39f06d23eab80ffb5",
+            "sentinel": "csrc/cutlass/include/cutlass/cutlass.h",
+            "sentinel_sha256": "07f5cf03084d62bcb9848c6c8c0e823f07305433491195001c06fed00c6543bf"
+          },
+          "composable-kernel": {
+            "repository": "https://github.com/ROCm/composable_kernel.git",
+            "declared_upstream_commit": "e8709c24f403173ad21a2da907d1347957e324fb",
+            "declared_upstream_tree": "d43e773b314468b5ee7f9eddf7f5a1934900903d",
+            "sentinel": "csrc/composable_kernel/include/ck/ck.hpp",
+            "sentinel_sha256": "ea32a61a34fc1e29b9d6771c7b6ab20974fbc97c2b4d320f73d93e64b51329a1"
+          }
+        }
+      },
+      "sdist": {
+        "url": "https://files.pythonhosted.org/packages/6c/b1/b77625e3d11260d2bd6a4fc249a4be9a3da97ff848e2222e810c4f0e0211/flash_attn-2.8.3.post2.tar.gz",
+        "filename": "flash_attn-2.8.3.post2.tar.gz",
+        "sha256": "d0f9f0b08a986cdeadbffcf5ec8b3a8f514366c68ad1853d3ab061bc83cc340b",
+        "size": 8453127,
+        "root": "flash_attn-2.8.3.post2",
+        "member_count": 7533,
+        "file_count": 6614,
+        "directory_count": 919,
+        "expanded_file_bytes": 93318593
+      },
+      "verified_files": {
+        "PKG-INFO": {
+          "size": 23528,
+          "sha256": "a2f354a35e78cc75a678277e9991414993eba538a1fa78c9999991b084a8121e"
+        },
+        "setup.py": {
+          "size": 25418,
+          "sha256": "152570de3092218ebbb0969281b6e0f58fea62ec65fd6029c7a20ea6589aacf4"
+        },
+        "flash_attn/__init__.py": {
+          "size": 291,
+          "sha256": "4da5ccc92513949378b8cf134b343fbf82726550825e6b9a66a5ad335f0c066c"
+        },
+        "csrc/flash_attn/flash_api.cpp": {
+          "size": 70409,
+          "sha256": "7fcefdccf0d08ad0f6cceab48383560202ca6dc2bc1ffd50e8a43aa1c2eea14a"
+        },
+        "csrc/cutlass/include/cutlass/cutlass.h": {
+          "size": 6514,
+          "sha256": "07f5cf03084d62bcb9848c6c8c0e823f07305433491195001c06fed00c6543bf"
+        },
+        "csrc/composable_kernel/include/ck/ck.hpp": {
+          "size": 9992,
+          "sha256": "ea32a61a34fc1e29b9d6771c7b6ab20974fbc97c2b4d320f73d93e64b51329a1"
+        }
+      },
+      "patches": [
+        {
+          "id": "torch-2.13-plus-cxx20",
+          "path": "setup.py",
+          "reason": "PyTorch 2.13 and later require C++20 for extensions that include ATen headers. The pinned FlashAttention release explicitly selects C++17 for both host and CUDA compilation.",
+          "upstream_issue": "https://github.com/Dao-AILab/flash-attention/issues/2863",
+          "upstream_fix_commit": "https://github.com/Dao-AILab/flash-attention/commit/edb5c76ee329b18ed95d1f7ea9aa522a1331ab7d",
+          "pytorch_release_matrix": "https://github.com/pytorch/pytorch/blob/main/RELEASE.md",
+          "before_sha256": "152570de3092218ebbb0969281b6e0f58fea62ec65fd6029c7a20ea6589aacf4",
+          "after_sha256": "367b9581e89423d0a00a3c8d28c3247600e0747aa7058bc00f05628edadc49b1",
+          "replacements": [
+            {
+              "count": 1,
+              "before": "    if FORCE_CXX11_ABI:\n        torch._C._GLIBCXX_USE_CXX11_ABI = True\n\n    nvcc_flags = [\n",
+              "after": "    if FORCE_CXX11_ABI:\n        torch._C._GLIBCXX_USE_CXX11_ABI = True\n\n    # PyTorch 2.13+ requires C++20 for extensions that include ATen headers.\n    # The explicit -std flags below otherwise prevent PyTorch's build machinery\n    # from selecting the required standard.\n    cxx_standard = \"c++20\" if (TORCH_MAJOR, TORCH_MINOR) >= (2, 13) else \"c++17\"\n\n    nvcc_flags = [\n"
+            },
+            {
+              "count": 1,
+              "before": "    \"-std=c++17\",\n",
+              "after": "    f\"-std={cxx_standard}\",\n"
+            },
+            {
+              "count": 1,
+              "before": "    compiler_c17_flag=[\"-O3\", \"-std=c++17\"]\n",
+              "after": "    compiler_cxx_flag = [\"-O3\", f\"-std={cxx_standard}\"]\n"
+            },
+            {
+              "count": 1,
+              "before": "        compiler_c17_flag=[\"-O2\", \"/std:c++17\", \"/Zc:__cplusplus\"]\n",
+              "after": "        compiler_cxx_flag = [\"-O2\", f\"/std:{cxx_standard}\", \"/Zc:__cplusplus\"]\n"
+            },
+            {
+              "count": 1,
+              "before": "                \"cxx\": compiler_c17_flag,\n",
+              "after": "                \"cxx\": compiler_cxx_flag,\n"
+            }
+          ]
+        }
+      ],
+      "preinstalled_distributions": {},
+      "forbidden_distributions": [
+        "flash-attn",
+        "flash-attn-4"
+      ],
+      "build_environment": {
+        "BUILD_TARGET": "cuda",
+        "FLASH_ATTENTION_FORCE_BUILD": "TRUE",
+        "FLASH_ATTENTION_FORCE_CXX11_ABI": "FALSE",
+        "FLASH_ATTENTION_SKIP_CK_BUILD": "TRUE",
+        "FLASH_ATTENTION_SKIP_CUDA_BUILD": "FALSE",
+        "FLASH_ATTENTION_TRITON_AMD_ENABLE": "FALSE",
+        "FLASH_ATTN_CUDA_ARCHS": "100",
+        "FLASH_ATTN_LOCAL_VERSION": ""
+      },
+      "expected_metadata": {
+        "name": "flash-attn",
+        "version": "2.8.3.post2",
+        "requires_python": ">=3.9",
+        "requires_dist": [
+          "torch",
+          "einops"
+        ],
+        "wheel_tag": "cp312-cp312-linux_x86_64",
+        "required_native_member_prefixes": [
+          "flash_attn_2_cuda"
+        ],
+        "native_member_count": 1,
+        "minimum_native_member_bytes": 100000
+      }
+    }
+  ]
+}

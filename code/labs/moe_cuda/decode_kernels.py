@@ -17,7 +17,7 @@ def _load_baseline_module():
     return load_cuda_extension(
         extension_name="moe_cuda_decode_baseline",
         cuda_source_file=str(KERNEL_DIR / "baseline_decode_kernel.cu"),
-        extra_cuda_cflags=["-O3", "-std=c++17", "-lineinfo", "--expt-relaxed-constexpr", "--expt-extended-lambda"],
+        extra_cuda_cflags=["-O3", "-std=c++20", "-lineinfo", "--expt-relaxed-constexpr", "--expt-extended-lambda"],
     )
 
 
@@ -32,7 +32,7 @@ def _load_optimized_module():
     return load_cuda_extension(
         extension_name="moe_cuda_decode_optimized",
         cuda_source_file=str(KERNEL_DIR / "optimized_decode_kernel.cu"),
-        extra_cuda_cflags=["-O3", "-std=c++17", "-lineinfo", "--expt-relaxed-constexpr", "--expt-extended-lambda"],
+        extra_cuda_cflags=["-O3", "-std=c++20", "-lineinfo", "--expt-relaxed-constexpr", "--expt-extended-lambda"],
         extra_ldflags=["-lcuda"],
     )
 

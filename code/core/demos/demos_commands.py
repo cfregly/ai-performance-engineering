@@ -9,7 +9,6 @@ separated from:
 from __future__ import annotations
 
 import subprocess
-import sys
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
@@ -285,6 +284,8 @@ def _run_demo(
 
         if nnodes is not None and int(nnodes) <= 0:
             raise ValueError(f"--nnodes must be >= 1, got {nnodes}")
+        # Avoid torchrun's FQDN lookup for local jobs, which can stall before workers start.
+        local_addr = "127.0.0.1" if nnodes in (None, 1) else None
         cmd = build_torchrun_entry_command(
             module_name=spec.module_name,
             script_path=None if spec.module_name else spec.script_path,
@@ -293,6 +294,7 @@ def _run_demo(
             nnodes=nnodes,
             rdzv_backend=rdzv_backend,
             rdzv_endpoint=rdzv_endpoint,
+            local_addr=local_addr,
         )
     else:
         raise ValueError(
