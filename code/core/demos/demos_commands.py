@@ -177,11 +177,25 @@ DEMOS: Dict[str, DemoSpec] = {
         description="Chapter 7 async prefetch 2D TMA demo (non-benchmark).",
         launch_via=LaunchVia.PYTHON,
     ),
+    "ch09-online-softmax": DemoSpec(
+        name="ch09-online-softmax",
+        script_path=REPO_ROOT / "ch09" / "online_softmax_demo.py",
+        description="Chapter 9 Triton online softmax full-output correctness demo.",
+        launch_via=LaunchVia.PYTHON,
+        module_name="ch09.online_softmax_demo",
+    ),
     "ch13-fp8-perchannel": DemoSpec(
         name="ch13-fp8-perchannel",
         script_path=REPO_ROOT / "ch13" / "fp8_perchannel_demo.py",
         description="Chapter 13 FP8 per-channel scaling demo (non-benchmark).",
         launch_via=LaunchVia.PYTHON,
+    ),
+    "ch13-transformer-engine-fp8": DemoSpec(
+        name="ch13-transformer-engine-fp8",
+        script_path=REPO_ROOT / "ch13" / "transformer_engine_fp8_demo.py",
+        description="Chapter 13 Transformer Engine FP8 forward/backward correctness demo.",
+        launch_via=LaunchVia.PYTHON,
+        module_name="ch13.transformer_engine_fp8_demo",
     ),
     "ch15-tensor-parallel": DemoSpec(
         name="ch15-tensor-parallel",
@@ -241,6 +255,13 @@ DEMOS: Dict[str, DemoSpec] = {
         script_path=REPO_ROOT / "labs" / "decode_optimization" / "decode_multigpu_demo.py",
         description="Lab decode optimization: multi-GPU NVLink-C2C decode stress demo (torchrun required).",
         launch_via=LaunchVia.TORCHRUN,
+    ),
+    "labs-nvfp4-add-rmsnorm": DemoSpec(
+        name="labs-nvfp4-add-rmsnorm",
+        script_path=REPO_ROOT / "labs" / "nvfp4_quantization" / "add_rmsnorm_demo.py",
+        description="Lab fused NVFP4 add/RMSNorm exact-correctness demo.",
+        launch_via=LaunchVia.PYTHON,
+        module_name="labs.nvfp4_quantization.add_rmsnorm_demo",
     ),
 }
 

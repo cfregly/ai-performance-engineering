@@ -288,11 +288,27 @@ def test_real_entrypoint_manifest_uses_registered_public_cuda_demos() -> None:
         "cuda_event_timing",
         "cuda_graph_capture",
         "cuda_inductor_recompilation",
+        "online_softmax",
+        "transformer_engine_fp8",
+        "nvfp4_add_rmsnorm",
     ]
     assert all(spec.demo in DEMOS for spec in specs)
     assert all(spec.required_stdout for spec in specs)
     assert all(spec.timeout_seconds <= 60.0 for spec in specs)
     assert all(spec.command[1:5] == ["-m", "cli.aisp", "demos", spec.demo] for spec in specs)
+
+    by_name = {spec.name: spec for spec in specs}
+    assert by_name["online_softmax"].args == ("--rows", "4", "--cols", "257")
+    assert by_name["online_softmax"].timeout_seconds == 30.0
+    assert by_name["transformer_engine_fp8"].args == (
+        "--batch",
+        "16",
+        "--hidden",
+        "256",
+    )
+    assert by_name["transformer_engine_fp8"].timeout_seconds == 50.0
+    assert by_name["nvfp4_add_rmsnorm"].args == ("--workload", "rmsnorm_2048")
+    assert by_name["nvfp4_add_rmsnorm"].timeout_seconds == 40.0
 
 
 def test_repository_entrypoints_execute_real_bounded_subprocesses(tmp_path: Path) -> None:

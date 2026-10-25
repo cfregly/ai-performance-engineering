@@ -42,6 +42,7 @@ from typing import Any, BinaryIO
 EXPECTED_VERSIONS = {
     "cuda-python": "13.0.3",
     "flashinfer-python": "0.7.2",
+    "nvidia-nccl-cu13": "2.30.7",
     "torch": "2.14.1+cu130",
     "torch-c-dlpack-ext": "0.1.5+torch2141.nobackend1",
     "torchao": "0.18.0+cu130",
@@ -348,7 +349,9 @@ def _triton_vector_add_kernel(
 
 def _check_torch_cuda() -> dict[str, Any]:
     torch_version = _require_distribution_version("torch")
+    nccl_distribution_version = _require_distribution_version("nvidia-nccl-cu13")
     torch = import_module("torch")
+    distributed = import_module("torch.distributed")
     module_version = str(torch.__version__)
     if module_version != torch_version:
         raise RuntimeError(
@@ -371,6 +374,14 @@ def _check_torch_cuda() -> dict[str, Any]:
         )
     if "B200" not in properties.name.upper():
         raise RuntimeError(f"expected a B200 device name, got {properties.name!r}")
+    if not distributed.is_nccl_available():
+        raise RuntimeError("torch.distributed reports that NCCL is unavailable")
+    nccl_runtime_version = tuple(int(value) for value in torch.cuda.nccl.version())
+    if nccl_runtime_version != (2, 30, 7):
+        raise RuntimeError(
+            "NCCL runtime mismatch: expected (2, 30, 7), "
+            f"got {nccl_runtime_version!r}"
+        )
 
     lhs = torch.arange(16, device="cuda", dtype=torch.float32).reshape(4, 4)
     rhs = torch.eye(4, device="cuda", dtype=torch.float32)
@@ -386,6 +397,8 @@ def _check_torch_cuda() -> dict[str, Any]:
     return {
         "torch": torch_version,
         "torch_cuda": torch.version.cuda,
+        "nccl_distribution": nccl_distribution_version,
+        "nccl_runtime": ".".join(str(value) for value in nccl_runtime_version),
         "cudnn": int(torch.backends.cudnn.version())
         if torch.backends.cudnn.is_available()
         else None,

@@ -54,6 +54,56 @@
         "\"all_successful_outputs_correct\": true"
       ],
       "coverage": "PyTorch CUDA Inductor compilation, compiler stance, and eager-output comparison"
+    },
+    {
+      "name": "online_softmax",
+      "demo": "ch09-online-softmax",
+      "args": [
+        "--rows",
+        "4",
+        "--cols",
+        "257"
+      ],
+      "timeout_seconds": 30,
+      "required_stdout": [
+        "online_softmax_full_compare=pass",
+        "rows=4 cols=257",
+        "rtol=2e-05 atol=2e-07",
+        "finite_output=true"
+      ],
+      "coverage": "Chapter 9 Triton online softmax with a full torch.softmax output comparison"
+    },
+    {
+      "name": "transformer_engine_fp8",
+      "demo": "ch13-transformer-engine-fp8",
+      "args": [
+        "--batch",
+        "16",
+        "--hidden",
+        "256"
+      ],
+      "timeout_seconds": 50,
+      "required_stdout": [
+        "transformer_engine_fp8_forward_backward=pass",
+        "batch=16 hidden=256",
+        "finite_output_loss_grads=true",
+        "same_weight_fp16_compare=pass rtol=0.4 atol=1.0"
+      ],
+      "coverage": "Chapter 13 Transformer Engine FP8 forward/backward with finite gradients and same-weight FP16 comparison"
+    },
+    {
+      "name": "nvfp4_add_rmsnorm",
+      "demo": "labs-nvfp4-add-rmsnorm",
+      "args": [
+        "--workload",
+        "rmsnorm_2048"
+      ],
+      "timeout_seconds": 40,
+      "required_stdout": [
+        "nvfp4_exact_verifier=pass workload=rmsnorm_2048",
+        "finite_scales=true"
+      ],
+      "coverage": "Lab fused NVFP4 add/RMSNorm workload with exact packed-output verification and finite scale checks"
     }
   ]
 }
