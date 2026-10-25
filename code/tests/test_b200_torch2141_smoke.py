@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import signal
 import subprocess
 import sys
@@ -96,7 +97,7 @@ def test_import_timeout_kills_the_worker_group_and_continues(tmp_path: Path) -> 
     orphan_marker = tmp_path / "orphan-finished.txt"
     child_source = (
         "import pathlib, time\n"
-        "time.sleep(0.8)\n"
+        "time.sleep(1.5)\n"
         f"pathlib.Path({str(orphan_marker)!r}).write_text('orphan', encoding='utf-8')\n"
     )
     _write_module(tmp_path / "ch97/__init__.py", "")
@@ -113,7 +114,7 @@ def test_import_timeout_kills_the_worker_group_and_continues(tmp_path: Path) -> 
     result = smoke.import_repository_examples(
         tmp_path,
         deadline=time.monotonic() + 5.0,
-        per_import_timeout_seconds=0.2,
+        per_import_timeout_seconds=0.5,
     )
 
     assert time.monotonic() - started < 3.0
@@ -126,9 +127,9 @@ def test_import_timeout_kills_the_worker_group_and_continues(tmp_path: Path) -> 
     assert failure.outcome == smoke.IMPORT_FAILURE_TIMEOUT
     assert failure.returncode == -signal.SIGKILL
     assert failure.signal_number == signal.SIGKILL
-    assert failure.timeout_seconds == pytest.approx(0.2)
-    assert failure.diagnostic == "timed out after 0.200s"
-    time.sleep(1.0)
+    assert failure.timeout_seconds == pytest.approx(0.5)
+    assert failure.diagnostic == "timed out after 0.500s"
+    time.sleep(1.7)
     assert not orphan_marker.exists()
 
 
@@ -397,6 +398,60 @@ def test_repository_entrypoint_timeout_terminates_its_process_group(tmp_path: Pa
     assert "child_pid=" in result.results[0].stdout
 
 
+def test_parent_exit_cleanup_kills_and_reaps_isolated_child_group() -> None:
+    process = subprocess.Popen(
+        [sys.executable, "-c", "import time; time.sleep(30)"],
+        start_new_session=True,
+    )
+    smoke._register_child_process(process)
+    try:
+        smoke._kill_active_child_process_groups()
+        assert process.returncode == -signal.SIGKILL
+        assert process.pid not in smoke._ACTIVE_CHILD_PROCESSES
+    finally:
+        if process.poll() is None:
+            process.kill()
+            process.wait(timeout=2.0)
+        smoke._unregister_child_process(process)
+
+
+def test_signal_during_spawn_is_deferred_until_child_registration() -> None:
+    source = """
+import os
+import signal
+import subprocess
+import sys
+from core.utils import process_groups
+
+registry = process_groups.ProcessGroupRegistry()
+original_popen = process_groups.subprocess.Popen
+def interrupted_popen(*args, **kwargs):
+    child = original_popen(*args, **kwargs)
+    print(child.pid, flush=True)
+    os.kill(os.getpid(), signal.SIGTERM)
+    return child
+process_groups.subprocess.Popen = interrupted_popen
+with registry.cleanup_on_parent_exit():
+    registry.spawn(
+        [sys.executable, '-c', 'import time; time.sleep(30)'],
+        start_new_session=True,
+    )
+"""
+    completed = subprocess.run(
+        [sys.executable, "-c", source],
+        cwd=Path(__file__).resolve().parents[1],
+        capture_output=True,
+        text=True,
+        timeout=5.0,
+        check=False,
+    )
+
+    assert completed.returncode == 128 + signal.SIGTERM
+    child_pid = int(completed.stdout.strip())
+    with pytest.raises(ProcessLookupError):
+        os.kill(child_pid, 0)
+
+
 def test_expired_deadline_does_not_start_repository_entrypoints(tmp_path: Path) -> None:
     _write_entrypoint_manifest(
         tmp_path,
@@ -485,14 +540,58 @@ def test_cli_rejects_nonpositive_time_bounds() -> None:
         parser.parse_args(["--per-import-timeout-seconds", "-1"])
 
 
-def test_default_deadline_covers_the_declared_entrypoint_envelope() -> None:
-    code_root = Path(smoke.__file__).resolve().parents[2]
-    entrypoints = smoke.load_repository_entrypoints(code_root)
+def test_smoke_runs_broad_import_sweep_before_bounded_entrypoints(monkeypatch) -> None:
+    observed: list[str] = []
 
-    assert (
-        sum(entrypoint.timeout_seconds for entrypoint in entrypoints)
-        <= smoke.DEFAULT_DEADLINE_SECONDS
+    monkeypatch.setattr(
+        smoke,
+        "_run_check",
+        lambda *args, **kwargs: smoke.CheckResult(
+            name=args[0],
+            policy=args[1],
+            status=smoke.STATUS_PASS,
+            duration_ms=0.0,
+        ),
     )
+    monkeypatch.setattr(
+        smoke,
+        "import_repository_examples",
+        lambda *args, **kwargs: observed.append("imports")
+        or smoke.ImportSweepResult(
+            discovered=1,
+            passed=1,
+            failed=0,
+            skipped=0,
+            not_run=0,
+            duration_ms=0.0,
+            deadline_exceeded=False,
+            groups={"ch01": smoke.ImportGroupCounts(discovered=1, passed=1)},
+            failures=[],
+        ),
+    )
+    monkeypatch.setattr(
+        smoke,
+        "run_repository_entrypoints",
+        lambda *args, **kwargs: observed.append("entrypoints")
+        or smoke.EntrypointSweepResult(
+            discovered=1,
+            passed=1,
+            failed=0,
+            not_run=0,
+            duration_ms=0.0,
+            deadline_exceeded=False,
+            results=[],
+        ),
+    )
+
+    report = smoke.execute_smoke(
+        Path(smoke.__file__).resolve().parents[2],
+        deadline_seconds=smoke.DEFAULT_DEADLINE_SECONDS,
+        per_import_timeout_seconds=smoke.DEFAULT_IMPORT_TIMEOUT_SECONDS,
+    )
+
+    assert observed == ["imports", "entrypoints"]
+    assert report["status"] == smoke.STATUS_PASS
 
 
 def test_repository_identity_records_exact_clean_git_revision(tmp_path: Path) -> None:

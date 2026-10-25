@@ -348,6 +348,24 @@ jobs:
               handle.write("```\n")
           PY
 
+      - name: Run bounded B200 dependency execution probe
+        timeout-minutes: 2
+        run: |
+          mkdir -p artifacts
+          PROBE_JSON="${RUNNER_TEMP}/b200-dependency-probe-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.json"
+          set +e
+          timeout --signal=TERM --kill-after=5s 95s \
+            python -m core.scripts.b200_dependency_execution_probe \
+              --deadline-seconds 90 \
+              > "${PROBE_JSON}"
+          probe_status=$?
+          set -e
+          if [[ -f "${PROBE_JSON}" ]]; then
+            cp "${PROBE_JSON}" artifacts/b200-dependency-probe.json
+            cat artifacts/b200-dependency-probe.json
+          fi
+          exit "${probe_status}"
+
       - name: Run bounded PyTorch stack B200 compatibility smoke
         timeout-minutes: 5
         run: |
@@ -384,6 +402,7 @@ jobs:
           path: |
             code/artifacts/pytest-gpu.xml
             code/artifacts/b200-torch2141-smoke.json
+            code/artifacts/b200-dependency-probe.json
           if-no-files-found: warn
 
       - name: Run canonical tier-1 suite

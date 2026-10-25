@@ -733,6 +733,11 @@ def test_tier1_runs_bounded_b200_compatibility_before_the_full_gpu_suite() -> No
         for step in steps
         if step["name"] == "Run bounded PyTorch stack B200 compatibility smoke"
     )
+    dependency_probe_step = next(
+        step
+        for step in steps
+        if step["name"] == "Run bounded B200 dependency execution probe"
+    )
     full_gpu_step = next(
         step
         for step in steps
@@ -742,7 +747,12 @@ def test_tier1_runs_bounded_b200_compatibility_before_the_full_gpu_suite() -> No
         step for step in steps if step["name"] == "Upload GPU test evidence"
     )
 
-    assert steps.index(smoke_step) < steps.index(full_gpu_step) < steps.index(upload_step)
+    assert (
+        steps.index(dependency_probe_step)
+        < steps.index(smoke_step)
+        < steps.index(full_gpu_step)
+        < steps.index(upload_step)
+    )
     assert smoke_step["timeout-minutes"] == "5"
     assert "timeout --signal=TERM --kill-after=15s 270s" in smoke_step["run"]
     assert "python -m core.scripts.b200_torch2141_smoke" in smoke_step["run"]
@@ -750,10 +760,20 @@ def test_tier1_runs_bounded_b200_compatibility_before_the_full_gpu_suite() -> No
     assert "--format json" in smoke_step["run"]
     assert "artifacts/b200-torch2141-smoke.json" in smoke_step["run"]
     assert "smoke_status=$?" in smoke_step["run"]
+    assert dependency_probe_step["timeout-minutes"] == "2"
+    assert "timeout --signal=TERM --kill-after=5s 95s" in dependency_probe_step["run"]
+    assert (
+        "python -m core.scripts.b200_dependency_execution_probe"
+        in dependency_probe_step["run"]
+    )
+    assert "--deadline-seconds 90" in dependency_probe_step["run"]
+    assert "artifacts/b200-dependency-probe.json" in dependency_probe_step["run"]
+    assert "probe_status=$?" in dependency_probe_step["run"]
     assert upload_step["if"] == "always()"
     assert upload_step["with"]["path"].splitlines() == [
         "code/artifacts/pytest-gpu.xml",
         "code/artifacts/b200-torch2141-smoke.json",
+        "code/artifacts/b200-dependency-probe.json",
     ]
     assert full_gpu_step["env"]["AISP_RUN_FAST_CU_NVFP4_SM100_GPU_TEST"] == "1"
     assert full_gpu_step["env"]["AISP_RUN_TE_CUDA_TESTS"] == "1"

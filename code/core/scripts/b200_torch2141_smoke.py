@@ -39,6 +39,8 @@ from importlib import import_module, invalidate_caches, metadata
 from pathlib import Path
 from typing import Any, BinaryIO
 
+from core.utils.process_groups import ProcessGroupRegistry
+
 EXPECTED_VERSIONS = {
     "cuda-python": "13.0.3",
     "flashinfer-python": "0.7.2",
@@ -64,6 +66,8 @@ ENTRYPOINT_MANIFEST_SCHEMA_VERSION = 1
 MAX_CAPTURED_OUTPUT_CHARS = 16_384
 _IMPORT_WORKER_FLAG = "--internal-import-worker"
 _IMPORT_WORKER_POLL_SECONDS = 0.05
+_PROCESS_GROUPS = ProcessGroupRegistry()
+_ACTIVE_CHILD_PROCESSES = _PROCESS_GROUPS.active
 
 STATUS_PASS = "pass"
 STATUS_FAIL = "fail"
@@ -699,6 +703,28 @@ def _bounded_output(value: str) -> str:
     return value[:half] + f"\n... {omitted} output characters omitted ...\n" + value[-half:]
 
 
+def _register_child_process(process: subprocess.Popen[Any]) -> None:
+    """Track an isolated child process group until it has been reaped."""
+
+    _PROCESS_GROUPS.register(process)
+
+
+def _unregister_child_process(process: subprocess.Popen[Any]) -> None:
+    _PROCESS_GROUPS.unregister(process)
+
+
+def _kill_active_child_process_groups() -> None:
+    """Kill and reap every tracked child group during abnormal parent exit."""
+
+    _PROCESS_GROUPS.kill_all()
+
+
+def _cleanup_children_on_parent_exit():
+    """Ensure outer timeout or cancellation cannot orphan GPU workers."""
+
+    return _PROCESS_GROUPS.cleanup_on_parent_exit()
+
+
 def _terminate_process_group(process: subprocess.Popen[str]) -> tuple[str, str]:
     """Terminate a bounded entrypoint and any child processes it started."""
 
@@ -723,7 +749,7 @@ def _run_repository_entrypoint(
     environment = os.environ.copy()
     environment["PYTHONUNBUFFERED"] = "1"
     try:
-        process = subprocess.Popen(
+        process = _PROCESS_GROUPS.spawn(
             command,
             cwd=code_root,
             env=environment,
@@ -750,10 +776,13 @@ def _run_repository_entrypoint(
 
     timed_out = False
     try:
-        stdout, stderr = process.communicate(timeout=timeout_seconds)
-    except subprocess.TimeoutExpired:
-        timed_out = True
-        stdout, stderr = _terminate_process_group(process)
+        try:
+            stdout, stderr = process.communicate(timeout=timeout_seconds)
+        except subprocess.TimeoutExpired:
+            timed_out = True
+            stdout, stderr = _terminate_process_group(process)
+    finally:
+        _unregister_child_process(process)
 
     diagnostic = None
     if timed_out:
@@ -967,6 +996,11 @@ def _start_import_worker(code_root: Path) -> _ImportWorker:
     report_read_fd, report_write_fd = os.pipe()
     environment = os.environ.copy()
     environment["PYTHONUNBUFFERED"] = "1"
+    module_root = str(Path(__file__).resolve().parents[2])
+    existing_pythonpath = environment.get("PYTHONPATH")
+    environment["PYTHONPATH"] = (
+        module_root if not existing_pythonpath else module_root + os.pathsep + existing_pythonpath
+    )
     command = [
         sys.executable,
         "-u",
@@ -977,7 +1011,7 @@ def _start_import_worker(code_root: Path) -> _ImportWorker:
         str(code_root.resolve()),
     ]
     try:
-        process = subprocess.Popen(
+        process = _PROCESS_GROUPS.spawn(
             command,
             cwd=code_root,
             env=environment,
@@ -1006,21 +1040,24 @@ def _start_import_worker(code_root: Path) -> _ImportWorker:
 def _stop_import_worker(worker: _ImportWorker, *, immediate: bool = False) -> None:
     """Stop the worker and every process in its isolated process group."""
 
-    worker.commands.close()
-    initial_signal = signal.SIGKILL if immediate else signal.SIGTERM
-    with suppress(ProcessLookupError):
-        os.killpg(worker.process.pid, initial_signal)
     try:
-        worker.process.wait(timeout=0.25)
-    except subprocess.TimeoutExpired:
+        worker.commands.close()
+        initial_signal = signal.SIGKILL if immediate else signal.SIGTERM
         with suppress(ProcessLookupError):
-            os.killpg(worker.process.pid, signal.SIGKILL)
-        worker.process.wait(timeout=1.0)
-    else:
-        # The worker may have left descendants in its process group.
-        with suppress(ProcessLookupError):
-            os.killpg(worker.process.pid, signal.SIGKILL)
-    worker.reports.close()
+            os.killpg(worker.process.pid, initial_signal)
+        try:
+            worker.process.wait(timeout=0.25)
+        except subprocess.TimeoutExpired:
+            with suppress(ProcessLookupError):
+                os.killpg(worker.process.pid, signal.SIGKILL)
+            worker.process.wait(timeout=1.0)
+        else:
+            # The worker may have left descendants in its process group.
+            with suppress(ProcessLookupError):
+                os.killpg(worker.process.pid, signal.SIGKILL)
+        worker.reports.close()
+    finally:
+        _unregister_child_process(worker.process)
 
 
 def _signal_diagnostic(returncode: int) -> tuple[int, str]:
@@ -1342,12 +1379,12 @@ def execute_smoke(
     for name, policy, check in check_specs:
         checks.append(_run_check(name, policy, check, deadline))
 
-    repository_entrypoints = run_repository_entrypoints(code_root, deadline=deadline)
     repository_imports = import_repository_examples(
         code_root,
         deadline=deadline,
         per_import_timeout_seconds=per_import_timeout_seconds,
     )
+    repository_entrypoints = run_repository_entrypoints(code_root, deadline=deadline)
     succeeded = smoke_succeeded(checks, repository_entrypoints, repository_imports)
     elapsed_ms = (time.monotonic() - started) * 1000.0
 
@@ -1470,7 +1507,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     code_root = Path(__file__).resolve().parents[2]
     if args.format == "json":
         # Keep stdout machine-readable even when imported dependencies print.
-        with redirect_stdout(sys.stderr):
+        with _cleanup_children_on_parent_exit(), redirect_stdout(sys.stderr):
             report = execute_smoke(
                 code_root,
                 deadline_seconds=args.deadline_seconds,
@@ -1478,11 +1515,12 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
         print(json.dumps(report, indent=2, sort_keys=True))
     else:
-        report = execute_smoke(
-            code_root,
-            deadline_seconds=args.deadline_seconds,
-            per_import_timeout_seconds=args.per_import_timeout_seconds,
-        )
+        with _cleanup_children_on_parent_exit():
+            report = execute_smoke(
+                code_root,
+                deadline_seconds=args.deadline_seconds,
+                per_import_timeout_seconds=args.per_import_timeout_seconds,
+            )
         print(render_text(report))
     return 0 if report["status"] == STATUS_PASS else 1
 

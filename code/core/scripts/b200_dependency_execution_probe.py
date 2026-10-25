@@ -33,6 +33,8 @@ from importlib import import_module, metadata
 from pathlib import Path
 from typing import Any
 
+from core.utils.process_groups import ProcessGroupRegistry
+
 STATUS_PASS = "pass"
 STATUS_FAIL = "fail"
 STATUS_NOT_RUN = "not_run"
@@ -41,6 +43,7 @@ MAX_DEADLINE_SECONDS = 90.0
 MAX_CAPTURED_STDERR_CHARS = 8_192
 PROCESS_TERMINATION_GRACE_SECONDS = 2.0
 _INTERNAL_CHECK_FLAG = "--internal-check"
+_PROCESS_GROUPS = ProcessGroupRegistry()
 
 
 @dataclass(frozen=True)
@@ -461,7 +464,7 @@ def _run_check_subprocess(
     environment["PYTHONUNBUFFERED"] = "1"
 
     try:
-        process = subprocess.Popen(
+        process = _PROCESS_GROUPS.spawn(
             command,
             cwd=code_root,
             env=environment,
@@ -481,16 +484,19 @@ def _run_check_subprocess(
             diagnostic=_exception_diagnostic(exc),
         )
 
-    timed_out = False
-    execution_timeout = max(
-        0.0,
-        deadline - time.monotonic() - PROCESS_TERMINATION_GRACE_SECONDS,
-    )
     try:
-        stdout, stderr = process.communicate(timeout=execution_timeout)
-    except subprocess.TimeoutExpired:
-        timed_out = True
-        stdout, stderr = _terminate_process_group(process, deadline=deadline)
+        timed_out = False
+        execution_timeout = max(
+            0.0,
+            deadline - time.monotonic() - PROCESS_TERMINATION_GRACE_SECONDS,
+        )
+        try:
+            stdout, stderr = process.communicate(timeout=execution_timeout)
+        except subprocess.TimeoutExpired:
+            timed_out = True
+            stdout, stderr = _terminate_process_group(process, deadline=deadline)
+    finally:
+        _PROCESS_GROUPS.unregister(process)
 
     duration_ms = (time.monotonic() - started) * 1000.0
     worker_stderr = _bounded_stderr(stderr)
@@ -589,7 +595,7 @@ def execute_probe(
         timeout_seconds = min(spec.timeout_seconds, remaining)
         try:
             result = run_check(spec, code_root=code_root, timeout_seconds=timeout_seconds)
-        except (Exception, SystemExit) as exc:
+        except Exception as exc:
             result = CheckResult(
                 name=spec.name,
                 coverage=spec.coverage,
@@ -638,7 +644,8 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     args = build_parser().parse_args(raw_argv)
     code_root = Path(__file__).resolve().parents[2]
-    report = execute_probe(code_root, deadline_seconds=args.deadline_seconds)
+    with _PROCESS_GROUPS.cleanup_on_parent_exit():
+        report = execute_probe(code_root, deadline_seconds=args.deadline_seconds)
     print(json.dumps(report, indent=2, sort_keys=True))
     return 0 if report["status"] == STATUS_PASS else 1
 
