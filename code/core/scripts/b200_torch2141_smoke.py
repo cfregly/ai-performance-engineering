@@ -68,6 +68,7 @@ DEFAULT_DEADLINE_SECONDS = 240.0
 DEFAULT_IMPORT_TIMEOUT_SECONDS = 10.0
 FLASHINFER_CHECK_TIMEOUT_SECONDS = 45.0
 NCCL_DTENSOR_CHECK_TIMEOUT_SECONDS = 30.0
+TRANSFORMER_ENGINE_CHECK_TIMEOUT_SECONDS = 20.0
 PROCESS_GROUP_CLEANUP_RESERVE_SECONDS = 2.0
 PROCESS_GROUP_TERM_GRACE_SECONDS = 0.25
 PROCESS_GROUP_KILL_WAIT_SECONDS = 0.75
@@ -393,12 +394,12 @@ def _module_version(module: Any) -> str | None:
 
 
 def _triton_vector_add_kernel(
-    x_ptr: Any,
-    y_ptr: Any,
-    output_ptr: Any,
-    element_count: int,
+    x_ptr,
+    y_ptr,
+    output_ptr,
+    element_count,
     block_size: tl.constexpr,
-) -> None:
+):
     """One-block vector add used only by the real Triton smoke check."""
 
     offsets = tl.arange(0, block_size)
@@ -979,6 +980,7 @@ def _gpu_check_worker_main(check_name: str, code_root: Path) -> int:
     checks: dict[str, Callable[[], dict[str, Any]]] = {
         "flashinfer_block_sparse": _check_flashinfer_block_sparse,
         "nccl_dtensor": _check_nccl_dtensor,
+        "transformer_engine_imports": _check_transformer_engine,
     }
     try:
         check = checks[check_name]
@@ -1014,10 +1016,8 @@ def _gpu_check_command(check_name: str, code_root: Path) -> list[str]:
             "-u",
             "-m",
             "torch.distributed.run",
-            "--nnodes=1",
+            "--standalone",
             "--nproc-per-node=1",
-            "--rdzv-backend=static",
-            "--rdzv-endpoint=127.0.0.1:0",
             "--max-restarts=0",
             "--module",
             "core.scripts.b200_torch2141_smoke",
@@ -1829,7 +1829,12 @@ def execute_smoke(
         (
             "transformer_engine_imports",
             POLICY_REQUIRED,
-            _check_transformer_engine,
+            lambda: _run_isolated_gpu_check(
+                "transformer_engine_imports",
+                code_root=code_root,
+                deadline=deadline,
+                timeout_seconds=TRANSFORMER_ENGINE_CHECK_TIMEOUT_SECONDS,
+            ),
         ),
         ("vllm_abi_imports", POLICY_REQUIRED, _check_vllm),
     )

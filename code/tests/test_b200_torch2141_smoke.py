@@ -417,6 +417,7 @@ def test_parent_exit_cleanup_kills_and_reaps_isolated_child_group() -> None:
 
 
 def test_required_gpu_checks_cover_real_flashinfer_nccl_and_dtensor_paths() -> None:
+    triton_source = inspect.getsource(smoke._triton_vector_add_kernel)
     flashinfer_source = inspect.getsource(smoke._check_flashinfer_block_sparse)
     nccl_dtensor_source = inspect.getsource(smoke._check_nccl_dtensor)
     nccl_command = smoke._gpu_check_command(
@@ -424,6 +425,11 @@ def test_required_gpu_checks_cover_real_flashinfer_nccl_and_dtensor_paths() -> N
         Path(smoke.__file__).resolve().parents[2],
     )
 
+    assert "x_ptr: Any" not in triton_source
+    assert "y_ptr: Any" not in triton_source
+    assert "output_ptr: Any" not in triton_source
+    assert "element_count: int" not in triton_source
+    assert "block_size: tl.constexpr" in triton_source
     assert "flashinfer.BlockSparseAttentionWrapper" in flashinfer_source
     assert "wrapper.plan(" in flashinfer_source
     assert "wrapper.run(" in flashinfer_source
@@ -436,9 +442,23 @@ def test_required_gpu_checks_cover_real_flashinfer_nccl_and_dtensor_paths() -> N
     assert "benchmark.benchmark_fn()" in nccl_dtensor_source
     assert "benchmark.capture_verification_payload()" in nccl_dtensor_source
     assert "torch.distributed.run" in nccl_command
+    assert "--standalone" in nccl_command
     assert "--nproc-per-node=1" in nccl_command
-    assert "--rdzv-backend=static" in nccl_command
-    assert "--rdzv-endpoint=127.0.0.1:0" in nccl_command
+    assert "--rdzv-backend=static" not in nccl_command
+    assert "--rdzv-endpoint=127.0.0.1:0" not in nccl_command
+
+
+def test_transformer_engine_import_check_runs_in_a_fresh_worker() -> None:
+    command = smoke._gpu_check_command(
+        "transformer_engine_imports",
+        Path(smoke.__file__).resolve().parents[2],
+    )
+
+    assert "torch.distributed.run" not in command
+    assert smoke._GPU_CHECK_WORKER_FLAG in command
+    assert "transformer_engine_imports" in command
+    worker_source = inspect.getsource(smoke._gpu_check_worker_main)
+    assert '"transformer_engine_imports": _check_transformer_engine' in worker_source
 
 
 def test_nccl_dtensor_check_waits_for_public_async_collective(monkeypatch) -> None:
