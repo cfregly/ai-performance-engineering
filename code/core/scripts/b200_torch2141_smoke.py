@@ -3,25 +3,29 @@
 
 This is a diagnostic runner. It performs one tiny PyTorch CUDA operation, one
 tiny Triton kernel launch, import and ABI checks for the declared companion
-packages, and imports every owned chapter and lab baseline/optimized module
-plus the checked runnable-example manifest. It does not run benchmark methods
-or produce performance evidence.
+packages, runs a small manifest of real repository CUDA entrypoints, and
+imports every owned chapter and lab baseline/optimized module plus the checked
+compatibility-import manifest. It does not produce performance evidence.
 
 Run from the ``code`` directory:
 
     python -m core.scripts.b200_torch2141_smoke
 
 The default deadline is three minutes. A missed deadline, an incomplete
-repository import sweep, or any attempted check failure returns a nonzero exit
-code. Every declared companion package is a required part of this pinned stack.
+entrypoint or import sweep, or any attempted check failure returns a nonzero
+exit code. Every declared companion package is a required part of this pinned
+stack.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import platform
+import re
+import select
 import signal
 import subprocess
 import sys
@@ -33,7 +37,7 @@ from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from importlib import import_module, invalidate_caches, metadata
 from pathlib import Path
-from typing import Any
+from typing import Any, BinaryIO
 
 EXPECTED_VERSIONS = {
     "cuda-python": "13.0.3",
@@ -53,10 +57,22 @@ EXPECTED_VERSIONS = {
 
 DEFAULT_DEADLINE_SECONDS = 180.0
 DEFAULT_IMPORT_TIMEOUT_SECONDS = 10.0
-RUNNABLE_EXAMPLE_MANIFEST = Path("core/b200_torch2141_runnable_examples.txt")
+COMPATIBILITY_IMPORT_MANIFEST = Path("core/b200_torch2141_runnable_examples.txt")
+ENTRYPOINT_MANIFEST = Path("core/b200_torch2141_entrypoints.json")
+ENTRYPOINT_MANIFEST_SCHEMA_VERSION = 1
+MAX_CAPTURED_OUTPUT_CHARS = 16_384
+_IMPORT_WORKER_FLAG = "--internal-import-worker"
+_IMPORT_WORKER_POLL_SECONDS = 0.05
 
 STATUS_PASS = "pass"
 STATUS_FAIL = "fail"
+
+IMPORT_FAILURE_EXCEPTION = "exception"
+IMPORT_FAILURE_TIMEOUT = "timeout"
+IMPORT_FAILURE_SIGNAL = "signal"
+IMPORT_FAILURE_EXIT = "exit"
+IMPORT_FAILURE_LAUNCH = "launch_error"
+IMPORT_FAILURE_PROTOCOL = "protocol_error"
 
 POLICY_REQUIRED = "required"
 
@@ -84,6 +100,84 @@ class CheckResult:
         return asdict(self)
 
 
+@dataclass(frozen=True)
+class EntrypointSpec:
+    """One bounded public repository demo command."""
+
+    name: str
+    demo: str
+    args: tuple[str, ...]
+    timeout_seconds: float
+    required_stdout: tuple[str, ...]
+    coverage: str
+
+    @property
+    def command(self) -> list[str]:
+        return [
+            sys.executable,
+            "-m",
+            "cli.aisp",
+            "demos",
+            self.demo,
+            "--",
+            *self.args,
+        ]
+
+
+@dataclass(frozen=True)
+class EntrypointResult:
+    """Observed result from one real repository entrypoint process."""
+
+    name: str
+    demo: str
+    coverage: str
+    command: list[str]
+    required_stdout: list[str]
+    status: str
+    duration_ms: float
+    timeout_seconds: float
+    returncode: int | None
+    stdout: str
+    stderr: str
+    diagnostic: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass
+class EntrypointSweepResult:
+    """Aggregate result for the real repository entrypoint manifest."""
+
+    discovered: int
+    passed: int
+    failed: int
+    not_run: int
+    duration_ms: float
+    deadline_exceeded: bool
+    results: list[EntrypointResult]
+
+    @property
+    def complete(self) -> bool:
+        return self.not_run == 0 and not self.deadline_exceeded
+
+    @property
+    def succeeded(self) -> bool:
+        return self.complete and self.discovered > 0 and self.failed == 0
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "discovered": self.discovered,
+            "passed": self.passed,
+            "failed": self.failed,
+            "not_run": self.not_run,
+            "duration_ms": self.duration_ms,
+            "deadline_exceeded": self.deadline_exceeded,
+            "complete": self.complete,
+            "results": [result.to_dict() for result in self.results],
+        }
+
+
 @dataclass
 class ImportGroupCounts:
     """Exact import counts for one chapter or lab directory."""
@@ -105,8 +199,12 @@ class ImportFailure:
     module: str
     path: str
     diagnostic: str
+    outcome: str = IMPORT_FAILURE_EXCEPTION
+    returncode: int | None = None
+    signal_number: int | None = None
+    timeout_seconds: float | None = None
 
-    def to_dict(self) -> dict[str, str]:
+    def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
 
@@ -501,6 +599,224 @@ def _check_runtime_platform() -> dict[str, Any]:
     }
 
 
+def load_repository_entrypoints(code_root: Path) -> list[EntrypointSpec]:
+    """Load and validate the bounded real-entrypoint manifest."""
+
+    manifest_path = code_root / ENTRYPOINT_MANIFEST
+    if not manifest_path.is_file():
+        raise RuntimeError(f"repository entrypoint manifest is missing: {manifest_path}")
+    try:
+        payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(f"repository entrypoint manifest is invalid JSON: {exc}") from exc
+    if not isinstance(payload, dict):
+        raise RuntimeError("repository entrypoint manifest must be a JSON object")
+    if payload.get("schema_version") != ENTRYPOINT_MANIFEST_SCHEMA_VERSION:
+        raise RuntimeError(
+            "repository entrypoint manifest schema mismatch: "
+            f"expected {ENTRYPOINT_MANIFEST_SCHEMA_VERSION}, "
+            f"got {payload.get('schema_version')!r}"
+        )
+    raw_entrypoints = payload.get("entrypoints")
+    if not isinstance(raw_entrypoints, list) or not raw_entrypoints:
+        raise RuntimeError("repository entrypoint manifest must declare entrypoints")
+
+    required_keys = {
+        "name",
+        "demo",
+        "args",
+        "timeout_seconds",
+        "required_stdout",
+        "coverage",
+    }
+    specs: list[EntrypointSpec] = []
+    seen_names: set[str] = set()
+    for index, raw_spec in enumerate(raw_entrypoints):
+        if not isinstance(raw_spec, dict) or set(raw_spec) != required_keys:
+            raise RuntimeError(f"entrypoint {index} must contain exactly {sorted(required_keys)!r}")
+        name = raw_spec["name"]
+        demo = raw_spec["demo"]
+        args = raw_spec["args"]
+        timeout_seconds = raw_spec["timeout_seconds"]
+        required_stdout = raw_spec["required_stdout"]
+        coverage = raw_spec["coverage"]
+        if not isinstance(name, str) or re.fullmatch(r"[a-z0-9_]+", name) is None:
+            raise RuntimeError(f"entrypoint {index} has an invalid name: {name!r}")
+        if name in seen_names:
+            raise RuntimeError(f"duplicate repository entrypoint name: {name!r}")
+        seen_names.add(name)
+        if not isinstance(demo, str) or re.fullmatch(r"[a-z0-9-]+", demo) is None:
+            raise RuntimeError(f"entrypoint {name!r} has an invalid demo name: {demo!r}")
+        if not isinstance(args, list) or not all(
+            isinstance(value, str) and value and "\0" not in value for value in args
+        ):
+            raise RuntimeError(f"entrypoint {name!r} args must contain only nonempty strings")
+        if (
+            isinstance(timeout_seconds, bool)
+            or not isinstance(timeout_seconds, int | float)
+            or not math.isfinite(float(timeout_seconds))
+            or float(timeout_seconds) <= 0
+        ):
+            raise RuntimeError(f"entrypoint {name!r} timeout_seconds must be greater than zero")
+        if (
+            not isinstance(required_stdout, list)
+            or not required_stdout
+            or not all(isinstance(value, str) and value for value in required_stdout)
+        ):
+            raise RuntimeError(f"entrypoint {name!r} required_stdout must contain nonempty strings")
+        if not isinstance(coverage, str) or not coverage.strip():
+            raise RuntimeError(f"entrypoint {name!r} coverage must be nonempty")
+        specs.append(
+            EntrypointSpec(
+                name=name,
+                demo=demo,
+                args=tuple(args),
+                timeout_seconds=float(timeout_seconds),
+                required_stdout=tuple(required_stdout),
+                coverage=coverage.strip(),
+            )
+        )
+    return specs
+
+
+def _bounded_output(value: str) -> str:
+    if len(value) <= MAX_CAPTURED_OUTPUT_CHARS:
+        return value
+    half = MAX_CAPTURED_OUTPUT_CHARS // 2
+    omitted = len(value) - (half * 2)
+    return value[:half] + f"\n... {omitted} output characters omitted ...\n" + value[-half:]
+
+
+def _terminate_process_group(process: subprocess.Popen[str]) -> tuple[str, str]:
+    """Terminate a bounded entrypoint and any child processes it started."""
+
+    with suppress(ProcessLookupError):
+        os.killpg(process.pid, signal.SIGTERM)
+    try:
+        return process.communicate(timeout=2.0)
+    except subprocess.TimeoutExpired:
+        with suppress(ProcessLookupError):
+            os.killpg(process.pid, signal.SIGKILL)
+        return process.communicate(timeout=2.0)
+
+
+def _run_repository_entrypoint(
+    spec: EntrypointSpec,
+    *,
+    code_root: Path,
+    timeout_seconds: float,
+) -> EntrypointResult:
+    started = time.monotonic()
+    command = spec.command
+    environment = os.environ.copy()
+    environment["PYTHONUNBUFFERED"] = "1"
+    try:
+        process = subprocess.Popen(
+            command,
+            cwd=code_root,
+            env=environment,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            start_new_session=True,
+        )
+    except OSError as exc:
+        return EntrypointResult(
+            name=spec.name,
+            demo=spec.demo,
+            coverage=spec.coverage,
+            command=command,
+            required_stdout=list(spec.required_stdout),
+            status=STATUS_FAIL,
+            duration_ms=(time.monotonic() - started) * 1000.0,
+            timeout_seconds=timeout_seconds,
+            returncode=None,
+            stdout="",
+            stderr="",
+            diagnostic=_exception_diagnostic(exc),
+        )
+
+    timed_out = False
+    try:
+        stdout, stderr = process.communicate(timeout=timeout_seconds)
+    except subprocess.TimeoutExpired:
+        timed_out = True
+        stdout, stderr = _terminate_process_group(process)
+
+    diagnostic = None
+    if timed_out:
+        diagnostic = f"timed out after {timeout_seconds:.3f}s"
+    elif process.returncode != 0:
+        diagnostic = f"entrypoint exited with status {process.returncode}"
+    else:
+        missing = [value for value in spec.required_stdout if value not in stdout]
+        if missing:
+            diagnostic = f"stdout lacked required evidence: {missing!r}"
+
+    return EntrypointResult(
+        name=spec.name,
+        demo=spec.demo,
+        coverage=spec.coverage,
+        command=command,
+        required_stdout=list(spec.required_stdout),
+        status=STATUS_PASS if diagnostic is None else STATUS_FAIL,
+        duration_ms=(time.monotonic() - started) * 1000.0,
+        timeout_seconds=timeout_seconds,
+        returncode=process.returncode,
+        stdout=_bounded_output(stdout.strip()),
+        stderr=_bounded_output(stderr.strip()),
+        diagnostic=diagnostic,
+    )
+
+
+def run_repository_entrypoints(
+    code_root: Path,
+    *,
+    deadline: float,
+) -> EntrypointSweepResult:
+    """Run every required manifest entrypoint under per-command and global bounds."""
+
+    started = time.monotonic()
+    specs = load_repository_entrypoints(code_root)
+    results: list[EntrypointResult] = []
+    passed = 0
+    failed = 0
+    not_run = 0
+    deadline_exceeded = False
+    for index, spec in enumerate(specs):
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            deadline_exceeded = True
+            not_run = len(specs) - index
+            break
+        timeout = min(spec.timeout_seconds, remaining)
+        deadline_limited = timeout < spec.timeout_seconds
+        result = _run_repository_entrypoint(
+            spec,
+            code_root=code_root,
+            timeout_seconds=timeout,
+        )
+        results.append(result)
+        if result.status == STATUS_PASS:
+            passed += 1
+        else:
+            failed += 1
+        if deadline_limited and time.monotonic() >= deadline:
+            deadline_exceeded = True
+            not_run = len(specs) - index - 1
+            break
+
+    return EntrypointSweepResult(
+        discovered=len(specs),
+        passed=passed,
+        failed=failed,
+        not_run=not_run,
+        duration_ms=(time.monotonic() - started) * 1000.0,
+        deadline_exceeded=deadline_exceeded,
+        results=results,
+    )
+
+
 def _run_check(
     name: str,
     policy: str,
@@ -530,7 +846,7 @@ def _run_check(
 
 
 def discover_repository_examples(code_root: Path) -> list[Path]:
-    """Find baseline/optimized modules and checked runnable example roots."""
+    """Find baseline/optimized modules and checked compatibility-import roots."""
 
     patterns = (
         "ch*/**/baseline_*.py",
@@ -542,9 +858,9 @@ def discover_repository_examples(code_root: Path) -> list[Path]:
     for pattern in patterns:
         paths.update(path for path in code_root.glob(pattern) if path.is_file())
 
-    manifest_path = code_root / RUNNABLE_EXAMPLE_MANIFEST
+    manifest_path = code_root / COMPATIBILITY_IMPORT_MANIFEST
     if not manifest_path.is_file():
-        raise RuntimeError(f"runnable example manifest is missing: {manifest_path}")
+        raise RuntimeError(f"compatibility import manifest is missing: {manifest_path}")
     seen_manifest_entries: set[Path] = set()
     for line_number, raw_line in enumerate(
         manifest_path.read_text(encoding="utf-8").splitlines(), start=1
@@ -561,14 +877,14 @@ def discover_repository_examples(code_root: Path) -> list[Path]:
             or not (relative.parts[0].startswith("ch") or relative.parts[0] == "labs")
         ):
             raise RuntimeError(
-                f"invalid runnable example manifest entry on line {line_number}: {line!r}"
+                f"invalid compatibility import entry on line {line_number}: {line!r}"
             )
         if relative in seen_manifest_entries:
-            raise RuntimeError(f"duplicate runnable example manifest entry: {line!r}")
+            raise RuntimeError(f"duplicate compatibility import entry: {line!r}")
         seen_manifest_entries.add(relative)
         path = code_root / relative
         if not path.is_file():
-            raise RuntimeError(f"runnable example manifest path is missing: {line!r}")
+            raise RuntimeError(f"compatibility import path is missing: {line!r}")
         paths.add(path)
     return sorted(paths)
 
@@ -587,13 +903,260 @@ def repository_module_name(path: Path, code_root: Path) -> str:
     return ".".join(relative.parts)
 
 
+@dataclass
+class _ImportWorker:
+    """One isolated process that imports repository modules on request."""
+
+    process: subprocess.Popen[bytes]
+    commands: BinaryIO
+    reports: BinaryIO
+
+
+def _repository_import_worker_main(
+    command_fd: int,
+    report_fd: int,
+    code_root: Path,
+) -> int:
+    """Import requested modules and report Python exceptions out of process."""
+
+    root = code_root.resolve()
+    root_text = str(root)
+    if not sys.path or sys.path[0] != root_text:
+        sys.path.insert(0, root_text)
+    os.chdir(root)
+    invalidate_caches()
+
+    with (
+        os.fdopen(command_fd, "r", encoding="utf-8") as commands,
+        os.fdopen(report_fd, "w", encoding="utf-8", buffering=1) as reports,
+    ):
+        for raw_command in commands:
+            command = json.loads(raw_command)
+            module_name = command["module"]
+            relative_path = command["path"]
+            os.chdir(root)
+            sys.argv = [str(root / relative_path)]
+            try:
+                import_module(module_name)
+            except BaseException as exc:
+                report = {
+                    "status": STATUS_FAIL,
+                    "diagnostic": _exception_diagnostic(exc),
+                }
+                sys.modules.pop(module_name, None)
+            else:
+                report = {"status": STATUS_PASS}
+            reports.write(json.dumps(report, sort_keys=True) + "\n")
+    return 0
+
+
+def _start_import_worker(code_root: Path) -> _ImportWorker:
+    command_read_fd, command_write_fd = os.pipe()
+    report_read_fd, report_write_fd = os.pipe()
+    environment = os.environ.copy()
+    environment["PYTHONUNBUFFERED"] = "1"
+    command = [
+        sys.executable,
+        "-u",
+        str(Path(__file__).resolve()),
+        _IMPORT_WORKER_FLAG,
+        str(command_read_fd),
+        str(report_write_fd),
+        str(code_root.resolve()),
+    ]
+    try:
+        process = subprocess.Popen(
+            command,
+            cwd=code_root,
+            env=environment,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+            pass_fds=(command_read_fd, report_write_fd),
+        )
+    except BaseException:
+        os.close(command_read_fd)
+        os.close(command_write_fd)
+        os.close(report_read_fd)
+        os.close(report_write_fd)
+        raise
+
+    os.close(command_read_fd)
+    os.close(report_write_fd)
+    return _ImportWorker(
+        process=process,
+        commands=os.fdopen(command_write_fd, "wb", buffering=0),
+        reports=os.fdopen(report_read_fd, "rb", buffering=0),
+    )
+
+
+def _stop_import_worker(worker: _ImportWorker, *, immediate: bool = False) -> None:
+    """Stop the worker and every process in its isolated process group."""
+
+    worker.commands.close()
+    initial_signal = signal.SIGKILL if immediate else signal.SIGTERM
+    with suppress(ProcessLookupError):
+        os.killpg(worker.process.pid, initial_signal)
+    try:
+        worker.process.wait(timeout=0.25)
+    except subprocess.TimeoutExpired:
+        with suppress(ProcessLookupError):
+            os.killpg(worker.process.pid, signal.SIGKILL)
+        worker.process.wait(timeout=1.0)
+    else:
+        # The worker may have left descendants in its process group.
+        with suppress(ProcessLookupError):
+            os.killpg(worker.process.pid, signal.SIGKILL)
+    worker.reports.close()
+
+
+def _signal_diagnostic(returncode: int) -> tuple[int, str]:
+    signal_number = -returncode
+    try:
+        signal_name = signal.Signals(signal_number).name
+    except ValueError:
+        signal_name = "UNKNOWN"
+    return (
+        signal_number,
+        f"import worker terminated by signal {signal_name} ({signal_number})",
+    )
+
+
+def _worker_exit_failure(
+    worker: _ImportWorker,
+    *,
+    module_name: str,
+    relative_path: str,
+) -> ImportFailure:
+    returncode = worker.process.poll()
+    if returncode is None:
+        try:
+            returncode = worker.process.wait(timeout=0.25)
+        except subprocess.TimeoutExpired:
+            _stop_import_worker(worker, immediate=True)
+            return ImportFailure(
+                module=module_name,
+                path=relative_path,
+                diagnostic="import worker closed its report channel without exiting",
+                outcome=IMPORT_FAILURE_PROTOCOL,
+                returncode=worker.process.returncode,
+            )
+    if returncode < 0:
+        signal_number, diagnostic = _signal_diagnostic(returncode)
+        return ImportFailure(
+            module=module_name,
+            path=relative_path,
+            diagnostic=diagnostic,
+            outcome=IMPORT_FAILURE_SIGNAL,
+            returncode=returncode,
+            signal_number=signal_number,
+        )
+    return ImportFailure(
+        module=module_name,
+        path=relative_path,
+        diagnostic=f"import worker exited with status {returncode}",
+        outcome=IMPORT_FAILURE_EXIT,
+        returncode=returncode,
+    )
+
+
+def _run_worker_import(
+    worker: _ImportWorker,
+    *,
+    module_name: str,
+    relative_path: str,
+    timeout_seconds: float,
+) -> ImportFailure | None:
+    command = (
+        json.dumps({"module": module_name, "path": relative_path}, sort_keys=True).encode("utf-8")
+        + b"\n"
+    )
+    try:
+        worker.commands.write(command)
+    except BrokenPipeError:
+        return _worker_exit_failure(
+            worker,
+            module_name=module_name,
+            relative_path=relative_path,
+        )
+
+    deadline = time.monotonic() + timeout_seconds
+    while True:
+        ready, _, _ = select.select([worker.reports], [], [], 0.0)
+        if ready:
+            raw_report = worker.reports.readline()
+            if not raw_report:
+                return _worker_exit_failure(
+                    worker,
+                    module_name=module_name,
+                    relative_path=relative_path,
+                )
+            try:
+                report = json.loads(raw_report)
+            except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+                return ImportFailure(
+                    module=module_name,
+                    path=relative_path,
+                    diagnostic=f"invalid import worker report: {_exception_diagnostic(exc)}",
+                    outcome=IMPORT_FAILURE_PROTOCOL,
+                    returncode=worker.process.poll(),
+                )
+            if report.get("status") == STATUS_PASS:
+                return None
+            diagnostic = report.get("diagnostic")
+            if report.get("status") == STATUS_FAIL and isinstance(diagnostic, str):
+                return ImportFailure(
+                    module=module_name,
+                    path=relative_path,
+                    diagnostic=diagnostic,
+                )
+            return ImportFailure(
+                module=module_name,
+                path=relative_path,
+                diagnostic=f"invalid import worker report: {report!r}",
+                outcome=IMPORT_FAILURE_PROTOCOL,
+                returncode=worker.process.poll(),
+            )
+
+        if worker.process.poll() is not None:
+            return _worker_exit_failure(
+                worker,
+                module_name=module_name,
+                relative_path=relative_path,
+            )
+
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            _stop_import_worker(worker, immediate=True)
+            return ImportFailure(
+                module=module_name,
+                path=relative_path,
+                diagnostic=f"timed out after {timeout_seconds:.3f}s",
+                outcome=IMPORT_FAILURE_TIMEOUT,
+                returncode=worker.process.returncode,
+                signal_number=(
+                    -worker.process.returncode
+                    if worker.process.returncode is not None and worker.process.returncode < 0
+                    else None
+                ),
+                timeout_seconds=timeout_seconds,
+            )
+        select.select(
+            [worker.reports],
+            [],
+            [],
+            min(remaining, _IMPORT_WORKER_POLL_SECONDS),
+        )
+
+
 def import_repository_examples(
     code_root: Path,
     *,
     deadline: float,
     per_import_timeout_seconds: float,
 ) -> ImportSweepResult:
-    """Import all discovered examples and aggregate every hard failure."""
+    """Import examples in a bounded child process and aggregate hard failures."""
 
     started = time.monotonic()
     root = code_root.resolve()
@@ -608,13 +1171,7 @@ def import_repository_examples(
     failed = 0
     not_run = 0
     deadline_exceeded = False
-    root_text = str(root)
-    inserted_path = not sys.path or sys.path[0] != root_text
-    original_argv = sys.argv[:]
-    original_cwd = Path.cwd()
-    if inserted_path:
-        sys.path.insert(0, root_text)
-    invalidate_caches()
+    worker: _ImportWorker | None = None
 
     try:
         for index, path in enumerate(paths):
@@ -628,33 +1185,61 @@ def import_repository_examples(
 
             group = repository_group(path, root)
             module_name = repository_module_name(path, root)
-            timeout = min(per_import_timeout_seconds, remaining)
-            sys.argv = [str(path)]
-            os.chdir(root)
-            try:
-                with _wall_timeout(timeout, f"importing {module_name}"):
-                    import_module(module_name)
-            except (Exception, SystemExit) as exc:
-                diagnostic = _exception_diagnostic(exc)
-                failures.append(
-                    ImportFailure(
+            relative_path = str(path.relative_to(root))
+            if worker is None:
+                try:
+                    worker = _start_import_worker(root)
+                except OSError as exc:
+                    failure = ImportFailure(
                         module=module_name,
-                        path=str(path.relative_to(root)),
-                        diagnostic=diagnostic,
+                        path=relative_path,
+                        diagnostic=_exception_diagnostic(exc),
+                        outcome=IMPORT_FAILURE_LAUNCH,
                     )
-                )
-                groups[group].failed += 1
-                failed += 1
-                sys.modules.pop(module_name, None)
-            else:
+                    failures.append(failure)
+                    groups[group].failed += 1
+                    failed += 1
+                    continue
+
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                deadline_exceeded = True
+                for remaining_path in paths[index:]:
+                    groups[repository_group(remaining_path, root)].not_run += 1
+                not_run += len(paths) - index
+                break
+
+            timeout = min(per_import_timeout_seconds, remaining)
+            deadline_limited = timeout < per_import_timeout_seconds
+            failure = _run_worker_import(
+                worker,
+                module_name=module_name,
+                relative_path=relative_path,
+                timeout_seconds=timeout,
+            )
+            if failure is None:
                 groups[group].passed += 1
                 passed += 1
+            else:
+                failures.append(failure)
+                groups[group].failed += 1
+                failed += 1
+                if not worker.commands.closed:
+                    if worker.process.poll() is None:
+                        _stop_import_worker(worker)
+                    else:
+                        _stop_import_worker(worker, immediate=True)
+                worker = None
+
+            if deadline_limited and time.monotonic() >= deadline:
+                deadline_exceeded = True
+                for remaining_path in paths[index + 1 :]:
+                    groups[repository_group(remaining_path, root)].not_run += 1
+                not_run += len(paths) - index - 1
+                break
     finally:
-        sys.argv = original_argv
-        os.chdir(original_cwd)
-        if inserted_path:
-            with suppress(ValueError):
-                sys.path.remove(root_text)
+        if worker is not None:
+            _stop_import_worker(worker)
 
     return ImportSweepResult(
         discovered=len(paths),
@@ -669,8 +1254,16 @@ def import_repository_examples(
     )
 
 
-def smoke_succeeded(checks: Sequence[CheckResult], imports: ImportSweepResult) -> bool:
-    return all(check.status == STATUS_PASS for check in checks) and imports.succeeded
+def smoke_succeeded(
+    checks: Sequence[CheckResult],
+    entrypoints: EntrypointSweepResult,
+    imports: ImportSweepResult,
+) -> bool:
+    return (
+        all(check.status == STATUS_PASS for check in checks)
+        and entrypoints.succeeded
+        and imports.succeeded
+    )
 
 
 def execute_smoke(
@@ -737,16 +1330,17 @@ def execute_smoke(
     for name, policy, check in check_specs:
         checks.append(_run_check(name, policy, check, deadline))
 
+    repository_entrypoints = run_repository_entrypoints(code_root, deadline=deadline)
     repository_imports = import_repository_examples(
         code_root,
         deadline=deadline,
         per_import_timeout_seconds=per_import_timeout_seconds,
     )
-    succeeded = smoke_succeeded(checks, repository_imports)
+    succeeded = smoke_succeeded(checks, repository_entrypoints, repository_imports)
     elapsed_ms = (time.monotonic() - started) * 1000.0
 
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "status": STATUS_PASS if succeeded else STATUS_FAIL,
         "started_at": started_at,
         "elapsed_ms": elapsed_ms,
@@ -761,11 +1355,14 @@ def execute_smoke(
             "git_tree": checks[0].details.get("git_tree"),
         },
         "checks": [check.to_dict() for check in checks],
+        "repository_entrypoints": repository_entrypoints.to_dict(),
         "repository_imports": repository_imports.to_dict(),
         "summary": {
             "required_failures": sum(
                 check.status == STATUS_FAIL and check.policy == POLICY_REQUIRED for check in checks
             ),
+            "repository_entrypoint_failures": repository_entrypoints.failed,
+            "repository_entrypoints_not_run": repository_entrypoints.not_run,
             "repository_import_failures": repository_imports.failed,
             "repository_imports_not_run": repository_imports.not_run,
         },
@@ -796,6 +1393,27 @@ def render_text(report: dict[str, Any]) -> str:
             line += f" diagnostic={check['diagnostic']}"
         lines.append(line)
 
+    entrypoints = report["repository_entrypoints"]
+    lines.append("REPOSITORY ENTRYPOINT RESULTS")
+    for result in entrypoints["results"]:
+        line = (
+            f"ENTRYPOINT {result['status'].upper()} name={result['name']} "
+            f"demo={result['demo']} duration_ms={result['duration_ms']:.3f} "
+            f"timeout_seconds={result['timeout_seconds']:.3f} "
+            f"returncode={result['returncode']} "
+            f"command={json.dumps(result['command'])}"
+        )
+        if result["diagnostic"]:
+            line += f" diagnostic={result['diagnostic']}"
+        lines.append(line)
+    lines.append(
+        f"ENTRYPOINT_SUMMARY discovered={entrypoints['discovered']} "
+        f"pass={entrypoints['passed']} fail={entrypoints['failed']} "
+        f"not_run={entrypoints['not_run']} complete={entrypoints['complete']} "
+        f"deadline_exceeded={entrypoints['deadline_exceeded']} "
+        f"duration_ms={entrypoints['duration_ms']:.3f}"
+    )
+
     imports = report["repository_imports"]
     lines.append("REPOSITORY IMPORT COUNTS")
     for group, counts in imports["groups"].items():
@@ -807,6 +1425,9 @@ def render_text(report: dict[str, Any]) -> str:
     for failure in imports["failures"]:
         lines.append(
             f"IMPORT_FAILURE module={failure['module']} path={failure['path']} "
+            f"outcome={failure['outcome']} returncode={failure['returncode']} "
+            f"signal={failure['signal_number']} "
+            f"timeout_seconds={failure['timeout_seconds']} "
             f"diagnostic={failure['diagnostic']}"
         )
     lines.append(
@@ -823,7 +1444,17 @@ def render_text(report: dict[str, Any]) -> str:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    args = build_parser().parse_args(argv)
+    raw_argv = list(sys.argv[1:] if argv is None else argv)
+    if raw_argv and raw_argv[0] == _IMPORT_WORKER_FLAG:
+        if len(raw_argv) != 4:
+            raise RuntimeError("internal import worker requires three arguments")
+        return _repository_import_worker_main(
+            int(raw_argv[1]),
+            int(raw_argv[2]),
+            Path(raw_argv[3]),
+        )
+
+    args = build_parser().parse_args(raw_argv)
     code_root = Path(__file__).resolve().parents[2]
     if args.format == "json":
         # Keep stdout machine-readable even when imported dependencies print.

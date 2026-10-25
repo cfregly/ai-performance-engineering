@@ -75,6 +75,10 @@ _NATIVE_SDK_SEARCH_ENVIRONMENT_KEYS = {
     "CPLUS_INCLUDE_PATH",
     "LIBRARY_PATH",
 }
+_DERIVED_ABI_ENVIRONMENT_KEYS = {
+    "FLASH_ATTENTION_FORCE_CXX11_ABI",
+    "NVTE_PYTORCH_FORCE_CXX11_ABI",
+}
 
 
 class BuildContractError(RuntimeError):
@@ -317,6 +321,10 @@ def _validate_contract(contract: Mapping[str, Any]) -> None:
 
     if build.get("frontend") != ["python", "-m", "build", "--wheel", "--no-isolation"]:
         raise BuildContractError("Build frontend must be pinned to python -m build --no-isolation.")
+    if runtime.get("torch_cxx11_abi") is not True:
+        raise BuildContractError(
+            "The PyTorch 2.14.1 Linux wheel contract must require the C++11 ABI."
+        )
     if Path(str(build.get("active_lock", ""))).name != build.get("active_lock"):
         raise BuildContractError("The active lock must be a repository-local basename.")
     if "unshare" not in build.get("required_commands", []):
@@ -423,6 +431,14 @@ def _validate_contract(contract: Mapping[str, Any]) -> None:
             raise BuildContractError(
                 f"Package {package_id!r} may not override verified native SDK search paths: "
                 f"{', '.join(overridden_sdk_paths)}."
+            )
+        overridden_abi_flags = sorted(
+            set(package_environment) & _DERIVED_ABI_ENVIRONMENT_KEYS
+        )
+        if overridden_abi_flags:
+            raise BuildContractError(
+                f"Package {package_id!r} may not override ABI flags derived from PyTorch: "
+                f"{', '.join(overridden_abi_flags)}."
             )
         _require_hex(
             source.get("declared_upstream_commit"),
@@ -785,6 +801,12 @@ def _validate_environment(
         raise BuildContractError(
             f"Torch CUDA metadata must be {runtime['torch_cuda']}, got {torch.version.cuda}."
         )
+    torch_cxx11_abi = bool(torch.compiled_with_cxx11_abi())
+    if torch_cxx11_abi is not runtime["torch_cxx11_abi"]:
+        raise BuildContractError(
+            "Torch C++11 ABI must be "
+            f"{runtime['torch_cxx11_abi']}, got {torch_cxx11_abi}."
+        )
 
     versions: dict[str, str] = {}
     required_distributions = dict(build["resolved_python_requirements"])
@@ -853,6 +875,7 @@ def _validate_environment(
         "python_executable": sys.executable,
         "torch": torch.__version__,
         "torch_cuda": torch.version.cuda,
+        "torch_cxx11_abi": torch_cxx11_abi,
         "distributions": dict(sorted(versions.items())),
         "installed_distributions": _installed_distribution_inventory(),
         "commands": commands,
@@ -1336,6 +1359,13 @@ def _explicit_build_environment(
         "UV_OFFLINE": "1",
     }
     explicit.update({key: str(value) for key, value in package["build_environment"].items()})
+    abi_flag = "TRUE" if runtime["torch_cxx11_abi"] else "FALSE"
+    if package["id"] == "transformer-engine-torch":
+        explicit["NVTE_PYTORCH_FORCE_CXX11_ABI"] = abi_flag
+    elif package["id"] == "flash-attn":
+        explicit["FLASH_ATTENTION_FORCE_CXX11_ABI"] = abi_flag
+    else:  # pragma: no cover - selected packages are contract-validated
+        raise BuildContractError(f"Unsupported native package {package['id']!r}.")
     return explicit
 
 

@@ -105,19 +105,6 @@ def get_runtime_capability_limitations() -> List[Dict[str, Optional[str]]]:
     ]
 
 
-def _is_cuda_release_pool_unsupported(exc: BaseException) -> bool:
-    detail = str(exc)
-    return (
-        "_cuda_releasePool" in detail
-        and "incompatible function arguments" in detail
-    )
-
-
-def _is_allocator_reset_setting_unsupported(exc: BaseException) -> bool:
-    detail = str(exc)
-    return "Unrecognized CachingAllocator option: reset_allocator" in detail
-
-
 # =============================================================================
 # GPU State Monitoring
 # =============================================================================
@@ -404,10 +391,14 @@ def check_input_output_aliasing(input_tensors: Dict[str, Any],
 
 
 def reset_cuda_memory_pool(device: Optional[Any] = None) -> None:
-    """Reset CUDA memory pool to prevent memory reuse gaming.
-    
-    This ensures each benchmark run starts with a clean memory state,
-    preventing cached allocations from skewing timing.
+    """Release unused CUDA allocations through supported public APIs.
+
+    Subprocess execution provides allocator-process isolation between normal
+    benchmark variants. This in-process cleanup synchronizes outstanding work,
+    drops Python references, releases unused cached blocks, collects CUDA IPC
+    allocations, and resets telemetry. It deliberately avoids private allocator
+    entrypoints whose signatures and accepted options vary across PyTorch
+    releases.
     """
     if torch is None or not torch.cuda.is_available():
         return
@@ -423,46 +414,6 @@ def reset_cuda_memory_pool(device: Optional[Any] = None) -> None:
             "Failed to collect CUDA IPC allocations while resetting the memory pool; allocator state may leak across benchmark runs",
             exc=exc,
         )
-    
-    # Best-effort allocator cache reset across PyTorch APIs
-    try:
-        if hasattr(torch, "_C") and hasattr(torch._C, "_cuda_releasePool"):
-            torch._C._cuda_releasePool()
-    except Exception as exc:
-        if _is_cuda_release_pool_unsupported(exc):
-            _emit_validity_limitation_once(
-                "cuda_release_pool_signature",
-                "This PyTorch runtime exposes torch._C._cuda_releasePool without a zero-argument reset entrypoint; memory-pool reset will fall back to cache/IPC/stat cleanup and allocator reuse checks are partially degraded",
-                exc=exc,
-                component="cuda_memory_pool_reset",
-                category="allocator_cleanup",
-            )
-        else:
-            _emit_validity_warning(
-                "Failed to release the CUDA allocator pool during memory-pool reset; cached allocations may remain visible to later runs",
-                exc=exc,
-            )
-    try:
-        if hasattr(torch, "_C") and hasattr(torch._C, "_accelerator_setAllocatorSettings"):
-            torch._C._accelerator_setAllocatorSettings("reset_allocator:True")
-        elif hasattr(torch, "_C") and hasattr(torch._C, "_cuda_cudaCachingAllocator_set_allocator_settings"):
-            torch._C._cuda_cudaCachingAllocator_set_allocator_settings("reset_allocator:True")
-        elif hasattr(torch.cuda, "memory") and hasattr(torch.cuda.memory, "_set_allocator_settings"):
-            torch.cuda.memory._set_allocator_settings("reset_allocator:True")
-    except Exception as exc:
-        if _is_allocator_reset_setting_unsupported(exc):
-            _emit_validity_limitation_once(
-                "cuda_allocator_reset_setting",
-                "This PyTorch runtime does not support the reset_allocator allocator setting; memory-pool cleanup will proceed without forcing allocator-setting resets and allocator reuse checks are partially degraded",
-                exc=exc,
-                component="cuda_memory_pool_reset",
-                category="allocator_cleanup",
-            )
-        else:
-            _emit_validity_warning(
-                "Failed to reset CUDA allocator settings during memory-pool cleanup; allocator reuse checks may be degraded",
-                exc=exc,
-            )
     
     # Reset allocator statistics
     if hasattr(torch.cuda, 'reset_peak_memory_stats'):

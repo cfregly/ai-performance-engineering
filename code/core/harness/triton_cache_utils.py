@@ -4,10 +4,10 @@ import atexit
 import os
 import shutil
 import tempfile
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable, Optional
 
-_ACTIVE_PROCESS_TRITON_CACHE_ROOT: Optional[Path] = None
+_ACTIVE_PROCESS_TRITON_CACHE_ROOT: Path | None = None
 
 
 def _cleanup_active_triton_cache_root() -> None:
@@ -64,7 +64,7 @@ def reset_triton_runtime_cache(
         except Exception as exc:
             if emit_warning is not None:
                 emit_warning("Failed to clear Triton runtime cache", exc)
-            return None
+            raise RuntimeError("Failed to clear Triton runtime cache") from exc
 
     try:
         from triton import knobs
@@ -86,7 +86,7 @@ def reset_triton_runtime_cache(
     except Exception as exc:
         if emit_warning is not None:
             emit_warning("Failed to rotate Triton runtime cache", exc)
-        return None
+        raise RuntimeError("Failed to rotate Triton runtime cache") from exc
 
 
 def get_triton_runtime_env_overrides() -> dict[str, str]:

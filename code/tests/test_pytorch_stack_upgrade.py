@@ -40,6 +40,33 @@ def _vllm_source_contract() -> dict[str, Any]:
     )
 
 
+def _cluster_setup_function(name: str) -> str:
+    setup = (CODE_ROOT / "cluster/setup.sh").read_text(encoding="utf-8")
+    match = re.search(
+        rf"^{re.escape(name)}\(\) \{{\n.*?^\}}\n",
+        setup,
+        re.MULTILINE | re.DOTALL,
+    )
+    assert match is not None, f"cluster/setup.sh must define {name}()"
+    return match.group(0)
+
+
+def _b200_smoke_expected_versions() -> dict[str, str]:
+    module = ast.parse(
+        (CODE_ROOT / "core/scripts/b200_torch2141_smoke.py").read_text(encoding="utf-8")
+    )
+    assignment = next(
+        node
+        for node in module.body
+        if isinstance(node, ast.Assign)
+        and any(
+            isinstance(target, ast.Name) and target.id == "EXPECTED_VERSIONS"
+            for target in node.targets
+        )
+    )
+    return ast.literal_eval(assignment.value)
+
+
 def _write_contract_wheel(
     tmp_path: Path,
     contract: dict[str, Any],
@@ -307,6 +334,137 @@ def test_cluster_stack_dry_run_selects_only_the_hash_bound_graph(tmp_path: Path)
                          str(CODE_ROOT / "requirements_torch2141_linux_x86_64.txt")]]
     assert not venv.exists()
     assert "Build and validate those source wheels" in result.stdout
+
+
+def test_cluster_setup_uses_the_locked_stack_and_pinned_vllm_builder() -> None:
+    setup = (CODE_ROOT / "cluster/setup.sh").read_text(encoding="utf-8")
+
+    assert "requirements_torch2141_linux_x86_64.txt" in setup
+    assert "--require-hashes --no-deps" in setup
+    assert "scripts/build_vllm_for_torch.py" in setup
+    assert "vllm_source_build.json" in setup
+    assert "torch.compiled_with_cxx11_abi()" in setup
+    assert "2.10.0a0" not in setup
+    assert "pypi.ngc.nvidia.com" not in setup
+    assert 'pip install vllm' not in setup
+    assert "--force-reinstall" not in setup
+
+
+def test_cluster_setup_bootstraps_vllm_rust_and_native_smoke_dependency() -> None:
+    setup = (CODE_ROOT / "cluster/setup.sh").read_text(encoding="utf-8")
+    rust_toolchain = _vllm_source_contract()["build"]["rust_toolchain"]
+
+    assert rust_toolchain == "1.95.0"
+    assert f'VLLM_RUST_TOOLCHAIN="{rust_toolchain}"' in setup
+    rust_install = setup.index('rustup toolchain install "$expected" --profile minimal')
+    rust_validation = setup.index('require_exact_rust_toolchain "$expected"')
+    vllm_build = setup.index('"${CODE_ROOT}/scripts/build_vllm_for_torch.py"')
+    assert rust_install < rust_validation < vllm_build
+    assert '[[ "$rustc_version" != "rustc ${expected} "* ]]' in setup
+    assert '[[ "$cargo_version" != "cargo ${expected} "* ]]' in setup
+
+    enable_vllm = setup.index("--install-vllm)")
+    enable_vllm_end = setup.index(";;", enable_vllm)
+    assert "INSTALL_TRANSFORMER_ENGINE=1" in setup[enable_vllm:enable_vllm_end]
+    native_build = setup.index('"${CODE_ROOT}/scripts/build_torch_extensions.py"')
+    assert native_build < vllm_build
+    assert '--contract "$NATIVE_EXTENSION_CONTRACT"' in setup
+    assert "--package transformer-engine-torch" in setup
+    assert '"packages"]["transformer-engine-torch"]["wheel"]' in setup
+    assert "Transformer Engine build receipt wheel hash does not match" in setup
+    assert '"$VENV_PY" -m pip install --no-deps "$TE_WHEEL"' in setup
+    assert 'package["expected_metadata"]["version"]' in setup
+    assert 'pip install transformer-engine-torch' not in setup
+    assert "libdw-dev" in setup
+    assert "libelf-dev" in setup
+
+
+def test_cluster_setup_covers_every_smoke_distribution_outside_the_lock() -> None:
+    lock = _locked_exact_pins(
+        CODE_ROOT / "requirements_torch2141_linux_x86_64.txt"
+    )
+    missing_from_lock = set(_b200_smoke_expected_versions()) - set(lock)
+    setup = (CODE_ROOT / "cluster/setup.sh").read_text(encoding="utf-8")
+
+    assert missing_from_lock == {"transformer-engine-torch", "vllm"}
+    assert "--package transformer-engine-torch" in setup
+    assert "scripts/build_vllm_for_torch.py" in setup
+
+
+def test_cluster_rust_validator_requires_exact_rustc_and_cargo(tmp_path: Path) -> None:
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    rustc = bin_dir / "rustc"
+    cargo = bin_dir / "cargo"
+    rustc.write_text("#!/bin/sh\nprintf 'rustc 1.95.0 (test 2026-10-01)\\n'\n")
+    cargo.write_text("#!/bin/sh\nprintf 'cargo 1.95.0 (test 2026-10-01)\\n'\n")
+    rustc.chmod(0o755)
+    cargo.chmod(0o755)
+    script = (
+        "set -e\n"
+        f"{_cluster_setup_function('require_exact_rust_toolchain')}"
+        "require_exact_rust_toolchain 1.95.0\n"
+    )
+    environment = {**os.environ, "PATH": f"{bin_dir}:/usr/bin:/bin"}
+
+    accepted = subprocess.run(
+        ["/bin/bash", "-s"],
+        input=script,
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert accepted.returncode == 0, accepted.stderr
+    assert "Using rustc 1.95.0" in accepted.stdout
+    assert "Using cargo 1.95.0" in accepted.stdout
+
+    cargo.write_text("#!/bin/sh\nprintf 'cargo 1.94.0 (test 2026-09-01)\\n'\n")
+    rejected = subprocess.run(
+        ["/bin/bash", "-s"],
+        input=script,
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert rejected.returncode != 0
+    assert "Expected cargo 1.95.0, found cargo 1.94.0" in rejected.stderr
+
+
+def test_cluster_setup_rejects_skipping_python_with_source_builds() -> None:
+    setup = CODE_ROOT / "cluster/setup.sh"
+
+    for install_option in ("--install-transformer-engine", "--install-vllm"):
+        result = subprocess.run(
+            ["/bin/bash", str(setup), "--skip-python", install_option],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert result.returncode != 0
+        assert (
+            "--skip-python cannot be combined with source-build install options."
+            in result.stderr
+        )
+
+
+def test_cufile_sidecar_matches_the_supported_cuda_stack() -> None:
+    pins = _active_exact_pins(CODE_ROOT / "ch10/requirements_cufile.txt")
+    lock = _locked_exact_pins(
+        CODE_ROOT / "requirements_torch2141_linux_x86_64.txt"
+    )
+    packages = (
+        "cuda-python",
+        "cuda-bindings",
+        "nvidia-cufile",
+        "torch",
+        "numpy",
+    )
+
+    assert {package: pins.get(package) for package in packages} == {
+        package: lock[package] for package in packages
+    }
 
 
 def test_torchtitan_demo_binds_current_compile_config_to_the_mesh() -> None:

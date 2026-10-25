@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import json
+import signal
 import subprocess
 import sys
 import time
+from importlib import import_module
 from pathlib import Path
 
 import pytest
@@ -17,16 +19,23 @@ def _write_module(path: Path, source: str) -> None:
 
 
 def _write_manifest(root: Path, *entries: str) -> None:
-    path = root / smoke.RUNNABLE_EXAMPLE_MANIFEST
+    path = root / smoke.COMPATIBILITY_IMPORT_MANIFEST
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("\n".join(entries) + "\n", encoding="utf-8")
 
 
-def _remove_imported_test_modules() -> None:
-    prefixes = ("ch97", "labs.smoke_orchestration")
-    for module_name in list(sys.modules):
-        if module_name == "labs" or module_name.startswith(prefixes):
-            sys.modules.pop(module_name, None)
+def _write_entrypoint_manifest(root: Path, entrypoints: list[dict[str, object]]) -> None:
+    path = root / smoke.ENTRYPOINT_MANIFEST
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(
+            {
+                "schema_version": smoke.ENTRYPOINT_MANIFEST_SCHEMA_VERSION,
+                "entrypoints": entrypoints,
+            }
+        ),
+        encoding="utf-8",
+    )
 
 
 def test_discovery_and_real_imports_aggregate_failures(tmp_path: Path) -> None:
@@ -49,15 +58,11 @@ def test_discovery_and_real_imports_aggregate_failures(tmp_path: Path) -> None:
     _write_module(tmp_path / "ch97/runnable_demo.py", "VALUE = 'manifest'\n")
     _write_manifest(tmp_path, "ch97/runnable_demo.py")
 
-    _remove_imported_test_modules()
-    try:
-        result = smoke.import_repository_examples(
-            tmp_path,
-            deadline=time.monotonic() + 10.0,
-            per_import_timeout_seconds=2.0,
-        )
-    finally:
-        _remove_imported_test_modules()
+    result = smoke.import_repository_examples(
+        tmp_path,
+        deadline=time.monotonic() + 10.0,
+        per_import_timeout_seconds=2.0,
+    )
 
     assert result.discovered == 5
     assert result.passed == 3
@@ -87,6 +92,131 @@ def test_discovery_and_real_imports_aggregate_failures(tmp_path: Path) -> None:
     )
 
 
+def test_import_timeout_kills_the_worker_group_and_continues(tmp_path: Path) -> None:
+    orphan_marker = tmp_path / "orphan-finished.txt"
+    child_source = (
+        "import pathlib, time\n"
+        "time.sleep(0.8)\n"
+        f"pathlib.Path({str(orphan_marker)!r}).write_text('orphan', encoding='utf-8')\n"
+    )
+    _write_module(tmp_path / "ch97/__init__.py", "")
+    _write_module(
+        tmp_path / "ch97/baseline_hang.py",
+        "import subprocess, sys, time\n"
+        f"subprocess.Popen([sys.executable, '-c', {child_source!r}])\n"
+        "time.sleep(30)\n",
+    )
+    _write_module(tmp_path / "ch97/optimized_after_hang.py", "VALUE = 1\n")
+    _write_manifest(tmp_path)
+
+    started = time.monotonic()
+    result = smoke.import_repository_examples(
+        tmp_path,
+        deadline=time.monotonic() + 5.0,
+        per_import_timeout_seconds=0.2,
+    )
+
+    assert time.monotonic() - started < 3.0
+    assert result.passed == 1
+    assert result.failed == 1
+    assert result.not_run == 0
+    assert result.complete
+    failure = result.failures[0]
+    assert failure.module == "ch97.baseline_hang"
+    assert failure.outcome == smoke.IMPORT_FAILURE_TIMEOUT
+    assert failure.returncode == -signal.SIGKILL
+    assert failure.signal_number == signal.SIGKILL
+    assert failure.timeout_seconds == pytest.approx(0.2)
+    assert failure.diagnostic == "timed out after 0.200s"
+    time.sleep(1.0)
+    assert not orphan_marker.exists()
+
+
+def test_import_timeout_uses_the_remaining_global_budget(tmp_path: Path) -> None:
+    later_marker = tmp_path / "later-imported.txt"
+    _write_module(tmp_path / "ch97/__init__.py", "")
+    _write_module(tmp_path / "ch97/baseline_hang.py", "import time\ntime.sleep(30)\n")
+    _write_module(
+        tmp_path / "ch97/optimized_not_run.py",
+        f"from pathlib import Path\nPath({str(later_marker)!r}).write_text('ran')\n",
+    )
+    _write_manifest(tmp_path)
+
+    started = time.monotonic()
+    result = smoke.import_repository_examples(
+        tmp_path,
+        deadline=time.monotonic() + 0.2,
+        per_import_timeout_seconds=30.0,
+    )
+
+    assert time.monotonic() - started < 1.0
+    assert result.failed == 1
+    assert result.not_run == 1
+    assert result.deadline_exceeded
+    assert not result.complete
+    assert result.failures[0].outcome == smoke.IMPORT_FAILURE_TIMEOUT
+    assert 0 < (result.failures[0].timeout_seconds or 0) <= 0.2
+    assert not later_marker.exists()
+
+
+def test_import_worker_records_signal_and_exit_then_continues(tmp_path: Path) -> None:
+    _write_module(tmp_path / "ch97/__init__.py", "")
+    _write_module(
+        tmp_path / "ch97/baseline_crash.py",
+        "import os, signal\nos.kill(os.getpid(), signal.SIGKILL)\n",
+    )
+    _write_module(tmp_path / "ch97/optimized_exit.py", "import os\nos._exit(23)\n")
+    _write_module(tmp_path / "ch97/runnable_after_failures.py", "VALUE = 1\n")
+    _write_manifest(tmp_path, "ch97/runnable_after_failures.py")
+
+    result = smoke.import_repository_examples(
+        tmp_path,
+        deadline=time.monotonic() + 5.0,
+        per_import_timeout_seconds=1.0,
+    )
+
+    assert result.passed == 1
+    assert result.failed == 2
+    assert result.not_run == 0
+    assert result.complete
+    failures = {failure.module: failure for failure in result.failures}
+    crash = failures["ch97.baseline_crash"]
+    assert crash.outcome == smoke.IMPORT_FAILURE_SIGNAL
+    assert crash.returncode == -signal.SIGKILL
+    assert crash.signal_number == signal.SIGKILL
+    assert crash.diagnostic == "import worker terminated by signal SIGKILL (9)"
+    exited = failures["ch97.optimized_exit"]
+    assert exited.outcome == smoke.IMPORT_FAILURE_EXIT
+    assert exited.returncode == 23
+    assert exited.signal_number is None
+    assert exited.diagnostic == "import worker exited with status 23"
+
+
+def test_temporary_import_sweep_restores_real_labs_package_state(tmp_path: Path) -> None:
+    real_labs = import_module("labs")
+    real_occupancy_tuning = import_module("labs.occupancy_tuning")
+    assert real_labs.occupancy_tuning is real_occupancy_tuning
+
+    _write_module(tmp_path / "labs/__init__.py", "SOURCE = 'fixture'\n")
+    _write_module(tmp_path / "labs/smoke_orchestration/__init__.py", "")
+    _write_module(
+        tmp_path / "labs/smoke_orchestration/baseline_ok.py",
+        "VALUE = 'fixture'\n",
+    )
+    _write_manifest(tmp_path)
+
+    result = smoke.import_repository_examples(
+        tmp_path,
+        deadline=time.monotonic() + 10.0,
+        per_import_timeout_seconds=2.0,
+    )
+
+    assert result.succeeded
+    assert sys.modules["labs"] is real_labs
+    assert sys.modules["labs.occupancy_tuning"] is real_occupancy_tuning
+    assert real_labs.occupancy_tuning is real_occupancy_tuning
+
+
 def test_expired_deadline_reports_exact_remaining_counts(tmp_path: Path) -> None:
     _write_module(tmp_path / "ch97/__init__.py", "")
     _write_module(tmp_path / "ch97/baseline_one.py", "VALUE = 1\n")
@@ -108,11 +238,11 @@ def test_expired_deadline_reports_exact_remaining_counts(tmp_path: Path) -> None
     assert result.groups["ch97"].not_run == 2
 
 
-def test_real_runnable_manifest_expands_the_owned_example_roots() -> None:
+def test_compatibility_import_manifest_expands_the_owned_example_roots() -> None:
     code_root = Path(__file__).resolve().parents[1]
     manifest_lines = [
         line.strip()
-        for line in (code_root / smoke.RUNNABLE_EXAMPLE_MANIFEST)
+        for line in (code_root / smoke.COMPATIBILITY_IMPORT_MANIFEST)
         .read_text(encoding="utf-8")
         .splitlines()
         if line.strip() and not line.lstrip().startswith("#")
@@ -148,7 +278,139 @@ def test_real_runnable_manifest_expands_the_owned_example_roots() -> None:
     assert set(manifest_lines).isdisjoint(baseline_optimized)
 
 
-def test_smoke_success_requires_complete_repository_imports() -> None:
+def test_real_entrypoint_manifest_uses_registered_public_cuda_demos() -> None:
+    from core.demos.demos_commands import DEMOS
+
+    code_root = Path(__file__).resolve().parents[1]
+    specs = smoke.load_repository_entrypoints(code_root)
+
+    assert [spec.name for spec in specs] == [
+        "cuda_event_timing",
+        "cuda_graph_capture",
+        "cuda_inductor_recompilation",
+    ]
+    assert all(spec.demo in DEMOS for spec in specs)
+    assert all(spec.required_stdout for spec in specs)
+    assert all(spec.timeout_seconds <= 60.0 for spec in specs)
+    assert all(spec.command[1:5] == ["-m", "cli.aisp", "demos", spec.demo] for spec in specs)
+
+
+def test_repository_entrypoints_execute_real_bounded_subprocesses(tmp_path: Path) -> None:
+    _write_module(tmp_path / "cli/__init__.py", "")
+    _write_module(
+        tmp_path / "cli/aisp.py",
+        "import sys\nprint('fixture argv=' + ','.join(sys.argv[1:]))\n",
+    )
+    _write_entrypoint_manifest(
+        tmp_path,
+        [
+            {
+                "name": "fixture_pass",
+                "demo": "fixture-demo",
+                "args": ["--size", "4"],
+                "timeout_seconds": 2,
+                "required_stdout": ["fixture argv=demos,fixture-demo,--,--size,4"],
+                "coverage": "Real subprocess fixture",
+            },
+            {
+                "name": "fixture_missing_evidence",
+                "demo": "fixture-demo",
+                "args": ["--size", "8"],
+                "timeout_seconds": 2,
+                "required_stdout": ["required CUDA evidence"],
+                "coverage": "Missing evidence fixture",
+            },
+        ],
+    )
+
+    result = smoke.run_repository_entrypoints(
+        tmp_path,
+        deadline=time.monotonic() + 10.0,
+    )
+
+    assert result.discovered == 2
+    assert result.passed == 1
+    assert result.failed == 1
+    assert result.not_run == 0
+    assert result.complete
+    assert not result.succeeded
+    assert result.results[0].returncode == 0
+    assert result.results[0].status == smoke.STATUS_PASS
+    assert result.results[1].returncode == 0
+    assert result.results[1].status == smoke.STATUS_FAIL
+    assert result.results[1].diagnostic == (
+        "stdout lacked required evidence: ['required CUDA evidence']"
+    )
+
+
+def test_repository_entrypoint_timeout_terminates_its_process_group(tmp_path: Path) -> None:
+    _write_module(tmp_path / "cli/__init__.py", "")
+    _write_module(
+        tmp_path / "cli/aisp.py",
+        "import subprocess, sys, time\n"
+        "child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(30)'])\n"
+        "print(f'child_pid={child.pid}', flush=True)\n"
+        "time.sleep(30)\n",
+    )
+    _write_entrypoint_manifest(
+        tmp_path,
+        [
+            {
+                "name": "fixture_timeout",
+                "demo": "fixture-demo",
+                "args": [],
+                "timeout_seconds": 0.5,
+                "required_stdout": ["unreachable"],
+                "coverage": "Process group timeout fixture",
+            }
+        ],
+    )
+
+    started = time.monotonic()
+    result = smoke.run_repository_entrypoints(
+        tmp_path,
+        deadline=time.monotonic() + 5.0,
+    )
+
+    assert time.monotonic() - started < 3.0
+    assert result.failed == 1
+    assert result.complete
+    assert result.results[0].status == smoke.STATUS_FAIL
+    assert result.results[0].returncode is not None
+    assert result.results[0].diagnostic == "timed out after 0.500s"
+    assert "child_pid=" in result.results[0].stdout
+
+
+def test_expired_deadline_does_not_start_repository_entrypoints(tmp_path: Path) -> None:
+    _write_entrypoint_manifest(
+        tmp_path,
+        [
+            {
+                "name": "fixture_not_run",
+                "demo": "fixture-demo",
+                "args": [],
+                "timeout_seconds": 2,
+                "required_stdout": ["unreachable"],
+                "coverage": "Deadline fixture",
+            }
+        ],
+    )
+
+    result = smoke.run_repository_entrypoints(
+        tmp_path,
+        deadline=time.monotonic() - 1.0,
+    )
+
+    assert result.discovered == 1
+    assert result.passed == 0
+    assert result.failed == 0
+    assert result.not_run == 1
+    assert result.deadline_exceeded
+    assert not result.complete
+    assert not result.results
+
+
+def test_smoke_success_requires_complete_entrypoints_and_repository_imports() -> None:
     passing_check = smoke.CheckResult(
         name="required",
         policy=smoke.POLICY_REQUIRED,
@@ -173,15 +435,30 @@ def test_smoke_success_requires_complete_repository_imports() -> None:
         groups={"ch01": smoke.ImportGroupCounts(discovered=1, passed=1)},
         failures=[],
     )
+    entrypoints = smoke.EntrypointSweepResult(
+        discovered=1,
+        passed=1,
+        failed=0,
+        not_run=0,
+        duration_ms=1.0,
+        deadline_exceeded=False,
+        results=[],
+    )
 
-    assert smoke.smoke_succeeded([passing_check], imports)
-    assert not smoke.smoke_succeeded([passing_check, failing_check], imports)
+    assert smoke.smoke_succeeded([passing_check], entrypoints, imports)
+    assert not smoke.smoke_succeeded([passing_check, failing_check], entrypoints, imports)
+
+    entrypoints.not_run = 1
+    entrypoints.passed = 0
+    assert not smoke.smoke_succeeded([passing_check], entrypoints, imports)
+    entrypoints.not_run = 0
+    entrypoints.passed = 1
 
     imports.not_run = 1
     imports.passed = 0
     imports.groups["ch01"].not_run = 1
     imports.groups["ch01"].passed = 0
-    assert not smoke.smoke_succeeded([passing_check], imports)
+    assert not smoke.smoke_succeeded([passing_check], entrypoints, imports)
 
 
 def test_cli_rejects_nonpositive_time_bounds() -> None:
@@ -274,4 +551,8 @@ def test_json_cli_keeps_stdout_machine_readable_under_failure() -> None:
     assert completed.returncode == 1
     report = json.loads(completed.stdout)
     assert report["status"] == smoke.STATUS_FAIL
+    assert (
+        report["repository_entrypoints"]["not_run"]
+        == report["repository_entrypoints"]["discovered"]
+    )
     assert report["repository_imports"]["not_run"] == report["repository_imports"]["discovered"]

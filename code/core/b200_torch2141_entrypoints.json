@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "entrypoints": [
+    {
+      "name": "cuda_event_timing",
+      "demo": "ch11-event-timing",
+      "args": [
+        "--sleep-cycles",
+        "100000"
+      ],
+      "timeout_seconds": 15,
+      "required_stdout": [
+        "good_event_timing_ms=",
+        "fixed_event_timing_ms="
+      ],
+      "coverage": "PyTorch CUDA stream launches, events, waits, and synchronization"
+    },
+    {
+      "name": "cuda_graph_capture",
+      "demo": "ch12-graph-capture",
+      "args": [
+        "--batch",
+        "8",
+        "--hidden",
+        "256",
+        "--layers",
+        "1",
+        "--warmup",
+        "1",
+        "--replays",
+        "2"
+      ],
+      "timeout_seconds": 30,
+      "required_stdout": [
+        "max_abs_diff_vs_eager=0.000000e+00"
+      ],
+      "coverage": "PyTorch CUDA graph capture, replay, and eager-output comparison"
+    },
+    {
+      "name": "cuda_inductor_recompilation",
+      "demo": "ch14-recompilation",
+      "args": [
+        "--device",
+        "cuda",
+        "--backend",
+        "inductor",
+        "--iterations",
+        "1"
+      ],
+      "timeout_seconds": 60,
+      "required_stdout": [
+        "\"device\": \"cuda\"",
+        "\"backend\": \"inductor\"",
+        "\"all_successful_outputs_correct\": true"
+      ],
+      "coverage": "PyTorch CUDA Inductor compilation, compiler stance, and eager-output comparison"
+    }
+  ]
+}

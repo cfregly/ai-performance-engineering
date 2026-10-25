@@ -1,6 +1,9 @@
-# Tracked runnable chapter/lab modules with a __main__ guard and a direct or local-import-transitive Torch/CUDA dependency.
-# Excludes baseline_*/optimized_* roots and their local import closure, tests, package initializers, virtualenvs, and vendor trees.
-# Generated count: 233
+# Import-only compatibility roots with a __main__ guard and a direct or
+# local-import-transitive Torch/CUDA dependency. The B200 smoke does not claim
+# execution coverage from this file. Real CUDA commands are declared in
+# core/b200_torch2141_entrypoints.json.
+# Excludes baseline_*/optimized_* roots and their local import closure, tests,
+# package initializers, virtualenvs, and vendor trees. Generated count: 233.
 ch01/compare.py
 ch02/compare.py
 ch02/cpu_gpu_topology_aware.py

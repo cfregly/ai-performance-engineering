@@ -177,6 +177,7 @@ def test_contract_pins_sources_patch_and_disjoint_fa_namespaces() -> None:
     assert contract["build"]["maximum_jobs"] == 8
     assert contract["build"]["maximum_nvcc_threads"] == 2
     assert contract["build"]["active_lock"] == "requirements_torch2141_linux_x86_64.txt"
+    assert contract["runtime"]["torch_cxx11_abi"] is True
     assert "unshare" in contract["build"]["required_commands"]
     assert contract["build"]["native_wheel_sdks"] == {
         "nvidia-cudnn-cu13": {
@@ -220,12 +221,14 @@ def test_contract_pins_sources_patch_and_disjoint_fa_namespaces() -> None:
     }
     assert te["forbidden_distributions"] == ["transformer-engine-torch"]
     assert te["build_environment"]["NVTE_BUILD_USE_NVIDIA_WHEELS"] == "0"
+    assert "NVTE_PYTORCH_FORCE_CXX11_ABI" not in te["build_environment"]
     assert fa["source"]["declared_upstream_commit"] == ("49774b31c8d1172a5b28f72e9aed0f322bf4ccba")
     assert fa["sdist"]["sha256"] == (
         "d0f9f0b08a986cdeadbffcf5ec8b3a8f514366c68ad1853d3ab061bc83cc340b"
     )
     assert fa["forbidden_distributions"] == ["flash-attn", "flash-attn-4"]
     assert fa["build_environment"]["FLASH_ATTENTION_FORCE_BUILD"] == "TRUE"
+    assert "FLASH_ATTENTION_FORCE_CXX11_ABI" not in fa["build_environment"]
     assert fa["build_environment"]["FLASH_ATTN_CUDA_ARCHS"] == "100"
     patch = fa["patches"][0]
     assert patch["id"] == "torch-2.13-plus-cxx20"
@@ -290,6 +293,7 @@ def test_fa2_selection_rejects_installed_fa4(
         SimpleNamespace(
             __version__="2.14.1+cu130",
             version=SimpleNamespace(cuda="13.0"),
+            compiled_with_cxx11_abi=lambda: True,
         ),
     )
     monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "")
@@ -596,6 +600,7 @@ def test_build_command_uses_pinned_frontend_and_force_source_environment(
                 "library_directory": "/venv/nvidia/nvshmem/lib",
             },
         },
+        "torch_cxx11_abi": True,
     }
     observed: dict[str, Any] = {}
     monkeypatch.setenv("CPATH", "/untrusted/include")
@@ -679,6 +684,64 @@ def test_build_command_uses_pinned_frontend_and_force_source_environment(
     assert observed["environment"]["NVTE_PYTORCH_FORCE_BUILD"] == "TRUE"
     assert observed["environment"]["NVTE_BUILD_USE_NVIDIA_WHEELS"] == "0"
     assert observed["environment"]["NVTE_CUDA_ARCHS"] == "100"
+    assert observed["environment"]["NVTE_PYTORCH_FORCE_CXX11_ABI"] == "TRUE"
+
+
+def test_flash_attention_build_derives_cxx11_abi_from_torch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    contract = _contract()
+    package = _packages_by_id()["flash-attn"]
+    runtime = {
+        "commands": {
+            "gcc": "/usr/bin/gcc",
+            "g++": "/usr/bin/g++",
+            "unshare": "/usr/bin/unshare",
+        },
+        "cuda_toolkit": {
+            "root": "/opt/cuda-13.0",
+            "nvcc": "/opt/cuda-13.0/bin/nvcc",
+        },
+        "native_wheel_sdks": {
+            name: {
+                "include_directory": f"/venv/{name}/include",
+                "library_directory": f"/venv/{name}/lib",
+            }
+            for name in (
+                "nvidia-cudnn-cu13",
+                "nvidia-nccl-cu13",
+                "nvidia-nvshmem-cu13",
+            )
+        },
+        "torch_cxx11_abi": True,
+    }
+    source_root = tmp_path / "source"
+    source_root.mkdir()
+    observed: dict[str, Any] = {}
+
+    def fake_run(command: list[str], **kwargs: Any) -> None:
+        observed["environment"] = kwargs["env"]
+        destination = Path(command[command.index("--outdir") + 1])
+        (destination / "built.whl").write_bytes(b"wheel")
+
+    monkeypatch.setattr(native_builder.subprocess, "run", fake_run)
+    monkeypatch.setattr(
+        native_builder,
+        "_inspect_wheel",
+        lambda _package, wheel: {"path": str(wheel)},
+    )
+
+    native_builder._build_package(
+        contract,
+        package,
+        source_root,
+        tmp_path / "wheel",
+        runtime,
+        max_jobs=4,
+        nvcc_threads=1,
+    )
+
+    assert observed["environment"]["FLASH_ATTENTION_FORCE_CXX11_ABI"] == "TRUE"
 
 
 def test_existing_output_directory_fails_before_contract_or_environment_checks(

@@ -1140,7 +1140,10 @@ def test_shipped_engine_profile_and_launch_digests_are_valid() -> None:
         )
 
     arms = {arm.arm_id: arm for arm in profile.arms}
-    assert arms["vllm-monolithic"].runtime_version == "0.26.0"
+    assert (
+        arms["vllm-monolithic"].runtime_version
+        == "0.33.0.dev0+cu130.torch2141"
+    )
     assert "--max-num-queued-reqs" not in arms["vllm-monolithic"].lifecycle["start_command"]
     assert arms["sglang-monolithic"].runtime_version == "0.5.20"
     sglang_pd = arms["sglang-prefill-decode"]

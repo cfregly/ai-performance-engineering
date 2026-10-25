@@ -5,7 +5,8 @@
     "platform_machine": "x86_64",
     "python": "3.12",
     "torch": "2.14.1+cu130",
-    "torch_cuda": "13.0"
+    "torch_cuda": "13.0",
+    "torch_cxx11_abi": true
   },
   "build": {
     "active_lock": "requirements_torch2141_linux_x86_64.txt",
@@ -158,7 +159,6 @@
         "NVTE_ENABLE_NVSHMEM": "0",
         "NVTE_NO_LOCAL_VERSION": "1",
         "NVTE_PYTORCH_FORCE_BUILD": "TRUE",
-        "NVTE_PYTORCH_FORCE_CXX11_ABI": "FALSE",
         "NVTE_PYTORCH_SKIP_CUDA_BUILD": "FALSE",
         "NVTE_UB_WITH_MPI": "0",
         "NVTE_USE_CCACHE": "0",
@@ -297,7 +297,6 @@
       "build_environment": {
         "BUILD_TARGET": "cuda",
         "FLASH_ATTENTION_FORCE_BUILD": "TRUE",
-        "FLASH_ATTENTION_FORCE_CXX11_ABI": "FALSE",
         "FLASH_ATTENTION_SKIP_CK_BUILD": "TRUE",
         "FLASH_ATTENTION_SKIP_CUDA_BUILD": "FALSE",
         "FLASH_ATTENTION_TRITON_AMD_ENABLE": "FALSE",

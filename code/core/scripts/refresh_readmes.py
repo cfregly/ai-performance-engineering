@@ -2230,7 +2230,7 @@ ENTRIES["ch10"] = chapter_entry(
     ],
     notes=[
         "`cufile_gds_example.py` demonstrates integrating GPUDirect Storage into tensor-core pipelines for IO-heavy training loops.",
-        "`requirements_cufile.txt` holds the optional `cufile` wheel; install it only on hosts with GPUDirect Storage enabled.",
+        "`requirements_cufile.txt` pins the PyTorch 2.14.1 CUDA 13 bindings and the optional `nvidia-cufile` wheel. Install it only on hosts with GPUDirect Storage enabled.",
         "The CUTLASS-style warp-specialization pair provides a reference implementation aligned with `sm100_mma_array_warpspecialized` for performance comparison.",
     ],
     trailing_sections=[FAST_CU_RELATED_SECTION],
@@ -3925,6 +3925,7 @@ ENTRIES["labs/dynamic_router"] = lab_entry(
         ("`topology.py`, `topology_probe.py`", "NUMA-aware GPU mapping helpers and a target that emits topology JSON under `artifacts/topology/` for routing hints."),
     ],
     validation=[
+        'Live vLLM targets require the repository\'s current serving stack: PyTorch `2.14.1+cu130`, vLLM `0.33.0.dev0+cu130.torch2141`, and FlashInfer `0.7.2`. The retained vLLM 0.16 results below are historical and do not qualify this runtime.',
         '`python labs/dynamic_router/driver.py --mode baseline` vs `--mode optimized` shows lower TTFT variance and higher TPOT for the optimized policy.',
         '`python -m cli.aisp bench run --targets labs/dynamic_router --profile minimal` records artifacts comparing baseline/optimized harness runs.',
         '`python -m cli.aisp bench run --targets labs/dynamic_router:dynamic_router_vllm --target-extra-arg labs/dynamic_router:dynamic_router_vllm="--model /path/to/model --decode-gpus 0,1"` succeeds on hosts with at least two GPUs and a local model copy.',
@@ -3933,8 +3934,8 @@ ENTRIES["labs/dynamic_router"] = lab_entry(
         '`python -m cli.aisp bench run --targets labs/dynamic_router:topology_probe` captures GPU↔NUMA mappings and distance matrices for consumption by the router.',
     ],
     notes=[
-        'The dual-pool policies produce different batch shapes. On the pinned vLLM 0.16 stack with GPT-OSS-20B, the default backend produced different greedy tokens for identical prompts, including across repeated optimized runs. The explicit batch-invariant Triton configuration above matched all 1,734 output elements on 2×B200. Apply the same backend and environment to both arms; the option does not change the default backend for other workloads. Other models and stacks still require their own correctness check.',
-        'The pinned vLLM 0.16 engine path accepts an unset `CUDA_VISIBLE_DEVICES` or numeric physical indices such as `0,1`; whole-GPU UUID tokens such as `GPU-...` raise a launch-configuration error before engine construction. An allocation launcher that receives whole-GPU UUIDs must resolve those exact assigned devices to numeric physical indices and preserve their order when exporting `CUDA_VISIBLE_DEVICES`; it must not substitute different GPUs. This lab does not support `MIG-...` UUID visibility: keep a MIG allocation unchanged and do not replace it with its parent GPU; obtain a supported whole-GPU allocation before running the lab.',
+        'The dual-pool policies produce different batch shapes. In the retained vLLM 0.16 run with GPT-OSS-20B, the default backend produced different greedy tokens for identical prompts, including across repeated optimized runs. The explicit batch-invariant Triton configuration above matched all 1,734 output elements on 2×B200. Apply the same backend and environment to both arms; the option does not change the default backend for other workloads. Other models and stacks still require their own correctness check.',
+        'In the retained vLLM 0.16 run, the engine accepted an unset `CUDA_VISIBLE_DEVICES` or numeric physical indices such as `0,1`; whole-GPU UUID tokens such as `GPU-...` raised a launch-configuration error before engine construction. Recheck this behavior on the current serving stack. An allocation launcher that receives whole-GPU UUIDs must resolve those exact assigned devices to numeric physical indices and preserve their order when exporting `CUDA_VISIBLE_DEVICES`; it must not substitute different GPUs. This lab does not support `MIG-...` UUID visibility: keep a MIG allocation unchanged and do not replace it with its parent GPU; obtain a supported whole-GPU allocation before running the lab.',
         'The vLLM benchmarks construct each model engine once in `setup()`, execute the harness-required five full-workload warmups, and reuse the idle engines for exactly three steady-state iterations. Every invocation clears completed-request bookkeeping, uses a fresh request-id generation, and still verifies every generated token. Custom metrics report engine startup, warmup request processing, and steady-state request processing separately. Teardown emits a `vllm_engine_lifecycle` JSON record with teardown and end-to-end wall time, so moving engine construction outside the steady-state timer cannot be presented as an end-to-end speedup. Prefix caching remains disabled so every request processes its full declared prompt.',
         "Request TTFT uses a monotonic duration clock sampled at admission and after the engine returns output. vLLM still receives the separate wall-clock arrival timestamp required by its API. A system-clock adjustment therefore cannot change this lab's elapsed request latency or its latency-based routing feedback.",
         "`dynamic_router_vllm` keeps `--routing-arrival-profile all-upfront` as its default: it admits the complete request set before the first engine step. Its optimized arm feeds exact run-local admission counts into the policy's existing smoothed queue-depth metric before each subsequent placement. TTFT and tokens-per-step are retained as output diagnostics; they cannot affect requests that were already admitted. Use the synthetic simulator for continuous arrivals, migration, and KV-locality policy experiments.",
@@ -4846,7 +4847,7 @@ ENTRIES["labs/flashinfer_attention"] = lab_entry(
     notes=[
         "The default head configuration targets a GPT-OSS-20B-style hidden size (`2880`) with `head_dim=64` (`45` heads).",
         "Increase `seq_len` if you want larger sparse regions to dominate the timing.",
-        "Requires FlashInfer (`pip install flashinfer-python==0.6.3`).",
+        "The current PyTorch 2.14.1 B200 stack pins FlashInfer (`flashinfer-python==0.7.2`). Retained measurements predate this runtime and do not qualify the current source until the harness target passes on B200.",
     ],
 )
 
@@ -6263,11 +6264,13 @@ ENTRIES["labs/vllm-deepseek-tuning"] = lab_entry(
         ],
         notes=[
             "This lab is Makefile/script driven today, not harness-target driven.",
-            "Use Docker-backed `vllm` when host `torch` and host `vllm` are mismatched.",
+            "The PyTorch 2.14.1 compatibility smoke must use the repository's host serving stack: PyTorch `2.14.1+cu130`, source-built vLLM `0.33.0.dev0+cu130.torch2141`, and FlashInfer `0.7.2`.",
+            "`scripts/vllm_docker.sh` defaults to the moving `cu130-nightly` image. It is useful for exploratory isolation, but it does not prove compatibility with the repository's exact source-built stack unless the image is overridden by a digest-pinned equivalent.",
         ],
     ),
     validation=[
         "`make smoke` should prove the orchestration path is alive before a full matrix run.",
+        "Inspect the emitted JSON `returncode` values and the final `bench_success`/`bench_failed` counts. `run_matrix.py` continues after a request-benchmark failure and can exit zero after retaining the failure.",
         "`make full` should emit raw logs plus structured `results/*.json` records.",
         "`make artifacts` should regenerate plots and markdown/csv reports from collected results.",
         "If this lab is promoted into benchmark-pair targets later, create explicit named comparison pairs instead of a fake one-size-fits-all optimized wrapper.",
