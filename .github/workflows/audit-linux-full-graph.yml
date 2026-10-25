@@ -64,7 +64,7 @@ jobs:
           test "$(sha256sum "${DIRECT_REQUIREMENTS_PATH}" | cut -d' ' -f1)" = \
             "aa388c2e21c8a2eba8307c99126215e01ba856616888203195157d76a6a0d15a"
           test "$(sha256sum "${CURRENT_REQUIREMENTS_PATH}" | cut -d' ' -f1)" = \
-            "4142cb1aced78f4f619e78eb8e86382c921ec2ad9c59d8fcdc7290beb026f66a"
+            "57efdfa39cc13170c72d5163d826e8c7ee7957a4849a9545d88c947e646ce37a"
           git rev-parse HEAD > "${EVIDENCE_DIR}/source-revision.txt"
           sha256sum \
             "${LOCK_PATH}" \

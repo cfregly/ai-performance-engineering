@@ -1176,8 +1176,8 @@ class RunManifest(BaseModel):
                     "schemaVersion": "1.0"
                 },
                 "software": {
-                    "pytorch_version": "2.9.1+cu130",
-                    "triton_version": "3.5.0",
+                    "pytorch_version": "2.14.1+cu130",
+                    "triton_version": "3.8.0",
                     "python_version": "3.12.0",
                     "os": "linux",
                     "schemaVersion": "1.0"
@@ -1185,7 +1185,7 @@ class RunManifest(BaseModel):
                 "runtime_provenance": {
                     "cuda_available": True,
                     "driver_version": "580.126.09",
-                    "torch_version": "2.9.1+cu130",
+                    "torch_version": "2.14.1+cu130",
                     "cuda_version": "13.0",
                     "cudnn_version": "91300",
                     "python_version": "3.12.0",
@@ -1196,8 +1196,8 @@ class RunManifest(BaseModel):
                     "library_versions": {
                         "numpy": "2.1.2",
                         "nvidia-cublas-cu13": "13.0.0",
-                        "torch": "2.9.1+cu130",
-                        "triton": "3.5.0"
+                        "torch": "2.14.1+cu130",
+                        "triton": "3.8.0"
                     },
                     "library_versions_complete": True,
                     "shadowed_library_versions": {},

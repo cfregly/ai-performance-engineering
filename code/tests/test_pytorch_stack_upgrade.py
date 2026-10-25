@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ast
+import hashlib
 import json
 import os
 import re
@@ -204,6 +205,32 @@ def test_cpu_ci_exercises_the_same_torch_and_triton_release() -> None:
     assert f"triton=={EXPECTED_STACK['triton']}" in workflow
     assert "python -m pip install torch==2.14.1 " in workflow
     assert "--index-url https://download.pytorch.org/whl/cpu" in workflow
+
+
+def test_full_graph_audit_is_bound_to_the_current_requirements() -> None:
+    requirements = CODE_ROOT / "requirements_latest.txt"
+    workflow = (
+        REPOSITORY_ROOT / ".github" / "workflows" / "audit-linux-full-graph.yml"
+    ).read_text(encoding="utf-8")
+    digest = hashlib.sha256(requirements.read_bytes()).hexdigest()
+
+    assert f'"{digest}"' in workflow
+
+
+def test_run_manifest_schema_example_uses_the_supported_stack() -> None:
+    from core.benchmark.run_manifest import RunManifest
+
+    example = RunManifest.model_config["json_schema_extra"]["example"]
+
+    assert example["software"]["pytorch_version"] == EXPECTED_STACK["torch"]
+    assert example["software"]["triton_version"] == EXPECTED_STACK["triton"]
+    assert example["runtime_provenance"]["torch_version"] == EXPECTED_STACK["torch"]
+    assert example["runtime_provenance"]["library_versions"]["torch"] == (
+        EXPECTED_STACK["torch"]
+    )
+    assert example["runtime_provenance"]["library_versions"]["triton"] == (
+        EXPECTED_STACK["triton"]
+    )
 
 
 def test_setup_reads_every_abi_sensitive_pin_from_requirements() -> None:
