@@ -1,0 +1,46 @@
+{
+  "schema": "nested-graph-breaks-public-source/v1",
+  "benchmark_id": "torch-dynamo-nested-graph-breaks-b200-20261020",
+  "description": "The executed worker, analyzer and capture helpers are copied without changes. The protocol has only operational identifier redactions.",
+  "source_files": {
+    "benchmark.py": {
+      "sha256": "4c7a5a8dcef474405be19a87d22cfdeb7ea564c76f19acc67ddcd1125d247689",
+      "matches_retained_source": true
+    },
+    "analyze.py": {
+      "sha256": "7793fbd8d20a1d80ae5cd87081b64909091abaae8c916a480752e977d654f3a3",
+      "matches_retained_source": true
+    },
+    "counter_capture.py": {
+      "sha256": "ef6c4dcb00491f1a5034ef14d55b9b505fbd9b6e744b383fd6d8c2868a938583",
+      "matches_retained_source": true
+    },
+    "profile_capture.py": {
+      "sha256": "ab2bf71e11dab69f0e35f615a6810a15d883a6f26b9bb64430ff24f7d8e9f02e",
+      "matches_retained_source": true
+    },
+    "pytorch-main-dynamo-config.py": {
+      "sha256": "d44a413bf4274ff0ce4384fb0538c3c48a9972af963d8f30c5b16416892ee6b1",
+      "matches_retained_source": true
+    },
+    "test_analyze.py": {
+      "sha256": "b091069154fee8953dc0536558d31aedc50c31e371e584151f54193c5ff0566e",
+      "matches_retained_source": true
+    },
+    "test_counter_capture.py": {
+      "sha256": "b25c3695df73dcc596555e7abe18d555471fa3ac3ee97bcfae5d73bab612db71",
+      "matches_retained_source": true
+    },
+    "protocol.json": {
+      "original_sha256": "28d6e207a49f9b4da8e5615dfeff37f4eb559234e5747b725e08453d598682bd",
+      "public_sha256": "a5ce49eb80a2d44d402d5ce9ef4d9f8ade820472b175a06b822c9a27b2d4b078",
+      "matches_retained_source": false,
+      "redacted_fields": [
+        "operational.owner_thread_id",
+        "operational.ssh_host",
+        "operational.remote_root"
+      ],
+      "scientific_gates_changed": false
+    }
+  }
+}

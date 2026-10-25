@@ -1,0 +1,73 @@
+{
+  "claim_limits": [
+    "This is a controlled compiler microbenchmark.",
+    "Invocation p95 is not a serving latency percentile.",
+    "The eager execution is a correctness reference, not a performance competitor.",
+    "The no-break case gates drift validity and does not establish nested-break benefit.",
+    "No serving, model throughput, or model quality conclusion follows."
+  ],
+  "current_research_publication_decision": {
+    "accepted_tradeoff": "the steady route passes while the startup route and its seed-1 no-break startup control do not pass",
+    "content_permitted": true,
+    "decision": "AUTHORIZED",
+    "retroactive_startup_gate_pass": false,
+    "scientific_gate_effect": "none",
+    "scope": "the exact disclosed research package under research/2026-10-22_nested-graph-breaks"
+  },
+  "decision_boundary": "The fixed protocol scientifically qualifies the steady invocation route and does not qualify the startup route. At experiment closure, the historical all-gates condition withheld the planned Whiteboard content. The current explicit authorization accepts the disclosed startup tradeoff and permits this exact research package. It does not change a scientific gate or retroactively pass the startup route.",
+  "historical_all_gates_content_decision": {
+    "all_reported_gates_pass": false,
+    "content_permitted": false,
+    "decision": "WITHHOLD_ALL_CONTENT",
+    "reason": "Primary first-ten startup improvement fails in all four seeds, and no-break first-ten control fails at seed 1. The frozen protocol permits a steady route win, but that does not satisfy the human all-gates content condition.",
+    "requirement": "Only make the Whiteboard post if it passes all fixed gates."
+  },
+  "historical_evidence_boundary": {
+    "classification": "retained standalone compiler microbenchmark",
+    "hardware": "one NVIDIA B200 executed each worker",
+    "not_established": [
+      "a new canonical repository-harness qualification",
+      "Nsight Compute qualification",
+      "Nsight Systems qualification",
+      "serving latency or throughput",
+      "model quality",
+      "multi-GPU scaling"
+    ],
+    "profile_trace_bytes_published": false,
+    "profiler": "retained PyTorch Chrome CPU and CUDA profile summaries"
+  },
+  "protocol_scientific_verdict": {
+    "capture_qualification_pass": true,
+    "control_rule": "no_break_depth4 steady median baseline/candidate ratio must be within [0.95, 1.05] for every seed on both routes; startup also requires its cold first-10 ratio within [0.95, 1.05] for every seed",
+    "control_validity_pass": true,
+    "cuda_graph_claim_permitted": true,
+    "failure_semantics": "INCONCLUSIVE retains the full raw matrix; the measurement gate, control-validity gate, capture qualification, or more than one did not pass, so no qualified optimization-win claim is supported",
+    "measurement_gate_pass": true,
+    "measurement_win_kind": "steady_invocation",
+    "primary_case": "nested_break_depth8",
+    "qualified_startup_win": false,
+    "qualified_steady_win": true,
+    "startup_control_validity_pass": false,
+    "startup_rule": "observed minimum of four paired-seed cold-first-10 speedup ratios >= 1.10; candidate steady invocation p95 no more than 3% above baseline for every seed",
+    "steady_control_validity_pass": true,
+    "steady_rule": "observed minimum of four paired-seed median speedup ratios >= 1.10; candidate invocation p95 <= baseline for every seed",
+    "verdict": "PASS",
+    "verdict_scope": "predeclared performance thresholds, no-break control validity, and two-arm CUDA Graph capture qualification",
+    "win_kind": "steady_invocation"
+  },
+  "route_outcomes": {
+    "startup": {
+      "capture_gate_pass": true,
+      "control_gate_pass": false,
+      "measurement_gate_pass": false,
+      "status": "FAIL"
+    },
+    "steady": {
+      "capture_gate_pass": true,
+      "control_gate_pass": true,
+      "measurement_gate_pass": true,
+      "status": "PASS"
+    }
+  },
+  "schema": "nested-graph-breaks-public-qualification/v2"
+}

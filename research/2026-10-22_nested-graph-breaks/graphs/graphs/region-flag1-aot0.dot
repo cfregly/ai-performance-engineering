@@ -1,0 +1,89 @@
+digraph G {
+graph [rankdir=TB, bgcolor="transparent", pad="0.25", nodesep="0.17", ranksep="0.35", fontname="Arial", fontsize=17];
+node [shape=box, style="rounded,filled", fontname="Arial", fontsize=12, color="#a9b5c4", margin="0.12,0.08"];
+edge [color="#607187", arrowsize=0.65];
+label="True · AOT 0 · 32 ATen operations";
+n0 [label="input\n%arg0_1", fillcolor="#f0f3f7", tooltip="%arg0_1 : Tensor \"f32[1048576][1]cuda:0\" = PlaceHolder[target=arg0_1]"];
+n1 [label="sin\n%sin", fillcolor="#e7efff", tooltip="%sin : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.sin.default](args = (%arg0_1,), kwargs = {})"];
+n2 [label="multiply 0.5\n%mul", fillcolor="#e2f3ee", tooltip="%mul : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.mul.Tensor](args = (%sin, 0.5), kwargs = {})"];
+n3 [label="add\n%add", fillcolor="#fff0da", tooltip="%add : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.add.Tensor](args = (%mul, %arg0_1), kwargs = {})"];
+n4 [label="cos\n%cos", fillcolor="#eee5fb", tooltip="%cos : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.cos.default](args = (%add,), kwargs = {})"];
+n5 [label="sin\n%sin_1", fillcolor="#e7efff", tooltip="%sin_1 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.sin.default](args = (%cos,), kwargs = {})"];
+n6 [label="multiply 0.5\n%mul_1", fillcolor="#e2f3ee", tooltip="%mul_1 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.mul.Tensor](args = (%sin_1, 0.5), kwargs = {})"];
+n7 [label="add\n%add_1", fillcolor="#fff0da", tooltip="%add_1 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.add.Tensor](args = (%mul_1, %arg0_1), kwargs = {})"];
+n8 [label="cos\n%cos_1", fillcolor="#eee5fb", tooltip="%cos_1 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.cos.default](args = (%add_1,), kwargs = {})"];
+n9 [label="sin\n%sin_2", fillcolor="#e7efff", tooltip="%sin_2 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.sin.default](args = (%cos_1,), kwargs = {})"];
+n10 [label="multiply 0.5\n%mul_2", fillcolor="#e2f3ee", tooltip="%mul_2 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.mul.Tensor](args = (%sin_2, 0.5), kwargs = {})"];
+n11 [label="add\n%add_2", fillcolor="#fff0da", tooltip="%add_2 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.add.Tensor](args = (%mul_2, %arg0_1), kwargs = {})"];
+n12 [label="cos\n%cos_2", fillcolor="#eee5fb", tooltip="%cos_2 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.cos.default](args = (%add_2,), kwargs = {})"];
+n13 [label="sin\n%sin_3", fillcolor="#e7efff", tooltip="%sin_3 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.sin.default](args = (%cos_2,), kwargs = {})"];
+n14 [label="multiply 0.5\n%mul_3", fillcolor="#e2f3ee", tooltip="%mul_3 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.mul.Tensor](args = (%sin_3, 0.5), kwargs = {})"];
+n15 [label="add\n%add_3", fillcolor="#fff0da", tooltip="%add_3 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.add.Tensor](args = (%mul_3, %arg0_1), kwargs = {})"];
+n16 [label="cos\n%cos_3", fillcolor="#eee5fb", tooltip="%cos_3 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.cos.default](args = (%add_3,), kwargs = {})"];
+n17 [label="sin\n%sin_4", fillcolor="#e7efff", tooltip="%sin_4 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.sin.default](args = (%cos_3,), kwargs = {})"];
+n18 [label="multiply 0.5\n%mul_4", fillcolor="#e2f3ee", tooltip="%mul_4 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.mul.Tensor](args = (%sin_4, 0.5), kwargs = {})"];
+n19 [label="add\n%add_4", fillcolor="#fff0da", tooltip="%add_4 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.add.Tensor](args = (%mul_4, %arg0_1), kwargs = {})"];
+n20 [label="cos\n%cos_4", fillcolor="#eee5fb", tooltip="%cos_4 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.cos.default](args = (%add_4,), kwargs = {})"];
+n21 [label="sin\n%sin_5", fillcolor="#e7efff", tooltip="%sin_5 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.sin.default](args = (%cos_4,), kwargs = {})"];
+n22 [label="multiply 0.5\n%mul_5", fillcolor="#e2f3ee", tooltip="%mul_5 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.mul.Tensor](args = (%sin_5, 0.5), kwargs = {})"];
+n23 [label="add\n%add_5", fillcolor="#fff0da", tooltip="%add_5 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.add.Tensor](args = (%mul_5, %arg0_1), kwargs = {})"];
+n24 [label="cos\n%cos_5", fillcolor="#eee5fb", tooltip="%cos_5 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.cos.default](args = (%add_5,), kwargs = {})"];
+n25 [label="sin\n%sin_6", fillcolor="#e7efff", tooltip="%sin_6 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.sin.default](args = (%cos_5,), kwargs = {})"];
+n26 [label="multiply 0.5\n%mul_6", fillcolor="#e2f3ee", tooltip="%mul_6 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.mul.Tensor](args = (%sin_6, 0.5), kwargs = {})"];
+n27 [label="add\n%add_6", fillcolor="#fff0da", tooltip="%add_6 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.add.Tensor](args = (%mul_6, %arg0_1), kwargs = {})"];
+n28 [label="cos\n%cos_6", fillcolor="#eee5fb", tooltip="%cos_6 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.cos.default](args = (%add_6,), kwargs = {})"];
+n29 [label="sin\n%sin_7", fillcolor="#e7efff", tooltip="%sin_7 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.sin.default](args = (%cos_6,), kwargs = {})"];
+n30 [label="multiply 0.5\n%mul_7", fillcolor="#e2f3ee", tooltip="%mul_7 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.mul.Tensor](args = (%sin_7, 0.5), kwargs = {})"];
+n31 [label="add\n%add_7", fillcolor="#fff0da", tooltip="%add_7 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.add.Tensor](args = (%mul_7, %arg0_1), kwargs = {})"];
+n32 [label="cos\n%cos_7", fillcolor="#eee5fb", tooltip="%cos_7 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.cos.default](args = (%add_7,), kwargs = {})"];
+n0 -> n1;
+n1 -> n2;
+n2 -> n3;
+n0 -> n3;
+n3 -> n4;
+n4 -> n5;
+n5 -> n6;
+n6 -> n7;
+n0 -> n7;
+n7 -> n8;
+n8 -> n9;
+n9 -> n10;
+n10 -> n11;
+n0 -> n11;
+n11 -> n12;
+n12 -> n13;
+n13 -> n14;
+n14 -> n15;
+n0 -> n15;
+n15 -> n16;
+n16 -> n17;
+n17 -> n18;
+n18 -> n19;
+n0 -> n19;
+n19 -> n20;
+n20 -> n21;
+n21 -> n22;
+n22 -> n23;
+n0 -> n23;
+n23 -> n24;
+n24 -> n25;
+n25 -> n26;
+n26 -> n27;
+n0 -> n27;
+n27 -> n28;
+n28 -> n29;
+n29 -> n30;
+n30 -> n31;
+n0 -> n31;
+n31 -> n32;
+{rank=same; n1; n2; n3; n4;}
+{rank=same; n5; n6; n7; n8;}
+{rank=same; n9; n10; n11; n12;}
+{rank=same; n13; n14; n15; n16;}
+{rank=same; n17; n18; n19; n20;}
+{rank=same; n21; n22; n23; n24;}
+{rank=same; n25; n26; n27; n28;}
+{rank=same; n29; n30; n31; n32;}
+out0 [label="return 0", fillcolor="#f0f3f7"];
+n32 -> out0;
+}

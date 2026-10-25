@@ -1,0 +1,2507 @@
+{
+  "schema": "aiperf.inductor.graph.fragment.extraction.v1",
+  "source": "public projections of retained seed-0 depth-8 Inductor wrapper graph-fragment comments",
+  "execution_performed": false,
+  "graph_kind": "ATen graph fragments embedded in emitted Inductor wrappers, not CUDA Graph definition DOT",
+  "inter_region_edges_retained": false,
+  "arms": {
+    "0": [
+      {
+        "flag": false,
+        "aot_id": 0,
+        "source_path": "sources/region-flag0-aot0.py",
+        "nodes": [
+          {
+            "id": "n0",
+            "name": "arg0_1",
+            "kind": "input",
+            "op": "input",
+            "raw": "%arg0_1 : Tensor \"f32[1048576][1]cuda:0\" = PlaceHolder[target=arg0_1]"
+          },
+          {
+            "id": "n1",
+            "name": "sin",
+            "kind": "operation",
+            "op": "sin",
+            "target": "torch.ops.aten.sin.default",
+            "args": "(%arg0_1,)",
+            "raw": "%sin : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.sin.default](args = (%arg0_1,), kwargs = {})"
+          },
+          {
+            "id": "n2",
+            "name": "mul",
+            "kind": "operation",
+            "op": "mul",
+            "target": "torch.ops.aten.mul.Tensor",
+            "args": "(%sin, 0.5)",
+            "raw": "%mul : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.mul.Tensor](args = (%sin, 0.5), kwargs = {})"
+          },
+          {
+            "id": "n3",
+            "name": "add",
+            "kind": "operation",
+            "op": "add",
+            "target": "torch.ops.aten.add.Tensor",
+            "args": "(%mul, %arg0_1)",
+            "raw": "%add : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.add.Tensor](args = (%mul, %arg0_1), kwargs = {})"
+          },
+          {
+            "id": "n4",
+            "name": "cos",
+            "kind": "operation",
+            "op": "cos",
+            "target": "torch.ops.aten.cos.default",
+            "args": "(%add,)",
+            "raw": "%cos : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.cos.default](args = (%add,), kwargs = {})"
+          }
+        ],
+        "edges": [
+          {
+            "from": "n0",
+            "to": "n1",
+            "source_variable": "arg0_1"
+          },
+          {
+            "from": "n1",
+            "to": "n2",
+            "source_variable": "sin"
+          },
+          {
+            "from": "n2",
+            "to": "n3",
+            "source_variable": "mul"
+          },
+          {
+            "from": "n0",
+            "to": "n3",
+            "source_variable": "arg0_1"
+          },
+          {
+            "from": "n3",
+            "to": "n4",
+            "source_variable": "add"
+          }
+        ],
+        "outputs": [
+          "n4"
+        ],
+        "operation_count": 4,
+        "raw_graph_fragment": "#   %arg0_1 : Tensor \"f32[1048576][1]cuda:0\" = PlaceHolder[target=arg0_1]\n#   %sin : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.sin.default](args = (%arg0_1,), kwargs = {})\n#   %mul : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.mul.Tensor](args = (%sin, 0.5), kwargs = {})\n#   %add : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.add.Tensor](args = (%mul, %arg0_1), kwargs = {})\n#   %cos : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.cos.default](args = (%add,), kwargs = {})\n#   return %cos",
+        "original_source_sha256": "be0b1c1ff8aec5831f14b9f218625a64d17868fdcc9becf8cd4edcd0633a0afc",
+        "source_sha256": "63bf1e8f5b97216171ae3960ee3208d3c597aa6809d36d1dbe4034f6fe810b94"
+      },
+      {
+        "flag": false,
+        "aot_id": 1,
+        "source_path": "sources/region-flag0-aot1.py",
+        "nodes": [
+          {
+            "id": "n0",
+            "name": "arg0_1",
+            "kind": "input",
+            "op": "input",
+            "raw": "%arg0_1 : Tensor \"f32[1048576][1]cuda:0\" = PlaceHolder[target=arg0_1]"
+          },
+          {
+            "id": "n1",
+            "name": "arg1_1",
+            "kind": "input",
+            "op": "input",
+            "raw": "%arg1_1 : Tensor \"f32[1048576][1]cuda:0\" = PlaceHolder[target=arg1_1]"
+          },
+          {
+            "id": "n2",
+            "name": "sin",
+            "kind": "operation",
+            "op": "sin",
+            "target": "torch.ops.aten.sin.default",
+            "args": "(%arg0_1,)",
+            "raw": "%sin : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.sin.default](args = (%arg0_1,), kwargs = {})"
+          },
+          {
+            "id": "n3",
+            "name": "mul",
+            "kind": "operation",
+            "op": "mul",
+            "target": "torch.ops.aten.mul.Tensor",
+            "args": "(%sin, 0.5)",
+            "raw": "%mul : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.mul.Tensor](args = (%sin, 0.5), kwargs = {})"
+          },
+          {
+            "id": "n4",
+            "name": "add",
+            "kind": "operation",
+            "op": "add",
+            "target": "torch.ops.aten.add.Tensor",
+            "args": "(%mul, %arg1_1)",
+            "raw": "%add : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.add.Tensor](args = (%mul, %arg1_1), kwargs = {})"
+          },
+          {
+            "id": "n5",
+            "name": "cos",
+            "kind": "operation",
+            "op": "cos",
+            "target": "torch.ops.aten.cos.default",
+            "args": "(%add,)",
+            "raw": "%cos : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.cos.default](args = (%add,), kwargs = {})"
+          }
+        ],
+        "edges": [
+          {
+            "from": "n0",
+            "to": "n2",
+            "source_variable": "arg0_1"
+          },
+          {
+            "from": "n2",
+            "to": "n3",
+            "source_variable": "sin"
+          },
+          {
+            "from": "n3",
+            "to": "n4",
+            "source_variable": "mul"
+          },
+          {
+            "from": "n1",
+            "to": "n4",
+            "source_variable": "arg1_1"
+          },
+          {
+            "from": "n4",
+            "to": "n5",
+            "source_variable": "add"
+          }
+        ],
+        "outputs": [
+          "n5"
+        ],
+        "operation_count": 4,
+        "raw_graph_fragment": "#   %arg0_1 : Tensor \"f32[1048576][1]cuda:0\" = PlaceHolder[target=arg0_1]\n#   %arg1_1 : Tensor \"f32[1048576][1]cuda:0\" = PlaceHolder[target=arg1_1]\n#   %sin : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.sin.default](args = (%arg0_1,), kwargs = {})\n#   %mul : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.mul.Tensor](args = (%sin, 0.5), kwargs = {})\n#   %add : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.add.Tensor](args = (%mul, %arg1_1), kwargs = {})\n#   %cos : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.cos.default](args = (%add,), kwargs = {})\n#   return %cos",
+        "original_source_sha256": "e542badaf31d52000441b529342f3a47c735375822278bfb35359b15c1a49d75",
+        "source_sha256": "38ee08a0ae437ffdc1853c365c0e8e42af8b0c4635597f5af1101d4201680bc0"
+      },
+      {
+        "flag": false,
+        "aot_id": 2,
+        "source_path": "sources/region-flag0-aot2.py",
+        "nodes": [
+          {
+            "id": "n0",
+            "name": "arg0_1",
+            "kind": "input",
+            "op": "input",
+            "raw": "%arg0_1 : Tensor \"f32[1048576][1]cuda:0\" = PlaceHolder[target=arg0_1]"
+          },
+          {
+            "id": "n1",
+            "name": "arg1_1",
+            "kind": "input",
+            "op": "input",
+            "raw": "%arg1_1 : Tensor \"f32[1048576][1]cuda:0\" = PlaceHolder[target=arg1_1]"
+          },
+          {
+            "id": "n2",
+            "name": "sin",
+            "kind": "operation",
+            "op": "sin",
+            "target": "torch.ops.aten.sin.default",
+            "args": "(%arg0_1,)",
+            "raw": "%sin : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.sin.default](args = (%arg0_1,), kwargs = {})"
+          },
+          {
+            "id": "n3",
+            "name": "mul",
+            "kind": "operation",
+            "op": "mul",
+            "target": "torch.ops.aten.mul.Tensor",
+            "args": "(%sin, 0.5)",
+            "raw": "%mul : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.mul.Tensor](args = (%sin, 0.5), kwargs = {})"
+          },
+          {
+            "id": "n4",
+            "name": "add",
+            "kind": "operation",
+            "op": "add",
+            "target": "torch.ops.aten.add.Tensor",
+            "args": "(%mul, %arg1_1)",
+            "raw": "%add : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.add.Tensor](args = (%mul, %arg1_1), kwargs = {})"
+          },
+          {
+            "id": "n5",
+            "name": "cos",
+            "kind": "operation",
+            "op": "cos",
+            "target": "torch.ops.aten.cos.default",
+            "args": "(%add,)",
+            "raw": "%cos : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.cos.default](args = (%add,), kwargs = {})"
+          }
+        ],
+        "edges": [
+          {
+            "from": "n0",
+            "to": "n2",
+            "source_variable": "arg0_1"
+          },
+          {
+            "from": "n2",
+            "to": "n3",
+            "source_variable": "sin"
+          },
+          {
+            "from": "n3",
+            "to": "n4",
+            "source_variable": "mul"
+          },
+          {
+            "from": "n1",
+            "to": "n4",
+            "source_variable": "arg1_1"
+          },
+          {
+            "from": "n4",
+            "to": "n5",
+            "source_variable": "add"
+          }
+        ],
+        "outputs": [
+          "n5"
+        ],
+        "operation_count": 4,
+        "raw_graph_fragment": "#   %arg0_1 : Tensor \"f32[1048576][1]cuda:0\" = PlaceHolder[target=arg0_1]\n#   %arg1_1 : Tensor \"f32[1048576][1]cuda:0\" = PlaceHolder[target=arg1_1]\n#   %sin : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.sin.default](args = (%arg0_1,), kwargs = {})\n#   %mul : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.mul.Tensor](args = (%sin, 0.5), kwargs = {})\n#   %add : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.add.Tensor](args = (%mul, %arg1_1), kwargs = {})\n#   %cos : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.cos.default](args = (%add,), kwargs = {})\n#   return %cos",
+        "original_source_sha256": "925b32080b43a38c3e28ad5d14d0497468c40b5e1e31e07086ba2050ff23e61f",
+        "source_sha256": "092f66fdfe5801910afe8b15fd530497bef69e1dd78b8643acec30281f98efc6"
+      },
+      {
+        "flag": false,
+        "aot_id": 3,
+        "source_path": "sources/region-flag0-aot3.py",
+        "nodes": [
+          {
+            "id": "n0",
+            "name": "arg0_1",
+            "kind": "input",
+            "op": "input",
+            "raw": "%arg0_1 : Tensor \"f32[1048576][1]cuda:0\" = PlaceHolder[target=arg0_1]"
+          },
+          {
+            "id": "n1",
+            "name": "arg1_1",
+            "kind": "input",
+            "op": "input",
+            "raw": "%arg1_1 : Tensor \"f32[1048576][1]cuda:0\" = PlaceHolder[target=arg1_1]"
+          },
+          {
+            "id": "n2",
+            "name": "sin",
+            "kind": "operation",
+            "op": "sin",
+            "target": "torch.ops.aten.sin.default",
+            "args": "(%arg0_1,)",
+            "raw": "%sin : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.sin.default](args = (%arg0_1,), kwargs = {})"
+          },
+          {
+            "id": "n3",
+            "name": "mul",
+            "kind": "operation",
+            "op": "mul",
+            "target": "torch.ops.aten.mul.Tensor",
+            "args": "(%sin, 0.5)",
+            "raw": "%mul : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.mul.Tensor](args = (%sin, 0.5), kwargs = {})"
+          },
+          {
+            "id": "n4",
+            "name": "add",
+            "kind": "operation",
+            "op": "add",
+            "target": "torch.ops.aten.add.Tensor",
+            "args": "(%mul, %arg1_1)",
+            "raw": "%add : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.add.Tensor](args = (%mul, %arg1_1), kwargs = {})"
+          },
+          {
+            "id": "n5",
+            "name": "cos",
+            "kind": "operation",
+            "op": "cos",
+            "target": "torch.ops.aten.cos.default",
+            "args": "(%add,)",
+            "raw": "%cos : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.cos.default](args = (%add,), kwargs = {})"
+          }
+        ],
+        "edges": [
+          {
+            "from": "n0",
+            "to": "n2",
+            "source_variable": "arg0_1"
+          },
+          {
+            "from": "n2",
+            "to": "n3",
+            "source_variable": "sin"
+          },
+          {
+            "from": "n3",
+            "to": "n4",
+            "source_variable": "mul"
+          },
+          {
+            "from": "n1",
+            "to": "n4",
+            "source_variable": "arg1_1"
+          },
+          {
+            "from": "n4",
+            "to": "n5",
+            "source_variable": "add"
+          }
+        ],
+        "outputs": [
+          "n5"
+        ],
+        "operation_count": 4,
+        "raw_graph_fragment": "#   %arg0_1 : Tensor \"f32[1048576][1]cuda:0\" = PlaceHolder[target=arg0_1]\n#   %arg1_1 : Tensor \"f32[1048576][1]cuda:0\" = PlaceHolder[target=arg1_1]\n#   %sin : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.sin.default](args = (%arg0_1,), kwargs = {})\n#   %mul : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.mul.Tensor](args = (%sin, 0.5), kwargs = {})\n#   %add : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.add.Tensor](args = (%mul, %arg1_1), kwargs = {})\n#   %cos : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.cos.default](args = (%add,), kwargs = {})\n#   return %cos",
+        "original_source_sha256": "dbb0efa70de87de1511445511cb76c9342775b8d60d5d2e064ceb70bce06c891",
+        "source_sha256": "65b2c03ee40ac07d760d976c89bdc8fba01dce5d5351cd1a9a1ea01da42c2575"
+      },
+      {
+        "flag": false,
+        "aot_id": 4,
+        "source_path": "sources/region-flag0-aot4.py",
+        "nodes": [
+          {
+            "id": "n0",
+            "name": "arg0_1",
+            "kind": "input",
+            "op": "input",
+            "raw": "%arg0_1 : Tensor \"f32[1048576][1]cuda:0\" = PlaceHolder[target=arg0_1]"
+          },
+          {
+            "id": "n1",
+            "name": "arg1_1",
+            "kind": "input",
+            "op": "input",
+            "raw": "%arg1_1 : Tensor \"f32[1048576][1]cuda:0\" = PlaceHolder[target=arg1_1]"
+          },
+          {
+            "id": "n2",
+            "name": "sin",
+            "kind": "operation",
+            "op": "sin",
+            "target": "torch.ops.aten.sin.default",
+            "args": "(%arg0_1,)",
+            "raw": "%sin : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.sin.default](args = (%arg0_1,), kwargs = {})"
+          },
+          {
+            "id": "n3",
+            "name": "mul",
+            "kind": "operation",
+            "op": "mul",
+            "target": "torch.ops.aten.mul.Tensor",
+            "args": "(%sin, 0.5)",
+            "raw": "%mul : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.mul.Tensor](args = (%sin, 0.5), kwargs = {})"
+          },
+          {
+            "id": "n4",
+            "name": "add",
+            "kind": "operation",
+            "op": "add",
+            "target": "torch.ops.aten.add.Tensor",
+            "args": "(%mul, %arg1_1)",
+            "raw": "%add : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.add.Tensor](args = (%mul, %arg1_1), kwargs = {})"
+          },
+          {
+            "id": "n5",
+            "name": "cos",
+            "kind": "operation",
+            "op": "cos",
+            "target": "torch.ops.aten.cos.default",
+            "args": "(%add,)",
+            "raw": "%cos : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.cos.default](args = (%add,), kwargs = {})"
+          }
+        ],
+        "edges": [
+          {
+            "from": "n0",
+            "to": "n2",
+            "source_variable": "arg0_1"
+          },
+          {
+            "from": "n2",
+            "to": "n3",
+            "source_variable": "sin"
+          },
+          {
+            "from": "n3",
+            "to": "n4",
+            "source_variable": "mul"
+          },
+          {
+            "from": "n1",
+            "to": "n4",
+            "source_variable": "arg1_1"
+          },
+          {
+            "from": "n4",
+            "to": "n5",
+            "source_variable": "add"
+          }
+        ],
+        "outputs": [
+          "n5"
+        ],
+        "operation_count": 4,
+        "raw_graph_fragment": "#   %arg0_1 : Tensor \"f32[1048576][1]cuda:0\" = PlaceHolder[target=arg0_1]\n#   %arg1_1 : Tensor \"f32[1048576][1]cuda:0\" = PlaceHolder[target=arg1_1]\n#   %sin : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.sin.default](args = (%arg0_1,), kwargs = {})\n#   %mul : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.mul.Tensor](args = (%sin, 0.5), kwargs = {})\n#   %add : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.add.Tensor](args = (%mul, %arg1_1), kwargs = {})\n#   %cos : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.cos.default](args = (%add,), kwargs = {})\n#   return %cos",
+        "original_source_sha256": "a072eb4d2eae86f6f1bef577aabc677780567ab98bac3e74760f53a5c0421966",
+        "source_sha256": "7415e74e689ac715c865e7bc930a06d24a50981e5b1b5d2cdc7b28b2c8f5a25b"
+      },
+      {
+        "flag": false,
+        "aot_id": 5,
+        "source_path": "sources/region-flag0-aot5.py",
+        "nodes": [
+          {
+            "id": "n0",
+            "name": "arg0_1",
+            "kind": "input",
+            "op": "input",
+            "raw": "%arg0_1 : Tensor \"f32[1048576][1]cuda:0\" = PlaceHolder[target=arg0_1]"
+          },
+          {
+            "id": "n1",
+            "name": "arg1_1",
+            "kind": "input",
+            "op": "input",
+            "raw": "%arg1_1 : Tensor \"f32[1048576][1]cuda:0\" = PlaceHolder[target=arg1_1]"
+          },
+          {
+            "id": "n2",
+            "name": "sin",
+            "kind": "operation",
+            "op": "sin",
+            "target": "torch.ops.aten.sin.default",
+            "args": "(%arg0_1,)",
+            "raw": "%sin : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.sin.default](args = (%arg0_1,), kwargs = {})"
+          },
+          {
+            "id": "n3",
+            "name": "mul",
+            "kind": "operation",
+            "op": "mul",
+            "target": "torch.ops.aten.mul.Tensor",
+            "args": "(%sin, 0.5)",
+            "raw": "%mul : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.mul.Tensor](args = (%sin, 0.5), kwargs = {})"
+          },
+          {
+            "id": "n4",
+            "name": "add",
+            "kind": "operation",
+            "op": "add",
+            "target": "torch.ops.aten.add.Tensor",
+            "args": "(%mul, %arg1_1)",
+            "raw": "%add : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.add.Tensor](args = (%mul, %arg1_1), kwargs = {})"
+          },
+          {
+            "id": "n5",
+            "name": "cos",
+            "kind": "operation",
+            "op": "cos",
+            "target": "torch.ops.aten.cos.default",
+            "args": "(%add,)",
+            "raw": "%cos : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.cos.default](args = (%add,), kwargs = {})"
+          }
+        ],
+        "edges": [
+          {
+            "from": "n0",
+            "to": "n2",
+            "source_variable": "arg0_1"
+          },
+          {
+            "from": "n2",
+            "to": "n3",
+            "source_variable": "sin"
+          },
+          {
+            "from": "n3",
+            "to": "n4",
+            "source_variable": "mul"
+          },
+          {
+            "from": "n1",
+            "to": "n4",
+            "source_variable": "arg1_1"
+          },
+          {
+            "from": "n4",
+            "to": "n5",
+            "source_variable": "add"
+          }
+        ],
+        "outputs": [
+          "n5"
+        ],
+        "operation_count": 4,
+        "raw_graph_fragment": "#   %arg0_1 : Tensor \"f32[1048576][1]cuda:0\" = PlaceHolder[target=arg0_1]\n#   %arg1_1 : Tensor \"f32[1048576][1]cuda:0\" = PlaceHolder[target=arg1_1]\n#   %sin : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.sin.default](args = (%arg0_1,), kwargs = {})\n#   %mul : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.mul.Tensor](args = (%sin, 0.5), kwargs = {})\n#   %add : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.add.Tensor](args = (%mul, %arg1_1), kwargs = {})\n#   %cos : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.cos.default](args = (%add,), kwargs = {})\n#   return %cos",
+        "original_source_sha256": "0d867c19fb9f95729694d6731598fc763bd50447efb0e782946043783c2bf497",
+        "source_sha256": "bd0ff1e153bd7aef2bfa2566dc67298d313baa3ca1521cac114d805b74110ea5"
+      },
+      {
+        "flag": false,
+        "aot_id": 6,
+        "source_path": "sources/region-flag0-aot6.py",
+        "nodes": [
+          {
+            "id": "n0",
+            "name": "arg0_1",
+            "kind": "input",
+            "op": "input",
+            "raw": "%arg0_1 : Tensor \"f32[1048576][1]cuda:0\" = PlaceHolder[target=arg0_1]"
+          },
+          {
+            "id": "n1",
+            "name": "arg1_1",
+            "kind": "input",
+            "op": "input",
+            "raw": "%arg1_1 : Tensor \"f32[1048576][1]cuda:0\" = PlaceHolder[target=arg1_1]"
+          },
+          {
+            "id": "n2",
+            "name": "sin",
+            "kind": "operation",
+            "op": "sin",
+            "target": "torch.ops.aten.sin.default",
+            "args": "(%arg0_1,)",
+            "raw": "%sin : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.sin.default](args = (%arg0_1,), kwargs = {})"
+          },
+          {
+            "id": "n3",
+            "name": "mul",
+            "kind": "operation",
+            "op": "mul",
+            "target": "torch.ops.aten.mul.Tensor",
+            "args": "(%sin, 0.5)",
+            "raw": "%mul : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.mul.Tensor](args = (%sin, 0.5), kwargs = {})"
+          },
+          {
+            "id": "n4",
+            "name": "add",
+            "kind": "operation",
+            "op": "add",
+            "target": "torch.ops.aten.add.Tensor",
+            "args": "(%mul, %arg1_1)",
+            "raw": "%add : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.add.Tensor](args = (%mul, %arg1_1), kwargs = {})"
+          },
+          {
+            "id": "n5",
+            "name": "cos",
+            "kind": "operation",
+            "op": "cos",
+            "target": "torch.ops.aten.cos.default",
+            "args": "(%add,)",
+            "raw": "%cos : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.cos.default](args = (%add,), kwargs = {})"
+          }
+        ],
+        "edges": [
+          {
+            "from": "n0",
+            "to": "n2",
+            "source_variable": "arg0_1"
+          },
+          {
+            "from": "n2",
+            "to": "n3",
+            "source_variable": "sin"
+          },
+          {
+            "from": "n3",
+            "to": "n4",
+            "source_variable": "mul"
+          },
+          {
+            "from": "n1",
+            "to": "n4",
+            "source_variable": "arg1_1"
+          },
+          {
+            "from": "n4",
+            "to": "n5",
+            "source_variable": "add"
+          }
+        ],
+        "outputs": [
+          "n5"
+        ],
+        "operation_count": 4,
+        "raw_graph_fragment": "#   %arg0_1 : Tensor \"f32[1048576][1]cuda:0\" = PlaceHolder[target=arg0_1]\n#   %arg1_1 : Tensor \"f32[1048576][1]cuda:0\" = PlaceHolder[target=arg1_1]\n#   %sin : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.sin.default](args = (%arg0_1,), kwargs = {})\n#   %mul : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.mul.Tensor](args = (%sin, 0.5), kwargs = {})\n#   %add : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.add.Tensor](args = (%mul, %arg1_1), kwargs = {})\n#   %cos : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.cos.default](args = (%add,), kwargs = {})\n#   return %cos",
+        "original_source_sha256": "774170715998f077b0ce6616f827e778441e999bf9a5db7d3d938507f99d9c97",
+        "source_sha256": "c22d6bd4c97c75bde3aa81e4eac274813e079b1c8532d5de40ffb1ad0f2b6eb8"
+      },
+      {
+        "flag": false,
+        "aot_id": 7,
+        "source_path": "sources/region-flag0-aot7.py",
+        "nodes": [
+          {
+            "id": "n0",
+            "name": "arg0_1",
+            "kind": "input",
+            "op": "input",
+            "raw": "%arg0_1 : Tensor \"f32[1048576][1]cuda:0\" = PlaceHolder[target=arg0_1]"
+          },
+          {
+            "id": "n1",
+            "name": "arg1_1",
+            "kind": "input",
+            "op": "input",
+            "raw": "%arg1_1 : Tensor \"f32[1048576][1]cuda:0\" = PlaceHolder[target=arg1_1]"
+          },
+          {
+            "id": "n2",
+            "name": "sin",
+            "kind": "operation",
+            "op": "sin",
+            "target": "torch.ops.aten.sin.default",
+            "args": "(%arg0_1,)",
+            "raw": "%sin : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.sin.default](args = (%arg0_1,), kwargs = {})"
+          },
+          {
+            "id": "n3",
+            "name": "mul",
+            "kind": "operation",
+            "op": "mul",
+            "target": "torch.ops.aten.mul.Tensor",
+            "args": "(%sin, 0.5)",
+            "raw": "%mul : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.mul.Tensor](args = (%sin, 0.5), kwargs = {})"
+          },
+          {
+            "id": "n4",
+            "name": "add",
+            "kind": "operation",
+            "op": "add",
+            "target": "torch.ops.aten.add.Tensor",
+            "args": "(%mul, %arg1_1)",
+            "raw": "%add : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.add.Tensor](args = (%mul, %arg1_1), kwargs = {})"
+          },
+          {
+            "id": "n5",
+            "name": "cos",
+            "kind": "operation",
+            "op": "cos",
+            "target": "torch.ops.aten.cos.default",
+            "args": "(%add,)",
+            "raw": "%cos : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.cos.default](args = (%add,), kwargs = {})"
+          }
+        ],
+        "edges": [
+          {
+            "from": "n0",
+            "to": "n2",
+            "source_variable": "arg0_1"
+          },
+          {
+            "from": "n2",
+            "to": "n3",
+            "source_variable": "sin"
+          },
+          {
+            "from": "n3",
+            "to": "n4",
+            "source_variable": "mul"
+          },
+          {
+            "from": "n1",
+            "to": "n4",
+            "source_variable": "arg1_1"
+          },
+          {
+            "from": "n4",
+            "to": "n5",
+            "source_variable": "add"
+          }
+        ],
+        "outputs": [
+          "n5"
+        ],
+        "operation_count": 4,
+        "raw_graph_fragment": "#   %arg0_1 : Tensor \"f32[1048576][1]cuda:0\" = PlaceHolder[target=arg0_1]\n#   %arg1_1 : Tensor \"f32[1048576][1]cuda:0\" = PlaceHolder[target=arg1_1]\n#   %sin : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.sin.default](args = (%arg0_1,), kwargs = {})\n#   %mul : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.mul.Tensor](args = (%sin, 0.5), kwargs = {})\n#   %add : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.add.Tensor](args = (%mul, %arg1_1), kwargs = {})\n#   %cos : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.cos.default](args = (%add,), kwargs = {})\n#   return %cos",
+        "original_source_sha256": "7f40a99ec235ad7fa821ba82a4a8abadad155ef6e6248a762c4657c8cd910baf",
+        "source_sha256": "e20a003377bd707ff3e7e8ad12dc467ce27cc7b6e41feba950bbd0d597b5b8db"
+      },
+      {
+        "flag": false,
+        "aot_id": 8,
+        "source_path": "sources/region-flag0-aot8.py",
+        "nodes": [
+          {
+            "id": "n0",
+            "name": "arg0_1",
+            "kind": "input",
+            "op": "input",
+            "raw": "%arg0_1 : Tensor \"f32[1048576][1]cuda:0\" = PlaceHolder[target=arg0_1]"
+          },
+          {
+            "id": "n1",
+            "name": "arg1_1",
+            "kind": "input",
+            "op": "input",
+            "raw": "%arg1_1 : Tensor \"f32[1048576][1]cuda:0\" = PlaceHolder[target=arg1_1]"
+          },
+          {
+            "id": "n2",
+            "name": "sin",
+            "kind": "operation",
+            "op": "sin",
+            "target": "torch.ops.aten.sin.default",
+            "args": "(%arg0_1,)",
+            "raw": "%sin : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.sin.default](args = (%arg0_1,), kwargs = {})"
+          },
+          {
+            "id": "n3",
+            "name": "mul",
+            "kind": "operation",
+            "op": "mul",
+            "target": "torch.ops.aten.mul.Tensor",
+            "args": "(%sin, 0.25)",
+            "raw": "%mul : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.mul.Tensor](args = (%sin, 0.25), kwargs = {})"
+          },
+          {
+            "id": "n4",
+            "name": "add",
+            "kind": "operation",
+            "op": "add",
+            "target": "torch.ops.aten.add.Tensor",
+            "args": "(%mul, %arg1_1)",
+            "raw": "%add : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.add.Tensor](args = (%mul, %arg1_1), kwargs = {})"
+          },
+          {
+            "id": "n5",
+            "name": "cos",
+            "kind": "operation",
+            "op": "cos",
+            "target": "torch.ops.aten.cos.default",
+            "args": "(%add,)",
+            "raw": "%cos : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.cos.default](args = (%add,), kwargs = {})"
+          }
+        ],
+        "edges": [
+          {
+            "from": "n0",
+            "to": "n2",
+            "source_variable": "arg0_1"
+          },
+          {
+            "from": "n2",
+            "to": "n3",
+            "source_variable": "sin"
+          },
+          {
+            "from": "n3",
+            "to": "n4",
+            "source_variable": "mul"
+          },
+          {
+            "from": "n1",
+            "to": "n4",
+            "source_variable": "arg1_1"
+          },
+          {
+            "from": "n4",
+            "to": "n5",
+            "source_variable": "add"
+          }
+        ],
+        "outputs": [
+          "n5"
+        ],
+        "operation_count": 4,
+        "raw_graph_fragment": "#   %arg0_1 : Tensor \"f32[1048576][1]cuda:0\" = PlaceHolder[target=arg0_1]\n#   %arg1_1 : Tensor \"f32[1048576][1]cuda:0\" = PlaceHolder[target=arg1_1]\n#   %sin : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.sin.default](args = (%arg0_1,), kwargs = {})\n#   %mul : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.mul.Tensor](args = (%sin, 0.25), kwargs = {})\n#   %add : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.add.Tensor](args = (%mul, %arg1_1), kwargs = {})\n#   %cos : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.cos.default](args = (%add,), kwargs = {})\n#   return %cos",
+        "original_source_sha256": "0ca96b6163d13727374abccf7cb2d73cad92b05f9abc5cffb6d2187edb8158d0",
+        "source_sha256": "fdf9ebeecf0811205f37d93fc7c2aefe51010f171da707f498749540935d83dc"
+      },
+      {
+        "flag": false,
+        "aot_id": 9,
+        "source_path": "sources/region-flag0-aot9.py",
+        "nodes": [
+          {
+            "id": "n0",
+            "name": "arg0_1",
+            "kind": "input",
+            "op": "input",
+            "raw": "%arg0_1 : Tensor \"f32[1048576][1]cuda:0\" = PlaceHolder[target=arg0_1]"
+          },
+          {
+            "id": "n1",
+            "name": "arg1_1",
+            "kind": "input",
+            "op": "input",
+            "raw": "%arg1_1 : Tensor \"f32[1048576][1]cuda:0\" = PlaceHolder[target=arg1_1]"
+          },
+          {
+            "id": "n2",
+            "name": "sin",
+            "kind": "operation",
+            "op": "sin",
+            "target": "torch.ops.aten.sin.default",
+            "args": "(%arg0_1,)",
+            "raw": "%sin : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.sin.default](args = (%arg0_1,), kwargs = {})"
+          },
+          {
+            "id": "n3",
+            "name": "mul",
+            "kind": "operation",
+            "op": "mul",
+            "target": "torch.ops.aten.mul.Tensor",
+            "args": "(%sin, 0.25)",
+            "raw": "%mul : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.mul.Tensor](args = (%sin, 0.25), kwargs = {})"
+          },
+          {
+            "id": "n4",
+            "name": "add",
+            "kind": "operation",
+            "op": "add",
+            "target": "torch.ops.aten.add.Tensor",
+            "args": "(%mul, %arg1_1)",
+            "raw": "%add : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.add.Tensor](args = (%mul, %arg1_1), kwargs = {})"
+          },
+          {
+            "id": "n5",
+            "name": "cos",
+            "kind": "operation",
+            "op": "cos",
+            "target": "torch.ops.aten.cos.default",
+            "args": "(%add,)",
+            "raw": "%cos : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.cos.default](args = (%add,), kwargs = {})"
+          }
+        ],
+        "edges": [
+          {
+            "from": "n0",
+            "to": "n2",
+            "source_variable": "arg0_1"
+          },
+          {
+            "from": "n2",
+            "to": "n3",
+            "source_variable": "sin"
+          },
+          {
+            "from": "n3",
+            "to": "n4",
+            "source_variable": "mul"
+          },
+          {
+            "from": "n1",
+            "to": "n4",
+            "source_variable": "arg1_1"
+          },
+          {
+            "from": "n4",
+            "to": "n5",
+            "source_variable": "add"
+          }
+        ],
+        "outputs": [
+          "n5"
+        ],
+        "operation_count": 4,
+        "raw_graph_fragment": "#   %arg0_1 : Tensor \"f32[1048576][1]cuda:0\" = PlaceHolder[target=arg0_1]\n#   %arg1_1 : Tensor \"f32[1048576][1]cuda:0\" = PlaceHolder[target=arg1_1]\n#   %sin : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.sin.default](args = (%arg0_1,), kwargs = {})\n#   %mul : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.mul.Tensor](args = (%sin, 0.25), kwargs = {})\n#   %add : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.add.Tensor](args = (%mul, %arg1_1), kwargs = {})\n#   %cos : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.cos.default](args = (%add,), kwargs = {})\n#   return %cos",
+        "original_source_sha256": "fe4ed65df3cb2110500711a583bf2b2332f9242f8de513f03a89723e705482e8",
+        "source_sha256": "8385c397dc3265bd6e49f98cd07cac0f195ca58bbc1eb7395779748e4d25d6fc"
+      },
+      {
+        "flag": false,
+        "aot_id": 10,
+        "source_path": "sources/region-flag0-aot10.py",
+        "nodes": [
+          {
+            "id": "n0",
+            "name": "arg0_1",
+            "kind": "input",
+            "op": "input",
+            "raw": "%arg0_1 : Tensor \"f32[1048576][1]cuda:0\" = PlaceHolder[target=arg0_1]"
+          },
+          {
+            "id": "n1",
+            "name": "arg1_1",
+            "kind": "input",
+            "op": "input",
+            "raw": "%arg1_1 : Tensor \"f32[1048576][1]cuda:0\" = PlaceHolder[target=arg1_1]"
+          },
+          {
+            "id": "n2",
+            "name": "sin",
+            "kind": "operation",
+            "op": "sin",
+            "target": "torch.ops.aten.sin.default",
+            "args": "(%arg0_1,)",
+            "raw": "%sin : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.sin.default](args = (%arg0_1,), kwargs = {})"
+          },
+          {
+            "id": "n3",
+            "name": "mul",
+            "kind": "operation",
+            "op": "mul",
+            "target": "torch.ops.aten.mul.Tensor",
+            "args": "(%sin, 0.25)",
+            "raw": "%mul : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.mul.Tensor](args = (%sin, 0.25), kwargs = {})"
+          },
+          {
+            "id": "n4",
+            "name": "add",
+            "kind": "operation",
+            "op": "add",
+            "target": "torch.ops.aten.add.Tensor",
+            "args": "(%mul, %arg1_1)",
+            "raw": "%add : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.add.Tensor](args = (%mul, %arg1_1), kwargs = {})"
+          },
+          {
+            "id": "n5",
+            "name": "cos",
+            "kind": "operation",
+            "op": "cos",
+            "target": "torch.ops.aten.cos.default",
+            "args": "(%add,)",
+            "raw": "%cos : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.cos.default](args = (%add,), kwargs = {})"
+          }
+        ],
+        "edges": [
+          {
+            "from": "n0",
+            "to": "n2",
+            "source_variable": "arg0_1"
+          },
+          {
+            "from": "n2",
+            "to": "n3",
+            "source_variable": "sin"
+          },
+          {
+            "from": "n3",
+            "to": "n4",
+            "source_variable": "mul"
+          },
+          {
+            "from": "n1",
+            "to": "n4",
+            "source_variable": "arg1_1"
+          },
+          {
+            "from": "n4",
+            "to": "n5",
+            "source_variable": "add"
+          }
+        ],
+        "outputs": [
+          "n5"
+        ],
+        "operation_count": 4,
+        "raw_graph_fragment": "#   %arg0_1 : Tensor \"f32[1048576][1]cuda:0\" = PlaceHolder[target=arg0_1]\n#   %arg1_1 : Tensor \"f32[1048576][1]cuda:0\" = PlaceHolder[target=arg1_1]\n#   %sin : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.sin.default](args = (%arg0_1,), kwargs = {})\n#   %mul : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.mul.Tensor](args = (%sin, 0.25), kwargs = {})\n#   %add : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.add.Tensor](args = (%mul, %arg1_1), kwargs = {})\n#   %cos : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.cos.default](args = (%add,), kwargs = {})\n#   return %cos",
+        "original_source_sha256": "86d5ef084ddaea6e5ba4bcb0dfe7014d12e823c3ed6a492e7e94d58051a07597",
+        "source_sha256": "5e0fff656457c3c4ce32b1d99c5534c2588025361f8df6d1593b66405b3e81da"
+      },
+      {
+        "flag": false,
+        "aot_id": 11,
+        "source_path": "sources/region-flag0-aot11.py",
+        "nodes": [
+          {
+            "id": "n0",
+            "name": "arg0_1",
+            "kind": "input",
+            "op": "input",
+            "raw": "%arg0_1 : Tensor \"f32[1048576][1]cuda:0\" = PlaceHolder[target=arg0_1]"
+          },
+          {
+            "id": "n1",
+            "name": "arg1_1",
+            "kind": "input",
+            "op": "input",
+            "raw": "%arg1_1 : Tensor \"f32[1048576][1]cuda:0\" = PlaceHolder[target=arg1_1]"
+          },
+          {
+            "id": "n2",
+            "name": "sin",
+            "kind": "operation",
+            "op": "sin",
+            "target": "torch.ops.aten.sin.default",
+            "args": "(%arg0_1,)",
+            "raw": "%sin : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.sin.default](args = (%arg0_1,), kwargs = {})"
+          },
+          {
+            "id": "n3",
+            "name": "mul",
+            "kind": "operation",
+            "op": "mul",
+            "target": "torch.ops.aten.mul.Tensor",
+            "args": "(%sin, 0.25)",
+            "raw": "%mul : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.mul.Tensor](args = (%sin, 0.25), kwargs = {})"
+          },
+          {
+            "id": "n4",
+            "name": "add",
+            "kind": "operation",
+            "op": "add",
+            "target": "torch.ops.aten.add.Tensor",
+            "args": "(%mul, %arg1_1)",
+            "raw": "%add : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.add.Tensor](args = (%mul, %arg1_1), kwargs = {})"
+          },
+          {
+            "id": "n5",
+            "name": "cos",
+            "kind": "operation",
+            "op": "cos",
+            "target": "torch.ops.aten.cos.default",
+            "args": "(%add,)",
+            "raw": "%cos : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.cos.default](args = (%add,), kwargs = {})"
+          }
+        ],
+        "edges": [
+          {
+            "from": "n0",
+            "to": "n2",
+            "source_variable": "arg0_1"
+          },
+          {
+            "from": "n2",
+            "to": "n3",
+            "source_variable": "sin"
+          },
+          {
+            "from": "n3",
+            "to": "n4",
+            "source_variable": "mul"
+          },
+          {
+            "from": "n1",
+            "to": "n4",
+            "source_variable": "arg1_1"
+          },
+          {
+            "from": "n4",
+            "to": "n5",
+            "source_variable": "add"
+          }
+        ],
+        "outputs": [
+          "n5"
+        ],
+        "operation_count": 4,
+        "raw_graph_fragment": "#   %arg0_1 : Tensor \"f32[1048576][1]cuda:0\" = PlaceHolder[target=arg0_1]\n#   %arg1_1 : Tensor \"f32[1048576][1]cuda:0\" = PlaceHolder[target=arg1_1]\n#   %sin : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.sin.default](args = (%arg0_1,), kwargs = {})\n#   %mul : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.mul.Tensor](args = (%sin, 0.25), kwargs = {})\n#   %add : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.add.Tensor](args = (%mul, %arg1_1), kwargs = {})\n#   %cos : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.cos.default](args = (%add,), kwargs = {})\n#   return %cos",
+        "original_source_sha256": "4adc07bd735ee0433911de1cdf92add36a47ee0f4c00da9c41c3623e7ddc747f",
+        "source_sha256": "828968ecb4df1cca97e91cdda04a84fd9d8ace06edc5683fefe0510d054198ae"
+      },
+      {
+        "flag": false,
+        "aot_id": 12,
+        "source_path": "sources/region-flag0-aot12.py",
+        "nodes": [
+          {
+            "id": "n0",
+            "name": "arg0_1",
+            "kind": "input",
+            "op": "input",
+            "raw": "%arg0_1 : Tensor \"f32[1048576][1]cuda:0\" = PlaceHolder[target=arg0_1]"
+          },
+          {
+            "id": "n1",
+            "name": "arg1_1",
+            "kind": "input",
+            "op": "input",
+            "raw": "%arg1_1 : Tensor \"f32[1048576][1]cuda:0\" = PlaceHolder[target=arg1_1]"
+          },
+          {
+            "id": "n2",
+            "name": "sin",
+            "kind": "operation",
+            "op": "sin",
+            "target": "torch.ops.aten.sin.default",
+            "args": "(%arg0_1,)",
+            "raw": "%sin : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.sin.default](args = (%arg0_1,), kwargs = {})"
+          },
+          {
+            "id": "n3",
+            "name": "mul",
+            "kind": "operation",
+            "op": "mul",
+            "target": "torch.ops.aten.mul.Tensor",
+            "args": "(%sin, 0.25)",
+            "raw": "%mul : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.mul.Tensor](args = (%sin, 0.25), kwargs = {})"
+          },
+          {
+            "id": "n4",
+            "name": "add",
+            "kind": "operation",
+            "op": "add",
+            "target": "torch.ops.aten.add.Tensor",
+            "args": "(%mul, %arg1_1)",
+            "raw": "%add : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.add.Tensor](args = (%mul, %arg1_1), kwargs = {})"
+          },
+          {
+            "id": "n5",
+            "name": "cos",
+            "kind": "operation",
+            "op": "cos",
+            "target": "torch.ops.aten.cos.default",
+            "args": "(%add,)",
+            "raw": "%cos : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.cos.default](args = (%add,), kwargs = {})"
+          }
+        ],
+        "edges": [
+          {
+            "from": "n0",
+            "to": "n2",
+            "source_variable": "arg0_1"
+          },
+          {
+            "from": "n2",
+            "to": "n3",
+            "source_variable": "sin"
+          },
+          {
+            "from": "n3",
+            "to": "n4",
+            "source_variable": "mul"
+          },
+          {
+            "from": "n1",
+            "to": "n4",
+            "source_variable": "arg1_1"
+          },
+          {
+            "from": "n4",
+            "to": "n5",
+            "source_variable": "add"
+          }
+        ],
+        "outputs": [
+          "n5"
+        ],
+        "operation_count": 4,
+        "raw_graph_fragment": "#   %arg0_1 : Tensor \"f32[1048576][1]cuda:0\" = PlaceHolder[target=arg0_1]\n#   %arg1_1 : Tensor \"f32[1048576][1]cuda:0\" = PlaceHolder[target=arg1_1]\n#   %sin : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.sin.default](args = (%arg0_1,), kwargs = {})\n#   %mul : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.mul.Tensor](args = (%sin, 0.25), kwargs = {})\n#   %add : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.add.Tensor](args = (%mul, %arg1_1), kwargs = {})\n#   %cos : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.cos.default](args = (%add,), kwargs = {})\n#   return %cos",
+        "original_source_sha256": "c4bf06e50fcc7845bbe2ea2918ad460e72c87551b1c3fc89066fc026dabd4712",
+        "source_sha256": "352e201e41ebb76e28d87f63db880cec209a7ef5ab1e3fb5b9d457d7b20b36bd"
+      },
+      {
+        "flag": false,
+        "aot_id": 13,
+        "source_path": "sources/region-flag0-aot13.py",
+        "nodes": [
+          {
+            "id": "n0",
+            "name": "arg0_1",
+            "kind": "input",
+            "op": "input",
+            "raw": "%arg0_1 : Tensor \"f32[1048576][1]cuda:0\" = PlaceHolder[target=arg0_1]"
+          },
+          {
+            "id": "n1",
+            "name": "arg1_1",
+            "kind": "input",
+            "op": "input",
+            "raw": "%arg1_1 : Tensor \"f32[1048576][1]cuda:0\" = PlaceHolder[target=arg1_1]"
+          },
+          {
+            "id": "n2",
+            "name": "sin",
+            "kind": "operation",
+            "op": "sin",
+            "target": "torch.ops.aten.sin.default",
+            "args": "(%arg0_1,)",
+            "raw": "%sin : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.sin.default](args = (%arg0_1,), kwargs = {})"
+          },
+          {
+            "id": "n3",
+            "name": "mul",
+            "kind": "operation",
+            "op": "mul",
+            "target": "torch.ops.aten.mul.Tensor",
+            "args": "(%sin, 0.25)",
+            "raw": "%mul : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.mul.Tensor](args = (%sin, 0.25), kwargs = {})"
+          },
+          {
+            "id": "n4",
+            "name": "add",
+            "kind": "operation",
+            "op": "add",
+            "target": "torch.ops.aten.add.Tensor",
+            "args": "(%mul, %arg1_1)",
+            "raw": "%add : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.add.Tensor](args = (%mul, %arg1_1), kwargs = {})"
+          },
+          {
+            "id": "n5",
+            "name": "cos",
+            "kind": "operation",
+            "op": "cos",
+            "target": "torch.ops.aten.cos.default",
+            "args": "(%add,)",
+            "raw": "%cos : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.cos.default](args = (%add,), kwargs = {})"
+          }
+        ],
+        "edges": [
+          {
+            "from": "n0",
+            "to": "n2",
+            "source_variable": "arg0_1"
+          },
+          {
+            "from": "n2",
+            "to": "n3",
+            "source_variable": "sin"
+          },
+          {
+            "from": "n3",
+            "to": "n4",
+            "source_variable": "mul"
+          },
+          {
+            "from": "n1",
+            "to": "n4",
+            "source_variable": "arg1_1"
+          },
+          {
+            "from": "n4",
+            "to": "n5",
+            "source_variable": "add"
+          }
+        ],
+        "outputs": [
+          "n5"
+        ],
+        "operation_count": 4,
+        "raw_graph_fragment": "#   %arg0_1 : Tensor \"f32[1048576][1]cuda:0\" = PlaceHolder[target=arg0_1]\n#   %arg1_1 : Tensor \"f32[1048576][1]cuda:0\" = PlaceHolder[target=arg1_1]\n#   %sin : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.sin.default](args = (%arg0_1,), kwargs = {})\n#   %mul : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.mul.Tensor](args = (%sin, 0.25), kwargs = {})\n#   %add : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.add.Tensor](args = (%mul, %arg1_1), kwargs = {})\n#   %cos : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.cos.default](args = (%add,), kwargs = {})\n#   return %cos",
+        "original_source_sha256": "a5c70b8b6c0a0166cabb2ee20aac310a896123a3a0d9f2c3a322159ab86b0246",
+        "source_sha256": "aa13fffe74768420e600b66b852d39cd08bf8ede054840532ae05c5998b41143"
+      },
+      {
+        "flag": false,
+        "aot_id": 14,
+        "source_path": "sources/region-flag0-aot14.py",
+        "nodes": [
+          {
+            "id": "n0",
+            "name": "arg0_1",
+            "kind": "input",
+            "op": "input",
+            "raw": "%arg0_1 : Tensor \"f32[1048576][1]cuda:0\" = PlaceHolder[target=arg0_1]"
+          },
+          {
+            "id": "n1",
+            "name": "arg1_1",
+            "kind": "input",
+            "op": "input",
+            "raw": "%arg1_1 : Tensor \"f32[1048576][1]cuda:0\" = PlaceHolder[target=arg1_1]"
+          },
+          {
+            "id": "n2",
+            "name": "sin",
+            "kind": "operation",
+            "op": "sin",
+            "target": "torch.ops.aten.sin.default",
+            "args": "(%arg0_1,)",
+            "raw": "%sin : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.sin.default](args = (%arg0_1,), kwargs = {})"
+          },
+          {
+            "id": "n3",
+            "name": "mul",
+            "kind": "operation",
+            "op": "mul",
+            "target": "torch.ops.aten.mul.Tensor",
+            "args": "(%sin, 0.25)",
+            "raw": "%mul : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.mul.Tensor](args = (%sin, 0.25), kwargs = {})"
+          },
+          {
+            "id": "n4",
+            "name": "add",
+            "kind": "operation",
+            "op": "add",
+            "target": "torch.ops.aten.add.Tensor",
+            "args": "(%mul, %arg1_1)",
+            "raw": "%add : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.add.Tensor](args = (%mul, %arg1_1), kwargs = {})"
+          },
+          {
+            "id": "n5",
+            "name": "cos",
+            "kind": "operation",
+            "op": "cos",
+            "target": "torch.ops.aten.cos.default",
+            "args": "(%add,)",
+            "raw": "%cos : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.cos.default](args = (%add,), kwargs = {})"
+          }
+        ],
+        "edges": [
+          {
+            "from": "n0",
+            "to": "n2",
+            "source_variable": "arg0_1"
+          },
+          {
+            "from": "n2",
+            "to": "n3",
+            "source_variable": "sin"
+          },
+          {
+            "from": "n3",
+            "to": "n4",
+            "source_variable": "mul"
+          },
+          {
+            "from": "n1",
+            "to": "n4",
+            "source_variable": "arg1_1"
+          },
+          {
+            "from": "n4",
+            "to": "n5",
+            "source_variable": "add"
+          }
+        ],
+        "outputs": [
+          "n5"
+        ],
+        "operation_count": 4,
+        "raw_graph_fragment": "#   %arg0_1 : Tensor \"f32[1048576][1]cuda:0\" = PlaceHolder[target=arg0_1]\n#   %arg1_1 : Tensor \"f32[1048576][1]cuda:0\" = PlaceHolder[target=arg1_1]\n#   %sin : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.sin.default](args = (%arg0_1,), kwargs = {})\n#   %mul : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.mul.Tensor](args = (%sin, 0.25), kwargs = {})\n#   %add : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.add.Tensor](args = (%mul, %arg1_1), kwargs = {})\n#   %cos : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.cos.default](args = (%add,), kwargs = {})\n#   return %cos",
+        "original_source_sha256": "14cbb05ec16bcfe46deb7d0fb7510779506f35e1dca3c7a96cd634d464bb286f",
+        "source_sha256": "3cd7d45f4ef0aef9469bf3baa2611535f3794930505e3e8ed8583360df52dbcd"
+      },
+      {
+        "flag": false,
+        "aot_id": 15,
+        "source_path": "sources/region-flag0-aot15.py",
+        "nodes": [
+          {
+            "id": "n0",
+            "name": "arg0_1",
+            "kind": "input",
+            "op": "input",
+            "raw": "%arg0_1 : Tensor \"f32[1048576][1]cuda:0\" = PlaceHolder[target=arg0_1]"
+          },
+          {
+            "id": "n1",
+            "name": "arg1_1",
+            "kind": "input",
+            "op": "input",
+            "raw": "%arg1_1 : Tensor \"f32[1048576][1]cuda:0\" = PlaceHolder[target=arg1_1]"
+          },
+          {
+            "id": "n2",
+            "name": "sin",
+            "kind": "operation",
+            "op": "sin",
+            "target": "torch.ops.aten.sin.default",
+            "args": "(%arg0_1,)",
+            "raw": "%sin : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.sin.default](args = (%arg0_1,), kwargs = {})"
+          },
+          {
+            "id": "n3",
+            "name": "mul",
+            "kind": "operation",
+            "op": "mul",
+            "target": "torch.ops.aten.mul.Tensor",
+            "args": "(%sin, 0.25)",
+            "raw": "%mul : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.mul.Tensor](args = (%sin, 0.25), kwargs = {})"
+          },
+          {
+            "id": "n4",
+            "name": "add",
+            "kind": "operation",
+            "op": "add",
+            "target": "torch.ops.aten.add.Tensor",
+            "args": "(%mul, %arg1_1)",
+            "raw": "%add : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.add.Tensor](args = (%mul, %arg1_1), kwargs = {})"
+          },
+          {
+            "id": "n5",
+            "name": "cos",
+            "kind": "operation",
+            "op": "cos",
+            "target": "torch.ops.aten.cos.default",
+            "args": "(%add,)",
+            "raw": "%cos : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.cos.default](args = (%add,), kwargs = {})"
+          }
+        ],
+        "edges": [
+          {
+            "from": "n0",
+            "to": "n2",
+            "source_variable": "arg0_1"
+          },
+          {
+            "from": "n2",
+            "to": "n3",
+            "source_variable": "sin"
+          },
+          {
+            "from": "n3",
+            "to": "n4",
+            "source_variable": "mul"
+          },
+          {
+            "from": "n1",
+            "to": "n4",
+            "source_variable": "arg1_1"
+          },
+          {
+            "from": "n4",
+            "to": "n5",
+            "source_variable": "add"
+          }
+        ],
+        "outputs": [
+          "n5"
+        ],
+        "operation_count": 4,
+        "raw_graph_fragment": "#   %arg0_1 : Tensor \"f32[1048576][1]cuda:0\" = PlaceHolder[target=arg0_1]\n#   %arg1_1 : Tensor \"f32[1048576][1]cuda:0\" = PlaceHolder[target=arg1_1]\n#   %sin : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.sin.default](args = (%arg0_1,), kwargs = {})\n#   %mul : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.mul.Tensor](args = (%sin, 0.25), kwargs = {})\n#   %add : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.add.Tensor](args = (%mul, %arg1_1), kwargs = {})\n#   %cos : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.cos.default](args = (%add,), kwargs = {})\n#   return %cos",
+        "original_source_sha256": "9a1e2eba676237f73309972555a203a6e8638c2824f9ac254b3a1b67d4454a2b",
+        "source_sha256": "02a6208dc8a1a917e064c55bcbccd3c5830880e93a1b2bdab6e1e0a625c1554e"
+      }
+    ],
+    "1": [
+      {
+        "flag": true,
+        "aot_id": 0,
+        "source_path": "sources/region-flag1-aot0.py",
+        "nodes": [
+          {
+            "id": "n0",
+            "name": "arg0_1",
+            "kind": "input",
+            "op": "input",
+            "raw": "%arg0_1 : Tensor \"f32[1048576][1]cuda:0\" = PlaceHolder[target=arg0_1]"
+          },
+          {
+            "id": "n1",
+            "name": "sin",
+            "kind": "operation",
+            "op": "sin",
+            "target": "torch.ops.aten.sin.default",
+            "args": "(%arg0_1,)",
+            "raw": "%sin : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.sin.default](args = (%arg0_1,), kwargs = {})"
+          },
+          {
+            "id": "n2",
+            "name": "mul",
+            "kind": "operation",
+            "op": "mul",
+            "target": "torch.ops.aten.mul.Tensor",
+            "args": "(%sin, 0.5)",
+            "raw": "%mul : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.mul.Tensor](args = (%sin, 0.5), kwargs = {})"
+          },
+          {
+            "id": "n3",
+            "name": "add",
+            "kind": "operation",
+            "op": "add",
+            "target": "torch.ops.aten.add.Tensor",
+            "args": "(%mul, %arg0_1)",
+            "raw": "%add : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.add.Tensor](args = (%mul, %arg0_1), kwargs = {})"
+          },
+          {
+            "id": "n4",
+            "name": "cos",
+            "kind": "operation",
+            "op": "cos",
+            "target": "torch.ops.aten.cos.default",
+            "args": "(%add,)",
+            "raw": "%cos : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.cos.default](args = (%add,), kwargs = {})"
+          },
+          {
+            "id": "n5",
+            "name": "sin_1",
+            "kind": "operation",
+            "op": "sin",
+            "target": "torch.ops.aten.sin.default",
+            "args": "(%cos,)",
+            "raw": "%sin_1 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.sin.default](args = (%cos,), kwargs = {})"
+          },
+          {
+            "id": "n6",
+            "name": "mul_1",
+            "kind": "operation",
+            "op": "mul",
+            "target": "torch.ops.aten.mul.Tensor",
+            "args": "(%sin_1, 0.5)",
+            "raw": "%mul_1 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.mul.Tensor](args = (%sin_1, 0.5), kwargs = {})"
+          },
+          {
+            "id": "n7",
+            "name": "add_1",
+            "kind": "operation",
+            "op": "add",
+            "target": "torch.ops.aten.add.Tensor",
+            "args": "(%mul_1, %arg0_1)",
+            "raw": "%add_1 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.add.Tensor](args = (%mul_1, %arg0_1), kwargs = {})"
+          },
+          {
+            "id": "n8",
+            "name": "cos_1",
+            "kind": "operation",
+            "op": "cos",
+            "target": "torch.ops.aten.cos.default",
+            "args": "(%add_1,)",
+            "raw": "%cos_1 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.cos.default](args = (%add_1,), kwargs = {})"
+          },
+          {
+            "id": "n9",
+            "name": "sin_2",
+            "kind": "operation",
+            "op": "sin",
+            "target": "torch.ops.aten.sin.default",
+            "args": "(%cos_1,)",
+            "raw": "%sin_2 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.sin.default](args = (%cos_1,), kwargs = {})"
+          },
+          {
+            "id": "n10",
+            "name": "mul_2",
+            "kind": "operation",
+            "op": "mul",
+            "target": "torch.ops.aten.mul.Tensor",
+            "args": "(%sin_2, 0.5)",
+            "raw": "%mul_2 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.mul.Tensor](args = (%sin_2, 0.5), kwargs = {})"
+          },
+          {
+            "id": "n11",
+            "name": "add_2",
+            "kind": "operation",
+            "op": "add",
+            "target": "torch.ops.aten.add.Tensor",
+            "args": "(%mul_2, %arg0_1)",
+            "raw": "%add_2 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.add.Tensor](args = (%mul_2, %arg0_1), kwargs = {})"
+          },
+          {
+            "id": "n12",
+            "name": "cos_2",
+            "kind": "operation",
+            "op": "cos",
+            "target": "torch.ops.aten.cos.default",
+            "args": "(%add_2,)",
+            "raw": "%cos_2 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.cos.default](args = (%add_2,), kwargs = {})"
+          },
+          {
+            "id": "n13",
+            "name": "sin_3",
+            "kind": "operation",
+            "op": "sin",
+            "target": "torch.ops.aten.sin.default",
+            "args": "(%cos_2,)",
+            "raw": "%sin_3 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.sin.default](args = (%cos_2,), kwargs = {})"
+          },
+          {
+            "id": "n14",
+            "name": "mul_3",
+            "kind": "operation",
+            "op": "mul",
+            "target": "torch.ops.aten.mul.Tensor",
+            "args": "(%sin_3, 0.5)",
+            "raw": "%mul_3 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.mul.Tensor](args = (%sin_3, 0.5), kwargs = {})"
+          },
+          {
+            "id": "n15",
+            "name": "add_3",
+            "kind": "operation",
+            "op": "add",
+            "target": "torch.ops.aten.add.Tensor",
+            "args": "(%mul_3, %arg0_1)",
+            "raw": "%add_3 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.add.Tensor](args = (%mul_3, %arg0_1), kwargs = {})"
+          },
+          {
+            "id": "n16",
+            "name": "cos_3",
+            "kind": "operation",
+            "op": "cos",
+            "target": "torch.ops.aten.cos.default",
+            "args": "(%add_3,)",
+            "raw": "%cos_3 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.cos.default](args = (%add_3,), kwargs = {})"
+          },
+          {
+            "id": "n17",
+            "name": "sin_4",
+            "kind": "operation",
+            "op": "sin",
+            "target": "torch.ops.aten.sin.default",
+            "args": "(%cos_3,)",
+            "raw": "%sin_4 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.sin.default](args = (%cos_3,), kwargs = {})"
+          },
+          {
+            "id": "n18",
+            "name": "mul_4",
+            "kind": "operation",
+            "op": "mul",
+            "target": "torch.ops.aten.mul.Tensor",
+            "args": "(%sin_4, 0.5)",
+            "raw": "%mul_4 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.mul.Tensor](args = (%sin_4, 0.5), kwargs = {})"
+          },
+          {
+            "id": "n19",
+            "name": "add_4",
+            "kind": "operation",
+            "op": "add",
+            "target": "torch.ops.aten.add.Tensor",
+            "args": "(%mul_4, %arg0_1)",
+            "raw": "%add_4 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.add.Tensor](args = (%mul_4, %arg0_1), kwargs = {})"
+          },
+          {
+            "id": "n20",
+            "name": "cos_4",
+            "kind": "operation",
+            "op": "cos",
+            "target": "torch.ops.aten.cos.default",
+            "args": "(%add_4,)",
+            "raw": "%cos_4 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.cos.default](args = (%add_4,), kwargs = {})"
+          },
+          {
+            "id": "n21",
+            "name": "sin_5",
+            "kind": "operation",
+            "op": "sin",
+            "target": "torch.ops.aten.sin.default",
+            "args": "(%cos_4,)",
+            "raw": "%sin_5 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.sin.default](args = (%cos_4,), kwargs = {})"
+          },
+          {
+            "id": "n22",
+            "name": "mul_5",
+            "kind": "operation",
+            "op": "mul",
+            "target": "torch.ops.aten.mul.Tensor",
+            "args": "(%sin_5, 0.5)",
+            "raw": "%mul_5 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.mul.Tensor](args = (%sin_5, 0.5), kwargs = {})"
+          },
+          {
+            "id": "n23",
+            "name": "add_5",
+            "kind": "operation",
+            "op": "add",
+            "target": "torch.ops.aten.add.Tensor",
+            "args": "(%mul_5, %arg0_1)",
+            "raw": "%add_5 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.add.Tensor](args = (%mul_5, %arg0_1), kwargs = {})"
+          },
+          {
+            "id": "n24",
+            "name": "cos_5",
+            "kind": "operation",
+            "op": "cos",
+            "target": "torch.ops.aten.cos.default",
+            "args": "(%add_5,)",
+            "raw": "%cos_5 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.cos.default](args = (%add_5,), kwargs = {})"
+          },
+          {
+            "id": "n25",
+            "name": "sin_6",
+            "kind": "operation",
+            "op": "sin",
+            "target": "torch.ops.aten.sin.default",
+            "args": "(%cos_5,)",
+            "raw": "%sin_6 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.sin.default](args = (%cos_5,), kwargs = {})"
+          },
+          {
+            "id": "n26",
+            "name": "mul_6",
+            "kind": "operation",
+            "op": "mul",
+            "target": "torch.ops.aten.mul.Tensor",
+            "args": "(%sin_6, 0.5)",
+            "raw": "%mul_6 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.mul.Tensor](args = (%sin_6, 0.5), kwargs = {})"
+          },
+          {
+            "id": "n27",
+            "name": "add_6",
+            "kind": "operation",
+            "op": "add",
+            "target": "torch.ops.aten.add.Tensor",
+            "args": "(%mul_6, %arg0_1)",
+            "raw": "%add_6 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.add.Tensor](args = (%mul_6, %arg0_1), kwargs = {})"
+          },
+          {
+            "id": "n28",
+            "name": "cos_6",
+            "kind": "operation",
+            "op": "cos",
+            "target": "torch.ops.aten.cos.default",
+            "args": "(%add_6,)",
+            "raw": "%cos_6 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.cos.default](args = (%add_6,), kwargs = {})"
+          },
+          {
+            "id": "n29",
+            "name": "sin_7",
+            "kind": "operation",
+            "op": "sin",
+            "target": "torch.ops.aten.sin.default",
+            "args": "(%cos_6,)",
+            "raw": "%sin_7 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.sin.default](args = (%cos_6,), kwargs = {})"
+          },
+          {
+            "id": "n30",
+            "name": "mul_7",
+            "kind": "operation",
+            "op": "mul",
+            "target": "torch.ops.aten.mul.Tensor",
+            "args": "(%sin_7, 0.5)",
+            "raw": "%mul_7 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.mul.Tensor](args = (%sin_7, 0.5), kwargs = {})"
+          },
+          {
+            "id": "n31",
+            "name": "add_7",
+            "kind": "operation",
+            "op": "add",
+            "target": "torch.ops.aten.add.Tensor",
+            "args": "(%mul_7, %arg0_1)",
+            "raw": "%add_7 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.add.Tensor](args = (%mul_7, %arg0_1), kwargs = {})"
+          },
+          {
+            "id": "n32",
+            "name": "cos_7",
+            "kind": "operation",
+            "op": "cos",
+            "target": "torch.ops.aten.cos.default",
+            "args": "(%add_7,)",
+            "raw": "%cos_7 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.cos.default](args = (%add_7,), kwargs = {})"
+          }
+        ],
+        "edges": [
+          {
+            "from": "n0",
+            "to": "n1",
+            "source_variable": "arg0_1"
+          },
+          {
+            "from": "n1",
+            "to": "n2",
+            "source_variable": "sin"
+          },
+          {
+            "from": "n2",
+            "to": "n3",
+            "source_variable": "mul"
+          },
+          {
+            "from": "n0",
+            "to": "n3",
+            "source_variable": "arg0_1"
+          },
+          {
+            "from": "n3",
+            "to": "n4",
+            "source_variable": "add"
+          },
+          {
+            "from": "n4",
+            "to": "n5",
+            "source_variable": "cos"
+          },
+          {
+            "from": "n5",
+            "to": "n6",
+            "source_variable": "sin_1"
+          },
+          {
+            "from": "n6",
+            "to": "n7",
+            "source_variable": "mul_1"
+          },
+          {
+            "from": "n0",
+            "to": "n7",
+            "source_variable": "arg0_1"
+          },
+          {
+            "from": "n7",
+            "to": "n8",
+            "source_variable": "add_1"
+          },
+          {
+            "from": "n8",
+            "to": "n9",
+            "source_variable": "cos_1"
+          },
+          {
+            "from": "n9",
+            "to": "n10",
+            "source_variable": "sin_2"
+          },
+          {
+            "from": "n10",
+            "to": "n11",
+            "source_variable": "mul_2"
+          },
+          {
+            "from": "n0",
+            "to": "n11",
+            "source_variable": "arg0_1"
+          },
+          {
+            "from": "n11",
+            "to": "n12",
+            "source_variable": "add_2"
+          },
+          {
+            "from": "n12",
+            "to": "n13",
+            "source_variable": "cos_2"
+          },
+          {
+            "from": "n13",
+            "to": "n14",
+            "source_variable": "sin_3"
+          },
+          {
+            "from": "n14",
+            "to": "n15",
+            "source_variable": "mul_3"
+          },
+          {
+            "from": "n0",
+            "to": "n15",
+            "source_variable": "arg0_1"
+          },
+          {
+            "from": "n15",
+            "to": "n16",
+            "source_variable": "add_3"
+          },
+          {
+            "from": "n16",
+            "to": "n17",
+            "source_variable": "cos_3"
+          },
+          {
+            "from": "n17",
+            "to": "n18",
+            "source_variable": "sin_4"
+          },
+          {
+            "from": "n18",
+            "to": "n19",
+            "source_variable": "mul_4"
+          },
+          {
+            "from": "n0",
+            "to": "n19",
+            "source_variable": "arg0_1"
+          },
+          {
+            "from": "n19",
+            "to": "n20",
+            "source_variable": "add_4"
+          },
+          {
+            "from": "n20",
+            "to": "n21",
+            "source_variable": "cos_4"
+          },
+          {
+            "from": "n21",
+            "to": "n22",
+            "source_variable": "sin_5"
+          },
+          {
+            "from": "n22",
+            "to": "n23",
+            "source_variable": "mul_5"
+          },
+          {
+            "from": "n0",
+            "to": "n23",
+            "source_variable": "arg0_1"
+          },
+          {
+            "from": "n23",
+            "to": "n24",
+            "source_variable": "add_5"
+          },
+          {
+            "from": "n24",
+            "to": "n25",
+            "source_variable": "cos_5"
+          },
+          {
+            "from": "n25",
+            "to": "n26",
+            "source_variable": "sin_6"
+          },
+          {
+            "from": "n26",
+            "to": "n27",
+            "source_variable": "mul_6"
+          },
+          {
+            "from": "n0",
+            "to": "n27",
+            "source_variable": "arg0_1"
+          },
+          {
+            "from": "n27",
+            "to": "n28",
+            "source_variable": "add_6"
+          },
+          {
+            "from": "n28",
+            "to": "n29",
+            "source_variable": "cos_6"
+          },
+          {
+            "from": "n29",
+            "to": "n30",
+            "source_variable": "sin_7"
+          },
+          {
+            "from": "n30",
+            "to": "n31",
+            "source_variable": "mul_7"
+          },
+          {
+            "from": "n0",
+            "to": "n31",
+            "source_variable": "arg0_1"
+          },
+          {
+            "from": "n31",
+            "to": "n32",
+            "source_variable": "add_7"
+          }
+        ],
+        "outputs": [
+          "n32"
+        ],
+        "operation_count": 32,
+        "raw_graph_fragment": "#   %arg0_1 : Tensor \"f32[1048576][1]cuda:0\" = PlaceHolder[target=arg0_1]\n#   %sin : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.sin.default](args = (%arg0_1,), kwargs = {})\n#   %mul : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.mul.Tensor](args = (%sin, 0.5), kwargs = {})\n#   %add : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.add.Tensor](args = (%mul, %arg0_1), kwargs = {})\n#   %cos : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.cos.default](args = (%add,), kwargs = {})\n#   %sin_1 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.sin.default](args = (%cos,), kwargs = {})\n#   %mul_1 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.mul.Tensor](args = (%sin_1, 0.5), kwargs = {})\n#   %add_1 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.add.Tensor](args = (%mul_1, %arg0_1), kwargs = {})\n#   %cos_1 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.cos.default](args = (%add_1,), kwargs = {})\n#   %sin_2 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.sin.default](args = (%cos_1,), kwargs = {})\n#   %mul_2 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.mul.Tensor](args = (%sin_2, 0.5), kwargs = {})\n#   %add_2 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.add.Tensor](args = (%mul_2, %arg0_1), kwargs = {})\n#   %cos_2 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.cos.default](args = (%add_2,), kwargs = {})\n#   %sin_3 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.sin.default](args = (%cos_2,), kwargs = {})\n#   %mul_3 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.mul.Tensor](args = (%sin_3, 0.5), kwargs = {})\n#   %add_3 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.add.Tensor](args = (%mul_3, %arg0_1), kwargs = {})\n#   %cos_3 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.cos.default](args = (%add_3,), kwargs = {})\n#   %sin_4 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.sin.default](args = (%cos_3,), kwargs = {})\n#   %mul_4 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.mul.Tensor](args = (%sin_4, 0.5), kwargs = {})\n#   %add_4 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.add.Tensor](args = (%mul_4, %arg0_1), kwargs = {})\n#   %cos_4 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.cos.default](args = (%add_4,), kwargs = {})\n#   %sin_5 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.sin.default](args = (%cos_4,), kwargs = {})\n#   %mul_5 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.mul.Tensor](args = (%sin_5, 0.5), kwargs = {})\n#   %add_5 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.add.Tensor](args = (%mul_5, %arg0_1), kwargs = {})\n#   %cos_5 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.cos.default](args = (%add_5,), kwargs = {})\n#   %sin_6 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.sin.default](args = (%cos_5,), kwargs = {})\n#   %mul_6 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.mul.Tensor](args = (%sin_6, 0.5), kwargs = {})\n#   %add_6 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.add.Tensor](args = (%mul_6, %arg0_1), kwargs = {})\n#   %cos_6 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.cos.default](args = (%add_6,), kwargs = {})\n#   %sin_7 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.sin.default](args = (%cos_6,), kwargs = {})\n#   %mul_7 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.mul.Tensor](args = (%sin_7, 0.5), kwargs = {})\n#   %add_7 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.add.Tensor](args = (%mul_7, %arg0_1), kwargs = {})\n#   %cos_7 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.cos.default](args = (%add_7,), kwargs = {})\n#   return %cos_7",
+        "original_source_sha256": "96ee078ef0edcfdf744b2daca20b04c239faaa05cd91128910123d6662619731",
+        "source_sha256": "7fa56f1917b567acf202b168c6d7bb223fd57cbe788a8ea4d0b11b614d80a724"
+      },
+      {
+        "flag": true,
+        "aot_id": 1,
+        "source_path": "sources/region-flag1-aot1.py",
+        "nodes": [
+          {
+            "id": "n0",
+            "name": "arg0_1",
+            "kind": "input",
+            "op": "input",
+            "raw": "%arg0_1 : Tensor \"f32[1048576][1]cuda:0\" = PlaceHolder[target=arg0_1]"
+          },
+          {
+            "id": "n1",
+            "name": "arg1_1",
+            "kind": "input",
+            "op": "input",
+            "raw": "%arg1_1 : Tensor \"f32[1048576][1]cuda:0\" = PlaceHolder[target=arg1_1]"
+          },
+          {
+            "id": "n2",
+            "name": "cos_6",
+            "kind": "input",
+            "op": "input",
+            "raw": "%cos_6 : Tensor \"f32[1048576][1]cuda:0\" = PlaceHolder[target=cos_6]"
+          },
+          {
+            "id": "n3",
+            "name": "sin",
+            "kind": "operation",
+            "op": "sin",
+            "target": "torch.ops.aten.sin.default",
+            "args": "(%arg0_1,)",
+            "raw": "%sin : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.sin.default](args = (%arg0_1,), kwargs = {})"
+          },
+          {
+            "id": "n4",
+            "name": "mul",
+            "kind": "operation",
+            "op": "mul",
+            "target": "torch.ops.aten.mul.Tensor",
+            "args": "(%sin, 0.25)",
+            "raw": "%mul : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.mul.Tensor](args = (%sin, 0.25), kwargs = {})"
+          },
+          {
+            "id": "n5",
+            "name": "add",
+            "kind": "operation",
+            "op": "add",
+            "target": "torch.ops.aten.add.Tensor",
+            "args": "(%mul, %arg1_1)",
+            "raw": "%add : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.add.Tensor](args = (%mul, %arg1_1), kwargs = {})"
+          },
+          {
+            "id": "n6",
+            "name": "cos",
+            "kind": "operation",
+            "op": "cos",
+            "target": "torch.ops.aten.cos.default",
+            "args": "(%add,)",
+            "raw": "%cos : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.cos.default](args = (%add,), kwargs = {})"
+          },
+          {
+            "id": "n7",
+            "name": "sin_1",
+            "kind": "operation",
+            "op": "sin",
+            "target": "torch.ops.aten.sin.default",
+            "args": "(%cos,)",
+            "raw": "%sin_1 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.sin.default](args = (%cos,), kwargs = {})"
+          },
+          {
+            "id": "n8",
+            "name": "mul_1",
+            "kind": "operation",
+            "op": "mul",
+            "target": "torch.ops.aten.mul.Tensor",
+            "args": "(%sin_1, 0.25)",
+            "raw": "%mul_1 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.mul.Tensor](args = (%sin_1, 0.25), kwargs = {})"
+          },
+          {
+            "id": "n9",
+            "name": "add_1",
+            "kind": "operation",
+            "op": "add",
+            "target": "torch.ops.aten.add.Tensor",
+            "args": "(%mul_1, %arg1_1)",
+            "raw": "%add_1 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.add.Tensor](args = (%mul_1, %arg1_1), kwargs = {})"
+          },
+          {
+            "id": "n10",
+            "name": "cos_1",
+            "kind": "operation",
+            "op": "cos",
+            "target": "torch.ops.aten.cos.default",
+            "args": "(%add_1,)",
+            "raw": "%cos_1 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.cos.default](args = (%add_1,), kwargs = {})"
+          },
+          {
+            "id": "n11",
+            "name": "sin_2",
+            "kind": "operation",
+            "op": "sin",
+            "target": "torch.ops.aten.sin.default",
+            "args": "(%cos_1,)",
+            "raw": "%sin_2 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.sin.default](args = (%cos_1,), kwargs = {})"
+          },
+          {
+            "id": "n12",
+            "name": "mul_2",
+            "kind": "operation",
+            "op": "mul",
+            "target": "torch.ops.aten.mul.Tensor",
+            "args": "(%sin_2, 0.25)",
+            "raw": "%mul_2 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.mul.Tensor](args = (%sin_2, 0.25), kwargs = {})"
+          },
+          {
+            "id": "n13",
+            "name": "add_2",
+            "kind": "operation",
+            "op": "add",
+            "target": "torch.ops.aten.add.Tensor",
+            "args": "(%mul_2, %arg1_1)",
+            "raw": "%add_2 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.add.Tensor](args = (%mul_2, %arg1_1), kwargs = {})"
+          },
+          {
+            "id": "n14",
+            "name": "cos_2",
+            "kind": "operation",
+            "op": "cos",
+            "target": "torch.ops.aten.cos.default",
+            "args": "(%add_2,)",
+            "raw": "%cos_2 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.cos.default](args = (%add_2,), kwargs = {})"
+          },
+          {
+            "id": "n15",
+            "name": "sin_3",
+            "kind": "operation",
+            "op": "sin",
+            "target": "torch.ops.aten.sin.default",
+            "args": "(%cos_2,)",
+            "raw": "%sin_3 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.sin.default](args = (%cos_2,), kwargs = {})"
+          },
+          {
+            "id": "n16",
+            "name": "mul_3",
+            "kind": "operation",
+            "op": "mul",
+            "target": "torch.ops.aten.mul.Tensor",
+            "args": "(%sin_3, 0.25)",
+            "raw": "%mul_3 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.mul.Tensor](args = (%sin_3, 0.25), kwargs = {})"
+          },
+          {
+            "id": "n17",
+            "name": "add_3",
+            "kind": "operation",
+            "op": "add",
+            "target": "torch.ops.aten.add.Tensor",
+            "args": "(%mul_3, %arg1_1)",
+            "raw": "%add_3 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.add.Tensor](args = (%mul_3, %arg1_1), kwargs = {})"
+          },
+          {
+            "id": "n18",
+            "name": "cos_3",
+            "kind": "operation",
+            "op": "cos",
+            "target": "torch.ops.aten.cos.default",
+            "args": "(%add_3,)",
+            "raw": "%cos_3 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.cos.default](args = (%add_3,), kwargs = {})"
+          },
+          {
+            "id": "n19",
+            "name": "sin_4",
+            "kind": "operation",
+            "op": "sin",
+            "target": "torch.ops.aten.sin.default",
+            "args": "(%cos_3,)",
+            "raw": "%sin_4 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.sin.default](args = (%cos_3,), kwargs = {})"
+          },
+          {
+            "id": "n20",
+            "name": "mul_4",
+            "kind": "operation",
+            "op": "mul",
+            "target": "torch.ops.aten.mul.Tensor",
+            "args": "(%sin_4, 0.25)",
+            "raw": "%mul_4 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.mul.Tensor](args = (%sin_4, 0.25), kwargs = {})"
+          },
+          {
+            "id": "n21",
+            "name": "add_4",
+            "kind": "operation",
+            "op": "add",
+            "target": "torch.ops.aten.add.Tensor",
+            "args": "(%mul_4, %arg1_1)",
+            "raw": "%add_4 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.add.Tensor](args = (%mul_4, %arg1_1), kwargs = {})"
+          },
+          {
+            "id": "n22",
+            "name": "cos_4",
+            "kind": "operation",
+            "op": "cos",
+            "target": "torch.ops.aten.cos.default",
+            "args": "(%add_4,)",
+            "raw": "%cos_4 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.cos.default](args = (%add_4,), kwargs = {})"
+          },
+          {
+            "id": "n23",
+            "name": "sin_5",
+            "kind": "operation",
+            "op": "sin",
+            "target": "torch.ops.aten.sin.default",
+            "args": "(%cos_4,)",
+            "raw": "%sin_5 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.sin.default](args = (%cos_4,), kwargs = {})"
+          },
+          {
+            "id": "n24",
+            "name": "mul_5",
+            "kind": "operation",
+            "op": "mul",
+            "target": "torch.ops.aten.mul.Tensor",
+            "args": "(%sin_5, 0.25)",
+            "raw": "%mul_5 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.mul.Tensor](args = (%sin_5, 0.25), kwargs = {})"
+          },
+          {
+            "id": "n25",
+            "name": "add_5",
+            "kind": "operation",
+            "op": "add",
+            "target": "torch.ops.aten.add.Tensor",
+            "args": "(%mul_5, %arg1_1)",
+            "raw": "%add_5 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.add.Tensor](args = (%mul_5, %arg1_1), kwargs = {})"
+          },
+          {
+            "id": "n26",
+            "name": "cos_5",
+            "kind": "operation",
+            "op": "cos",
+            "target": "torch.ops.aten.cos.default",
+            "args": "(%add_5,)",
+            "raw": "%cos_5 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.cos.default](args = (%add_5,), kwargs = {})"
+          },
+          {
+            "id": "n27",
+            "name": "sin_6",
+            "kind": "operation",
+            "op": "sin",
+            "target": "torch.ops.aten.sin.default",
+            "args": "(%cos_5,)",
+            "raw": "%sin_6 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.sin.default](args = (%cos_5,), kwargs = {})"
+          },
+          {
+            "id": "n28",
+            "name": "mul_6",
+            "kind": "operation",
+            "op": "mul",
+            "target": "torch.ops.aten.mul.Tensor",
+            "args": "(%sin_6, 0.25)",
+            "raw": "%mul_6 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.mul.Tensor](args = (%sin_6, 0.25), kwargs = {})"
+          },
+          {
+            "id": "n29",
+            "name": "add_6",
+            "kind": "operation",
+            "op": "add",
+            "target": "torch.ops.aten.add.Tensor",
+            "args": "(%mul_6, %arg1_1)",
+            "raw": "%add_6 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.add.Tensor](args = (%mul_6, %arg1_1), kwargs = {})"
+          },
+          {
+            "id": "n30",
+            "name": "cos_6",
+            "kind": "operation",
+            "op": "cos",
+            "target": "torch.ops.aten.cos.default",
+            "args": "(%add_6,)",
+            "raw": "%cos_6 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.cos.default](args = (%add_6,), kwargs = {})"
+          },
+          {
+            "id": "n31",
+            "name": "sin_7",
+            "kind": "operation",
+            "op": "sin",
+            "target": "torch.ops.aten.sin.default",
+            "args": "(%cos_6,)",
+            "raw": "%sin_7 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.sin.default](args = (%cos_6,), kwargs = {})"
+          },
+          {
+            "id": "n32",
+            "name": "mul_7",
+            "kind": "operation",
+            "op": "mul",
+            "target": "torch.ops.aten.mul.Tensor",
+            "args": "(%sin_7, 0.25)",
+            "raw": "%mul_7 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.mul.Tensor](args = (%sin_7, 0.25), kwargs = {})"
+          },
+          {
+            "id": "n33",
+            "name": "add_7",
+            "kind": "operation",
+            "op": "add",
+            "target": "torch.ops.aten.add.Tensor",
+            "args": "(%mul_7, %arg1_1)",
+            "raw": "%add_7 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.add.Tensor](args = (%mul_7, %arg1_1), kwargs = {})"
+          },
+          {
+            "id": "n34",
+            "name": "cos_7",
+            "kind": "operation",
+            "op": "cos",
+            "target": "torch.ops.aten.cos.default",
+            "args": "(%add_7,)",
+            "raw": "%cos_7 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.cos.default](args = (%add_7,), kwargs = {})"
+          }
+        ],
+        "edges": [
+          {
+            "from": "n0",
+            "to": "n3",
+            "source_variable": "arg0_1"
+          },
+          {
+            "from": "n3",
+            "to": "n4",
+            "source_variable": "sin"
+          },
+          {
+            "from": "n4",
+            "to": "n5",
+            "source_variable": "mul"
+          },
+          {
+            "from": "n1",
+            "to": "n5",
+            "source_variable": "arg1_1"
+          },
+          {
+            "from": "n5",
+            "to": "n6",
+            "source_variable": "add"
+          },
+          {
+            "from": "n6",
+            "to": "n7",
+            "source_variable": "cos"
+          },
+          {
+            "from": "n7",
+            "to": "n8",
+            "source_variable": "sin_1"
+          },
+          {
+            "from": "n8",
+            "to": "n9",
+            "source_variable": "mul_1"
+          },
+          {
+            "from": "n1",
+            "to": "n9",
+            "source_variable": "arg1_1"
+          },
+          {
+            "from": "n9",
+            "to": "n10",
+            "source_variable": "add_1"
+          },
+          {
+            "from": "n10",
+            "to": "n11",
+            "source_variable": "cos_1"
+          },
+          {
+            "from": "n11",
+            "to": "n12",
+            "source_variable": "sin_2"
+          },
+          {
+            "from": "n12",
+            "to": "n13",
+            "source_variable": "mul_2"
+          },
+          {
+            "from": "n1",
+            "to": "n13",
+            "source_variable": "arg1_1"
+          },
+          {
+            "from": "n13",
+            "to": "n14",
+            "source_variable": "add_2"
+          },
+          {
+            "from": "n14",
+            "to": "n15",
+            "source_variable": "cos_2"
+          },
+          {
+            "from": "n15",
+            "to": "n16",
+            "source_variable": "sin_3"
+          },
+          {
+            "from": "n16",
+            "to": "n17",
+            "source_variable": "mul_3"
+          },
+          {
+            "from": "n1",
+            "to": "n17",
+            "source_variable": "arg1_1"
+          },
+          {
+            "from": "n17",
+            "to": "n18",
+            "source_variable": "add_3"
+          },
+          {
+            "from": "n18",
+            "to": "n19",
+            "source_variable": "cos_3"
+          },
+          {
+            "from": "n19",
+            "to": "n20",
+            "source_variable": "sin_4"
+          },
+          {
+            "from": "n20",
+            "to": "n21",
+            "source_variable": "mul_4"
+          },
+          {
+            "from": "n1",
+            "to": "n21",
+            "source_variable": "arg1_1"
+          },
+          {
+            "from": "n21",
+            "to": "n22",
+            "source_variable": "add_4"
+          },
+          {
+            "from": "n22",
+            "to": "n23",
+            "source_variable": "cos_4"
+          },
+          {
+            "from": "n23",
+            "to": "n24",
+            "source_variable": "sin_5"
+          },
+          {
+            "from": "n24",
+            "to": "n25",
+            "source_variable": "mul_5"
+          },
+          {
+            "from": "n1",
+            "to": "n25",
+            "source_variable": "arg1_1"
+          },
+          {
+            "from": "n25",
+            "to": "n26",
+            "source_variable": "add_5"
+          },
+          {
+            "from": "n26",
+            "to": "n27",
+            "source_variable": "cos_5"
+          },
+          {
+            "from": "n27",
+            "to": "n28",
+            "source_variable": "sin_6"
+          },
+          {
+            "from": "n28",
+            "to": "n29",
+            "source_variable": "mul_6"
+          },
+          {
+            "from": "n1",
+            "to": "n29",
+            "source_variable": "arg1_1"
+          },
+          {
+            "from": "n29",
+            "to": "n30",
+            "source_variable": "add_6"
+          },
+          {
+            "from": "n30",
+            "to": "n31",
+            "source_variable": "cos_6"
+          },
+          {
+            "from": "n31",
+            "to": "n32",
+            "source_variable": "sin_7"
+          },
+          {
+            "from": "n32",
+            "to": "n33",
+            "source_variable": "mul_7"
+          },
+          {
+            "from": "n1",
+            "to": "n33",
+            "source_variable": "arg1_1"
+          },
+          {
+            "from": "n33",
+            "to": "n34",
+            "source_variable": "add_7"
+          }
+        ],
+        "outputs": [
+          "n30",
+          "n34"
+        ],
+        "operation_count": 32,
+        "raw_graph_fragment": "#   %arg0_1 : Tensor \"f32[1048576][1]cuda:0\" = PlaceHolder[target=arg0_1]\n#   %arg1_1 : Tensor \"f32[1048576][1]cuda:0\" = PlaceHolder[target=arg1_1]\n#   %cos_6 : Tensor \"f32[1048576][1]cuda:0\" = PlaceHolder[target=cos_6]\n#   %sin : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.sin.default](args = (%arg0_1,), kwargs = {})\n#   %mul : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.mul.Tensor](args = (%sin, 0.25), kwargs = {})\n#   %add : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.add.Tensor](args = (%mul, %arg1_1), kwargs = {})\n#   %cos : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.cos.default](args = (%add,), kwargs = {})\n#   %sin_1 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.sin.default](args = (%cos,), kwargs = {})\n#   %mul_1 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.mul.Tensor](args = (%sin_1, 0.25), kwargs = {})\n#   %add_1 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.add.Tensor](args = (%mul_1, %arg1_1), kwargs = {})\n#   %cos_1 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.cos.default](args = (%add_1,), kwargs = {})\n#   %sin_2 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.sin.default](args = (%cos_1,), kwargs = {})\n#   %mul_2 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.mul.Tensor](args = (%sin_2, 0.25), kwargs = {})\n#   %add_2 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.add.Tensor](args = (%mul_2, %arg1_1), kwargs = {})\n#   %cos_2 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.cos.default](args = (%add_2,), kwargs = {})\n#   %sin_3 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.sin.default](args = (%cos_2,), kwargs = {})\n#   %mul_3 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.mul.Tensor](args = (%sin_3, 0.25), kwargs = {})\n#   %add_3 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.add.Tensor](args = (%mul_3, %arg1_1), kwargs = {})\n#   %cos_3 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.cos.default](args = (%add_3,), kwargs = {})\n#   %sin_4 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.sin.default](args = (%cos_3,), kwargs = {})\n#   %mul_4 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.mul.Tensor](args = (%sin_4, 0.25), kwargs = {})\n#   %add_4 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.add.Tensor](args = (%mul_4, %arg1_1), kwargs = {})\n#   %cos_4 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.cos.default](args = (%add_4,), kwargs = {})\n#   %sin_5 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.sin.default](args = (%cos_4,), kwargs = {})\n#   %mul_5 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.mul.Tensor](args = (%sin_5, 0.25), kwargs = {})\n#   %add_5 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.add.Tensor](args = (%mul_5, %arg1_1), kwargs = {})\n#   %cos_5 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.cos.default](args = (%add_5,), kwargs = {})\n#   %sin_6 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.sin.default](args = (%cos_5,), kwargs = {})\n#   %mul_6 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.mul.Tensor](args = (%sin_6, 0.25), kwargs = {})\n#   %add_6 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.add.Tensor](args = (%mul_6, %arg1_1), kwargs = {})\n#   %cos_6 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.cos.default](args = (%add_6,), kwargs = {})\n#   %sin_7 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.sin.default](args = (%cos_6,), kwargs = {})\n#   %mul_7 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.mul.Tensor](args = (%sin_7, 0.25), kwargs = {})\n#   %add_7 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.add.Tensor](args = (%mul_7, %arg1_1), kwargs = {})\n#   %cos_7 : Tensor \"f32[1048576][1]cuda:0\"[num_users=1] = call_function[target=torch.ops.aten.cos.default](args = (%add_7,), kwargs = {})\n#   return %cos_6,%cos_7",
+        "original_source_sha256": "4cea0a79131fa84c652e458e1c023c9f4ac5734d25078d9e1e79f5e4db250939",
+        "source_sha256": "7ab2192587b8b082088e2b2cd6cc1207ff2da26238b956adb068e6ebab588c2f"
+      }
+    ]
+  },
+  "public_projection": {
+    "original_sha256": "e3330ba534f59caec3e4de23f8717e529cf400aa5fc91263cb58ad936aa98ac6",
+    "redactions": [
+      "machine-local cache paths and cache-key filenames"
+    ],
+    "content_statement": "The public projection changes source identities only. ATen graph fragments, parsed nodes, edges, outputs, operation counts, and all numeric values are unchanged.",
+    "graph_content_sha256": "bc29bbfcb87d6cef834ec18d3b691263cdedb4bfeec514f323f2b6d8a436f1a6"
+  }
+}

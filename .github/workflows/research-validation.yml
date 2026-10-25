@@ -1,0 +1,50 @@
+name: Research package validation
+
+on:
+  pull_request:
+    paths:
+      - "research/2026-10-22_nested-graph-breaks/**"
+      - ".github/workflows/research-validation.yml"
+  push:
+    branches: [main]
+    paths:
+      - "research/2026-10-22_nested-graph-breaks/**"
+      - ".github/workflows/research-validation.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  retained-evidence:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: research/2026-10-22_nested-graph-breaks
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+      - name: Check Python correctness
+        run: |
+          python -m pip install ruff==0.8.4
+          ruff check . --select E9,F63,F7,F82,B006,B023
+      - name: Test the original analyzer and public evidence
+        run: python -m unittest -v test_analyze test_counter_capture test_publication
+      - name: Re-analyze all 24 retained workers
+        run: python analyze.py results --out /tmp/nested-graphs-analysis.json --markdown /tmp/nested-graphs-analysis.md
+      - name: Check interactive viewer JavaScript
+        run: |
+          python - <<'PY'
+          import re
+          from pathlib import Path
+          text = Path("graphs/comparison.html").read_text()
+          scripts = re.findall(r"<script>(.*?)</script>", text, re.S)
+          assert scripts, "Viewer has no script"
+          Path("/tmp/nested-graphs-viewer.js").write_text("\n".join(scripts))
+          PY
+          node --check /tmp/nested-graphs-viewer.js

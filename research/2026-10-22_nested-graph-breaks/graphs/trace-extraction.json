@@ -1,0 +1,4601 @@
+{
+  "schema": "aiperf.cuda_graph_trace_extraction.v1",
+  "generated_at_utc": "2026-10-22T02:41:15.950Z",
+  "source_attempt": {
+    "preservation": "read-only extraction from frozen retained evidence",
+    "rerun_performed": false,
+    "remote_or_gpu_action_performed": false
+  },
+  "extraction_scope": {
+    "case": "nested_break_depth8",
+    "seed": 0,
+    "treatments": [
+      false,
+      true
+    ],
+    "compiled_invocations_per_treatment": 5,
+    "launch_filter": "event category equals cuda_runtime and event name equals cudaGraphLaunch",
+    "launch_to_kernel_pairing": "exact equality of args.correlation within one Chrome trace",
+    "invocation_membership": "event start timestamp is inside the CPU user_annotation named nested_graphs_compiled_invocation",
+    "graph_replay_event_shape": "Each graph_replays entry is one cuda_runtime cudaGraphLaunch callback plus the kernel event with the same args.correlation. Kernel name_key resolves through kernel_name_dictionary.",
+    "other_kernel_event_shape": "Each other_kernel_activity entry is one cuda_runtime cudaLaunchKernel callback plus the kernel event with the same args.correlation. Kernel name_key resolves through kernel_name_dictionary."
+  },
+  "inputs": {
+    "qualification_review": {
+      "bytes": 37092,
+      "sha256": "e7b8206fadb5344f103daa6df9ad9e23719f1980420ebe2dc2d04119b75dd6e0"
+    },
+    "arms": {
+      "flag_false": {
+        "trace": {
+          "bytes": 422226,
+          "sha256": "f178bdaca37b059b3f33356542ae8d20c31d511b737d853fef867fa52bef5290"
+        },
+        "result": {
+          "bytes": 31646,
+          "sha256": "fb59a46edac13388bbb3f0c20234b921d4e51a84541abe9103a99428ac7b5f23"
+        }
+      },
+      "flag_true": {
+        "trace": {
+          "bytes": 71482,
+          "sha256": "9457b012d1c3970f46b1d0fe025b6ac63bfff45d52fb85fee5e01c4bf4f1bb2f"
+        },
+        "result": {
+          "bytes": 31549,
+          "sha256": "a545422770d5a84340b5d692c328e9e8a571e317a60880a7c931471d6fd8fda7"
+        }
+      }
+    }
+  },
+  "count_reconciliation": {
+    "required": {
+      "flag_false": {
+        "cudaGraphLaunch": 80,
+        "kernels": 160
+      },
+      "flag_true": {
+        "cudaGraphLaunch": 10,
+        "kernels": 20
+      }
+    },
+    "observed": {
+      "flag_false": {
+        "cudaGraphLaunch": 80,
+        "kernels": 160
+      },
+      "flag_true": {
+        "cudaGraphLaunch": 10,
+        "kernels": 20
+      }
+    },
+    "all_required_counts_match": true
+  },
+  "graph_identity_and_topology": {
+    "runtime_launch_fields_retained": [
+      "External id",
+      "cbid",
+      "correlation"
+    ],
+    "runtime_launch_graph_id_retained": false,
+    "matched_kernel_fields_retained": [
+      "External id",
+      "correlation",
+      "device",
+      "context",
+      "stream",
+      "graph id",
+      "graph node id"
+    ],
+    "matched_kernels_have_nonzero_graph_and_node_ids": true,
+    "graph_ids_repeat_across_the_five_invocations_within_each_trace": true,
+    "ids_may_be_compared_across_traces": false,
+    "explicit_cuda_graph_definition_retained": false,
+    "explicit_graph_node_dependency_edges_retained": false,
+    "ac2g_flow_records_are_runtime_to_gpu_activity_links_not_cuda_graph_topology": true,
+    "interpretation": "The retained traces identify replay-associated kernel nodes through correlation plus kernel graph and node IDs. They do not retain a CUDA Graph definition or node dependency edges, so they cannot reconstruct full graph topology."
+  },
+  "qualification_boundary": {
+    "qualification_review_verdict_scope": "actual environment, source/runtime/PID binding, mechanism, and Chrome-profile capture gates only",
+    "performance_latency_gates": "NOT_EVALUATED_BY_THIS_REVIEW",
+    "qualified_performance_win": "NOT_CLAIMED",
+    "publication_qualification": "UNDETERMINED_WITHIN_THIS_REVIEW",
+    "statement": "Trace event timing is descriptive profile evidence. It is not acceptance performance and does not establish a qualified performance win."
+  },
+  "scope_limitations": [
+    "Only the two frozen seed-0 nested_break_depth8 Chrome traces were extracted.",
+    "No workload rerun, remote access, GPU action, torch import, or source edit was performed.",
+    "Correlation IDs, graph IDs, and graph node IDs are interpreted only within their source trace.",
+    "The trace has no explicit CUDA Graph definition or dependency-edge list.",
+    "Kernel events whose graph id and graph node id are zero are retained as other kernel activity and are not presented as CUDA Graph replay nodes.",
+    "Profile event durations are not substituted for the predeclared acceptance metrics."
+  ],
+  "arms": [
+    {
+      "key": "flag_false",
+      "treatment": {
+        "name": "torch._dynamo.config.nested_graph_breaks",
+        "requested": false,
+        "actual": false,
+        "enabled": 0
+      },
+      "case": "nested_break_depth8",
+      "seed": 0,
+      "status": "pass",
+      "scope": "controlled compiler microbenchmark; no serving, model-throughput, or model-quality claim",
+      "trace_metadata": {
+        "schema_version": 1,
+        "display_time_unit": "ms",
+        "cuda_driver_version": 13000,
+        "cuda_runtime_version": 13000,
+        "cupti_version": 130001,
+        "device": {
+          "id": 0,
+          "name": "NVIDIA B200",
+          "compute_capability": [
+            10,
+            0
+          ],
+          "num_sms": 148
+        }
+      },
+      "compiler_summary": {
+        "api": "torch.compile",
+        "backend": "inductor",
+        "mode": "reduce-overhead",
+        "triton_cudagraphs_requested": true,
+        "dynamo_unique_graphs": 16,
+        "graph_break_event_sum": 9
+      },
+      "expected_counts": {
+        "compiled_invocation_markers": 5,
+        "cuda_runtime_cudaGraphLaunch_events": 80,
+        "total_kernel_events": 160,
+        "per_invocation_cudaGraphLaunch_events": 16,
+        "per_invocation_kernel_events": 32
+      },
+      "observed_counts": {
+        "compiled_invocation_markers": 5,
+        "cuda_runtime_cudaGraphLaunch_events": 80,
+        "unique_graph_launch_correlations": 80,
+        "graph_launch_correlations_with_exactly_one_kernel": 80,
+        "graph_correlated_kernel_events": 80,
+        "total_kernel_events": 160,
+        "other_kernel_events": 80,
+        "cuda_runtime_cudaLaunchKernel_events": 80
+      },
+      "counts_match": true,
+      "per_invocation_graph_launch_counts": [
+        16,
+        16,
+        16,
+        16,
+        16
+      ],
+      "per_invocation_kernel_counts": [
+        32,
+        32,
+        32,
+        32,
+        32
+      ],
+      "kernel_name_counts": {
+        "void at::native::(anonymous namespace)::multi_tensor_apply_kernel<at::native::(anonymous namespace)::TensorListMetadata<2>, at::native::(anonymous namespace)::UnaryOpFunctor<float, 2, 1, 1>, at::native::Copy<float, float> >(at::native::(anonymous namespace)::TensorListMetadata<2>, at::native::(anonymous namespace)::UnaryOpFunctor<float, 2, 1, 1>, at::native::Copy<float, float>)": 80,
+        "triton_poi_fused_add_cos_mul_sin_0": 80
+      },
+      "graph_correlated_kernel_name_counts": {
+        "triton_poi_fused_add_cos_mul_sin_0": 80
+      },
+      "graph_identities": [
+        {
+          "graph_id": 5,
+          "graph_node_ids": [
+            21474836480
+          ],
+          "replay_kernel_occurrences": 5
+        },
+        {
+          "graph_id": 8,
+          "graph_node_ids": [
+            34359738368
+          ],
+          "replay_kernel_occurrences": 5
+        },
+        {
+          "graph_id": 11,
+          "graph_node_ids": [
+            47244640256
+          ],
+          "replay_kernel_occurrences": 5
+        },
+        {
+          "graph_id": 14,
+          "graph_node_ids": [
+            60129542144
+          ],
+          "replay_kernel_occurrences": 5
+        },
+        {
+          "graph_id": 17,
+          "graph_node_ids": [
+            73014444032
+          ],
+          "replay_kernel_occurrences": 5
+        },
+        {
+          "graph_id": 20,
+          "graph_node_ids": [
+            85899345920
+          ],
+          "replay_kernel_occurrences": 5
+        },
+        {
+          "graph_id": 23,
+          "graph_node_ids": [
+            98784247808
+          ],
+          "replay_kernel_occurrences": 5
+        },
+        {
+          "graph_id": 26,
+          "graph_node_ids": [
+            111669149696
+          ],
+          "replay_kernel_occurrences": 5
+        },
+        {
+          "graph_id": 29,
+          "graph_node_ids": [
+            124554051584
+          ],
+          "replay_kernel_occurrences": 5
+        },
+        {
+          "graph_id": 32,
+          "graph_node_ids": [
+            137438953472
+          ],
+          "replay_kernel_occurrences": 5
+        },
+        {
+          "graph_id": 35,
+          "graph_node_ids": [
+            150323855360
+          ],
+          "replay_kernel_occurrences": 5
+        },
+        {
+          "graph_id": 38,
+          "graph_node_ids": [
+            163208757248
+          ],
+          "replay_kernel_occurrences": 5
+        },
+        {
+          "graph_id": 41,
+          "graph_node_ids": [
+            176093659136
+          ],
+          "replay_kernel_occurrences": 5
+        },
+        {
+          "graph_id": 44,
+          "graph_node_ids": [
+            188978561024
+          ],
+          "replay_kernel_occurrences": 5
+        },
+        {
+          "graph_id": 47,
+          "graph_node_ids": [
+            201863462912
+          ],
+          "replay_kernel_occurrences": 5
+        },
+        {
+          "graph_id": 50,
+          "graph_node_ids": [
+            214748364800
+          ],
+          "replay_kernel_occurrences": 5
+        }
+      ],
+      "graph_id_sequence_per_invocation": [
+        [
+          5,
+          8,
+          11,
+          14,
+          17,
+          20,
+          23,
+          26,
+          29,
+          32,
+          35,
+          38,
+          41,
+          44,
+          47,
+          50
+        ],
+        [
+          5,
+          8,
+          11,
+          14,
+          17,
+          20,
+          23,
+          26,
+          29,
+          32,
+          35,
+          38,
+          41,
+          44,
+          47,
+          50
+        ],
+        [
+          5,
+          8,
+          11,
+          14,
+          17,
+          20,
+          23,
+          26,
+          29,
+          32,
+          35,
+          38,
+          41,
+          44,
+          47,
+          50
+        ],
+        [
+          5,
+          8,
+          11,
+          14,
+          17,
+          20,
+          23,
+          26,
+          29,
+          32,
+          35,
+          38,
+          41,
+          44,
+          47,
+          50
+        ],
+        [
+          5,
+          8,
+          11,
+          14,
+          17,
+          20,
+          23,
+          26,
+          29,
+          32,
+          35,
+          38,
+          41,
+          44,
+          47,
+          50
+        ]
+      ],
+      "invocations": [
+        {
+          "index": 1,
+          "marker": {
+            "category": "user_annotation",
+            "name": "nested_graphs_compiled_invocation",
+            "trace_start_us": 1776889149616.21,
+            "arm_start_offset_us": 0,
+            "duration_us": 1959.764,
+            "external_id": 1,
+            "record_function_id": 0,
+            "event_index": 0
+          },
+          "result_diagnostics": {
+            "cpu_call_duration_us": 2114.483,
+            "cuda_event_elapsed_us": 987.5199794769287
+          },
+          "membership_rule": "event start timestamp is inside the CPU compiled-invocation marker",
+          "latest_kernel_end_relative_to_marker_end_us": -44.744,
+          "counts": {
+            "cuda_graph_launches": 16,
+            "graph_correlated_kernels": 16,
+            "other_kernels": 16,
+            "total_kernels": 32
+          },
+          "graph_replays": [
+            {
+              "ordinal": 1,
+              "correlation": 22,
+              "cuda_runtime": {
+                "cbid": 311,
+                "external_id": 8,
+                "start_offset_us": 1102.545,
+                "duration_us": 13.71
+              },
+              "kernel": {
+                "name_key": "graph_replay_kernel",
+                "external_id": 8,
+                "start_offset_us": 1118.574,
+                "duration_us": 3.904,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 5,
+                "graph_node_id": 21474836480
+              }
+            },
+            {
+              "ordinal": 2,
+              "correlation": 34,
+              "cuda_runtime": {
+                "cbid": 311,
+                "external_id": 15,
+                "start_offset_us": 1180.504,
+                "duration_us": 4.34
+              },
+              "kernel": {
+                "name_key": "graph_replay_kernel",
+                "external_id": 15,
+                "start_offset_us": 1190.894,
+                "duration_us": 4,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 8,
+                "graph_node_id": 34359738368
+              }
+            },
+            {
+              "ordinal": 3,
+              "correlation": 46,
+              "cuda_runtime": {
+                "cbid": 311,
+                "external_id": 22,
+                "start_offset_us": 1358.962,
+                "duration_us": 3.47
+              },
+              "kernel": {
+                "name_key": "graph_replay_kernel",
+                "external_id": 22,
+                "start_offset_us": 1369.101,
+                "duration_us": 3.936,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 11,
+                "graph_node_id": 47244640256
+              }
+            },
+            {
+              "ordinal": 4,
+              "correlation": 58,
+              "cuda_runtime": {
+                "cbid": 311,
+                "external_id": 29,
+                "start_offset_us": 1405.481,
+                "duration_us": 2.36
+              },
+              "kernel": {
+                "name_key": "graph_replay_kernel",
+                "external_id": 29,
+                "start_offset_us": 1418.221,
+                "duration_us": 3.968,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 14,
+                "graph_node_id": 60129542144
+              }
+            },
+            {
+              "ordinal": 5,
+              "correlation": 70,
+              "cuda_runtime": {
+                "cbid": 311,
+                "external_id": 36,
+                "start_offset_us": 1445.56,
+                "duration_us": 2.54
+              },
+              "kernel": {
+                "name_key": "graph_replay_kernel",
+                "external_id": 36,
+                "start_offset_us": 1456.813,
+                "duration_us": 3.936,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 17,
+                "graph_node_id": 73014444032
+              }
+            },
+            {
+              "ordinal": 6,
+              "correlation": 82,
+              "cuda_runtime": {
+                "cbid": 311,
+                "external_id": 43,
+                "start_offset_us": 1485.24,
+                "duration_us": 2.77
+              },
+              "kernel": {
+                "name_key": "graph_replay_kernel",
+                "external_id": 43,
+                "start_offset_us": 1498.957,
+                "duration_us": 3.872,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 20,
+                "graph_node_id": 85899345920
+              }
+            },
+            {
+              "ordinal": 7,
+              "correlation": 94,
+              "cuda_runtime": {
+                "cbid": 311,
+                "external_id": 50,
+                "start_offset_us": 1524.589,
+                "duration_us": 2.52
+              },
+              "kernel": {
+                "name_key": "graph_replay_kernel",
+                "external_id": 50,
+                "start_offset_us": 1537.869,
+                "duration_us": 3.904,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 23,
+                "graph_node_id": 98784247808
+              }
+            },
+            {
+              "ordinal": 8,
+              "correlation": 106,
+              "cuda_runtime": {
+                "cbid": 311,
+                "external_id": 57,
+                "start_offset_us": 1563.309,
+                "duration_us": 3.06
+              },
+              "kernel": {
+                "name_key": "graph_replay_kernel",
+                "external_id": 57,
+                "start_offset_us": 1576.653,
+                "duration_us": 3.84,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 26,
+                "graph_node_id": 111669149696
+              }
+            },
+            {
+              "ordinal": 9,
+              "correlation": 118,
+              "cuda_runtime": {
+                "cbid": 311,
+                "external_id": 64,
+                "start_offset_us": 1605.838,
+                "duration_us": 3.02
+              },
+              "kernel": {
+                "name_key": "graph_replay_kernel",
+                "external_id": 64,
+                "start_offset_us": 1617.901,
+                "duration_us": 4.032,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 29,
+                "graph_node_id": 124554051584
+              }
+            },
+            {
+              "ordinal": 10,
+              "correlation": 130,
+              "cuda_runtime": {
+                "cbid": 311,
+                "external_id": 71,
+                "start_offset_us": 1652.298,
+                "duration_us": 2.99
+              },
+              "kernel": {
+                "name_key": "graph_replay_kernel",
+                "external_id": 71,
+                "start_offset_us": 1664.077,
+                "duration_us": 3.936,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 32,
+                "graph_node_id": 137438953472
+              }
+            },
+            {
+              "ordinal": 11,
+              "correlation": 142,
+              "cuda_runtime": {
+                "cbid": 311,
+                "external_id": 78,
+                "start_offset_us": 1695.197,
+                "duration_us": 2.68
+              },
+              "kernel": {
+                "name_key": "graph_replay_kernel",
+                "external_id": 78,
+                "start_offset_us": 1707.148,
+                "duration_us": 4.001,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 35,
+                "graph_node_id": 150323855360
+              }
+            },
+            {
+              "ordinal": 12,
+              "correlation": 154,
+              "cuda_runtime": {
+                "cbid": 311,
+                "external_id": 85,
+                "start_offset_us": 1738.157,
+                "duration_us": 2.41
+              },
+              "kernel": {
+                "name_key": "graph_replay_kernel",
+                "external_id": 85,
+                "start_offset_us": 1751.181,
+                "duration_us": 3.871,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 38,
+                "graph_node_id": 163208757248
+              }
+            },
+            {
+              "ordinal": 13,
+              "correlation": 166,
+              "cuda_runtime": {
+                "cbid": 311,
+                "external_id": 92,
+                "start_offset_us": 1779.786,
+                "duration_us": 2.27
+              },
+              "kernel": {
+                "name_key": "graph_replay_kernel",
+                "external_id": 92,
+                "start_offset_us": 1793.58,
+                "duration_us": 3.905,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 41,
+                "graph_node_id": 176093659136
+              }
+            },
+            {
+              "ordinal": 14,
+              "correlation": 178,
+              "cuda_runtime": {
+                "cbid": 311,
+                "external_id": 99,
+                "start_offset_us": 1818.525,
+                "duration_us": 2.72
+              },
+              "kernel": {
+                "name_key": "graph_replay_kernel",
+                "external_id": 99,
+                "start_offset_us": 1832.236,
+                "duration_us": 3.904,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 44,
+                "graph_node_id": 188978561024
+              }
+            },
+            {
+              "ordinal": 15,
+              "correlation": 190,
+              "cuda_runtime": {
+                "cbid": 311,
+                "external_id": 106,
+                "start_offset_us": 1858.505,
+                "duration_us": 2.43
+              },
+              "kernel": {
+                "name_key": "graph_replay_kernel",
+                "external_id": 106,
+                "start_offset_us": 1872.172,
+                "duration_us": 3.904,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 47,
+                "graph_node_id": 201863462912
+              }
+            },
+            {
+              "ordinal": 16,
+              "correlation": 202,
+              "cuda_runtime": {
+                "cbid": 311,
+                "external_id": 113,
+                "start_offset_us": 1897.504,
+                "duration_us": 2.66
+              },
+              "kernel": {
+                "name_key": "graph_replay_kernel",
+                "external_id": 113,
+                "start_offset_us": 1911.116,
+                "duration_us": 3.904,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 50,
+                "graph_node_id": 214748364800
+              }
+            }
+          ],
+          "other_kernel_activity": [
+            {
+              "ordinal": 1,
+              "correlation": 16,
+              "cuda_runtime": {
+                "cbid": 211,
+                "external_id": 10,
+                "start_offset_us": 1073.955,
+                "duration_us": 22.2
+              },
+              "kernel": {
+                "name_key": "other_kernel_activity",
+                "external_id": 10,
+                "start_offset_us": 1095.982,
+                "duration_us": 8.512,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 0,
+                "graph_node_id": 0
+              }
+            },
+            {
+              "ordinal": 2,
+              "correlation": 28,
+              "cuda_runtime": {
+                "cbid": 211,
+                "external_id": 17,
+                "start_offset_us": 1173.104,
+                "duration_us": 4.84
+              },
+              "kernel": {
+                "name_key": "other_kernel_activity",
+                "external_id": 17,
+                "start_offset_us": 1181.038,
+                "duration_us": 8.48,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 0,
+                "graph_node_id": 0
+              }
+            },
+            {
+              "ordinal": 3,
+              "correlation": 40,
+              "cuda_runtime": {
+                "cbid": 211,
+                "external_id": 24,
+                "start_offset_us": 1350.412,
+                "duration_us": 5.06
+              },
+              "kernel": {
+                "name_key": "other_kernel_activity",
+                "external_id": 24,
+                "start_offset_us": 1358.573,
+                "duration_us": 8.416,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 0,
+                "graph_node_id": 0
+              }
+            },
+            {
+              "ordinal": 4,
+              "correlation": 52,
+              "cuda_runtime": {
+                "cbid": 211,
+                "external_id": 31,
+                "start_offset_us": 1399.821,
+                "duration_us": 3.64
+              },
+              "kernel": {
+                "name_key": "other_kernel_activity",
+                "external_id": 31,
+                "start_offset_us": 1406.957,
+                "duration_us": 8.32,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 0,
+                "graph_node_id": 0
+              }
+            },
+            {
+              "ordinal": 5,
+              "correlation": 64,
+              "cuda_runtime": {
+                "cbid": 211,
+                "external_id": 38,
+                "start_offset_us": 1440.2,
+                "duration_us": 3.5
+              },
+              "kernel": {
+                "name_key": "other_kernel_activity",
+                "external_id": 38,
+                "start_offset_us": 1447.277,
+                "duration_us": 8.288,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 0,
+                "graph_node_id": 0
+              }
+            },
+            {
+              "ordinal": 6,
+              "correlation": 76,
+              "cuda_runtime": {
+                "cbid": 211,
+                "external_id": 45,
+                "start_offset_us": 1480.02,
+                "duration_us": 3.34
+              },
+              "kernel": {
+                "name_key": "other_kernel_activity",
+                "external_id": 45,
+                "start_offset_us": 1487.213,
+                "duration_us": 8.64,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 0,
+                "graph_node_id": 0
+              }
+            },
+            {
+              "ordinal": 7,
+              "correlation": 88,
+              "cuda_runtime": {
+                "cbid": 211,
+                "external_id": 52,
+                "start_offset_us": 1518.009,
+                "duration_us": 4.46
+              },
+              "kernel": {
+                "name_key": "other_kernel_activity",
+                "external_id": 52,
+                "start_offset_us": 1526.125,
+                "duration_us": 8.672,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 0,
+                "graph_node_id": 0
+              }
+            },
+            {
+              "ordinal": 8,
+              "correlation": 100,
+              "cuda_runtime": {
+                "cbid": 211,
+                "external_id": 59,
+                "start_offset_us": 1558.149,
+                "duration_us": 3.28
+              },
+              "kernel": {
+                "name_key": "other_kernel_activity",
+                "external_id": 59,
+                "start_offset_us": 1565.133,
+                "duration_us": 8.608,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 0,
+                "graph_node_id": 0
+              }
+            },
+            {
+              "ordinal": 9,
+              "correlation": 112,
+              "cuda_runtime": {
+                "cbid": 211,
+                "external_id": 66,
+                "start_offset_us": 1600.618,
+                "duration_us": 3.35
+              },
+              "kernel": {
+                "name_key": "other_kernel_activity",
+                "external_id": 66,
+                "start_offset_us": 1607.789,
+                "duration_us": 8.544,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 0,
+                "graph_node_id": 0
+              }
+            },
+            {
+              "ordinal": 10,
+              "correlation": 124,
+              "cuda_runtime": {
+                "cbid": 211,
+                "external_id": 73,
+                "start_offset_us": 1646.828,
+                "duration_us": 3.44
+              },
+              "kernel": {
+                "name_key": "other_kernel_activity",
+                "external_id": 73,
+                "start_offset_us": 1653.741,
+                "duration_us": 8.288,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 0,
+                "graph_node_id": 0
+              }
+            },
+            {
+              "ordinal": 11,
+              "correlation": 136,
+              "cuda_runtime": {
+                "cbid": 211,
+                "external_id": 80,
+                "start_offset_us": 1689.787,
+                "duration_us": 3.46
+              },
+              "kernel": {
+                "name_key": "other_kernel_activity",
+                "external_id": 80,
+                "start_offset_us": 1696.716,
+                "duration_us": 8.385,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 0,
+                "graph_node_id": 0
+              }
+            },
+            {
+              "ordinal": 12,
+              "correlation": 148,
+              "cuda_runtime": {
+                "cbid": 211,
+                "external_id": 87,
+                "start_offset_us": 1732.757,
+                "duration_us": 3.5
+              },
+              "kernel": {
+                "name_key": "other_kernel_activity",
+                "external_id": 87,
+                "start_offset_us": 1739.564,
+                "duration_us": 8.352,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 0,
+                "graph_node_id": 0
+              }
+            },
+            {
+              "ordinal": 13,
+              "correlation": 160,
+              "cuda_runtime": {
+                "cbid": 211,
+                "external_id": 94,
+                "start_offset_us": 1774.556,
+                "duration_us": 3.44
+              },
+              "kernel": {
+                "name_key": "other_kernel_activity",
+                "external_id": 94,
+                "start_offset_us": 1781.452,
+                "duration_us": 8.256,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 0,
+                "graph_node_id": 0
+              }
+            },
+            {
+              "ordinal": 14,
+              "correlation": 172,
+              "cuda_runtime": {
+                "cbid": 211,
+                "external_id": 101,
+                "start_offset_us": 1813.396,
+                "duration_us": 3.29
+              },
+              "kernel": {
+                "name_key": "other_kernel_activity",
+                "external_id": 101,
+                "start_offset_us": 1820.364,
+                "duration_us": 8.64,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 0,
+                "graph_node_id": 0
+              }
+            },
+            {
+              "ordinal": 15,
+              "correlation": 184,
+              "cuda_runtime": {
+                "cbid": 211,
+                "external_id": 108,
+                "start_offset_us": 1853.295,
+                "duration_us": 3.39
+              },
+              "kernel": {
+                "name_key": "other_kernel_activity",
+                "external_id": 108,
+                "start_offset_us": 1860.492,
+                "duration_us": 8.608,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 0,
+                "graph_node_id": 0
+              }
+            },
+            {
+              "ordinal": 16,
+              "correlation": 196,
+              "cuda_runtime": {
+                "cbid": 211,
+                "external_id": 115,
+                "start_offset_us": 1892.445,
+                "duration_us": 3.329
+              },
+              "kernel": {
+                "name_key": "other_kernel_activity",
+                "external_id": 115,
+                "start_offset_us": 1899.5,
+                "duration_us": 8.608,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 0,
+                "graph_node_id": 0
+              }
+            }
+          ]
+        },
+        {
+          "index": 2,
+          "marker": {
+            "category": "user_annotation",
+            "name": "nested_graphs_compiled_invocation",
+            "trace_start_us": 1776889151589.953,
+            "arm_start_offset_us": 1973.743,
+            "duration_us": 637.302,
+            "external_id": 116,
+            "record_function_id": 0,
+            "event_index": 115
+          },
+          "result_diagnostics": {
+            "cpu_call_duration_us": 647.611,
+            "cuda_event_elapsed_us": 615.3600215911865
+          },
+          "membership_rule": "event start timestamp is inside the CPU compiled-invocation marker",
+          "latest_kernel_end_relative_to_marker_end_us": -12.282,
+          "counts": {
+            "cuda_graph_launches": 16,
+            "graph_correlated_kernels": 16,
+            "other_kernels": 16,
+            "total_kernels": 32
+          },
+          "graph_replays": [
+            {
+              "ordinal": 1,
+              "correlation": 238,
+              "cuda_runtime": {
+                "cbid": 311,
+                "external_id": 123,
+                "start_offset_us": 66.75,
+                "duration_us": 4.739
+              },
+              "kernel": {
+                "name_key": "graph_replay_kernel",
+                "external_id": 123,
+                "start_offset_us": 78.173,
+                "duration_us": 3.744,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 5,
+                "graph_node_id": 21474836480
+              }
+            },
+            {
+              "ordinal": 2,
+              "correlation": 250,
+              "cuda_runtime": {
+                "cbid": 311,
+                "external_id": 130,
+                "start_offset_us": 111.709,
+                "duration_us": 2.66
+              },
+              "kernel": {
+                "name_key": "graph_replay_kernel",
+                "external_id": 130,
+                "start_offset_us": 123.069,
+                "duration_us": 3.904,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 8,
+                "graph_node_id": 34359738368
+              }
+            },
+            {
+              "ordinal": 3,
+              "correlation": 262,
+              "cuda_runtime": {
+                "cbid": 311,
+                "external_id": 137,
+                "start_offset_us": 147.678,
+                "duration_us": 2.08
+              },
+              "kernel": {
+                "name_key": "graph_replay_kernel",
+                "external_id": 137,
+                "start_offset_us": 159.933,
+                "duration_us": 3.936,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 11,
+                "graph_node_id": 47244640256
+              }
+            },
+            {
+              "ordinal": 4,
+              "correlation": 274,
+              "cuda_runtime": {
+                "cbid": 311,
+                "external_id": 144,
+                "start_offset_us": 180.988,
+                "duration_us": 2.28
+              },
+              "kernel": {
+                "name_key": "graph_replay_kernel",
+                "external_id": 144,
+                "start_offset_us": 193.725,
+                "duration_us": 3.904,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 14,
+                "graph_node_id": 60129542144
+              }
+            },
+            {
+              "ordinal": 5,
+              "correlation": 286,
+              "cuda_runtime": {
+                "cbid": 311,
+                "external_id": 151,
+                "start_offset_us": 213.158,
+                "duration_us": 1.95
+              },
+              "kernel": {
+                "name_key": "graph_replay_kernel",
+                "external_id": 151,
+                "start_offset_us": 225.5,
+                "duration_us": 3.936,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 17,
+                "graph_node_id": 73014444032
+              }
+            },
+            {
+              "ordinal": 6,
+              "correlation": 298,
+              "cuda_runtime": {
+                "cbid": 311,
+                "external_id": 158,
+                "start_offset_us": 245.177,
+                "duration_us": 2.23
+              },
+              "kernel": {
+                "name_key": "graph_replay_kernel",
+                "external_id": 158,
+                "start_offset_us": 256.349,
+                "duration_us": 3.903,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 20,
+                "graph_node_id": 85899345920
+              }
+            },
+            {
+              "ordinal": 7,
+              "correlation": 310,
+              "cuda_runtime": {
+                "cbid": 311,
+                "external_id": 165,
+                "start_offset_us": 276.787,
+                "duration_us": 1.97
+              },
+              "kernel": {
+                "name_key": "graph_replay_kernel",
+                "external_id": 165,
+                "start_offset_us": 289.117,
+                "duration_us": 3.936,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 23,
+                "graph_node_id": 98784247808
+              }
+            },
+            {
+              "ordinal": 8,
+              "correlation": 322,
+              "cuda_runtime": {
+                "cbid": 311,
+                "external_id": 172,
+                "start_offset_us": 321.676,
+                "duration_us": 2.33
+              },
+              "kernel": {
+                "name_key": "graph_replay_kernel",
+                "external_id": 172,
+                "start_offset_us": 334.012,
+                "duration_us": 3.969,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 26,
+                "graph_node_id": 111669149696
+              }
+            },
+            {
+              "ordinal": 9,
+              "correlation": 334,
+              "cuda_runtime": {
+                "cbid": 311,
+                "external_id": 179,
+                "start_offset_us": 365.116,
+                "duration_us": 2.39
+              },
+              "kernel": {
+                "name_key": "graph_replay_kernel",
+                "external_id": 179,
+                "start_offset_us": 378.364,
+                "duration_us": 3.904,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 29,
+                "graph_node_id": 124554051584
+              }
+            },
+            {
+              "ordinal": 10,
+              "correlation": 346,
+              "cuda_runtime": {
+                "cbid": 311,
+                "external_id": 186,
+                "start_offset_us": 402.065,
+                "duration_us": 2.38
+              },
+              "kernel": {
+                "name_key": "graph_replay_kernel",
+                "external_id": 186,
+                "start_offset_us": 413.276,
+                "duration_us": 3.904,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 32,
+                "graph_node_id": 137438953472
+              }
+            },
+            {
+              "ordinal": 11,
+              "correlation": 358,
+              "cuda_runtime": {
+                "cbid": 311,
+                "external_id": 193,
+                "start_offset_us": 437.105,
+                "duration_us": 2.2
+              },
+              "kernel": {
+                "name_key": "graph_replay_kernel",
+                "external_id": 193,
+                "start_offset_us": 450.204,
+                "duration_us": 4,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 35,
+                "graph_node_id": 150323855360
+              }
+            },
+            {
+              "ordinal": 12,
+              "correlation": 370,
+              "cuda_runtime": {
+                "cbid": 311,
+                "external_id": 200,
+                "start_offset_us": 472.594,
+                "duration_us": 2.19
+              },
+              "kernel": {
+                "name_key": "graph_replay_kernel",
+                "external_id": 200,
+                "start_offset_us": 486.012,
+                "duration_us": 3.872,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 38,
+                "graph_node_id": 163208757248
+              }
+            },
+            {
+              "ordinal": 13,
+              "correlation": 382,
+              "cuda_runtime": {
+                "cbid": 311,
+                "external_id": 207,
+                "start_offset_us": 506.684,
+                "duration_us": 2.45
+              },
+              "kernel": {
+                "name_key": "graph_replay_kernel",
+                "external_id": 207,
+                "start_offset_us": 519.836,
+                "duration_us": 3.872,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 41,
+                "graph_node_id": 176093659136
+              }
+            },
+            {
+              "ordinal": 14,
+              "correlation": 394,
+              "cuda_runtime": {
+                "cbid": 311,
+                "external_id": 214,
+                "start_offset_us": 540.753,
+                "duration_us": 2.29
+              },
+              "kernel": {
+                "name_key": "graph_replay_kernel",
+                "external_id": 214,
+                "start_offset_us": 554.524,
+                "duration_us": 3.968,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 44,
+                "graph_node_id": 188978561024
+              }
+            },
+            {
+              "ordinal": 15,
+              "correlation": 406,
+              "cuda_runtime": {
+                "cbid": 311,
+                "external_id": 221,
+                "start_offset_us": 574.533,
+                "duration_us": 2.32
+              },
+              "kernel": {
+                "name_key": "graph_replay_kernel",
+                "external_id": 221,
+                "start_offset_us": 587.292,
+                "duration_us": 3.904,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 47,
+                "graph_node_id": 201863462912
+              }
+            },
+            {
+              "ordinal": 16,
+              "correlation": 418,
+              "cuda_runtime": {
+                "cbid": 311,
+                "external_id": 228,
+                "start_offset_us": 608.462,
+                "duration_us": 2.14
+              },
+              "kernel": {
+                "name_key": "graph_replay_kernel",
+                "external_id": 228,
+                "start_offset_us": 621.084,
+                "duration_us": 3.936,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 50,
+                "graph_node_id": 214748364800
+              }
+            }
+          ],
+          "other_kernel_activity": [
+            {
+              "ordinal": 1,
+              "correlation": 232,
+              "cuda_runtime": {
+                "cbid": 211,
+                "external_id": 125,
+                "start_offset_us": 60.14,
+                "duration_us": 4.38
+              },
+              "kernel": {
+                "name_key": "other_kernel_activity",
+                "external_id": 125,
+                "start_offset_us": 68.029,
+                "duration_us": 8.576,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 0,
+                "graph_node_id": 0
+              }
+            },
+            {
+              "ordinal": 2,
+              "correlation": 244,
+              "cuda_runtime": {
+                "cbid": 211,
+                "external_id": 132,
+                "start_offset_us": 105.989,
+                "duration_us": 3.72
+              },
+              "kernel": {
+                "name_key": "other_kernel_activity",
+                "external_id": 132,
+                "start_offset_us": 113.053,
+                "duration_us": 8.32,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 0,
+                "graph_node_id": 0
+              }
+            },
+            {
+              "ordinal": 3,
+              "correlation": 256,
+              "cuda_runtime": {
+                "cbid": 211,
+                "external_id": 139,
+                "start_offset_us": 142.289,
+                "duration_us": 3.5
+              },
+              "kernel": {
+                "name_key": "other_kernel_activity",
+                "external_id": 139,
+                "start_offset_us": 149.213,
+                "duration_us": 8.416,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 0,
+                "graph_node_id": 0
+              }
+            },
+            {
+              "ordinal": 4,
+              "correlation": 268,
+              "cuda_runtime": {
+                "cbid": 211,
+                "external_id": 146,
+                "start_offset_us": 175.958,
+                "duration_us": 3.23
+              },
+              "kernel": {
+                "name_key": "other_kernel_activity",
+                "external_id": 146,
+                "start_offset_us": 182.653,
+                "duration_us": 8.32,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 0,
+                "graph_node_id": 0
+              }
+            },
+            {
+              "ordinal": 5,
+              "correlation": 280,
+              "cuda_runtime": {
+                "cbid": 211,
+                "external_id": 153,
+                "start_offset_us": 208.138,
+                "duration_us": 3.26
+              },
+              "kernel": {
+                "name_key": "other_kernel_activity",
+                "external_id": 153,
+                "start_offset_us": 214.909,
+                "duration_us": 8.288,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 0,
+                "graph_node_id": 0
+              }
+            },
+            {
+              "ordinal": 6,
+              "correlation": 292,
+              "cuda_runtime": {
+                "cbid": 211,
+                "external_id": 160,
+                "start_offset_us": 239.507,
+                "duration_us": 3.16
+              },
+              "kernel": {
+                "name_key": "other_kernel_activity",
+                "external_id": 160,
+                "start_offset_us": 246.557,
+                "duration_us": 8.576,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 0,
+                "graph_node_id": 0
+              }
+            },
+            {
+              "ordinal": 7,
+              "correlation": 304,
+              "cuda_runtime": {
+                "cbid": 211,
+                "external_id": 167,
+                "start_offset_us": 271.857,
+                "duration_us": 3.19
+              },
+              "kernel": {
+                "name_key": "other_kernel_activity",
+                "external_id": 167,
+                "start_offset_us": 278.78,
+                "duration_us": 8.768,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 0,
+                "graph_node_id": 0
+              }
+            },
+            {
+              "ordinal": 8,
+              "correlation": 316,
+              "cuda_runtime": {
+                "cbid": 211,
+                "external_id": 174,
+                "start_offset_us": 316.186,
+                "duration_us": 3.6
+              },
+              "kernel": {
+                "name_key": "other_kernel_activity",
+                "external_id": 174,
+                "start_offset_us": 323.613,
+                "duration_us": 8.575,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 0,
+                "graph_node_id": 0
+              }
+            },
+            {
+              "ordinal": 9,
+              "correlation": 328,
+              "cuda_runtime": {
+                "cbid": 211,
+                "external_id": 181,
+                "start_offset_us": 359.676,
+                "duration_us": 3.57
+              },
+              "kernel": {
+                "name_key": "other_kernel_activity",
+                "external_id": 181,
+                "start_offset_us": 367.1,
+                "duration_us": 8.608,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 0,
+                "graph_node_id": 0
+              }
+            },
+            {
+              "ordinal": 10,
+              "correlation": 340,
+              "cuda_runtime": {
+                "cbid": 211,
+                "external_id": 188,
+                "start_offset_us": 396.665,
+                "duration_us": 3.58
+              },
+              "kernel": {
+                "name_key": "other_kernel_activity",
+                "external_id": 188,
+                "start_offset_us": 403.516,
+                "duration_us": 8.288,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 0,
+                "graph_node_id": 0
+              }
+            },
+            {
+              "ordinal": 11,
+              "correlation": 352,
+              "cuda_runtime": {
+                "cbid": 211,
+                "external_id": 195,
+                "start_offset_us": 432.065,
+                "duration_us": 3.35
+              },
+              "kernel": {
+                "name_key": "other_kernel_activity",
+                "external_id": 195,
+                "start_offset_us": 438.812,
+                "duration_us": 8.352,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 0,
+                "graph_node_id": 0
+              }
+            },
+            {
+              "ordinal": 12,
+              "correlation": 364,
+              "cuda_runtime": {
+                "cbid": 211,
+                "external_id": 202,
+                "start_offset_us": 467.464,
+                "duration_us": 3.33
+              },
+              "kernel": {
+                "name_key": "other_kernel_activity",
+                "external_id": 202,
+                "start_offset_us": 474.204,
+                "duration_us": 8.352,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 0,
+                "graph_node_id": 0
+              }
+            },
+            {
+              "ordinal": 13,
+              "correlation": 376,
+              "cuda_runtime": {
+                "cbid": 211,
+                "external_id": 209,
+                "start_offset_us": 501.484,
+                "duration_us": 3.39
+              },
+              "kernel": {
+                "name_key": "other_kernel_activity",
+                "external_id": 209,
+                "start_offset_us": 508.316,
+                "duration_us": 8.288,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 0,
+                "graph_node_id": 0
+              }
+            },
+            {
+              "ordinal": 14,
+              "correlation": 388,
+              "cuda_runtime": {
+                "cbid": 211,
+                "external_id": 216,
+                "start_offset_us": 535.703,
+                "duration_us": 3.28
+              },
+              "kernel": {
+                "name_key": "other_kernel_activity",
+                "external_id": 216,
+                "start_offset_us": 542.748,
+                "duration_us": 8.576,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 0,
+                "graph_node_id": 0
+              }
+            },
+            {
+              "ordinal": 15,
+              "correlation": 400,
+              "cuda_runtime": {
+                "cbid": 211,
+                "external_id": 223,
+                "start_offset_us": 569.573,
+                "duration_us": 3.24
+              },
+              "kernel": {
+                "name_key": "other_kernel_activity",
+                "external_id": 223,
+                "start_offset_us": 576.54,
+                "duration_us": 8.672,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 0,
+                "graph_node_id": 0
+              }
+            },
+            {
+              "ordinal": 16,
+              "correlation": 412,
+              "cuda_runtime": {
+                "cbid": 211,
+                "external_id": 230,
+                "start_offset_us": 603.452,
+                "duration_us": 3.33
+              },
+              "kernel": {
+                "name_key": "other_kernel_activity",
+                "external_id": 230,
+                "start_offset_us": 610.204,
+                "duration_us": 8.512,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 0,
+                "graph_node_id": 0
+              }
+            }
+          ]
+        },
+        {
+          "index": 3,
+          "marker": {
+            "category": "user_annotation",
+            "name": "nested_graphs_compiled_invocation",
+            "trace_start_us": 1776889152233.555,
+            "arm_start_offset_us": 2617.345,
+            "duration_us": 580.042,
+            "external_id": 231,
+            "record_function_id": 0,
+            "event_index": 230
+          },
+          "result_diagnostics": {
+            "cpu_call_duration_us": 584.902,
+            "cuda_event_elapsed_us": 565.343976020813
+          },
+          "membership_rule": "event start timestamp is inside the CPU compiled-invocation marker",
+          "latest_kernel_end_relative_to_marker_end_us": -6.817,
+          "counts": {
+            "cuda_graph_launches": 16,
+            "graph_correlated_kernels": 16,
+            "other_kernels": 16,
+            "total_kernels": 32
+          },
+          "graph_replays": [
+            {
+              "ordinal": 1,
+              "correlation": 454,
+              "cuda_runtime": {
+                "cbid": 311,
+                "external_id": 238,
+                "start_offset_us": 55.279,
+                "duration_us": 2.74
+              },
+              "kernel": {
+                "name_key": "graph_replay_kernel",
+                "external_id": 238,
+                "start_offset_us": 66.378,
+                "duration_us": 3.808,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 5,
+                "graph_node_id": 21474836480
+              }
+            },
+            {
+              "ordinal": 2,
+              "correlation": 466,
+              "cuda_runtime": {
+                "cbid": 311,
+                "external_id": 245,
+                "start_offset_us": 94.899,
+                "duration_us": 2.49
+              },
+              "kernel": {
+                "name_key": "graph_replay_kernel",
+                "external_id": 245,
+                "start_offset_us": 106.154,
+                "duration_us": 3.968,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 8,
+                "graph_node_id": 34359738368
+              }
+            },
+            {
+              "ordinal": 3,
+              "correlation": 478,
+              "cuda_runtime": {
+                "cbid": 311,
+                "external_id": 252,
+                "start_offset_us": 128.278,
+                "duration_us": 2.03
+              },
+              "kernel": {
+                "name_key": "graph_replay_kernel",
+                "external_id": 252,
+                "start_offset_us": 140.97,
+                "duration_us": 3.903,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 11,
+                "graph_node_id": 47244640256
+              }
+            },
+            {
+              "ordinal": 4,
+              "correlation": 490,
+              "cuda_runtime": {
+                "cbid": 311,
+                "external_id": 259,
+                "start_offset_us": 159.078,
+                "duration_us": 2.12
+              },
+              "kernel": {
+                "name_key": "graph_replay_kernel",
+                "external_id": 259,
+                "start_offset_us": 171.689,
+                "duration_us": 3.904,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 14,
+                "graph_node_id": 60129542144
+              }
+            },
+            {
+              "ordinal": 5,
+              "correlation": 502,
+              "cuda_runtime": {
+                "cbid": 311,
+                "external_id": 266,
+                "start_offset_us": 189.677,
+                "duration_us": 2.06
+              },
+              "kernel": {
+                "name_key": "graph_replay_kernel",
+                "external_id": 266,
+                "start_offset_us": 202.441,
+                "duration_us": 3.904,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 17,
+                "graph_node_id": 73014444032
+              }
+            },
+            {
+              "ordinal": 6,
+              "correlation": 514,
+              "cuda_runtime": {
+                "cbid": 311,
+                "external_id": 273,
+                "start_offset_us": 219.917,
+                "duration_us": 2.03
+              },
+              "kernel": {
+                "name_key": "graph_replay_kernel",
+                "external_id": 273,
+                "start_offset_us": 232.265,
+                "duration_us": 3.936,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 20,
+                "graph_node_id": 85899345920
+              }
+            },
+            {
+              "ordinal": 7,
+              "correlation": 526,
+              "cuda_runtime": {
+                "cbid": 311,
+                "external_id": 280,
+                "start_offset_us": 250.947,
+                "duration_us": 2.08
+              },
+              "kernel": {
+                "name_key": "graph_replay_kernel",
+                "external_id": 280,
+                "start_offset_us": 264.009,
+                "duration_us": 3.904,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 23,
+                "graph_node_id": 98784247808
+              }
+            },
+            {
+              "ordinal": 8,
+              "correlation": 538,
+              "cuda_runtime": {
+                "cbid": 311,
+                "external_id": 287,
+                "start_offset_us": 285.746,
+                "duration_us": 2.16
+              },
+              "kernel": {
+                "name_key": "graph_replay_kernel",
+                "external_id": 287,
+                "start_offset_us": 298.665,
+                "duration_us": 3.904,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 26,
+                "graph_node_id": 111669149696
+              }
+            },
+            {
+              "ordinal": 9,
+              "correlation": 550,
+              "cuda_runtime": {
+                "cbid": 311,
+                "external_id": 294,
+                "start_offset_us": 318.226,
+                "duration_us": 2.35
+              },
+              "kernel": {
+                "name_key": "graph_replay_kernel",
+                "external_id": 294,
+                "start_offset_us": 331.753,
+                "duration_us": 3.904,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 29,
+                "graph_node_id": 124554051584
+              }
+            },
+            {
+              "ordinal": 10,
+              "correlation": 562,
+              "cuda_runtime": {
+                "cbid": 311,
+                "external_id": 301,
+                "start_offset_us": 352.605,
+                "duration_us": 3.01
+              },
+              "kernel": {
+                "name_key": "graph_replay_kernel",
+                "external_id": 301,
+                "start_offset_us": 364.617,
+                "duration_us": 3.872,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 32,
+                "graph_node_id": 137438953472
+              }
+            },
+            {
+              "ordinal": 11,
+              "correlation": 574,
+              "cuda_runtime": {
+                "cbid": 311,
+                "external_id": 308,
+                "start_offset_us": 387.675,
+                "duration_us": 2.1
+              },
+              "kernel": {
+                "name_key": "graph_replay_kernel",
+                "external_id": 308,
+                "start_offset_us": 400.521,
+                "duration_us": 3.904,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 35,
+                "graph_node_id": 150323855360
+              }
+            },
+            {
+              "ordinal": 12,
+              "correlation": 586,
+              "cuda_runtime": {
+                "cbid": 311,
+                "external_id": 315,
+                "start_offset_us": 421.034,
+                "duration_us": 2.15
+              },
+              "kernel": {
+                "name_key": "graph_replay_kernel",
+                "external_id": 315,
+                "start_offset_us": 434.313,
+                "duration_us": 3.872,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 38,
+                "graph_node_id": 163208757248
+              }
+            },
+            {
+              "ordinal": 13,
+              "correlation": 598,
+              "cuda_runtime": {
+                "cbid": 311,
+                "external_id": 322,
+                "start_offset_us": 455.094,
+                "duration_us": 2.29
+              },
+              "kernel": {
+                "name_key": "graph_replay_kernel",
+                "external_id": 322,
+                "start_offset_us": 468.105,
+                "duration_us": 3.872,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 41,
+                "graph_node_id": 176093659136
+              }
+            },
+            {
+              "ordinal": 14,
+              "correlation": 610,
+              "cuda_runtime": {
+                "cbid": 311,
+                "external_id": 329,
+                "start_offset_us": 488.363,
+                "duration_us": 2.18
+              },
+              "kernel": {
+                "name_key": "graph_replay_kernel",
+                "external_id": 329,
+                "start_offset_us": 501.769,
+                "duration_us": 3.872,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 44,
+                "graph_node_id": 188978561024
+              }
+            },
+            {
+              "ordinal": 15,
+              "correlation": 622,
+              "cuda_runtime": {
+                "cbid": 311,
+                "external_id": 336,
+                "start_offset_us": 522.523,
+                "duration_us": 2.13
+              },
+              "kernel": {
+                "name_key": "graph_replay_kernel",
+                "external_id": 336,
+                "start_offset_us": 535.561,
+                "duration_us": 3.904,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 47,
+                "graph_node_id": 201863462912
+              }
+            },
+            {
+              "ordinal": 16,
+              "correlation": 634,
+              "cuda_runtime": {
+                "cbid": 311,
+                "external_id": 343,
+                "start_offset_us": 555.983,
+                "duration_us": 2.19
+              },
+              "kernel": {
+                "name_key": "graph_replay_kernel",
+                "external_id": 343,
+                "start_offset_us": 569.353,
+                "duration_us": 3.872,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 50,
+                "graph_node_id": 214748364800
+              }
+            }
+          ],
+          "other_kernel_activity": [
+            {
+              "ordinal": 1,
+              "correlation": 448,
+              "cuda_runtime": {
+                "cbid": 211,
+                "external_id": 240,
+                "start_offset_us": 48.879,
+                "duration_us": 4.13
+              },
+              "kernel": {
+                "name_key": "other_kernel_activity",
+                "external_id": 240,
+                "start_offset_us": 56.682,
+                "duration_us": 8.512,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 0,
+                "graph_node_id": 0
+              }
+            },
+            {
+              "ordinal": 2,
+              "correlation": 460,
+              "cuda_runtime": {
+                "cbid": 211,
+                "external_id": 247,
+                "start_offset_us": 89.049,
+                "duration_us": 3.66
+              },
+              "kernel": {
+                "name_key": "other_kernel_activity",
+                "external_id": 247,
+                "start_offset_us": 96.074,
+                "duration_us": 8.384,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 0,
+                "graph_node_id": 0
+              }
+            },
+            {
+              "ordinal": 3,
+              "correlation": 472,
+              "cuda_runtime": {
+                "cbid": 211,
+                "external_id": 254,
+                "start_offset_us": 123.228,
+                "duration_us": 3.34
+              },
+              "kernel": {
+                "name_key": "other_kernel_activity",
+                "external_id": 254,
+                "start_offset_us": 130.185,
+                "duration_us": 8.352,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 0,
+                "graph_node_id": 0
+              }
+            },
+            {
+              "ordinal": 4,
+              "correlation": 484,
+              "cuda_runtime": {
+                "cbid": 211,
+                "external_id": 261,
+                "start_offset_us": 154.178,
+                "duration_us": 3.2
+              },
+              "kernel": {
+                "name_key": "other_kernel_activity",
+                "external_id": 261,
+                "start_offset_us": 160.841,
+                "duration_us": 8.256,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 0,
+                "graph_node_id": 0
+              }
+            },
+            {
+              "ordinal": 5,
+              "correlation": 496,
+              "cuda_runtime": {
+                "cbid": 211,
+                "external_id": 268,
+                "start_offset_us": 184.757,
+                "duration_us": 3.23
+              },
+              "kernel": {
+                "name_key": "other_kernel_activity",
+                "external_id": 268,
+                "start_offset_us": 191.465,
+                "duration_us": 8.416,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 0,
+                "graph_node_id": 0
+              }
+            },
+            {
+              "ordinal": 6,
+              "correlation": 508,
+              "cuda_runtime": {
+                "cbid": 211,
+                "external_id": 275,
+                "start_offset_us": 215.107,
+                "duration_us": 3.21
+              },
+              "kernel": {
+                "name_key": "other_kernel_activity",
+                "external_id": 275,
+                "start_offset_us": 222.153,
+                "duration_us": 8.576,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 0,
+                "graph_node_id": 0
+              }
+            },
+            {
+              "ordinal": 7,
+              "correlation": 520,
+              "cuda_runtime": {
+                "cbid": 211,
+                "external_id": 282,
+                "start_offset_us": 246.027,
+                "duration_us": 3.24
+              },
+              "kernel": {
+                "name_key": "other_kernel_activity",
+                "external_id": 282,
+                "start_offset_us": 253.033,
+                "duration_us": 8.608,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 0,
+                "graph_node_id": 0
+              }
+            },
+            {
+              "ordinal": 8,
+              "correlation": 532,
+              "cuda_runtime": {
+                "cbid": 211,
+                "external_id": 289,
+                "start_offset_us": 280.576,
+                "duration_us": 3.42
+              },
+              "kernel": {
+                "name_key": "other_kernel_activity",
+                "external_id": 289,
+                "start_offset_us": 287.593,
+                "duration_us": 8.64,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 0,
+                "graph_node_id": 0
+              }
+            },
+            {
+              "ordinal": 9,
+              "correlation": 544,
+              "cuda_runtime": {
+                "cbid": 211,
+                "external_id": 296,
+                "start_offset_us": 313.166,
+                "duration_us": 3.33
+              },
+              "kernel": {
+                "name_key": "other_kernel_activity",
+                "external_id": 296,
+                "start_offset_us": 320.297,
+                "duration_us": 8.608,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 0,
+                "graph_node_id": 0
+              }
+            },
+            {
+              "ordinal": 10,
+              "correlation": 556,
+              "cuda_runtime": {
+                "cbid": 211,
+                "external_id": 303,
+                "start_offset_us": 347.535,
+                "duration_us": 3.34
+              },
+              "kernel": {
+                "name_key": "other_kernel_activity",
+                "external_id": 303,
+                "start_offset_us": 354.313,
+                "duration_us": 8.48,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 0,
+                "graph_node_id": 0
+              }
+            },
+            {
+              "ordinal": 11,
+              "correlation": 568,
+              "cuda_runtime": {
+                "cbid": 211,
+                "external_id": 310,
+                "start_offset_us": 382.595,
+                "duration_us": 3.35
+              },
+              "kernel": {
+                "name_key": "other_kernel_activity",
+                "external_id": 310,
+                "start_offset_us": 389.289,
+                "duration_us": 8.32,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 0,
+                "graph_node_id": 0
+              }
+            },
+            {
+              "ordinal": 12,
+              "correlation": 580,
+              "cuda_runtime": {
+                "cbid": 211,
+                "external_id": 317,
+                "start_offset_us": 415.964,
+                "duration_us": 3.39
+              },
+              "kernel": {
+                "name_key": "other_kernel_activity",
+                "external_id": 317,
+                "start_offset_us": 422.569,
+                "duration_us": 8.352,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 0,
+                "graph_node_id": 0
+              }
+            },
+            {
+              "ordinal": 13,
+              "correlation": 592,
+              "cuda_runtime": {
+                "cbid": 211,
+                "external_id": 324,
+                "start_offset_us": 450.114,
+                "duration_us": 3.25
+              },
+              "kernel": {
+                "name_key": "other_kernel_activity",
+                "external_id": 324,
+                "start_offset_us": 456.713,
+                "duration_us": 8.352,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 0,
+                "graph_node_id": 0
+              }
+            },
+            {
+              "ordinal": 14,
+              "correlation": 604,
+              "cuda_runtime": {
+                "cbid": 211,
+                "external_id": 331,
+                "start_offset_us": 483.364,
+                "duration_us": 3.249
+              },
+              "kernel": {
+                "name_key": "other_kernel_activity",
+                "external_id": 331,
+                "start_offset_us": 490.249,
+                "duration_us": 8.544,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 0,
+                "graph_node_id": 0
+              }
+            },
+            {
+              "ordinal": 15,
+              "correlation": 616,
+              "cuda_runtime": {
+                "cbid": 211,
+                "external_id": 338,
+                "start_offset_us": 517.303,
+                "duration_us": 3.47
+              },
+              "kernel": {
+                "name_key": "other_kernel_activity",
+                "external_id": 338,
+                "start_offset_us": 524.649,
+                "duration_us": 8.544,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 0,
+                "graph_node_id": 0
+              }
+            },
+            {
+              "ordinal": 16,
+              "correlation": 628,
+              "cuda_runtime": {
+                "cbid": 211,
+                "external_id": 345,
+                "start_offset_us": 550.913,
+                "duration_us": 3.29
+              },
+              "kernel": {
+                "name_key": "other_kernel_activity",
+                "external_id": 345,
+                "start_offset_us": 557.865,
+                "duration_us": 8.672,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 0,
+                "graph_node_id": 0
+              }
+            }
+          ]
+        },
+        {
+          "index": 4,
+          "marker": {
+            "category": "user_annotation",
+            "name": "nested_graphs_compiled_invocation",
+            "trace_start_us": 1776889152818.147,
+            "arm_start_offset_us": 3201.937,
+            "duration_us": 590.022,
+            "external_id": 346,
+            "record_function_id": 0,
+            "event_index": 345
+          },
+          "result_diagnostics": {
+            "cpu_call_duration_us": 594.092,
+            "cuda_event_elapsed_us": 575.6800174713135
+          },
+          "membership_rule": "event start timestamp is inside the CPU compiled-invocation marker",
+          "latest_kernel_end_relative_to_marker_end_us": -7.503,
+          "counts": {
+            "cuda_graph_launches": 16,
+            "graph_correlated_kernels": 16,
+            "other_kernels": 16,
+            "total_kernels": 32
+          },
+          "graph_replays": [
+            {
+              "ordinal": 1,
+              "correlation": 670,
+              "cuda_runtime": {
+                "cbid": 311,
+                "external_id": 353,
+                "start_offset_us": 58.739,
+                "duration_us": 2.96
+              },
+              "kernel": {
+                "name_key": "graph_replay_kernel",
+                "external_id": 353,
+                "start_offset_us": 64.472,
+                "duration_us": 3.809,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 5,
+                "graph_node_id": 21474836480
+              }
+            },
+            {
+              "ordinal": 2,
+              "correlation": 682,
+              "cuda_runtime": {
+                "cbid": 311,
+                "external_id": 360,
+                "start_offset_us": 99.269,
+                "duration_us": 2.52
+              },
+              "kernel": {
+                "name_key": "graph_replay_kernel",
+                "external_id": 360,
+                "start_offset_us": 110.36,
+                "duration_us": 3.904,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 8,
+                "graph_node_id": 34359738368
+              }
+            },
+            {
+              "ordinal": 3,
+              "correlation": 694,
+              "cuda_runtime": {
+                "cbid": 311,
+                "external_id": 367,
+                "start_offset_us": 141.218,
+                "duration_us": 2.22
+              },
+              "kernel": {
+                "name_key": "graph_replay_kernel",
+                "external_id": 367,
+                "start_offset_us": 153.368,
+                "duration_us": 3.904,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 11,
+                "graph_node_id": 47244640256
+              }
+            },
+            {
+              "ordinal": 4,
+              "correlation": 706,
+              "cuda_runtime": {
+                "cbid": 311,
+                "external_id": 374,
+                "start_offset_us": 172.868,
+                "duration_us": 2.08
+              },
+              "kernel": {
+                "name_key": "graph_replay_kernel",
+                "external_id": 374,
+                "start_offset_us": 185.112,
+                "duration_us": 3.904,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 14,
+                "graph_node_id": 60129542144
+              }
+            },
+            {
+              "ordinal": 5,
+              "correlation": 718,
+              "cuda_runtime": {
+                "cbid": 311,
+                "external_id": 381,
+                "start_offset_us": 204.278,
+                "duration_us": 2.079
+              },
+              "kernel": {
+                "name_key": "graph_replay_kernel",
+                "external_id": 381,
+                "start_offset_us": 216.888,
+                "duration_us": 3.84,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 17,
+                "graph_node_id": 73014444032
+              }
+            },
+            {
+              "ordinal": 6,
+              "correlation": 730,
+              "cuda_runtime": {
+                "cbid": 311,
+                "external_id": 388,
+                "start_offset_us": 234.997,
+                "duration_us": 2.1
+              },
+              "kernel": {
+                "name_key": "graph_replay_kernel",
+                "external_id": 388,
+                "start_offset_us": 247.736,
+                "duration_us": 3.936,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 20,
+                "graph_node_id": 85899345920
+              }
+            },
+            {
+              "ordinal": 7,
+              "correlation": 742,
+              "cuda_runtime": {
+                "cbid": 311,
+                "external_id": 395,
+                "start_offset_us": 267.587,
+                "duration_us": 2.21
+              },
+              "kernel": {
+                "name_key": "graph_replay_kernel",
+                "external_id": 395,
+                "start_offset_us": 280.504,
+                "duration_us": 3.872,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 23,
+                "graph_node_id": 98784247808
+              }
+            },
+            {
+              "ordinal": 8,
+              "correlation": 754,
+              "cuda_runtime": {
+                "cbid": 311,
+                "external_id": 402,
+                "start_offset_us": 298.436,
+                "duration_us": 2.09
+              },
+              "kernel": {
+                "name_key": "graph_replay_kernel",
+                "external_id": 402,
+                "start_offset_us": 310.072,
+                "duration_us": 3.936,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 26,
+                "graph_node_id": 111669149696
+              }
+            },
+            {
+              "ordinal": 9,
+              "correlation": 766,
+              "cuda_runtime": {
+                "cbid": 311,
+                "external_id": 409,
+                "start_offset_us": 330.096,
+                "duration_us": 2.08
+              },
+              "kernel": {
+                "name_key": "graph_replay_kernel",
+                "external_id": 409,
+                "start_offset_us": 343.128,
+                "duration_us": 3.872,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 29,
+                "graph_node_id": 124554051584
+              }
+            },
+            {
+              "ordinal": 10,
+              "correlation": 778,
+              "cuda_runtime": {
+                "cbid": 311,
+                "external_id": 416,
+                "start_offset_us": 363.675,
+                "duration_us": 2.03
+              },
+              "kernel": {
+                "name_key": "graph_replay_kernel",
+                "external_id": 416,
+                "start_offset_us": 377.048,
+                "duration_us": 3.904,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 32,
+                "graph_node_id": 137438953472
+              }
+            },
+            {
+              "ordinal": 11,
+              "correlation": 790,
+              "cuda_runtime": {
+                "cbid": 311,
+                "external_id": 423,
+                "start_offset_us": 397.715,
+                "duration_us": 2.22
+              },
+              "kernel": {
+                "name_key": "graph_replay_kernel",
+                "external_id": 423,
+                "start_offset_us": 410.872,
+                "duration_us": 3.904,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 35,
+                "graph_node_id": 150323855360
+              }
+            },
+            {
+              "ordinal": 12,
+              "correlation": 802,
+              "cuda_runtime": {
+                "cbid": 311,
+                "external_id": 430,
+                "start_offset_us": 431.255,
+                "duration_us": 2.089
+              },
+              "kernel": {
+                "name_key": "graph_replay_kernel",
+                "external_id": 430,
+                "start_offset_us": 444.664,
+                "duration_us": 3.968,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 38,
+                "graph_node_id": 163208757248
+              }
+            },
+            {
+              "ordinal": 13,
+              "correlation": 814,
+              "cuda_runtime": {
+                "cbid": 311,
+                "external_id": 437,
+                "start_offset_us": 463.874,
+                "duration_us": 2.27
+              },
+              "kernel": {
+                "name_key": "graph_replay_kernel",
+                "external_id": 437,
+                "start_offset_us": 475.352,
+                "duration_us": 3.904,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 41,
+                "graph_node_id": 176093659136
+              }
+            },
+            {
+              "ordinal": 14,
+              "correlation": 826,
+              "cuda_runtime": {
+                "cbid": 311,
+                "external_id": 444,
+                "start_offset_us": 496.764,
+                "duration_us": 2.05
+              },
+              "kernel": {
+                "name_key": "graph_replay_kernel",
+                "external_id": 444,
+                "start_offset_us": 510.072,
+                "duration_us": 3.84,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 44,
+                "graph_node_id": 188978561024
+              }
+            },
+            {
+              "ordinal": 15,
+              "correlation": 838,
+              "cuda_runtime": {
+                "cbid": 311,
+                "external_id": 451,
+                "start_offset_us": 530.923,
+                "duration_us": 2.36
+              },
+              "kernel": {
+                "name_key": "graph_replay_kernel",
+                "external_id": 451,
+                "start_offset_us": 543.864,
+                "duration_us": 3.871,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 47,
+                "graph_node_id": 201863462912
+              }
+            },
+            {
+              "ordinal": 16,
+              "correlation": 850,
+              "cuda_runtime": {
+                "cbid": 311,
+                "external_id": 458,
+                "start_offset_us": 565.793,
+                "duration_us": 1.97
+              },
+              "kernel": {
+                "name_key": "graph_replay_kernel",
+                "external_id": 458,
+                "start_offset_us": 578.68,
+                "duration_us": 3.839,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 50,
+                "graph_node_id": 214748364800
+              }
+            }
+          ],
+          "other_kernel_activity": [
+            {
+              "ordinal": 1,
+              "correlation": 664,
+              "cuda_runtime": {
+                "cbid": 211,
+                "external_id": 355,
+                "start_offset_us": 45.39,
+                "duration_us": 3.99
+              },
+              "kernel": {
+                "name_key": "other_kernel_activity",
+                "external_id": 355,
+                "start_offset_us": 52.984,
+                "duration_us": 8.544,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 0,
+                "graph_node_id": 0
+              }
+            },
+            {
+              "ordinal": 2,
+              "correlation": 676,
+              "cuda_runtime": {
+                "cbid": 211,
+                "external_id": 362,
+                "start_offset_us": 93.529,
+                "duration_us": 3.84
+              },
+              "kernel": {
+                "name_key": "other_kernel_activity",
+                "external_id": 362,
+                "start_offset_us": 100.408,
+                "duration_us": 8.48,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 0,
+                "graph_node_id": 0
+              }
+            },
+            {
+              "ordinal": 3,
+              "correlation": 688,
+              "cuda_runtime": {
+                "cbid": 211,
+                "external_id": 369,
+                "start_offset_us": 135.858,
+                "duration_us": 3.51
+              },
+              "kernel": {
+                "name_key": "other_kernel_activity",
+                "external_id": 369,
+                "start_offset_us": 142.936,
+                "duration_us": 8.288,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 0,
+                "graph_node_id": 0
+              }
+            },
+            {
+              "ordinal": 4,
+              "correlation": 700,
+              "cuda_runtime": {
+                "cbid": 211,
+                "external_id": 376,
+                "start_offset_us": 167.918,
+                "duration_us": 3.32
+              },
+              "kernel": {
+                "name_key": "other_kernel_activity",
+                "external_id": 376,
+                "start_offset_us": 174.712,
+                "duration_us": 8.288,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 0,
+                "graph_node_id": 0
+              }
+            },
+            {
+              "ordinal": 5,
+              "correlation": 712,
+              "cuda_runtime": {
+                "cbid": 211,
+                "external_id": 383,
+                "start_offset_us": 199.378,
+                "duration_us": 3.27
+              },
+              "kernel": {
+                "name_key": "other_kernel_activity",
+                "external_id": 383,
+                "start_offset_us": 206.136,
+                "duration_us": 8.224,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 0,
+                "graph_node_id": 0
+              }
+            },
+            {
+              "ordinal": 6,
+              "correlation": 724,
+              "cuda_runtime": {
+                "cbid": 211,
+                "external_id": 390,
+                "start_offset_us": 230.187,
+                "duration_us": 3.18
+              },
+              "kernel": {
+                "name_key": "other_kernel_activity",
+                "external_id": 390,
+                "start_offset_us": 237.048,
+                "duration_us": 8.608,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 0,
+                "graph_node_id": 0
+              }
+            },
+            {
+              "ordinal": 7,
+              "correlation": 736,
+              "cuda_runtime": {
+                "cbid": 211,
+                "external_id": 397,
+                "start_offset_us": 261.297,
+                "duration_us": 4.46
+              },
+              "kernel": {
+                "name_key": "other_kernel_activity",
+                "external_id": 397,
+                "start_offset_us": 269.304,
+                "duration_us": 8.64,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 0,
+                "graph_node_id": 0
+              }
+            },
+            {
+              "ordinal": 8,
+              "correlation": 748,
+              "cuda_runtime": {
+                "cbid": 211,
+                "external_id": 404,
+                "start_offset_us": 293.316,
+                "duration_us": 3.51
+              },
+              "kernel": {
+                "name_key": "other_kernel_activity",
+                "external_id": 404,
+                "start_offset_us": 300.472,
+                "duration_us": 8.576,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 0,
+                "graph_node_id": 0
+              }
+            },
+            {
+              "ordinal": 9,
+              "correlation": 760,
+              "cuda_runtime": {
+                "cbid": 211,
+                "external_id": 411,
+                "start_offset_us": 325.166,
+                "duration_us": 3.2
+              },
+              "kernel": {
+                "name_key": "other_kernel_activity",
+                "external_id": 411,
+                "start_offset_us": 332.088,
+                "duration_us": 8.544,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 0,
+                "graph_node_id": 0
+              }
+            },
+            {
+              "ordinal": 10,
+              "correlation": 772,
+              "cuda_runtime": {
+                "cbid": 211,
+                "external_id": 418,
+                "start_offset_us": 358.715,
+                "duration_us": 3.28
+              },
+              "kernel": {
+                "name_key": "other_kernel_activity",
+                "external_id": 418,
+                "start_offset_us": 365.432,
+                "duration_us": 8.32,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 0,
+                "graph_node_id": 0
+              }
+            },
+            {
+              "ordinal": 11,
+              "correlation": 784,
+              "cuda_runtime": {
+                "cbid": 211,
+                "external_id": 425,
+                "start_offset_us": 392.575,
+                "duration_us": 3.41
+              },
+              "kernel": {
+                "name_key": "other_kernel_activity",
+                "external_id": 425,
+                "start_offset_us": 399.352,
+                "duration_us": 8.416,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 0,
+                "graph_node_id": 0
+              }
+            },
+            {
+              "ordinal": 12,
+              "correlation": 796,
+              "cuda_runtime": {
+                "cbid": 211,
+                "external_id": 432,
+                "start_offset_us": 426.335,
+                "duration_us": 3.25
+              },
+              "kernel": {
+                "name_key": "other_kernel_activity",
+                "external_id": 432,
+                "start_offset_us": 433.272,
+                "duration_us": 8.384,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 0,
+                "graph_node_id": 0
+              }
+            },
+            {
+              "ordinal": 13,
+              "correlation": 808,
+              "cuda_runtime": {
+                "cbid": 211,
+                "external_id": 439,
+                "start_offset_us": 458.934,
+                "duration_us": 3.22
+              },
+              "kernel": {
+                "name_key": "other_kernel_activity",
+                "external_id": 439,
+                "start_offset_us": 465.56,
+                "duration_us": 8.288,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 0,
+                "graph_node_id": 0
+              }
+            },
+            {
+              "ordinal": 14,
+              "correlation": 820,
+              "cuda_runtime": {
+                "cbid": 211,
+                "external_id": 446,
+                "start_offset_us": 491.814,
+                "duration_us": 3.29
+              },
+              "kernel": {
+                "name_key": "other_kernel_activity",
+                "external_id": 446,
+                "start_offset_us": 498.871,
+                "duration_us": 8.481,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 0,
+                "graph_node_id": 0
+              }
+            },
+            {
+              "ordinal": 15,
+              "correlation": 832,
+              "cuda_runtime": {
+                "cbid": 211,
+                "external_id": 453,
+                "start_offset_us": 525.793,
+                "duration_us": 3.25
+              },
+              "kernel": {
+                "name_key": "other_kernel_activity",
+                "external_id": 453,
+                "start_offset_us": 533.016,
+                "duration_us": 8.576,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 0,
+                "graph_node_id": 0
+              }
+            },
+            {
+              "ordinal": 16,
+              "correlation": 844,
+              "cuda_runtime": {
+                "cbid": 211,
+                "external_id": 460,
+                "start_offset_us": 560.593,
+                "duration_us": 3.46
+              },
+              "kernel": {
+                "name_key": "other_kernel_activity",
+                "external_id": 460,
+                "start_offset_us": 567.831,
+                "duration_us": 8.672,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 0,
+                "graph_node_id": 0
+              }
+            }
+          ]
+        },
+        {
+          "index": 5,
+          "marker": {
+            "category": "user_annotation",
+            "name": "nested_graphs_compiled_invocation",
+            "trace_start_us": 1776889153413.489,
+            "arm_start_offset_us": 3797.279,
+            "duration_us": 617.022,
+            "external_id": 461,
+            "record_function_id": 0,
+            "event_index": 460
+          },
+          "result_diagnostics": {
+            "cpu_call_duration_us": 622.022,
+            "cuda_event_elapsed_us": 601.7600297927856
+          },
+          "membership_rule": "event start timestamp is inside the CPU compiled-invocation marker",
+          "latest_kernel_end_relative_to_marker_end_us": -7.126,
+          "counts": {
+            "cuda_graph_launches": 16,
+            "graph_correlated_kernels": 16,
+            "other_kernels": 16,
+            "total_kernels": 32
+          },
+          "graph_replays": [
+            {
+              "ordinal": 1,
+              "correlation": 886,
+              "cuda_runtime": {
+                "cbid": 311,
+                "external_id": 468,
+                "start_offset_us": 52.48,
+                "duration_us": 2.66
+              },
+              "kernel": {
+                "name_key": "graph_replay_kernel",
+                "external_id": 468,
+                "start_offset_us": 64.041,
+                "duration_us": 3.808,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 5,
+                "graph_node_id": 21474836480
+              }
+            },
+            {
+              "ordinal": 2,
+              "correlation": 898,
+              "cuda_runtime": {
+                "cbid": 311,
+                "external_id": 475,
+                "start_offset_us": 90.179,
+                "duration_us": 2.35
+              },
+              "kernel": {
+                "name_key": "graph_replay_kernel",
+                "external_id": 475,
+                "start_offset_us": 102.825,
+                "duration_us": 3.872,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 8,
+                "graph_node_id": 34359738368
+              }
+            },
+            {
+              "ordinal": 3,
+              "correlation": 910,
+              "cuda_runtime": {
+                "cbid": 311,
+                "external_id": 482,
+                "start_offset_us": 123.459,
+                "duration_us": 2.03
+              },
+              "kernel": {
+                "name_key": "graph_replay_kernel",
+                "external_id": 482,
+                "start_offset_us": 136.617,
+                "duration_us": 3.936,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 11,
+                "graph_node_id": 47244640256
+              }
+            },
+            {
+              "ordinal": 4,
+              "correlation": 922,
+              "cuda_runtime": {
+                "cbid": 311,
+                "external_id": 489,
+                "start_offset_us": 154.428,
+                "duration_us": 2.11
+              },
+              "kernel": {
+                "name_key": "graph_replay_kernel",
+                "external_id": 489,
+                "start_offset_us": 167.305,
+                "duration_us": 3.904,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 14,
+                "graph_node_id": 60129542144
+              }
+            },
+            {
+              "ordinal": 5,
+              "correlation": 934,
+              "cuda_runtime": {
+                "cbid": 311,
+                "external_id": 496,
+                "start_offset_us": 185.108,
+                "duration_us": 2.06
+              },
+              "kernel": {
+                "name_key": "graph_replay_kernel",
+                "external_id": 496,
+                "start_offset_us": 198.057,
+                "duration_us": 3.904,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 17,
+                "graph_node_id": 73014444032
+              }
+            },
+            {
+              "ordinal": 6,
+              "correlation": 946,
+              "cuda_runtime": {
+                "cbid": 311,
+                "external_id": 503,
+                "start_offset_us": 215.247,
+                "duration_us": 2.06
+              },
+              "kernel": {
+                "name_key": "graph_replay_kernel",
+                "external_id": 503,
+                "start_offset_us": 227.881,
+                "duration_us": 3.904,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 20,
+                "graph_node_id": 85899345920
+              }
+            },
+            {
+              "ordinal": 7,
+              "correlation": 958,
+              "cuda_runtime": {
+                "cbid": 311,
+                "external_id": 510,
+                "start_offset_us": 246.917,
+                "duration_us": 2.17
+              },
+              "kernel": {
+                "name_key": "graph_replay_kernel",
+                "external_id": 510,
+                "start_offset_us": 259.625,
+                "duration_us": 3.904,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 23,
+                "graph_node_id": 98784247808
+              }
+            },
+            {
+              "ordinal": 8,
+              "correlation": 970,
+              "cuda_runtime": {
+                "cbid": 311,
+                "external_id": 517,
+                "start_offset_us": 297.926,
+                "duration_us": 2.19
+              },
+              "kernel": {
+                "name_key": "graph_replay_kernel",
+                "external_id": 517,
+                "start_offset_us": 310.665,
+                "duration_us": 4,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 26,
+                "graph_node_id": 111669149696
+              }
+            },
+            {
+              "ordinal": 9,
+              "correlation": 982,
+              "cuda_runtime": {
+                "cbid": 311,
+                "external_id": 524,
+                "start_offset_us": 330.036,
+                "duration_us": 2.15
+              },
+              "kernel": {
+                "name_key": "graph_replay_kernel",
+                "external_id": 524,
+                "start_offset_us": 342.729,
+                "duration_us": 3.968,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 29,
+                "graph_node_id": 124554051584
+              }
+            },
+            {
+              "ordinal": 10,
+              "correlation": 994,
+              "cuda_runtime": {
+                "cbid": 311,
+                "external_id": 531,
+                "start_offset_us": 363.946,
+                "duration_us": 3.049
+              },
+              "kernel": {
+                "name_key": "graph_replay_kernel",
+                "external_id": 531,
+                "start_offset_us": 375.593,
+                "duration_us": 3.936,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 32,
+                "graph_node_id": 137438953472
+              }
+            },
+            {
+              "ordinal": 11,
+              "correlation": 1006,
+              "cuda_runtime": {
+                "cbid": 311,
+                "external_id": 538,
+                "start_offset_us": 398.895,
+                "duration_us": 2.24
+              },
+              "kernel": {
+                "name_key": "graph_replay_kernel",
+                "external_id": 538,
+                "start_offset_us": 410.472,
+                "duration_us": 3.905,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 35,
+                "graph_node_id": 150323855360
+              }
+            },
+            {
+              "ordinal": 12,
+              "correlation": 1018,
+              "cuda_runtime": {
+                "cbid": 311,
+                "external_id": 545,
+                "start_offset_us": 431.875,
+                "duration_us": 2.86
+              },
+              "kernel": {
+                "name_key": "graph_replay_kernel",
+                "external_id": 545,
+                "start_offset_us": 445.288,
+                "duration_us": 3.969,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 38,
+                "graph_node_id": 163208757248
+              }
+            },
+            {
+              "ordinal": 13,
+              "correlation": 1030,
+              "cuda_runtime": {
+                "cbid": 311,
+                "external_id": 552,
+                "start_offset_us": 479.404,
+                "duration_us": 2.57
+              },
+              "kernel": {
+                "name_key": "graph_replay_kernel",
+                "external_id": 552,
+                "start_offset_us": 491.368,
+                "duration_us": 3.904,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 41,
+                "graph_node_id": 176093659136
+              }
+            },
+            {
+              "ordinal": 14,
+              "correlation": 1042,
+              "cuda_runtime": {
+                "cbid": 311,
+                "external_id": 559,
+                "start_offset_us": 514.924,
+                "duration_us": 8.759
+              },
+              "kernel": {
+                "name_key": "graph_replay_kernel",
+                "external_id": 559,
+                "start_offset_us": 528.104,
+                "duration_us": 3.904,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 44,
+                "graph_node_id": 188978561024
+              }
+            },
+            {
+              "ordinal": 15,
+              "correlation": 1054,
+              "cuda_runtime": {
+                "cbid": 311,
+                "external_id": 566,
+                "start_offset_us": 557.473,
+                "duration_us": 2.23
+              },
+              "kernel": {
+                "name_key": "graph_replay_kernel",
+                "external_id": 566,
+                "start_offset_us": 570.088,
+                "duration_us": 3.904,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 47,
+                "graph_node_id": 201863462912
+              }
+            },
+            {
+              "ordinal": 16,
+              "correlation": 1066,
+              "cuda_runtime": {
+                "cbid": 311,
+                "external_id": 573,
+                "start_offset_us": 592.603,
+                "duration_us": 2.239
+              },
+              "kernel": {
+                "name_key": "graph_replay_kernel",
+                "external_id": 573,
+                "start_offset_us": 605.928,
+                "duration_us": 3.968,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 50,
+                "graph_node_id": 214748364800
+              }
+            }
+          ],
+          "other_kernel_activity": [
+            {
+              "ordinal": 1,
+              "correlation": 880,
+              "cuda_runtime": {
+                "cbid": 211,
+                "external_id": 470,
+                "start_offset_us": 46.5,
+                "duration_us": 3.89
+              },
+              "kernel": {
+                "name_key": "other_kernel_activity",
+                "external_id": 470,
+                "start_offset_us": 53.961,
+                "duration_us": 8.576,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 0,
+                "graph_node_id": 0
+              }
+            },
+            {
+              "ordinal": 2,
+              "correlation": 892,
+              "cuda_runtime": {
+                "cbid": 211,
+                "external_id": 477,
+                "start_offset_us": 84.649,
+                "duration_us": 3.66
+              },
+              "kernel": {
+                "name_key": "other_kernel_activity",
+                "external_id": 477,
+                "start_offset_us": 91.753,
+                "duration_us": 8.32,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 0,
+                "graph_node_id": 0
+              }
+            },
+            {
+              "ordinal": 3,
+              "correlation": 904,
+              "cuda_runtime": {
+                "cbid": 211,
+                "external_id": 484,
+                "start_offset_us": 118.449,
+                "duration_us": 3.25
+              },
+              "kernel": {
+                "name_key": "other_kernel_activity",
+                "external_id": 484,
+                "start_offset_us": 125.193,
+                "duration_us": 8.448,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 0,
+                "graph_node_id": 0
+              }
+            },
+            {
+              "ordinal": 4,
+              "correlation": 916,
+              "cuda_runtime": {
+                "cbid": 211,
+                "external_id": 491,
+                "start_offset_us": 149.448,
+                "duration_us": 3.32
+              },
+              "kernel": {
+                "name_key": "other_kernel_activity",
+                "external_id": 491,
+                "start_offset_us": 156.233,
+                "duration_us": 8.352,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 0,
+                "graph_node_id": 0
+              }
+            },
+            {
+              "ordinal": 5,
+              "correlation": 928,
+              "cuda_runtime": {
+                "cbid": 211,
+                "external_id": 498,
+                "start_offset_us": 180.128,
+                "duration_us": 3.28
+              },
+              "kernel": {
+                "name_key": "other_kernel_activity",
+                "external_id": 498,
+                "start_offset_us": 186.857,
+                "duration_us": 8.32,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 0,
+                "graph_node_id": 0
+              }
+            },
+            {
+              "ordinal": 6,
+              "correlation": 940,
+              "cuda_runtime": {
+                "cbid": 211,
+                "external_id": 505,
+                "start_offset_us": 210.358,
+                "duration_us": 3.2
+              },
+              "kernel": {
+                "name_key": "other_kernel_activity",
+                "external_id": 505,
+                "start_offset_us": 217.353,
+                "duration_us": 8.48,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 0,
+                "graph_node_id": 0
+              }
+            },
+            {
+              "ordinal": 7,
+              "correlation": 952,
+              "cuda_runtime": {
+                "cbid": 211,
+                "external_id": 512,
+                "start_offset_us": 241.747,
+                "duration_us": 3.4
+              },
+              "kernel": {
+                "name_key": "other_kernel_activity",
+                "external_id": 512,
+                "start_offset_us": 248.841,
+                "duration_us": 8.608,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 0,
+                "graph_node_id": 0
+              }
+            },
+            {
+              "ordinal": 8,
+              "correlation": 964,
+              "cuda_runtime": {
+                "cbid": 211,
+                "external_id": 519,
+                "start_offset_us": 292.506,
+                "duration_us": 3.58
+              },
+              "kernel": {
+                "name_key": "other_kernel_activity",
+                "external_id": 519,
+                "start_offset_us": 299.785,
+                "duration_us": 8.544,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 0,
+                "graph_node_id": 0
+              }
+            },
+            {
+              "ordinal": 9,
+              "correlation": 976,
+              "cuda_runtime": {
+                "cbid": 211,
+                "external_id": 526,
+                "start_offset_us": 325.076,
+                "duration_us": 3.25
+              },
+              "kernel": {
+                "name_key": "other_kernel_activity",
+                "external_id": 526,
+                "start_offset_us": 331.977,
+                "duration_us": 8.704,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 0,
+                "graph_node_id": 0
+              }
+            },
+            {
+              "ordinal": 10,
+              "correlation": 988,
+              "cuda_runtime": {
+                "cbid": 211,
+                "external_id": 533,
+                "start_offset_us": 358.946,
+                "duration_us": 3.3
+              },
+              "kernel": {
+                "name_key": "other_kernel_activity",
+                "external_id": 533,
+                "start_offset_us": 365.577,
+                "duration_us": 8.256,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 0,
+                "graph_node_id": 0
+              }
+            },
+            {
+              "ordinal": 11,
+              "correlation": 1000,
+              "cuda_runtime": {
+                "cbid": 211,
+                "external_id": 540,
+                "start_offset_us": 393.645,
+                "duration_us": 3.38
+              },
+              "kernel": {
+                "name_key": "other_kernel_activity",
+                "external_id": 540,
+                "start_offset_us": 400.489,
+                "duration_us": 8.352,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 0,
+                "graph_node_id": 0
+              }
+            },
+            {
+              "ordinal": 12,
+              "correlation": 1012,
+              "cuda_runtime": {
+                "cbid": 211,
+                "external_id": 547,
+                "start_offset_us": 426.885,
+                "duration_us": 3.25
+              },
+              "kernel": {
+                "name_key": "other_kernel_activity",
+                "external_id": 547,
+                "start_offset_us": 433.672,
+                "duration_us": 8.416,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 0,
+                "graph_node_id": 0
+              }
+            },
+            {
+              "ordinal": 13,
+              "correlation": 1024,
+              "cuda_runtime": {
+                "cbid": 211,
+                "external_id": 554,
+                "start_offset_us": 473.874,
+                "duration_us": 3.64
+              },
+              "kernel": {
+                "name_key": "other_kernel_activity",
+                "external_id": 554,
+                "start_offset_us": 480.936,
+                "duration_us": 8.288,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 0,
+                "graph_node_id": 0
+              }
+            },
+            {
+              "ordinal": 14,
+              "correlation": 1036,
+              "cuda_runtime": {
+                "cbid": 211,
+                "external_id": 561,
+                "start_offset_us": 509.894,
+                "duration_us": 3.29
+              },
+              "kernel": {
+                "name_key": "other_kernel_activity",
+                "external_id": 561,
+                "start_offset_us": 516.872,
+                "duration_us": 8.608,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 0,
+                "graph_node_id": 0
+              }
+            },
+            {
+              "ordinal": 15,
+              "correlation": 1048,
+              "cuda_runtime": {
+                "cbid": 211,
+                "external_id": 568,
+                "start_offset_us": 552.313,
+                "duration_us": 3.4
+              },
+              "kernel": {
+                "name_key": "other_kernel_activity",
+                "external_id": 568,
+                "start_offset_us": 559.432,
+                "duration_us": 8.576,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 0,
+                "graph_node_id": 0
+              }
+            },
+            {
+              "ordinal": 16,
+              "correlation": 1060,
+              "cuda_runtime": {
+                "cbid": 211,
+                "external_id": 575,
+                "start_offset_us": 587.403,
+                "duration_us": 3.41
+              },
+              "kernel": {
+                "name_key": "other_kernel_activity",
+                "external_id": 575,
+                "start_offset_us": 594.632,
+                "duration_us": 8.576,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 0,
+                "graph_node_id": 0
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "flag_true",
+      "treatment": {
+        "name": "torch._dynamo.config.nested_graph_breaks",
+        "requested": true,
+        "actual": true,
+        "enabled": 1
+      },
+      "case": "nested_break_depth8",
+      "seed": 0,
+      "status": "pass",
+      "scope": "controlled compiler microbenchmark; no serving, model-throughput, or model-quality claim",
+      "trace_metadata": {
+        "schema_version": 1,
+        "display_time_unit": "ms",
+        "cuda_driver_version": 13000,
+        "cuda_runtime_version": 13000,
+        "cupti_version": 130001,
+        "device": {
+          "id": 0,
+          "name": "NVIDIA B200",
+          "compute_capability": [
+            10,
+            0
+          ],
+          "num_sms": 148
+        }
+      },
+      "compiler_summary": {
+        "api": "torch.compile",
+        "backend": "inductor",
+        "mode": "reduce-overhead",
+        "triton_cudagraphs_requested": true,
+        "dynamo_unique_graphs": 2,
+        "graph_break_event_sum": 1
+      },
+      "expected_counts": {
+        "compiled_invocation_markers": 5,
+        "cuda_runtime_cudaGraphLaunch_events": 10,
+        "total_kernel_events": 20,
+        "per_invocation_cudaGraphLaunch_events": 2,
+        "per_invocation_kernel_events": 4
+      },
+      "observed_counts": {
+        "compiled_invocation_markers": 5,
+        "cuda_runtime_cudaGraphLaunch_events": 10,
+        "unique_graph_launch_correlations": 10,
+        "graph_launch_correlations_with_exactly_one_kernel": 10,
+        "graph_correlated_kernel_events": 10,
+        "total_kernel_events": 20,
+        "other_kernel_events": 10,
+        "cuda_runtime_cudaLaunchKernel_events": 10
+      },
+      "counts_match": true,
+      "per_invocation_graph_launch_counts": [
+        2,
+        2,
+        2,
+        2,
+        2
+      ],
+      "per_invocation_kernel_counts": [
+        4,
+        4,
+        4,
+        4,
+        4
+      ],
+      "kernel_name_counts": {
+        "void at::native::(anonymous namespace)::multi_tensor_apply_kernel<at::native::(anonymous namespace)::TensorListMetadata<2>, at::native::(anonymous namespace)::UnaryOpFunctor<float, 2, 1, 1>, at::native::Copy<float, float> >(at::native::(anonymous namespace)::TensorListMetadata<2>, at::native::(anonymous namespace)::UnaryOpFunctor<float, 2, 1, 1>, at::native::Copy<float, float>)": 10,
+        "triton_poi_fused_add_cos_mul_sin_0": 10
+      },
+      "graph_correlated_kernel_name_counts": {
+        "triton_poi_fused_add_cos_mul_sin_0": 10
+      },
+      "graph_identities": [
+        {
+          "graph_id": 5,
+          "graph_node_ids": [
+            21474836480
+          ],
+          "replay_kernel_occurrences": 5
+        },
+        {
+          "graph_id": 8,
+          "graph_node_ids": [
+            34359738368
+          ],
+          "replay_kernel_occurrences": 5
+        }
+      ],
+      "graph_id_sequence_per_invocation": [
+        [
+          5,
+          8
+        ],
+        [
+          5,
+          8
+        ],
+        [
+          5,
+          8
+        ],
+        [
+          5,
+          8
+        ],
+        [
+          5,
+          8
+        ]
+      ],
+      "invocations": [
+        {
+          "index": 1,
+          "marker": {
+            "category": "user_annotation",
+            "name": "nested_graphs_compiled_invocation",
+            "trace_start_us": 1776896638968.775,
+            "arm_start_offset_us": 0,
+            "duration_us": 1288.063,
+            "external_id": 1,
+            "record_function_id": 0,
+            "event_index": 0
+          },
+          "result_diagnostics": {
+            "cpu_call_duration_us": 1463.532,
+            "cuda_event_elapsed_us": 285.3119969367981
+          },
+          "membership_rule": "event start timestamp is inside the CPU compiled-invocation marker",
+          "latest_kernel_end_relative_to_marker_end_us": -44.107,
+          "counts": {
+            "cuda_graph_launches": 2,
+            "graph_correlated_kernels": 2,
+            "other_kernels": 2,
+            "total_kernels": 4
+          },
+          "graph_replays": [
+            {
+              "ordinal": 1,
+              "correlation": 22,
+              "cuda_runtime": {
+                "cbid": 311,
+                "external_id": 6,
+                "start_offset_us": 1123.715,
+                "duration_us": 12.88
+              },
+              "kernel": {
+                "name_key": "graph_replay_kernel",
+                "external_id": 6,
+                "start_offset_us": 1138.169,
+                "duration_us": 19.263,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 5,
+                "graph_node_id": 21474836480
+              }
+            },
+            {
+              "ordinal": 2,
+              "correlation": 34,
+              "cuda_runtime": {
+                "cbid": 311,
+                "external_id": 13,
+                "start_offset_us": 1215.184,
+                "duration_us": 4.56
+              },
+              "kernel": {
+                "name_key": "graph_replay_kernel",
+                "external_id": 13,
+                "start_offset_us": 1225.333,
+                "duration_us": 18.623,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 8,
+                "graph_node_id": 34359738368
+              }
+            }
+          ],
+          "other_kernel_activity": [
+            {
+              "ordinal": 1,
+              "correlation": 16,
+              "cuda_runtime": {
+                "cbid": 211,
+                "external_id": 8,
+                "start_offset_us": 1096.276,
+                "duration_us": 21
+              },
+              "kernel": {
+                "name_key": "other_kernel_activity",
+                "external_id": 8,
+                "start_offset_us": 1116.314,
+                "duration_us": 8.32,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 0,
+                "graph_node_id": 0
+              }
+            },
+            {
+              "ordinal": 2,
+              "correlation": 28,
+              "cuda_runtime": {
+                "cbid": 211,
+                "external_id": 15,
+                "start_offset_us": 1206.394,
+                "duration_us": 5.78
+              },
+              "kernel": {
+                "name_key": "other_kernel_activity",
+                "external_id": 15,
+                "start_offset_us": 1215.093,
+                "duration_us": 8.608,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 0,
+                "graph_node_id": 0
+              }
+            }
+          ]
+        },
+        {
+          "index": 2,
+          "marker": {
+            "category": "user_annotation",
+            "name": "nested_graphs_compiled_invocation",
+            "trace_start_us": 1776896640274.778,
+            "arm_start_offset_us": 1306.003,
+            "duration_us": 154.758,
+            "external_id": 16,
+            "record_function_id": 0,
+            "event_index": 15
+          },
+          "result_diagnostics": {
+            "cpu_call_duration_us": 169.007,
+            "cuda_event_elapsed_us": 139.0720009803772
+          },
+          "membership_rule": "event start timestamp is inside the CPU compiled-invocation marker",
+          "latest_kernel_end_relative_to_marker_end_us": -0.56,
+          "counts": {
+            "cuda_graph_launches": 2,
+            "graph_correlated_kernels": 2,
+            "other_kernels": 2,
+            "total_kernels": 4
+          },
+          "graph_replays": [
+            {
+              "ordinal": 1,
+              "correlation": 70,
+              "cuda_runtime": {
+                "cbid": 311,
+                "external_id": 21,
+                "start_offset_us": 73.859,
+                "duration_us": 3.88
+              },
+              "kernel": {
+                "name_key": "graph_replay_kernel",
+                "external_id": 21,
+                "start_offset_us": 84.346,
+                "duration_us": 18.847,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 5,
+                "graph_node_id": 21474836480
+              }
+            },
+            {
+              "ordinal": 2,
+              "correlation": 82,
+              "cuda_runtime": {
+                "cbid": 311,
+                "external_id": 28,
+                "start_offset_us": 124.258,
+                "duration_us": 3.32
+              },
+              "kernel": {
+                "name_key": "graph_replay_kernel",
+                "external_id": 28,
+                "start_offset_us": 135.383,
+                "duration_us": 18.815,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 8,
+                "graph_node_id": 34359738368
+              }
+            }
+          ],
+          "other_kernel_activity": [
+            {
+              "ordinal": 1,
+              "correlation": 64,
+              "cuda_runtime": {
+                "cbid": 211,
+                "external_id": 23,
+                "start_offset_us": 65.569,
+                "duration_us": 5.53
+              },
+              "kernel": {
+                "name_key": "other_kernel_activity",
+                "external_id": 23,
+                "start_offset_us": 74.074,
+                "duration_us": 8.639,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 0,
+                "graph_node_id": 0
+              }
+            },
+            {
+              "ordinal": 2,
+              "correlation": 76,
+              "cuda_runtime": {
+                "cbid": 211,
+                "external_id": 30,
+                "start_offset_us": 117.998,
+                "duration_us": 4.03
+              },
+              "kernel": {
+                "name_key": "other_kernel_activity",
+                "external_id": 30,
+                "start_offset_us": 125.271,
+                "duration_us": 8.736,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 0,
+                "graph_node_id": 0
+              }
+            }
+          ]
+        },
+        {
+          "index": 3,
+          "marker": {
+            "category": "user_annotation",
+            "name": "nested_graphs_compiled_invocation",
+            "trace_start_us": 1776896640436.446,
+            "arm_start_offset_us": 1467.671,
+            "duration_us": 123.248,
+            "external_id": 31,
+            "record_function_id": 0,
+            "event_index": 30
+          },
+          "result_diagnostics": {
+            "cpu_call_duration_us": 129.208,
+            "cuda_event_elapsed_us": 121.37600034475327
+          },
+          "membership_rule": "event start timestamp is inside the CPU compiled-invocation marker",
+          "latest_kernel_end_relative_to_marker_end_us": 6.459,
+          "counts": {
+            "cuda_graph_launches": 2,
+            "graph_correlated_kernels": 2,
+            "other_kernels": 2,
+            "total_kernels": 4
+          },
+          "graph_replays": [
+            {
+              "ordinal": 1,
+              "correlation": 118,
+              "cuda_runtime": {
+                "cbid": 311,
+                "external_id": 36,
+                "start_offset_us": 55.709,
+                "duration_us": 2.87
+              },
+              "kernel": {
+                "name_key": "graph_replay_kernel",
+                "external_id": 36,
+                "start_offset_us": 67.054,
+                "duration_us": 18.591,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 5,
+                "graph_node_id": 21474836480
+              }
+            },
+            {
+              "ordinal": 2,
+              "correlation": 130,
+              "cuda_runtime": {
+                "cbid": 311,
+                "external_id": 43,
+                "start_offset_us": 100.039,
+                "duration_us": 2.33
+              },
+              "kernel": {
+                "name_key": "graph_replay_kernel",
+                "external_id": 43,
+                "start_offset_us": 110.924,
+                "duration_us": 18.783,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 8,
+                "graph_node_id": 34359738368
+              }
+            }
+          ],
+          "other_kernel_activity": [
+            {
+              "ordinal": 1,
+              "correlation": 112,
+              "cuda_runtime": {
+                "cbid": 211,
+                "external_id": 38,
+                "start_offset_us": 48.809,
+                "duration_us": 4.35
+              },
+              "kernel": {
+                "name_key": "other_kernel_activity",
+                "external_id": 38,
+                "start_offset_us": 56.399,
+                "duration_us": 8.671,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 0,
+                "graph_node_id": 0
+              }
+            },
+            {
+              "ordinal": 2,
+              "correlation": 124,
+              "cuda_runtime": {
+                "cbid": 211,
+                "external_id": 45,
+                "start_offset_us": 94.519,
+                "duration_us": 3.59
+              },
+              "kernel": {
+                "name_key": "other_kernel_activity",
+                "external_id": 45,
+                "start_offset_us": 101.196,
+                "duration_us": 8.416,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 0,
+                "graph_node_id": 0
+              }
+            }
+          ]
+        },
+        {
+          "index": 4,
+          "marker": {
+            "category": "user_annotation",
+            "name": "nested_graphs_compiled_invocation",
+            "trace_start_us": 1776896640564.654,
+            "arm_start_offset_us": 1595.879,
+            "duration_us": 111.319,
+            "external_id": 46,
+            "record_function_id": 0,
+            "event_index": 45
+          },
+          "result_diagnostics": {
+            "cpu_call_duration_us": 115.679,
+            "cuda_event_elapsed_us": 112.73600161075592
+          },
+          "membership_rule": "event start timestamp is inside the CPU compiled-invocation marker",
+          "latest_kernel_end_relative_to_marker_end_us": 11.39,
+          "counts": {
+            "cuda_graph_launches": 2,
+            "graph_correlated_kernels": 2,
+            "other_kernels": 2,
+            "total_kernels": 4
+          },
+          "graph_replays": [
+            {
+              "ordinal": 1,
+              "correlation": 166,
+              "cuda_runtime": {
+                "cbid": 311,
+                "external_id": 51,
+                "start_offset_us": 50.15,
+                "duration_us": 2.59
+              },
+              "kernel": {
+                "name_key": "graph_replay_kernel",
+                "external_id": 51,
+                "start_offset_us": 60.664,
+                "duration_us": 19.423,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 5,
+                "graph_node_id": 21474836480
+              }
+            },
+            {
+              "ordinal": 2,
+              "correlation": 178,
+              "cuda_runtime": {
+                "cbid": 311,
+                "external_id": 58,
+                "start_offset_us": 90.789,
+                "duration_us": 2.22
+              },
+              "kernel": {
+                "name_key": "graph_replay_kernel",
+                "external_id": 58,
+                "start_offset_us": 103.574,
+                "duration_us": 19.135,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 8,
+                "graph_node_id": 34359738368
+              }
+            }
+          ],
+          "other_kernel_activity": [
+            {
+              "ordinal": 1,
+              "correlation": 160,
+              "cuda_runtime": {
+                "cbid": 211,
+                "external_id": 53,
+                "start_offset_us": 43.97,
+                "duration_us": 3.94
+              },
+              "kernel": {
+                "name_key": "other_kernel_activity",
+                "external_id": 53,
+                "start_offset_us": 50.969,
+                "duration_us": 8.415,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 0,
+                "graph_node_id": 0
+              }
+            },
+            {
+              "ordinal": 2,
+              "correlation": 172,
+              "cuda_runtime": {
+                "cbid": 211,
+                "external_id": 60,
+                "start_offset_us": 85.469,
+                "duration_us": 3.41
+              },
+              "kernel": {
+                "name_key": "other_kernel_activity",
+                "external_id": 60,
+                "start_offset_us": 92.214,
+                "duration_us": 8.448,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 0,
+                "graph_node_id": 0
+              }
+            }
+          ]
+        },
+        {
+          "index": 5,
+          "marker": {
+            "category": "user_annotation",
+            "name": "nested_graphs_compiled_invocation",
+            "trace_start_us": 1776896640681.153,
+            "arm_start_offset_us": 1712.378,
+            "duration_us": 113.888,
+            "external_id": 61,
+            "record_function_id": 0,
+            "event_index": 60
+          },
+          "result_diagnostics": {
+            "cpu_call_duration_us": 118.458,
+            "cuda_event_elapsed_us": 113.72800171375275
+          },
+          "membership_rule": "event start timestamp is inside the CPU compiled-invocation marker",
+          "latest_kernel_end_relative_to_marker_end_us": 9.564,
+          "counts": {
+            "cuda_graph_launches": 2,
+            "graph_correlated_kernels": 2,
+            "other_kernels": 2,
+            "total_kernels": 4
+          },
+          "graph_replays": [
+            {
+              "ordinal": 1,
+              "correlation": 214,
+              "cuda_runtime": {
+                "cbid": 311,
+                "external_id": 66,
+                "start_offset_us": 50.319,
+                "duration_us": 2.68
+              },
+              "kernel": {
+                "name_key": "graph_replay_kernel",
+                "external_id": 66,
+                "start_offset_us": 60.895,
+                "duration_us": 18.623,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 5,
+                "graph_node_id": 21474836480
+              }
+            },
+            {
+              "ordinal": 2,
+              "correlation": 226,
+              "cuda_runtime": {
+                "cbid": 311,
+                "external_id": 73,
+                "start_offset_us": 92.278,
+                "duration_us": 2.24
+              },
+              "kernel": {
+                "name_key": "graph_replay_kernel",
+                "external_id": 73,
+                "start_offset_us": 104.829,
+                "duration_us": 18.623,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 8,
+                "graph_node_id": 34359738368
+              }
+            }
+          ],
+          "other_kernel_activity": [
+            {
+              "ordinal": 1,
+              "correlation": 208,
+              "cuda_runtime": {
+                "cbid": 211,
+                "external_id": 68,
+                "start_offset_us": 44.099,
+                "duration_us": 4.01
+              },
+              "kernel": {
+                "name_key": "other_kernel_activity",
+                "external_id": 68,
+                "start_offset_us": 51.168,
+                "duration_us": 8.319,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 0,
+                "graph_node_id": 0
+              }
+            },
+            {
+              "ordinal": 2,
+              "correlation": 220,
+              "cuda_runtime": {
+                "cbid": 211,
+                "external_id": 75,
+                "start_offset_us": 86.819,
+                "duration_us": 3.519
+              },
+              "kernel": {
+                "name_key": "other_kernel_activity",
+                "external_id": 75,
+                "start_offset_us": 93.854,
+                "duration_us": 8.575,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "graph_id": 0,
+                "graph_node_id": 0
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "kernel_name_dictionary": {
+    "graph_replay_kernel": "triton_poi_fused_add_cos_mul_sin_0",
+    "other_kernel_activity": "void at::native::(anonymous namespace)::multi_tensor_apply_kernel<at::native::(anonymous namespace)::TensorListMetadata<2>, at::native::(anonymous namespace)::UnaryOpFunctor<float, 2, 1, 1>, at::native::Copy<float, float> >(at::native::(anonymous namespace)::TensorListMetadata<2>, at::native::(anonymous namespace)::UnaryOpFunctor<float, 2, 1, 1>, at::native::Copy<float, float>)"
+  },
+  "public_projection": {
+    "original_sha256": "57c2ce58f853382f6f791957a08cf0b42c4895a0b906432d94668faeb2ab8a82",
+    "redacted_fields": [
+      "source_attempt.attempt_id",
+      "source_attempt.local_root",
+      "inputs.*.path",
+      "arms[].trace_metadata.trace_id",
+      "arms[].trace_metadata.host_name"
+    ],
+    "content_statement": "Only identifying strings were removed or generalized. All numeric measurements, event relationships, graph IDs, node IDs, correlation IDs, counts, hashes, and qualification boundaries are unchanged.",
+    "numeric_content_sha256": "05219789459fffdc5b9a7715450549f37e77f813c7bbb80836250f7f4a790aab"
+  }
+}
