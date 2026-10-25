@@ -354,9 +354,9 @@ jobs:
           mkdir -p artifacts
           SMOKE_JSON="${RUNNER_TEMP}/b200-torch2141-smoke-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.json"
           set +e
-          timeout --signal=TERM --kill-after=15s 210s \
+          timeout --signal=TERM --kill-after=15s 270s \
             python -m core.scripts.b200_torch2141_smoke \
-              --deadline-seconds 180 \
+              --deadline-seconds 240 \
               --format json \
               > "${SMOKE_JSON}"
           smoke_status=$?

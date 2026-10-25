@@ -744,9 +744,9 @@ def test_tier1_runs_bounded_b200_compatibility_before_the_full_gpu_suite() -> No
 
     assert steps.index(smoke_step) < steps.index(full_gpu_step) < steps.index(upload_step)
     assert smoke_step["timeout-minutes"] == "5"
-    assert "timeout --signal=TERM --kill-after=15s 210s" in smoke_step["run"]
+    assert "timeout --signal=TERM --kill-after=15s 270s" in smoke_step["run"]
     assert "python -m core.scripts.b200_torch2141_smoke" in smoke_step["run"]
-    assert "--deadline-seconds 180" in smoke_step["run"]
+    assert "--deadline-seconds 240" in smoke_step["run"]
     assert "--format json" in smoke_step["run"]
     assert "artifacts/b200-torch2141-smoke.json" in smoke_step["run"]
     assert "smoke_status=$?" in smoke_step["run"]
