@@ -485,6 +485,16 @@ def test_cli_rejects_nonpositive_time_bounds() -> None:
         parser.parse_args(["--per-import-timeout-seconds", "-1"])
 
 
+def test_default_deadline_covers_the_declared_entrypoint_envelope() -> None:
+    code_root = Path(smoke.__file__).resolve().parents[2]
+    entrypoints = smoke.load_repository_entrypoints(code_root)
+
+    assert (
+        sum(entrypoint.timeout_seconds for entrypoint in entrypoints)
+        <= smoke.DEFAULT_DEADLINE_SECONDS
+    )
+
+
 def test_repository_identity_records_exact_clean_git_revision(tmp_path: Path) -> None:
     subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
     tracked = tmp_path / "tracked.txt"

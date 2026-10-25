@@ -56,7 +56,7 @@ EXPECTED_VERSIONS = {
     "vllm": "0.33.0.dev0+cu130.torch2141",
 }
 
-DEFAULT_DEADLINE_SECONDS = 180.0
+DEFAULT_DEADLINE_SECONDS = 240.0
 DEFAULT_IMPORT_TIMEOUT_SECONDS = 10.0
 COMPATIBILITY_IMPORT_MANIFEST = Path("core/b200_torch2141_runnable_examples.txt")
 ENTRYPOINT_MANIFEST = Path("core/b200_torch2141_entrypoints.json")
@@ -261,7 +261,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--deadline-seconds",
         type=_positive_float,
         default=DEFAULT_DEADLINE_SECONDS,
-        help="Overall wall-clock deadline. Default: 180 seconds.",
+        help="Overall wall-clock deadline. Default: 240 seconds.",
     )
     parser.add_argument(
         "--per-import-timeout-seconds",
@@ -379,8 +379,7 @@ def _check_torch_cuda() -> dict[str, Any]:
     nccl_runtime_version = tuple(int(value) for value in torch.cuda.nccl.version())
     if nccl_runtime_version != (2, 30, 7):
         raise RuntimeError(
-            "NCCL runtime mismatch: expected (2, 30, 7), "
-            f"got {nccl_runtime_version!r}"
+            f"NCCL runtime mismatch: expected (2, 30, 7), got {nccl_runtime_version!r}"
         )
 
     lhs = torch.arange(16, device="cuda", dtype=torch.float32).reshape(4, 4)
