@@ -531,6 +531,19 @@ def test_smoke_success_requires_complete_entrypoints_and_repository_imports() ->
     imports.groups["ch01"].passed = 0
     assert not smoke.smoke_succeeded([passing_check], entrypoints, imports)
 
+    omitted_imports = smoke._not_requested_repository_imports(
+        reason="short-gpu mode excludes the repository import sweep"
+    )
+    assert not omitted_imports.complete
+    assert not omitted_imports.succeeded
+    assert not smoke.smoke_succeeded([passing_check], entrypoints, omitted_imports)
+    assert smoke.smoke_succeeded(
+        [passing_check],
+        entrypoints,
+        omitted_imports,
+        require_repository_imports=False,
+    )
+
 
 def test_cli_rejects_nonpositive_time_bounds() -> None:
     parser = smoke.build_parser()
@@ -540,7 +553,16 @@ def test_cli_rejects_nonpositive_time_bounds() -> None:
         parser.parse_args(["--per-import-timeout-seconds", "-1"])
 
 
-def test_smoke_runs_broad_import_sweep_before_bounded_entrypoints(monkeypatch) -> None:
+def test_cli_defaults_to_full_and_accepts_short_gpu_mode() -> None:
+    parser = smoke.build_parser()
+
+    assert parser.parse_args([]).mode == smoke.SMOKE_MODE_FULL
+    assert (
+        parser.parse_args(["--mode", smoke.SMOKE_MODE_SHORT_GPU]).mode == smoke.SMOKE_MODE_SHORT_GPU
+    )
+
+
+def test_full_smoke_runs_bounded_entrypoints_before_broad_import_sweep(monkeypatch) -> None:
     observed: list[str] = []
 
     monkeypatch.setattr(
@@ -590,8 +612,87 @@ def test_smoke_runs_broad_import_sweep_before_bounded_entrypoints(monkeypatch) -
         per_import_timeout_seconds=smoke.DEFAULT_IMPORT_TIMEOUT_SECONDS,
     )
 
-    assert observed == ["imports", "entrypoints"]
+    assert observed == ["entrypoints", "imports"]
     assert report["status"] == smoke.STATUS_PASS
+    assert report["mode"] == smoke.SMOKE_MODE_FULL
+    assert report["repository_imports"]["requested"] is True
+    assert report["repository_imports"]["coverage_status"] == smoke.IMPORT_COVERAGE_COMPLETE
+
+
+def test_short_gpu_mode_skips_imports_and_preserves_the_shared_deadline(monkeypatch) -> None:
+    observed: list[str] = []
+    observed_deadlines: list[float] = []
+
+    def record_check(name, policy, check, deadline):
+        observed.append(f"check:{name}")
+        observed_deadlines.append(deadline)
+        return smoke.CheckResult(
+            name=name,
+            policy=policy,
+            status=smoke.STATUS_PASS,
+            duration_ms=0.0,
+        )
+
+    def reject_import_sweep(*args, **kwargs):
+        raise AssertionError("short-gpu mode must not start the repository import sweep")
+
+    def record_entrypoints(*args, **kwargs):
+        observed.append("entrypoints")
+        observed_deadlines.append(kwargs["deadline"])
+        return smoke.EntrypointSweepResult(
+            discovered=6,
+            passed=6,
+            failed=0,
+            not_run=0,
+            duration_ms=0.0,
+            deadline_exceeded=False,
+            results=[],
+        )
+
+    monkeypatch.setattr(smoke, "_run_check", record_check)
+    monkeypatch.setattr(smoke, "import_repository_examples", reject_import_sweep)
+    monkeypatch.setattr(smoke, "run_repository_entrypoints", record_entrypoints)
+
+    report = smoke.execute_smoke(
+        Path(smoke.__file__).resolve().parents[2],
+        deadline_seconds=smoke.DEFAULT_DEADLINE_SECONDS,
+        per_import_timeout_seconds=smoke.DEFAULT_IMPORT_TIMEOUT_SECONDS,
+        mode=smoke.SMOKE_MODE_SHORT_GPU,
+    )
+
+    assert observed[-1] == "entrypoints"
+    assert all(item.startswith("check:") for item in observed[:-1])
+    assert "check:vllm_abi_imports" not in observed
+    assert len(set(observed_deadlines)) == 1
+    assert report["status"] == smoke.STATUS_PASS
+    assert report["mode"] == smoke.SMOKE_MODE_SHORT_GPU
+    assert report["repository_entrypoints"]["discovered"] == 6
+    assert report["repository_entrypoints"]["passed"] == 6
+
+    vllm_check = next(check for check in report["checks"] if check["name"] == "vllm_abi_imports")
+    assert vllm_check["policy"] == smoke.POLICY_NOT_REQUESTED
+    assert vllm_check["status"] == smoke.STATUS_NOT_RUN
+    assert vllm_check["diagnostic"] == ("short-gpu mode excludes the optional vLLM ABI import")
+    assert report["summary"]["checks_not_requested"] == ["vllm_abi_imports"]
+
+    imports = report["repository_imports"]
+    assert imports["requested"] is False
+    assert imports["counts_available"] is False
+    assert imports["discovered"] is None
+    assert imports["not_run"] is None
+    assert imports["coverage_status"] == smoke.IMPORT_COVERAGE_NOT_REQUESTED
+    assert imports["complete"] is False
+    assert imports["omission_reason"] == ("short-gpu mode excludes the repository import sweep")
+    assert report["summary"]["repository_import_coverage"] == (smoke.IMPORT_COVERAGE_NOT_REQUESTED)
+    assert report["summary"]["repository_import_failures"] is None
+    assert report["summary"]["repository_imports_not_run"] is None
+
+    rendered = smoke.render_text(report)
+    assert "mode=short-gpu" in rendered
+    assert rendered.count("environment python=") == 1
+    assert "CHECK NOT_RUN policy=not_requested name=vllm_abi_imports" in rendered
+    assert "IMPORT_COVERAGE NOT_REQUESTED" in rendered
+    assert "IMPORT_SUMMARY requested=false coverage_status=not_requested" in rendered
 
 
 def test_repository_identity_records_exact_clean_git_revision(tmp_path: Path) -> None:

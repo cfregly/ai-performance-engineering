@@ -3,18 +3,24 @@
 
 This is a diagnostic runner. It performs one tiny PyTorch CUDA operation, one
 tiny Triton kernel launch, import and ABI checks for the declared companion
-packages, runs a small manifest of real repository CUDA entrypoints, and
-imports every owned chapter and lab baseline/optimized module plus the checked
-compatibility-import manifest. It does not produce performance evidence.
+packages, and runs a small manifest of real repository CUDA entrypoints. Full
+mode also imports every owned chapter and lab baseline/optimized module plus
+the checked compatibility-import manifest. It does not produce performance
+evidence.
 
 Run from the ``code`` directory:
 
     python -m core.scripts.b200_torch2141_smoke
 
-The default deadline is three minutes. A missed deadline, an incomplete
-entrypoint or import sweep, or any attempted check failure returns a nonzero
-exit code. Every declared companion package is a required part of this pinned
-stack.
+For short B200 validation that prioritizes the six GPU entrypoints and excludes
+the optional vLLM ABI import:
+
+    python -m core.scripts.b200_torch2141_smoke --mode short-gpu
+
+The default deadline is four minutes. A missed deadline, an incomplete
+entrypoint run, any attempted check failure, or an incomplete full-mode import
+sweep returns a nonzero exit code. Full mode requires every declared companion
+package. Short GPU mode retains the declared vLLM pin but does not validate it.
 """
 
 from __future__ import annotations
@@ -60,6 +66,9 @@ EXPECTED_VERSIONS = {
 
 DEFAULT_DEADLINE_SECONDS = 240.0
 DEFAULT_IMPORT_TIMEOUT_SECONDS = 10.0
+SMOKE_MODE_FULL = "full"
+SMOKE_MODE_SHORT_GPU = "short-gpu"
+SMOKE_MODES = (SMOKE_MODE_FULL, SMOKE_MODE_SHORT_GPU)
 COMPATIBILITY_IMPORT_MANIFEST = Path("core/b200_torch2141_runnable_examples.txt")
 ENTRYPOINT_MANIFEST = Path("core/b200_torch2141_entrypoints.json")
 ENTRYPOINT_MANIFEST_SCHEMA_VERSION = 1
@@ -71,6 +80,7 @@ _ACTIVE_CHILD_PROCESSES = _PROCESS_GROUPS.active
 
 STATUS_PASS = "pass"
 STATUS_FAIL = "fail"
+STATUS_NOT_RUN = "not_run"
 
 IMPORT_FAILURE_EXCEPTION = "exception"
 IMPORT_FAILURE_TIMEOUT = "timeout"
@@ -80,6 +90,11 @@ IMPORT_FAILURE_LAUNCH = "launch_error"
 IMPORT_FAILURE_PROTOCOL = "protocol_error"
 
 POLICY_REQUIRED = "required"
+POLICY_NOT_REQUESTED = "not_requested"
+
+IMPORT_COVERAGE_COMPLETE = "complete"
+IMPORT_COVERAGE_INCOMPLETE = "incomplete"
+IMPORT_COVERAGE_NOT_REQUESTED = "not_requested"
 
 # ``tl`` is populated only inside the Triton check. Keeping the import lazy
 # makes this module safe to import in CPU-only unit tests.
@@ -226,25 +241,40 @@ class ImportSweepResult:
     deadline_exceeded: bool
     groups: dict[str, ImportGroupCounts]
     failures: list[ImportFailure]
+    requested: bool = True
+    omission_reason: str | None = None
 
     @property
     def complete(self) -> bool:
-        return self.not_run == 0 and not self.deadline_exceeded
+        return self.requested and self.not_run == 0 and not self.deadline_exceeded
+
+    @property
+    def coverage_status(self) -> str:
+        if not self.requested:
+            return IMPORT_COVERAGE_NOT_REQUESTED
+        if not self.complete:
+            return IMPORT_COVERAGE_INCOMPLETE
+        return IMPORT_COVERAGE_COMPLETE
 
     @property
     def succeeded(self) -> bool:
         return self.complete and self.discovered > 0 and self.failed == 0
 
     def to_dict(self) -> dict[str, Any]:
+        counts_available = self.requested
         return {
-            "discovered": self.discovered,
-            "passed": self.passed,
-            "failed": self.failed,
-            "skipped": self.skipped,
-            "not_run": self.not_run,
+            "discovered": self.discovered if counts_available else None,
+            "passed": self.passed if counts_available else None,
+            "failed": self.failed if counts_available else None,
+            "skipped": self.skipped if counts_available else None,
+            "not_run": self.not_run if counts_available else None,
             "duration_ms": self.duration_ms,
             "deadline_exceeded": self.deadline_exceeded,
             "complete": self.complete,
+            "requested": self.requested,
+            "counts_available": counts_available,
+            "coverage_status": self.coverage_status,
+            "omission_reason": self.omission_reason,
             "groups": {name: counts.to_dict() for name, counts in sorted(self.groups.items())},
             "failures": [failure.to_dict() for failure in self.failures],
         }
@@ -260,6 +290,17 @@ def _positive_float(raw: str) -> float:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Run the bounded PyTorch 2.14.1 compatibility smoke on a B200 GPU."
+    )
+    parser.add_argument(
+        "--mode",
+        choices=SMOKE_MODES,
+        default=SMOKE_MODE_FULL,
+        help=(
+            "Validation mode. 'full' runs all stack checks, the GPU entrypoints, "
+            "then the repository import sweep. 'short-gpu' skips repository imports "
+            "and runs the stack checks except the optional vLLM ABI import, then runs "
+            "the GPU entrypoints. Default: full."
+        ),
     )
     parser.add_argument(
         "--deadline-seconds",
@@ -1307,11 +1348,49 @@ def smoke_succeeded(
     checks: Sequence[CheckResult],
     entrypoints: EntrypointSweepResult,
     imports: ImportSweepResult,
+    *,
+    require_repository_imports: bool = True,
 ) -> bool:
-    return (
-        all(check.status == STATUS_PASS for check in checks)
-        and entrypoints.succeeded
-        and imports.succeeded
+    checks_succeeded = all(
+        (check.policy == POLICY_REQUIRED and check.status == STATUS_PASS)
+        or (check.policy == POLICY_NOT_REQUESTED and check.status == STATUS_NOT_RUN)
+        for check in checks
+    )
+    imports_succeeded = (
+        imports.succeeded
+        if require_repository_imports
+        else imports.coverage_status == IMPORT_COVERAGE_NOT_REQUESTED
+    )
+    return checks_succeeded and entrypoints.succeeded and imports_succeeded
+
+
+def _not_requested_check(*, name: str, reason: str) -> CheckResult:
+    """Record a mode-specific omission without presenting it as a passing check."""
+
+    return CheckResult(
+        name=name,
+        policy=POLICY_NOT_REQUESTED,
+        status=STATUS_NOT_RUN,
+        duration_ms=0.0,
+        diagnostic=reason,
+    )
+
+
+def _not_requested_repository_imports(*, reason: str) -> ImportSweepResult:
+    """Record an intentionally omitted import sweep without claiming coverage."""
+
+    return ImportSweepResult(
+        discovered=0,
+        passed=0,
+        failed=0,
+        skipped=0,
+        not_run=0,
+        duration_ms=0.0,
+        deadline_exceeded=False,
+        groups={},
+        failures=[],
+        requested=False,
+        omission_reason=reason,
     )
 
 
@@ -1320,7 +1399,11 @@ def execute_smoke(
     *,
     deadline_seconds: float,
     per_import_timeout_seconds: float,
+    mode: str = SMOKE_MODE_FULL,
 ) -> dict[str, Any]:
+    if mode not in SMOKE_MODES:
+        raise ValueError(f"unsupported smoke mode: {mode!r}")
+
     started_at = datetime.now(timezone.utc).isoformat()
     started = time.monotonic()
     deadline = started + deadline_seconds
@@ -1377,20 +1460,40 @@ def execute_smoke(
         ("vllm_abi_imports", POLICY_REQUIRED, _check_vllm),
     )
     for name, policy, check in check_specs:
+        if mode == SMOKE_MODE_SHORT_GPU and name == "vllm_abi_imports":
+            checks.append(
+                _not_requested_check(
+                    name=name,
+                    reason="short-gpu mode excludes the optional vLLM ABI import",
+                )
+            )
+            continue
         checks.append(_run_check(name, policy, check, deadline))
 
-    repository_imports = import_repository_examples(
-        code_root,
-        deadline=deadline,
-        per_import_timeout_seconds=per_import_timeout_seconds,
-    )
     repository_entrypoints = run_repository_entrypoints(code_root, deadline=deadline)
-    succeeded = smoke_succeeded(checks, repository_entrypoints, repository_imports)
+    require_repository_imports = mode == SMOKE_MODE_FULL
+    if require_repository_imports:
+        repository_imports = import_repository_examples(
+            code_root,
+            deadline=deadline,
+            per_import_timeout_seconds=per_import_timeout_seconds,
+        )
+    else:
+        repository_imports = _not_requested_repository_imports(
+            reason="short-gpu mode excludes the repository import sweep"
+        )
+    succeeded = smoke_succeeded(
+        checks,
+        repository_entrypoints,
+        repository_imports,
+        require_repository_imports=require_repository_imports,
+    )
     elapsed_ms = (time.monotonic() - started) * 1000.0
 
     return {
         "schema_version": 2,
         "status": STATUS_PASS if succeeded else STATUS_FAIL,
+        "mode": mode,
         "started_at": started_at,
         "elapsed_ms": elapsed_ms,
         "deadline_seconds": deadline_seconds,
@@ -1408,12 +1511,20 @@ def execute_smoke(
         "repository_imports": repository_imports.to_dict(),
         "summary": {
             "required_failures": sum(
-                check.status == STATUS_FAIL and check.policy == POLICY_REQUIRED for check in checks
+                check.status != STATUS_PASS and check.policy == POLICY_REQUIRED for check in checks
             ),
+            "checks_not_requested": [
+                check.name for check in checks if check.policy == POLICY_NOT_REQUESTED
+            ],
             "repository_entrypoint_failures": repository_entrypoints.failed,
             "repository_entrypoints_not_run": repository_entrypoints.not_run,
-            "repository_import_failures": repository_imports.failed,
-            "repository_imports_not_run": repository_imports.not_run,
+            "repository_import_coverage": repository_imports.coverage_status,
+            "repository_import_failures": (
+                repository_imports.failed if repository_imports.requested else None
+            ),
+            "repository_imports_not_run": (
+                repository_imports.not_run if repository_imports.requested else None
+            ),
         },
     }
 
@@ -1423,7 +1534,8 @@ def render_text(report: dict[str, Any]) -> str:
         "B200 PyTorch 2.14.1 compatibility smoke",
         (
             f"environment python={report['environment']['python']} "
-            f"platform={report['environment']['platform']}"
+            f"platform={report['environment']['platform']} "
+            f"mode={report.get('mode', SMOKE_MODE_FULL)}"
         ),
         (
             f"source git_revision={report['environment']['git_revision']} "
@@ -1465,26 +1577,39 @@ def render_text(report: dict[str, Any]) -> str:
 
     imports = report["repository_imports"]
     lines.append("REPOSITORY IMPORT COUNTS")
-    for group, counts in imports["groups"].items():
+    imports_requested = imports.get("requested", True)
+    if not imports_requested:
+        lines.append(
+            f"IMPORT_COVERAGE NOT_REQUESTED reason={json.dumps(imports.get('omission_reason'))}"
+        )
+    for group, counts in imports["groups"].items() if imports_requested else ():
         lines.append(
             f"IMPORT_GROUP {group} discovered={counts['discovered']} "
             f"pass={counts['passed']} fail={counts['failed']} "
             f"skip={counts['skipped']} not_run={counts['not_run']}"
         )
-    for failure in imports["failures"]:
+    if imports_requested:
+        for failure in imports["failures"]:
+            lines.append(
+                f"IMPORT_FAILURE module={failure['module']} path={failure['path']} "
+                f"outcome={failure['outcome']} returncode={failure['returncode']} "
+                f"signal={failure['signal_number']} "
+                f"timeout_seconds={failure['timeout_seconds']} "
+                f"diagnostic={failure['diagnostic']}"
+            )
         lines.append(
-            f"IMPORT_FAILURE module={failure['module']} path={failure['path']} "
-            f"outcome={failure['outcome']} returncode={failure['returncode']} "
-            f"signal={failure['signal_number']} "
-            f"timeout_seconds={failure['timeout_seconds']} "
-            f"diagnostic={failure['diagnostic']}"
+            f"IMPORT_SUMMARY requested=true "
+            f"coverage_status={imports.get('coverage_status', IMPORT_COVERAGE_COMPLETE)} "
+            f"discovered={imports['discovered']} pass={imports['passed']} "
+            f"fail={imports['failed']} skip={imports['skipped']} not_run={imports['not_run']} "
+            f"complete={imports['complete']} deadline_exceeded={imports['deadline_exceeded']} "
+            f"duration_ms={imports['duration_ms']:.3f}"
         )
-    lines.append(
-        f"IMPORT_SUMMARY discovered={imports['discovered']} pass={imports['passed']} "
-        f"fail={imports['failed']} skip={imports['skipped']} not_run={imports['not_run']} "
-        f"complete={imports['complete']} deadline_exceeded={imports['deadline_exceeded']} "
-        f"duration_ms={imports['duration_ms']:.3f}"
-    )
+    else:
+        lines.append(
+            "IMPORT_SUMMARY requested=false coverage_status=not_requested "
+            "counts_available=false complete=false"
+        )
     lines.append(
         f"RESULT {report['status'].upper()} elapsed_ms={report['elapsed_ms']:.3f} "
         f"summary={json.dumps(report['summary'], sort_keys=True)}"
@@ -1512,6 +1637,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 code_root,
                 deadline_seconds=args.deadline_seconds,
                 per_import_timeout_seconds=args.per_import_timeout_seconds,
+                mode=args.mode,
             )
         print(json.dumps(report, indent=2, sort_keys=True))
     else:
@@ -1520,6 +1646,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 code_root,
                 deadline_seconds=args.deadline_seconds,
                 per_import_timeout_seconds=args.per_import_timeout_seconds,
+                mode=args.mode,
             )
         print(render_text(report))
     return 0 if report["status"] == STATUS_PASS else 1
