@@ -9,8 +9,8 @@ from pathlib import Path
 
 import torch
 import torch.distributed as dist
-from torch.distributed._composable.fsdp import MixedPrecisionPolicy, fully_shard
 from torch.distributed.device_mesh import init_device_mesh
+from torch.distributed.fsdp import MixedPrecisionPolicy, fully_shard
 from torch.utils.data import DataLoader, DistributedSampler
 
 from core.benchmark.gpu_requirements import require_min_gpus
@@ -71,7 +71,10 @@ def _build_dataloader(
         vocab_size = int(os.getenv("AISP_TINYSTORIES_VOCAB", "32000"))
         num_samples = max(steps * grad_accum * micro_batch * world_size, 256)
         tokens = torch.randint(
-            0, vocab_size, (num_samples, seq_len + 1), dtype=torch.long,
+            0,
+            vocab_size,
+            (num_samples, seq_len + 1),
+            dtype=torch.long,
             generator=torch.Generator().manual_seed(seed),
         )
         input_ids, labels = tokens[:, :-1], tokens[:, 1:]
@@ -88,7 +91,9 @@ def _build_dataloader(
                 return {"input_ids": self._input_ids[idx], "labels": self._labels[idx]}
 
         dataset = SyntheticTokenDataset(input_ids, labels)
-        sampler = DistributedSampler(dataset, num_replicas=world_size, rank=rank, shuffle=True, drop_last=True, seed=seed)
+        sampler = DistributedSampler(
+            dataset, num_replicas=world_size, rank=rank, shuffle=True, drop_last=True, seed=seed
+        )
         dataloader = DataLoader(
             dataset,
             batch_size=micro_batch,
@@ -106,7 +111,9 @@ def _build_dataloader(
     else:
         tokenizer = setup_tokenizer(MODEL_ID)
         dataset = load_tinystories(tokenizer, seq_len, is_main_process=rank == 0)
-    sampler = DistributedSampler(dataset, num_replicas=world_size, rank=rank, shuffle=True, drop_last=True, seed=seed)
+    sampler = DistributedSampler(
+        dataset, num_replicas=world_size, rank=rank, shuffle=True, drop_last=True, seed=seed
+    )
     dataloader = DataLoader(
         dataset,
         batch_size=micro_batch,
@@ -188,7 +195,9 @@ def main():
             config.use_cache = False
             config.attn_implementation = "eager"
         else:
-            config = AutoConfig.from_pretrained(MODEL_ID, use_cache=False, attn_implementation="eager")
+            config = AutoConfig.from_pretrained(
+                MODEL_ID, use_cache=False, attn_implementation="eager"
+            )
     override_layers = os.getenv("AISP_TINYSTORIES_LAYERS")
     if override_layers:
         layers = int(override_layers)
@@ -200,7 +209,9 @@ def main():
     if getattr(config, "max_position_embeddings", 0) < args.sequence_length:
         config.max_position_embeddings = args.sequence_length
 
-    model = AutoModelForCausalLM.from_config(config, torch_dtype=torch.bfloat16, attn_implementation="eager")
+    model = AutoModelForCausalLM.from_config(
+        config, torch_dtype=torch.bfloat16, attn_implementation="eager"
+    )
     if rank == 0:
         print("[baseline_fsdp2_multigpu] model instantiated", flush=True)
 
@@ -210,7 +221,9 @@ def main():
 
     if rank == 0:
         print("[baseline_fsdp2_multigpu] fsdp2 applied", flush=True)
-    optimizer = torch.optim.AdamW(model.parameters(), lr=args.learning_rate, betas=(0.9, 0.95), weight_decay=0.1)
+    optimizer = torch.optim.AdamW(
+        model.parameters(), lr=args.learning_rate, betas=(0.9, 0.95), weight_decay=0.1
+    )
     if rank == 0:
         print("[baseline_fsdp2_multigpu] optimizer ready", flush=True)
 
@@ -256,7 +269,8 @@ def main():
                 loss_value = float(loss_value_buffer.detach().cpu()[0]) * args.grad_accum
                 msg = (
                     f"[baseline_fsdp2_multigpu] step {optimizer_step}/{total_updates} "
-                    f"loss={loss_value:.4f}" + ThroughputTracker.format(metrics, include_memory=True)
+                    f"loss={loss_value:.4f}"
+                    + ThroughputTracker.format(metrics, include_memory=True)
                 )
                 print(msg, flush=True)
 
@@ -271,7 +285,10 @@ def main():
     dist.all_reduce(elapsed, op=dist.ReduceOp.MAX)
     if is_main:
         print(f"rank0 time_per_iter_ms: {elapsed.item() / optimizer_step:.9f}", flush=True)
-        print(f"completed_optimizer_steps: {optimizer_step}; completed_microbatches: {micro_step}", flush=True)
+        print(
+            f"completed_optimizer_steps: {optimizer_step}; completed_microbatches: {micro_step}",
+            flush=True,
+        )
 
     dist.barrier()
     if is_main:

@@ -29,16 +29,14 @@ EXPECTED_STACK = {
     "torchao": "0.18.0+cu130",
     "triton": "3.8.0",
     "torchtitan": "0.3.0",
-    "cuda-python": "13.0.3",
+    "cuda-python": "13.1.1",
     "flashinfer-python": "0.7.2",
     "transformer-engine": "2.20.2",
 }
 
 
 def _vllm_source_contract() -> dict[str, Any]:
-    return json.loads(
-        (CODE_ROOT / "vllm_source_build.json").read_text(encoding="utf-8")
-    )
+    return json.loads((CODE_ROOT / "vllm_source_build.json").read_text(encoding="utf-8"))
 
 
 def _cluster_setup_function(name: str) -> str:
@@ -89,8 +87,7 @@ def _write_contract_wheel(
     ]
     metadata_lines.extend(f"Requires-Dist: {name}" for name in requirements)
     wheel_path = tmp_path / (
-        "vllm-0.33.0.dev0+cu130.torch2141-cp312-cp312-linux_x86_64"
-        f"{filename_suffix}.whl"
+        f"vllm-0.33.0.dev0+cu130.torch2141-cp312-cp312-linux_x86_64{filename_suffix}.whl"
     )
     native_payload = bytearray(expected["minimum_native_member_size"])
     native_payload[:6] = b"\x7fELF\x02\x01"
@@ -154,9 +151,7 @@ def test_requirements_select_the_supported_pytorch_214_stack() -> None:
 
 
 def test_linux_x86_64_lock_resolves_the_supported_pytorch_214_stack() -> None:
-    pins = _locked_exact_pins(
-        CODE_ROOT / "requirements_torch2141_linux_x86_64.txt"
-    )
+    pins = _locked_exact_pins(CODE_ROOT / "requirements_torch2141_linux_x86_64.txt")
 
     assert {name: pins.get(name) for name in EXPECTED_STACK} == EXPECTED_STACK
     assert pins["datasets"] == "4.7.0"
@@ -168,15 +163,11 @@ def test_linux_x86_64_lock_resolves_the_supported_pytorch_214_stack() -> None:
 def test_vllm_builder_requirements_are_present_in_the_active_lock() -> None:
     contract = _vllm_source_contract()
     requirements = _active_exact_pins(CODE_ROOT / "requirements_latest.txt")
-    lock = _locked_exact_pins(
-        CODE_ROOT / "requirements_torch2141_linux_x86_64.txt"
-    )
+    lock = _locked_exact_pins(CODE_ROOT / "requirements_torch2141_linux_x86_64.txt")
     build_requirements = contract["build"]["resolved_python_requirements"]
 
     assert contract["build"]["rust_toolchain"] == "1.95.0"
-    assert {name: requirements.get(name) for name in build_requirements} == (
-        build_requirements
-    )
+    assert {name: requirements.get(name) for name in build_requirements} == (build_requirements)
     assert {name: lock.get(name) for name in build_requirements} == build_requirements
 
 
@@ -198,9 +189,9 @@ def test_setup_requires_core_versions_from_the_supported_stack() -> None:
 
 
 def test_cpu_ci_exercises_the_same_torch_and_triton_release() -> None:
-    workflow = (
-        REPOSITORY_ROOT / ".github" / "workflows" / "benchmark-validation.yml"
-    ).read_text(encoding="utf-8")
+    workflow = (REPOSITORY_ROOT / ".github" / "workflows" / "benchmark-validation.yml").read_text(
+        encoding="utf-8"
+    )
 
     assert f"triton=={EXPECTED_STACK['triton']}" in workflow
     assert "python -m pip install torch==2.14.1 " in workflow
@@ -209,9 +200,9 @@ def test_cpu_ci_exercises_the_same_torch_and_triton_release() -> None:
 
 def test_full_graph_audit_is_bound_to_the_current_requirements() -> None:
     requirements = CODE_ROOT / "requirements_latest.txt"
-    workflow = (
-        REPOSITORY_ROOT / ".github" / "workflows" / "audit-linux-full-graph.yml"
-    ).read_text(encoding="utf-8")
+    workflow = (REPOSITORY_ROOT / ".github" / "workflows" / "audit-linux-full-graph.yml").read_text(
+        encoding="utf-8"
+    )
     digest = hashlib.sha256(requirements.read_bytes()).hexdigest()
 
     assert f'"{digest}"' in workflow
@@ -225,12 +216,8 @@ def test_run_manifest_schema_example_uses_the_supported_stack() -> None:
     assert example["software"]["pytorch_version"] == EXPECTED_STACK["torch"]
     assert example["software"]["triton_version"] == EXPECTED_STACK["triton"]
     assert example["runtime_provenance"]["torch_version"] == EXPECTED_STACK["torch"]
-    assert example["runtime_provenance"]["library_versions"]["torch"] == (
-        EXPECTED_STACK["torch"]
-    )
-    assert example["runtime_provenance"]["library_versions"]["triton"] == (
-        EXPECTED_STACK["triton"]
-    )
+    assert example["runtime_provenance"]["library_versions"]["torch"] == (EXPECTED_STACK["torch"])
+    assert example["runtime_provenance"]["library_versions"]["triton"] == (EXPECTED_STACK["triton"])
 
 
 def test_setup_reads_every_abi_sensitive_pin_from_requirements() -> None:
@@ -257,9 +244,7 @@ def test_vllm_source_builder_accepts_only_the_declared_native_wheel_contract(
     inspected = vllm_builder._inspect_wheel(contract, wheel_path)
 
     assert inspected["metadata"]["version"] == contract["package"]["version"]
-    assert {
-        member.split(".", 1)[0] for member in inspected["native_members"]
-    } == {
+    assert {member.split(".", 1)[0] for member in inspected["native_members"]} == {
         "vllm/_C_stable_libtorch",
         "vllm/_moe_C_stable_libtorch",
         "vllm/vllm-rs",
@@ -319,7 +304,6 @@ def test_vllm_source_builder_refuses_a_nonempty_output_directory_before_building
         )
 
 
-
 def test_shared_lock_has_one_harmony_module_provider() -> None:
     requirements = _active_exact_pins(CODE_ROOT / "requirements_latest.txt")
     lock = _locked_exact_pins(CODE_ROOT / "requirements_torch2141_linux_x86_64.txt")
@@ -349,16 +333,36 @@ def test_cluster_stack_dry_run_selects_only_the_hash_bound_graph(tmp_path: Path)
         "CLUSTER_RESULTS_STRUCTURED_DIR": str(tmp_path / "structured"),
     }
     result = subprocess.run(
-        ["/bin/bash", str(CODE_ROOT / "cluster/scripts/enable_researcher_stack.sh"),
-         "--no-enable-services", "--no-docker-group", "--install-python-stack"],
-        env=environment, text=True, capture_output=True, check=True,
+        [
+            "/bin/bash",
+            str(CODE_ROOT / "cluster/scripts/enable_researcher_stack.sh"),
+            "--no-enable-services",
+            "--no-docker-group",
+            "--install-python-stack",
+        ],
+        env=environment,
+        text=True,
+        capture_output=True,
+        check=True,
     )
-    commands = [shlex.split(line.removeprefix("[dry-run] "))
-                for line in result.stdout.splitlines() if line.startswith("[dry-run] ")]
+    commands = [
+        shlex.split(line.removeprefix("[dry-run] "))
+        for line in result.stdout.splitlines()
+        if line.startswith("[dry-run] ")
+    ]
     installs = [command for command in commands if "install" in command]
-    assert installs == [[str(venv / "bin/python"), "-m", "pip", "install",
-                         "--require-hashes", "--no-deps", "-r",
-                         str(CODE_ROOT / "requirements_torch2141_linux_x86_64.txt")]]
+    assert installs == [
+        [
+            str(venv / "bin/python"),
+            "-m",
+            "pip",
+            "install",
+            "--require-hashes",
+            "--no-deps",
+            "-r",
+            str(CODE_ROOT / "requirements_torch2141_linux_x86_64.txt"),
+        ]
+    ]
     assert not venv.exists()
     assert "Build and validate those source wheels" in result.stdout
 
@@ -373,7 +377,7 @@ def test_cluster_setup_uses_the_locked_stack_and_pinned_vllm_builder() -> None:
     assert "torch.compiled_with_cxx11_abi()" in setup
     assert "2.10.0a0" not in setup
     assert "pypi.ngc.nvidia.com" not in setup
-    assert 'pip install vllm' not in setup
+    assert "pip install vllm" not in setup
     assert "--force-reinstall" not in setup
 
 
@@ -401,15 +405,13 @@ def test_cluster_setup_bootstraps_vllm_rust_and_native_smoke_dependency() -> Non
     assert "Transformer Engine build receipt wheel hash does not match" in setup
     assert '"$VENV_PY" -m pip install --no-deps "$TE_WHEEL"' in setup
     assert 'package["expected_metadata"]["version"]' in setup
-    assert 'pip install transformer-engine-torch' not in setup
+    assert "pip install transformer-engine-torch" not in setup
     assert "libdw-dev" in setup
     assert "libelf-dev" in setup
 
 
 def test_cluster_setup_covers_every_smoke_distribution_outside_the_lock() -> None:
-    lock = _locked_exact_pins(
-        CODE_ROOT / "requirements_torch2141_linux_x86_64.txt"
-    )
+    lock = _locked_exact_pins(CODE_ROOT / "requirements_torch2141_linux_x86_64.txt")
     missing_from_lock = set(_b200_smoke_expected_versions()) - set(lock)
     setup = (CODE_ROOT / "cluster/setup.sh").read_text(encoding="utf-8")
 
@@ -471,16 +473,13 @@ def test_cluster_setup_rejects_skipping_python_with_source_builds() -> None:
         )
         assert result.returncode != 0
         assert (
-            "--skip-python cannot be combined with source-build install options."
-            in result.stderr
+            "--skip-python cannot be combined with source-build install options." in result.stderr
         )
 
 
 def test_cufile_sidecar_matches_the_supported_cuda_stack() -> None:
     pins = _active_exact_pins(CODE_ROOT / "ch10/requirements_cufile.txt")
-    lock = _locked_exact_pins(
-        CODE_ROOT / "requirements_torch2141_linux_x86_64.txt"
-    )
+    lock = _locked_exact_pins(CODE_ROOT / "requirements_torch2141_linux_x86_64.txt")
     packages = (
         "cuda-python",
         "cuda-bindings",
@@ -496,8 +495,11 @@ def test_cufile_sidecar_matches_the_supported_cuda_stack() -> None:
 
 def test_torchtitan_demo_binds_current_compile_config_to_the_mesh() -> None:
     source = (CODE_ROOT / "ch04/torchtitan_async_tp_multigpu_demo.py").read_text()
-    function = next(node for node in ast.parse(source).body
-                    if isinstance(node, ast.FunctionDef) and node.name == "enable_async_tp")
+    function = next(
+        node
+        for node in ast.parse(source).body
+        if isinstance(node, ast.FunctionDef) and node.name == "enable_async_tp"
+    )
 
     @dataclass(kw_only=True, slots=True)
     class CompileConfig:

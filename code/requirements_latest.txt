@@ -60,7 +60,7 @@ bokeh==3.8.0
 dash==3.2.0
 
 # Storage I/O bindings (GPUDirect Storage)
-cuda-python==13.0.3
+cuda-python==13.1.1
 # Keep the CUDA 13 CuPy provider explicit. vLLM is installed with --no-deps so
 # a second dependency resolution cannot add a conflicting CUDA 12 provider.
 cupy-cuda13x==14.2.0

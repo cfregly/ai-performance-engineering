@@ -1,19 +1,19 @@
 #!/usr/bin/env python3
 """Run a bounded B200 compatibility smoke for the PyTorch 2.14.1 stack.
 
-This is a diagnostic runner. It performs one tiny PyTorch CUDA operation, one
-tiny Triton kernel launch, import and ABI checks for the declared companion
-packages, and runs a small manifest of real repository CUDA entrypoints. Full
-mode also imports every owned chapter and lab baseline/optimized module plus
-the checked compatibility-import manifest. It does not produce performance
-evidence.
+This is a diagnostic runner. It performs tiny PyTorch, Triton, FlashInfer,
+NCCL, and DTensor CUDA operations, import and ABI checks for the declared
+companion packages, and runs a small manifest of real repository CUDA
+entrypoints. Full mode also imports every owned chapter and lab
+baseline/optimized module plus the checked compatibility-import manifest. It
+does not produce performance evidence.
 
 Run from the ``code`` directory:
 
     python -m core.scripts.b200_torch2141_smoke
 
-For short B200 validation that prioritizes the six GPU entrypoints and excludes
-the optional vLLM ABI import:
+For short B200 validation that prioritizes the required GPU checks and six GPU
+entrypoints while excluding the optional vLLM ABI import:
 
     python -m core.scripts.b200_torch2141_smoke --mode short-gpu
 
@@ -48,7 +48,7 @@ from typing import Any, BinaryIO
 from core.utils.process_groups import ProcessGroupRegistry
 
 EXPECTED_VERSIONS = {
-    "cuda-python": "13.0.3",
+    "cuda-python": "13.1.1",
     "flashinfer-python": "0.7.2",
     "nvidia-nccl-cu13": "2.30.7",
     "torch": "2.14.1+cu130",
@@ -66,6 +66,11 @@ EXPECTED_VERSIONS = {
 
 DEFAULT_DEADLINE_SECONDS = 240.0
 DEFAULT_IMPORT_TIMEOUT_SECONDS = 10.0
+FLASHINFER_CHECK_TIMEOUT_SECONDS = 45.0
+NCCL_DTENSOR_CHECK_TIMEOUT_SECONDS = 30.0
+PROCESS_GROUP_CLEANUP_RESERVE_SECONDS = 2.0
+PROCESS_GROUP_TERM_GRACE_SECONDS = 0.25
+PROCESS_GROUP_KILL_WAIT_SECONDS = 0.75
 SMOKE_MODE_FULL = "full"
 SMOKE_MODE_SHORT_GPU = "short-gpu"
 SMOKE_MODES = (SMOKE_MODE_FULL, SMOKE_MODE_SHORT_GPU)
@@ -74,6 +79,8 @@ ENTRYPOINT_MANIFEST = Path("core/b200_torch2141_entrypoints.json")
 ENTRYPOINT_MANIFEST_SCHEMA_VERSION = 1
 MAX_CAPTURED_OUTPUT_CHARS = 16_384
 _IMPORT_WORKER_FLAG = "--internal-import-worker"
+_GPU_CHECK_WORKER_FLAG = "--internal-gpu-check-worker"
+_GPU_CHECK_REPORT_PREFIX = "B200_GPU_CHECK_REPORT="
 _IMPORT_WORKER_POLL_SECONDS = 0.05
 _PROCESS_GROUPS = ProcessGroupRegistry()
 _ACTIVE_CHILD_PROCESSES = _PROCESS_GROUPS.active
@@ -282,8 +289,17 @@ class ImportSweepResult:
 
 def _positive_float(raw: str) -> float:
     value = float(raw)
-    if value <= 0:
-        raise argparse.ArgumentTypeError("value must be greater than zero")
+    if not math.isfinite(value) or value <= 0:
+        raise argparse.ArgumentTypeError("value must be finite and greater than zero")
+    return value
+
+
+def _bounded_deadline_float(raw: str) -> float:
+    value = _positive_float(raw)
+    if value > DEFAULT_DEADLINE_SECONDS:
+        raise argparse.ArgumentTypeError(
+            f"value must not exceed {DEFAULT_DEADLINE_SECONDS:g} seconds"
+        )
     return value
 
 
@@ -304,9 +320,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--deadline-seconds",
-        type=_positive_float,
+        type=_bounded_deadline_float,
         default=DEFAULT_DEADLINE_SECONDS,
-        help="Overall wall-clock deadline. Default: 240 seconds.",
+        help="Overall wall-clock deadline, capped at 240 seconds. Default: 240 seconds.",
     )
     parser.add_argument(
         "--per-import-timeout-seconds",
@@ -494,6 +510,178 @@ def _check_triton() -> dict[str, Any]:
         "operation_gpu_event_ms": float(start_event.elapsed_time(end_event)),
         "grid": [1],
         "block_size": block_size,
+    }
+
+
+def _check_flashinfer_block_sparse() -> dict[str, Any]:
+    """Plan and run one tiny real FlashInfer block-sparse attention workload."""
+
+    flashinfer_version = _require_distribution_version("flashinfer-python")
+    flashinfer = import_module("flashinfer")
+    torch = import_module("torch")
+    functional = import_module("torch.nn.functional")
+    module_version = _module_version(flashinfer)
+    if module_version is not None and module_version != flashinfer_version:
+        raise RuntimeError(
+            "flashinfer module version mismatch: "
+            f"metadata={flashinfer_version!r}, module={module_version!r}"
+        )
+    if not torch.cuda.is_available():
+        raise RuntimeError("FlashInfer execution requires an available CUDA device")
+
+    sequence_length = 32
+    block_size = 16
+    heads = 2
+    head_dimension = 64
+    device = torch.device("cuda", torch.cuda.current_device())
+    generator = torch.Generator(device=device)
+    generator.manual_seed(0)
+    q = torch.randn(
+        sequence_length,
+        heads,
+        head_dimension,
+        device=device,
+        dtype=torch.float16,
+        generator=generator,
+    )
+    k = torch.randn(
+        sequence_length,
+        heads,
+        head_dimension,
+        device=device,
+        dtype=torch.float16,
+        generator=generator,
+    )
+    v = torch.randn(
+        sequence_length,
+        heads,
+        head_dimension,
+        device=device,
+        dtype=torch.float16,
+        generator=generator,
+    )
+    indptr = torch.tensor([0, 1, 2], dtype=torch.int32, device=device)
+    indices = torch.tensor([0, 1], dtype=torch.int32, device=device)
+    dense_mask = torch.zeros((sequence_length, sequence_length), dtype=torch.bool, device=device)
+    dense_mask[:block_size, :block_size] = True
+    dense_mask[block_size:, block_size:] = True
+    workspace_bytes = 128 * 1024 * 1024
+    workspace = torch.empty(workspace_bytes, dtype=torch.uint8, device=device)
+    wrapper = flashinfer.BlockSparseAttentionWrapper(workspace)
+    scale = 1.0 / math.sqrt(head_dimension)
+    wrapper.plan(
+        indptr,
+        indices,
+        sequence_length,
+        sequence_length,
+        block_size,
+        block_size,
+        heads,
+        heads,
+        head_dimension,
+        sm_scale=scale,
+    )
+    with torch.inference_mode():
+        output = wrapper.run(q, k, v)
+        reference = (
+            functional.scaled_dot_product_attention(
+                q.transpose(0, 1).unsqueeze(0),
+                k.transpose(0, 1).unsqueeze(0),
+                v.transpose(0, 1).unsqueeze(0),
+                attn_mask=dense_mask,
+                is_causal=False,
+                scale=scale,
+            )
+            .squeeze(0)
+            .transpose(0, 1)
+        )
+    torch.cuda.synchronize(device)
+    if tuple(output.shape) != tuple(reference.shape):
+        raise RuntimeError(
+            f"FlashInfer output shape mismatch: {tuple(output.shape)!r} versus "
+            f"{tuple(reference.shape)!r}"
+        )
+    if not bool(torch.isfinite(output).all().item()):
+        raise RuntimeError("FlashInfer block-sparse attention produced non-finite output")
+    torch.testing.assert_close(output, reference, rtol=2e-2, atol=2e-2)
+    max_absolute_error = float((output.float() - reference.float()).abs().max().item())
+
+    return {
+        "flashinfer": flashinfer_version,
+        "operation": "FlashInfer BlockSparseAttentionWrapper plan and run",
+        "shape": [sequence_length, heads, head_dimension],
+        "block_size": block_size,
+        "nonzero_blocks": int(indices.numel()),
+        "block_sparsity_ratio": 0.5,
+        "workspace_bytes": workspace_bytes,
+        "finite_output": True,
+        "correctness": "dense torch SDPA comparison with rtol=0.02 and atol=0.02",
+        "max_absolute_error": max_absolute_error,
+    }
+
+
+def _check_nccl_dtensor() -> dict[str, Any]:
+    """Run a one-rank NCCL collective and the chapter 13 DTensor benchmark path."""
+
+    torch = import_module("torch")
+    distributed = import_module("torch.distributed")
+    dtensor_module = import_module("ch13.dtensor_mesh_tool")
+    if not torch.cuda.is_available():
+        raise RuntimeError("NCCL and DTensor execution require an available CUDA device")
+    if not distributed.is_nccl_available():
+        raise RuntimeError("torch.distributed reports that NCCL is unavailable")
+    if os.environ.get("RANK") != "0" or os.environ.get("WORLD_SIZE") != "1":
+        raise RuntimeError("NCCL and DTensor smoke requires a one-rank torchrun worker")
+
+    benchmark = dtensor_module.DTensorMeshBenchmark()
+    try:
+        benchmark.setup()
+        if distributed.get_world_size() != 1 or distributed.get_rank() != 0:
+            raise RuntimeError("initialized process group is not the required one-rank group")
+        backend = str(distributed.get_backend()).lower()
+        if backend != "nccl":
+            raise RuntimeError(f"expected NCCL process group, got {backend!r}")
+
+        collective = torch.tensor([7.0], dtype=torch.float32, device=benchmark.device)
+        work = distributed.all_reduce(
+            collective,
+            op=distributed.ReduceOp.SUM,
+            async_op=True,
+        )
+        wait = getattr(work, "wait", None)
+        if not callable(wait):
+            raise RuntimeError("asynchronous NCCL all_reduce did not return a waitable Work")
+        wait()
+        torch.cuda.synchronize(benchmark.device)
+        torch.testing.assert_close(
+            collective,
+            torch.tensor([7.0], dtype=torch.float32, device=benchmark.device),
+            rtol=0.0,
+            atol=0.0,
+        )
+
+        benchmark.benchmark_fn()
+        benchmark.capture_verification_payload()
+        input_local = benchmark.get_verify_inputs()["input"]
+        output_local = benchmark.get_verify_output()
+        if not bool(torch.isfinite(output_local).all().item()):
+            raise RuntimeError("chapter 13 DTensor benchmark produced non-finite output")
+        torch.testing.assert_close(output_local, input_local * 2, rtol=0.0, atol=0.0)
+        torch.cuda.synchronize(benchmark.device)
+        output_shape = list(output_local.shape)
+    finally:
+        benchmark.teardown()
+
+    return {
+        "backend": "nccl",
+        "world_size": 1,
+        "collective": "one-element asynchronous all_reduce SUM followed by Work.wait",
+        "collective_correctness": "exact identity for one rank",
+        "dtensor_path": "ch13.dtensor_mesh_tool.DTensorMeshBenchmark",
+        "dtensor_operation": "Replicate DTensor multiply and redistribute",
+        "dtensor_output_shape": output_shape,
+        "dtensor_finite_output": True,
+        "dtensor_correctness": "exact local output equals input multiplied by two",
     }
 
 
@@ -772,11 +960,168 @@ def _terminate_process_group(process: subprocess.Popen[str]) -> tuple[str, str]:
     with suppress(ProcessLookupError):
         os.killpg(process.pid, signal.SIGTERM)
     try:
-        return process.communicate(timeout=2.0)
+        return process.communicate(timeout=PROCESS_GROUP_TERM_GRACE_SECONDS)
     except subprocess.TimeoutExpired:
         with suppress(ProcessLookupError):
             os.killpg(process.pid, signal.SIGKILL)
-        return process.communicate(timeout=2.0)
+        return process.communicate(timeout=PROCESS_GROUP_KILL_WAIT_SECONDS)
+
+
+def _gpu_check_worker_main(check_name: str, code_root: Path) -> int:
+    """Execute one GPU check and emit one prefixed JSON report."""
+
+    root = code_root.resolve()
+    root_text = str(root)
+    if not sys.path or sys.path[0] != root_text:
+        sys.path.insert(0, root_text)
+    os.chdir(root)
+    invalidate_caches()
+    checks: dict[str, Callable[[], dict[str, Any]]] = {
+        "flashinfer_block_sparse": _check_flashinfer_block_sparse,
+        "nccl_dtensor": _check_nccl_dtensor,
+    }
+    try:
+        check = checks[check_name]
+    except KeyError:
+        report = {
+            "status": STATUS_FAIL,
+            "diagnostic": f"unknown GPU check: {check_name!r}",
+        }
+    else:
+        try:
+            with redirect_stdout(sys.stderr):
+                details = check()
+        except BaseException as exc:
+            report = {
+                "status": STATUS_FAIL,
+                "diagnostic": _exception_diagnostic(exc),
+            }
+        else:
+            report = {"status": STATUS_PASS, "details": details}
+    print(_GPU_CHECK_REPORT_PREFIX + json.dumps(report, sort_keys=True), flush=True)
+    return 0
+
+
+def _gpu_check_command(check_name: str, code_root: Path) -> list[str]:
+    worker_args = [
+        _GPU_CHECK_WORKER_FLAG,
+        check_name,
+        str(code_root.resolve()),
+    ]
+    if check_name == "nccl_dtensor":
+        return [
+            sys.executable,
+            "-u",
+            "-m",
+            "torch.distributed.run",
+            "--nnodes=1",
+            "--nproc-per-node=1",
+            "--rdzv-backend=static",
+            "--rdzv-endpoint=127.0.0.1:0",
+            "--max-restarts=0",
+            "--module",
+            "core.scripts.b200_torch2141_smoke",
+            *worker_args,
+        ]
+    return [
+        sys.executable,
+        "-u",
+        "-m",
+        "core.scripts.b200_torch2141_smoke",
+        *worker_args,
+    ]
+
+
+def _parse_gpu_check_report(stdout: str) -> dict[str, Any]:
+    for line in reversed(stdout.splitlines()):
+        if not line.startswith(_GPU_CHECK_REPORT_PREFIX):
+            continue
+        payload = line.removeprefix(_GPU_CHECK_REPORT_PREFIX)
+        try:
+            report = json.loads(payload)
+        except json.JSONDecodeError as exc:
+            raise RuntimeError(
+                f"invalid GPU check worker report: {_exception_diagnostic(exc)}"
+            ) from exc
+        if not isinstance(report, dict):
+            raise RuntimeError(f"invalid GPU check worker report: {report!r}")
+        return report
+    raise RuntimeError("GPU check worker did not emit a result report")
+
+
+def _run_isolated_gpu_check(
+    check_name: str,
+    *,
+    code_root: Path,
+    deadline: float,
+    timeout_seconds: float,
+) -> dict[str, Any]:
+    """Run a native GPU check in a killable process group."""
+
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        raise SmokeDeadlineExceededError(f"deadline reached before {check_name}")
+    effective_timeout = min(timeout_seconds, remaining)
+    command = _gpu_check_command(check_name, code_root)
+    environment = os.environ.copy()
+    environment["PYTHONUNBUFFERED"] = "1"
+    module_root = str(Path(__file__).resolve().parents[2])
+    existing_pythonpath = environment.get("PYTHONPATH")
+    environment["PYTHONPATH"] = (
+        module_root if not existing_pythonpath else module_root + os.pathsep + existing_pythonpath
+    )
+    process = _PROCESS_GROUPS.spawn(
+        command,
+        cwd=code_root,
+        env=environment,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        start_new_session=True,
+    )
+    timed_out = False
+    try:
+        try:
+            stdout, stderr = process.communicate(timeout=effective_timeout)
+        except subprocess.TimeoutExpired:
+            timed_out = True
+            stdout, stderr = _terminate_process_group(process)
+    except BaseException:
+        with suppress(ProcessLookupError):
+            os.killpg(process.pid, signal.SIGKILL)
+        with suppress(subprocess.TimeoutExpired):
+            process.communicate(timeout=PROCESS_GROUP_KILL_WAIT_SECONDS)
+        raise
+    finally:
+        if process.poll() is not None:
+            _unregister_child_process(process)
+
+    if timed_out:
+        raise SmokeDeadlineExceededError(f"{check_name} timed out after {effective_timeout:.3f}s")
+    try:
+        report = _parse_gpu_check_report(stdout)
+    except RuntimeError as exc:
+        diagnostic_stderr = _bounded_output(stderr.strip())
+        if process.returncode != 0:
+            raise RuntimeError(
+                f"{check_name} worker exited with status {process.returncode}: "
+                f"{diagnostic_stderr or exc}"
+            ) from exc
+        raise
+    if process.returncode != 0:
+        raise RuntimeError(
+            f"{check_name} worker exited with status {process.returncode}: "
+            f"{_bounded_output(stderr.strip()) or 'no worker diagnostic'}"
+        )
+    diagnostic = report.get("diagnostic")
+    if report.get("status") == STATUS_FAIL and isinstance(diagnostic, str):
+        raise RuntimeError(diagnostic.removeprefix("RuntimeError: "))
+    details = report.get("details")
+    if report.get("status") != STATUS_PASS or not isinstance(details, dict):
+        raise RuntimeError(f"invalid GPU check worker report: {report!r}")
+    details["worker_timeout_seconds"] = effective_timeout
+    return details
 
 
 def _run_repository_entrypoint(
@@ -1403,10 +1748,19 @@ def execute_smoke(
 ) -> dict[str, Any]:
     if mode not in SMOKE_MODES:
         raise ValueError(f"unsupported smoke mode: {mode!r}")
+    if (
+        not math.isfinite(deadline_seconds)
+        or deadline_seconds <= 0
+        or deadline_seconds > DEFAULT_DEADLINE_SECONDS
+    ):
+        raise ValueError(
+            f"deadline_seconds must be greater than zero and at most {DEFAULT_DEADLINE_SECONDS:g}"
+        )
 
     started_at = datetime.now(timezone.utc).isoformat()
     started = time.monotonic()
-    deadline = started + deadline_seconds
+    cleanup_reserve_seconds = min(PROCESS_GROUP_CLEANUP_RESERVE_SECONDS, deadline_seconds)
+    deadline = started + deadline_seconds - cleanup_reserve_seconds
     checks: list[CheckResult] = []
 
     check_specs: tuple[tuple[str, str, Callable[[], dict[str, Any]]], ...] = (
@@ -1418,6 +1772,26 @@ def execute_smoke(
         ("runtime_platform", POLICY_REQUIRED, _check_runtime_platform),
         ("torch_cuda_b200", POLICY_REQUIRED, _check_torch_cuda),
         ("triton_kernel", POLICY_REQUIRED, _check_triton),
+        (
+            "flashinfer_block_sparse",
+            POLICY_REQUIRED,
+            lambda: _run_isolated_gpu_check(
+                "flashinfer_block_sparse",
+                code_root=code_root,
+                deadline=deadline,
+                timeout_seconds=FLASHINFER_CHECK_TIMEOUT_SECONDS,
+            ),
+        ),
+        (
+            "nccl_dtensor",
+            POLICY_REQUIRED,
+            lambda: _run_isolated_gpu_check(
+                "nccl_dtensor",
+                code_root=code_root,
+                deadline=deadline,
+                timeout_seconds=NCCL_DTENSOR_CHECK_TIMEOUT_SECONDS,
+            ),
+        ),
         (
             "torchvision_import",
             POLICY_REQUIRED,
@@ -1497,6 +1871,7 @@ def execute_smoke(
         "started_at": started_at,
         "elapsed_ms": elapsed_ms,
         "deadline_seconds": deadline_seconds,
+        "cleanup_reserve_seconds": cleanup_reserve_seconds,
         "per_import_timeout_seconds": per_import_timeout_seconds,
         "environment": {
             "code_root": str(code_root.resolve()),
@@ -1619,6 +1994,10 @@ def render_text(report: dict[str, Any]) -> str:
 
 def main(argv: Sequence[str] | None = None) -> int:
     raw_argv = list(sys.argv[1:] if argv is None else argv)
+    if raw_argv and raw_argv[0] == _GPU_CHECK_WORKER_FLAG:
+        if len(raw_argv) != 3:
+            raise RuntimeError("internal GPU check worker requires two arguments")
+        return _gpu_check_worker_main(raw_argv[1], Path(raw_argv[2]))
     if raw_argv and raw_argv[0] == _IMPORT_WORKER_FLAG:
         if len(raw_argv) != 4:
             raise RuntimeError("internal import worker requires three arguments")

@@ -2362,7 +2362,7 @@ if python3 -c 'import cutlass, cuda.bindings'; then
         exit 1
     fi
     echo "✓ PyTorch CUDA verified after CUTLASS"
-    echo "   - cuda-python==13.0.3: CUDA runtime bindings"
+    echo "   - cuda-python==13.1.1: CUDA runtime bindings"
     echo ""
     
     # Detect CUTLASS C++ header location

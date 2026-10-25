@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 import json
 import os
 import signal
@@ -415,6 +416,238 @@ def test_parent_exit_cleanup_kills_and_reaps_isolated_child_group() -> None:
         smoke._unregister_child_process(process)
 
 
+def test_required_gpu_checks_cover_real_flashinfer_nccl_and_dtensor_paths() -> None:
+    flashinfer_source = inspect.getsource(smoke._check_flashinfer_block_sparse)
+    nccl_dtensor_source = inspect.getsource(smoke._check_nccl_dtensor)
+    nccl_command = smoke._gpu_check_command(
+        "nccl_dtensor",
+        Path(smoke.__file__).resolve().parents[2],
+    )
+
+    assert "flashinfer.BlockSparseAttentionWrapper" in flashinfer_source
+    assert "wrapper.plan(" in flashinfer_source
+    assert "wrapper.run(" in flashinfer_source
+    assert "torch.isfinite(output)" in flashinfer_source
+    assert "torch.testing.assert_close(output, reference" in flashinfer_source
+    assert "dtensor_module.DTensorMeshBenchmark()" in nccl_dtensor_source
+    assert "distributed.all_reduce(" in nccl_dtensor_source
+    assert "async_op=True" in nccl_dtensor_source
+    assert "wait()" in nccl_dtensor_source
+    assert "benchmark.benchmark_fn()" in nccl_dtensor_source
+    assert "benchmark.capture_verification_payload()" in nccl_dtensor_source
+    assert "torch.distributed.run" in nccl_command
+    assert "--nproc-per-node=1" in nccl_command
+    assert "--rdzv-backend=static" in nccl_command
+    assert "--rdzv-endpoint=127.0.0.1:0" in nccl_command
+
+
+def test_nccl_dtensor_check_waits_for_public_async_collective(monkeypatch) -> None:
+    events: list[str] = []
+
+    class FakeTensor:
+        def __init__(self, values: list[float]):
+            self.values = values
+            self.shape = (len(values),)
+
+        def __mul__(self, multiplier: int) -> FakeTensor:
+            return FakeTensor([value * multiplier for value in self.values])
+
+    class FakeTruth:
+        def all(self) -> FakeTruth:
+            return self
+
+        def item(self) -> bool:
+            return True
+
+    class FakeWork:
+        def wait(self) -> None:
+            events.append("work.wait")
+
+    class FakeDistributed:
+        class ReduceOp:
+            SUM = object()
+
+        @staticmethod
+        def is_nccl_available() -> bool:
+            return True
+
+        @staticmethod
+        def get_world_size() -> int:
+            return 1
+
+        @staticmethod
+        def get_rank() -> int:
+            return 0
+
+        @staticmethod
+        def get_backend() -> str:
+            return "nccl"
+
+        @staticmethod
+        def all_reduce(tensor, *, op, async_op):
+            assert isinstance(tensor, FakeTensor)
+            assert op is FakeDistributed.ReduceOp.SUM
+            assert async_op is True
+            events.append("all_reduce.async")
+            return FakeWork()
+
+    class FakeCuda:
+        @staticmethod
+        def is_available() -> bool:
+            return True
+
+        @staticmethod
+        def synchronize(device) -> None:
+            events.append(f"synchronize:{device}")
+
+    class FakeTesting:
+        @staticmethod
+        def assert_close(actual, expected, **_kwargs) -> None:
+            events.append("assert_close")
+            assert actual.values == expected.values
+
+    class FakeTorch:
+        cuda = FakeCuda()
+        testing = FakeTesting()
+        float32 = object()
+
+        @staticmethod
+        def tensor(values, *, dtype, device):
+            assert dtype is FakeTorch.float32
+            assert device == "cuda:0"
+            return FakeTensor(list(values))
+
+        @staticmethod
+        def isfinite(_tensor):
+            return FakeTruth()
+
+    class FakeBenchmark:
+        device = "cuda:0"
+
+        def __init__(self) -> None:
+            self.input = FakeTensor([3.0, 5.0])
+            self.output = self.input * 2
+
+        def setup(self) -> None:
+            events.append("benchmark.setup")
+
+        def benchmark_fn(self) -> None:
+            events.append("benchmark.run")
+
+        def capture_verification_payload(self) -> None:
+            events.append("benchmark.capture")
+
+        def get_verify_inputs(self):
+            return {"input": self.input}
+
+        def get_verify_output(self):
+            return self.output
+
+        def teardown(self) -> None:
+            events.append("benchmark.teardown")
+
+    class FakeDTensorModule:
+        DTensorMeshBenchmark = FakeBenchmark
+
+    modules = {
+        "torch": FakeTorch(),
+        "torch.distributed": FakeDistributed(),
+        "ch13.dtensor_mesh_tool": FakeDTensorModule(),
+    }
+    monkeypatch.setattr(smoke, "import_module", modules.__getitem__)
+    monkeypatch.setenv("RANK", "0")
+    monkeypatch.setenv("WORLD_SIZE", "1")
+
+    details = smoke._check_nccl_dtensor()
+
+    assert events.index("all_reduce.async") < events.index("work.wait")
+    assert events.index("work.wait") < events.index("synchronize:cuda:0")
+    assert details["collective"] == (
+        "one-element asynchronous all_reduce SUM followed by Work.wait"
+    )
+    assert events[-1] == "benchmark.teardown"
+
+
+def test_isolated_gpu_check_returns_success_report(monkeypatch, tmp_path: Path) -> None:
+    report = {
+        "status": smoke.STATUS_PASS,
+        "details": {"surface": "fixture"},
+    }
+    command = [
+        sys.executable,
+        "-c",
+        f"print({(smoke._GPU_CHECK_REPORT_PREFIX + json.dumps(report))!r})",
+    ]
+    monkeypatch.setattr(smoke, "_gpu_check_command", lambda *args, **kwargs: command)
+
+    details = smoke._run_isolated_gpu_check(
+        "flashinfer_block_sparse",
+        code_root=tmp_path,
+        deadline=time.monotonic() + 2.0,
+        timeout_seconds=1.0,
+    )
+
+    assert details["surface"] == "fixture"
+    assert 0 < details["worker_timeout_seconds"] <= 1.0
+
+
+def test_isolated_gpu_check_surfaces_worker_failure(monkeypatch, tmp_path: Path) -> None:
+    report = {
+        "status": smoke.STATUS_FAIL,
+        "diagnostic": "RuntimeError: deliberate GPU check failure",
+    }
+    command = [
+        sys.executable,
+        "-c",
+        f"print({(smoke._GPU_CHECK_REPORT_PREFIX + json.dumps(report))!r})",
+    ]
+    monkeypatch.setattr(smoke, "_gpu_check_command", lambda *args, **kwargs: command)
+
+    with pytest.raises(RuntimeError, match="deliberate GPU check failure"):
+        smoke._run_isolated_gpu_check(
+            "flashinfer_block_sparse",
+            code_root=tmp_path,
+            deadline=time.monotonic() + 2.0,
+            timeout_seconds=1.0,
+        )
+
+
+def test_isolated_gpu_check_deadline_kills_worker_process_group(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    orphan_marker = tmp_path / "gpu-worker-orphan.txt"
+    child_source = (
+        "import pathlib, time\n"
+        "time.sleep(0.6)\n"
+        f"pathlib.Path({str(orphan_marker)!r}).write_text('orphan', encoding='utf-8')\n"
+    )
+    worker_source = (
+        "import signal, subprocess, sys, time\n"
+        "signal.signal(signal.SIGTERM, signal.SIG_IGN)\n"
+        f"subprocess.Popen([sys.executable, '-c', {child_source!r}])\n"
+        "time.sleep(30)\n"
+    )
+    command = [sys.executable, "-c", worker_source]
+    monkeypatch.setattr(smoke, "_gpu_check_command", lambda *args, **kwargs: command)
+
+    started = time.monotonic()
+    work_deadline = started + 0.05
+    overall_deadline = work_deadline + smoke.PROCESS_GROUP_CLEANUP_RESERVE_SECONDS
+    with pytest.raises(smoke.SmokeDeadlineExceededError, match="timed out after"):
+        smoke._run_isolated_gpu_check(
+            "flashinfer_block_sparse",
+            code_root=tmp_path,
+            deadline=work_deadline,
+            timeout_seconds=30.0,
+        )
+
+    assert time.monotonic() <= overall_deadline
+    time.sleep(0.8)
+    assert not orphan_marker.exists()
+    assert not smoke._ACTIVE_CHILD_PROCESSES
+
+
 def test_signal_during_spawn_is_deferred_until_child_registration() -> None:
     source = """
 import os
@@ -551,6 +784,19 @@ def test_cli_rejects_nonpositive_time_bounds() -> None:
         parser.parse_args(["--deadline-seconds", "0"])
     with pytest.raises(SystemExit):
         parser.parse_args(["--per-import-timeout-seconds", "-1"])
+    with pytest.raises(SystemExit):
+        parser.parse_args(["--deadline-seconds", "241"])
+    with pytest.raises(SystemExit):
+        parser.parse_args(["--deadline-seconds", "nan"])
+
+
+def test_execute_smoke_rejects_deadlines_above_the_four_minute_cap() -> None:
+    with pytest.raises(ValueError, match="at most 240"):
+        smoke.execute_smoke(
+            Path(smoke.__file__).resolve().parents[2],
+            deadline_seconds=241.0,
+            per_import_timeout_seconds=smoke.DEFAULT_IMPORT_TIMEOUT_SECONDS,
+        )
 
 
 def test_cli_defaults_to_full_and_accepts_short_gpu_mode() -> None:
@@ -565,16 +811,16 @@ def test_cli_defaults_to_full_and_accepts_short_gpu_mode() -> None:
 def test_full_smoke_runs_bounded_entrypoints_before_broad_import_sweep(monkeypatch) -> None:
     observed: list[str] = []
 
-    monkeypatch.setattr(
-        smoke,
-        "_run_check",
-        lambda *args, **kwargs: smoke.CheckResult(
-            name=args[0],
-            policy=args[1],
+    def record_check(name, policy, check, deadline):
+        observed.append(f"check:{name}")
+        return smoke.CheckResult(
+            name=name,
+            policy=policy,
             status=smoke.STATUS_PASS,
             duration_ms=0.0,
-        ),
-    )
+        )
+
+    monkeypatch.setattr(smoke, "_run_check", record_check)
     monkeypatch.setattr(
         smoke,
         "import_repository_examples",
@@ -612,7 +858,9 @@ def test_full_smoke_runs_bounded_entrypoints_before_broad_import_sweep(monkeypat
         per_import_timeout_seconds=smoke.DEFAULT_IMPORT_TIMEOUT_SECONDS,
     )
 
-    assert observed == ["entrypoints", "imports"]
+    assert "check:flashinfer_block_sparse" in observed
+    assert "check:nccl_dtensor" in observed
+    assert observed[-2:] == ["entrypoints", "imports"]
     assert report["status"] == smoke.STATUS_PASS
     assert report["mode"] == smoke.SMOKE_MODE_FULL
     assert report["repository_imports"]["requested"] is True
@@ -652,6 +900,7 @@ def test_short_gpu_mode_skips_imports_and_preserves_the_shared_deadline(monkeypa
     monkeypatch.setattr(smoke, "_run_check", record_check)
     monkeypatch.setattr(smoke, "import_repository_examples", reject_import_sweep)
     monkeypatch.setattr(smoke, "run_repository_entrypoints", record_entrypoints)
+    monkeypatch.setattr(smoke.time, "monotonic", lambda: 100.0)
 
     report = smoke.execute_smoke(
         Path(smoke.__file__).resolve().parents[2],
@@ -663,11 +912,16 @@ def test_short_gpu_mode_skips_imports_and_preserves_the_shared_deadline(monkeypa
     assert observed[-1] == "entrypoints"
     assert all(item.startswith("check:") for item in observed[:-1])
     assert "check:vllm_abi_imports" not in observed
-    assert len(set(observed_deadlines)) == 1
+    assert "check:flashinfer_block_sparse" in observed
+    assert "check:nccl_dtensor" in observed
+    assert set(observed_deadlines) == {
+        100.0 + smoke.DEFAULT_DEADLINE_SECONDS - smoke.PROCESS_GROUP_CLEANUP_RESERVE_SECONDS
+    }
     assert report["status"] == smoke.STATUS_PASS
     assert report["mode"] == smoke.SMOKE_MODE_SHORT_GPU
     assert report["repository_entrypoints"]["discovered"] == 6
     assert report["repository_entrypoints"]["passed"] == 6
+    assert report["cleanup_reserve_seconds"] == smoke.PROCESS_GROUP_CLEANUP_RESERVE_SECONDS
 
     vllm_check = next(check for check in report["checks"] if check["name"] == "vllm_abi_imports")
     assert vllm_check["policy"] == smoke.POLICY_NOT_REQUESTED
