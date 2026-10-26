@@ -113,3 +113,10 @@ worker by PID, GPU, and stream. Both owned worker groups were empty, the
 profiler exited cleanly, the temporary rule was removed at version 12, and
 immediate GPU readback was empty. No startup, serving, or new performance
 qualification is claimed from the Zymtrace visibility work.
+
+The social drafts also include CUDA stack views derived from the retained
+Zymtrace event exports. Each view filters records by the worker's PID and
+assigned GPU before counting stack occurrences. Width represents exported
+record count, not time. The renderer, input hashes, and full stack exports
+are retained in [zymtrace/views/](zymtrace/views/). The original Nsys and NCU
+images remain attached alongside these views.

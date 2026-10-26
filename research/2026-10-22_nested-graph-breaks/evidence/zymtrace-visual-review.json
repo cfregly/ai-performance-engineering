@@ -1,0 +1,22 @@
+{
+  "verdict": "PASS",
+  "reviewer": "root",
+  "reviewed_at": "2026-10-26T20:40:20.268002+00:00",
+  "images": {
+    "zymtrace-with-nested-graph-breaks.png": {
+      "sha256": "a51f54a382419b5d2c20d4a59d3c9b99b060a59f6c15e0f28bfb22a51d81be47",
+      "bytes": 278662
+    },
+    "zymtrace-without-nested-graph-breaks.png": {
+      "sha256": "3c341fff516cd1e02af6f4a37f52dcb9cb01c888168477cb328bdcc1fb50ff80",
+      "bytes": 288344
+    }
+  },
+  "checks": [
+    "Viewed both full-size PNGs, confirmed condition labels and104/188record totals",
+    "Read renderer and raw-input filter/provenance. Widths count records and show projected real ordered frames",
+    "No overlap or off-canvas text in main views. Function-label truncation disclosed, full stacks available in SVG/JSON",
+    "Existing Nsys/NCU images retained. No new GPU execution, latency qualification, or causal percentage"
+  ],
+  "phone_preview_limit": "400px previews show overall structure. Open main PNG or SVG to read individual function labels."
+}

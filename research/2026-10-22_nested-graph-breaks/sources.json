@@ -68,6 +68,15 @@
       "evidence_role": "Download links and cohort-specific interpretation for retained Nsys, NCU, SQLite, CSV, and Chrome files"
     },
     {
+      "id": "zymtrace-torch2141-captures",
+      "type": "official_results",
+      "title": "Two-arm B200 Zymtrace capture on PyTorch 2.14.1",
+      "author": "Chris Fregly",
+      "url": "https://github.com/cfregly/ai-performance-engineering/tree/7f9e981c45d5448aeacd727eabdcb8a308023732/research/2026-10-22_nested-graph-breaks/zymtrace/captures/torch2141-b200-20261026",
+      "local_path": "zymtrace/captures/torch2141-b200-20261026/README.md",
+      "evidence_role": "Later compatibility and visibility smoke with retained raw CUDA event stacks, flamegraph exports, worker results, source hashes, and cleanup. Separate from latency qualification."
+    },
+    {
       "id": "nsys-overhead-background",
       "type": "official_documentation",
       "title": "Understanding the Visualization of Overhead and Latency in NVIDIA Nsight Systems",
