@@ -1,54 +1,54 @@
 Browser tab: 888034427, Title: "Typefully", URL: "https://typefully.com/".
 1 AXWebArea Typefully, URL: typefully.com/
 	2 container
-		170 text Typefully
-		171 container Modal, ID: radix-_r_75_
-			172 text Modal
-			173 text Modal content
-			174 heading Auto-Plug, Value: 3
-				175 text Auto-Plug
-			176 heading If this post hits:, Value: 4
-				177 text If this post hits:
-			178 stepper (settable, integer) 100
-			179 container
-				180 checkbox Likes, Value: 1
-					181 image
-					182 text Likes
-				183 checkbox Retweets, Value: 0
-					184 image
-					185 text Retweets
-			186 heading Reply automatically with:, Value: 4
-				187 text Reply automatically with:
-			188 text entry area (settable) More AI performance engineering examples, source code, and experiments:
+		176 text Typefully
+		177 container Modal, ID: radix-_r_6c_
+			178 text Modal
+			179 text Modal content
+			180 heading Auto-Plug, Value: 3
+				181 text Auto-Plug
+			182 heading If this post hits:, Value: 4
+				183 text If this post hits:
+			184 stepper (settable, integer) 100
+			185 container
+				186 checkbox Likes, Value: 1
+					187 image
+					188 text Likes
+				189 checkbox Retweets, Value: 0
+					190 image
+					191 text Retweets
+			192 heading Reply automatically with:, Value: 4
+				193 text Reply automatically with:
+			194 text entry area (settable) More AI performance engineering examples, source code, and experiments:
 https://github.com/cfregly/ai-performance-engineering
-			189 link Description: Avatar, Value: x.com/cfregly
-			190 container
-				191 text Chris Fregly
-				192 image Verified account
-				193 text @cfregly
-			194 text More AI performance engineering examples, source code, and experiments:
-			195 container
-				196 text GitHub - cfregly/ai-performance-engineering: Code, labs, and resources for O'Reilly AI Systems Performance Engineering: GPU optimization, distributed training, inference scaling, and full-stack tuning.
-				197 text github.com
-			198 text 95/280
-			199 text Earn passive income
-			200 text Insert your Typefully affiliate link to earn a commission when people sign up to Typefully from your link.
-			201 button Sign up for the Affiliate Program
-				202 text Sign up for the Affiliate Program
-			203 button Disable
-				204 text Disable
-			205 button Update
-				206 text Update
-			207 container
-				208 text Once the condition is met, the plug tweet
-				209 text will be published within 10 minutes.
-			210 button (disabled) Saved as default for new drafts
-				211 text Saved  as default for new drafts
-			212 text  Enabled for new drafts
-			213 button Edit
-				214 text Edit
-			215 button Close
-				216 image
-				217 text Close
+			195 link Description: Avatar, Value: x.com/cfregly
+			196 container
+				197 text Chris Fregly
+				198 image Verified account
+				199 text @cfregly
+			200 text More AI performance engineering examples, source code, and experiments:
+			201 container
+				202 image Preview
+				203 text github.com
+			204 text 95/280
+			205 text Earn passive income
+			206 text Insert your Typefully affiliate link to earn a commission when people sign up to Typefully from your link.
+			207 button Sign up for the Affiliate Program
+				208 text Sign up for the Affiliate Program
+			209 button Disable
+				210 text Disable
+			211 button Update
+				212 text Update
+			213 container
+				214 text Once the condition is met, the plug tweet
+				215 text will be published within 10 minutes.
+			216 button (disabled) Saved as default for new drafts
+				217 text Saved  as default for new drafts
+			218 text  Enabled for new drafts
+			219 button Edit
+				220 text Edit
+			221 button Close
+				222 image
+				223 text Close
 
-The focused UI element is 171 container Modal, ID: radix-_r_75_
+The focused UI element is 177 container Modal, ID: radix-_r_6c_

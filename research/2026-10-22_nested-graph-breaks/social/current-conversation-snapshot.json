@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "observed_at": "2026-10-26T23:28:05.878323+00:00",
+  "observed_at": "2026-10-26T23:33:38.536300+00:00",
   "timezone": "America/Los_Angeles",
   "publication_hold": true,
   "social_set_id": 337207,
@@ -250,7 +250,7 @@
               "hide_link_preview": false
             },
             {
-              "text": "Also added @zymtrace GPU-time flamegraphs for both B200 workers on PyTorch 2.14.1. Width shows each worker's share of captured GPU time (%), after worker/GPU filtering. Captures include setup and warmup; the steady-state speedup was measured separately.",
+              "text": "Also added @zymtrace GPU-time flamegraphs for both B200 workers on PyTorch 2.14.1. Width shows each worker's share of captured GPU time (%), after worker/GPU filtering. Captures include setup and warmup. The steady-state speedup was measured separately.",
               "media_ids": [
                 "d855f262-56f9-476d-ab56-03c32e873197",
                 "d098f4fe-be4c-4fb8-a2e7-42c9b5721004"
@@ -403,7 +403,7 @@
               "hide_link_preview": false
             },
             {
-              "text": "Zymtrace now shows time-weighted GPU flamegraphs for both B200 workers on PyTorch 2.14.1. Width = share of that worker's captured GPU time (%). Captures include setup, warmup, timing and correctness; these are separate from the steady-state speedup measurements.",
+              "text": "Zymtrace now shows time-weighted GPU flamegraphs for both B200 workers on PyTorch 2.14.1. Width = share of that worker's captured GPU time (%). Captures include setup, warmup, timing and correctness. These are separate from the steady-state speedup measurements.",
               "media_ids": [
                 "d855f262-56f9-476d-ab56-03c32e873197",
                 "d098f4fe-be4c-4fb8-a2e7-42c9b5721004"

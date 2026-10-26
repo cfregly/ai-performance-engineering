@@ -1,59 +1,59 @@
-container Modal, ID: radix-_r_4o_
-			172 text Modal
-			173 text Modal content
-			174 heading Publish, Value: 3
-				175 text Publish
-			176 container
-				177 text Publish post to 𝕏  and  LinkedIn .
-			178 button Publish now
-				179 text Publish now
-			180 container
-				181 switch Description: Publish to X, Value: 1
-				182 container
-					183 image Avatar
-				184 text Chris Fregly @ cfregly
-				185 pop up button (collapsed) Everyone, ID: radix-_r_4r_, Secondary Actions: Expand
-					186 text Everyone
-				187 button Preview
-					188 text Preview
+container Modal, ID: radix-_r_53_
+			179 text Modal
+			180 text Modal content
+			181 heading Publish, Value: 3
+				182 text Publish
+			183 container
+				184 text Publish post to 𝕏  and  LinkedIn .
+			185 button Publish now
+				186 text Publish now
+			187 container
+				188 switch Description: Publish to X, Value: 1
 				189 container
-					190 checkbox 1
-					191 button Auto-RT
-						192 image
-						193 text Auto-RT
-				194 container
-					195 checkbox 1
-					196 button Auto-Plug
-						197 image
-						198 text Auto-Plug
-				199 container
-					200 checkbox 0
-					201 button Auto-DM
-						202 image
-						203 text Auto-DM
-				204 switch Description: Publish to LinkedIn, Value: 1
-				205 container
-					206 image Avatar
-				207 text Chris Fregly @ cfregly
-				208 pop up button (collapsed) Anyone, ID: radix-_r_57_, Secondary Actions: Expand
-					209 text Anyone
-				210 button Preview
-					211 text Preview
-				212 switch Description: Publish to Threads, Value: 0
-				213 image
-				214 text Threads
-				215 switch Description: Publish to Mastodon, Value: 0
-				216 image
-				217 text Mastodon
-				218 switch Description: Publish to Bluesky, Value: 0
-				219 image
-				220 text Bluesky
-				221 switch Description: Publish to Substack, Value: 0
-				222 image
-				223 text Substack
-				224 text BETA
-			225 button Close
+					190 image Avatar
+				191 text Chris Fregly @ cfregly
+				192 pop up button (collapsed) Everyone, ID: radix-_r_56_, Secondary Actions: Expand
+					193 text Everyone
+				194 button Preview
+					195 text Preview
+				196 container
+					197 checkbox 1
+					198 button Auto-RT
+						199 image
+						200 text Auto-RT
+				201 container
+					202 checkbox 1
+					203 button Auto-Plug
+						204 image
+						205 text Auto-Plug
+				206 container
+					207 checkbox 0
+					208 button Auto-DM
+						209 image
+						210 text Auto-DM
+				211 switch Description: Publish to LinkedIn, Value: 1
+				212 container
+					213 image Avatar
+				214 text Chris Fregly @ cfregly
+				215 pop up button (collapsed) Anyone, ID: radix-_r_5i_, Secondary Actions: Expand
+					216 text Anyone
+				217 button Preview
+					218 text Preview
+				219 switch Description: Publish to Threads, Value: 0
+				220 image
+				221 text Threads
+				222 switch Description: Publish to Mastodon, Value: 0
+				223 image
+				224 text Mastodon
+				225 switch Description: Publish to Bluesky, Value: 0
 				226 image
-				227 text Close
+				227 text Bluesky
+				228 switch Description: Publish to Substack, Value: 0
+				229 image
+				230 text Substack
+				231 text BETA
+			232 button Close
+				233 image
+				234 text Close
 
-The focused UI element is 171 container Modal, ID: radix-_r_4o_
+The focused UI element is 178 container Modal, ID: radix-_r_53_

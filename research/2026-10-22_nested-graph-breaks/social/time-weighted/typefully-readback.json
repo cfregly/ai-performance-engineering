@@ -5,7 +5,7 @@
   "status": "draft",
   "publish_state": null,
   "created_at": "2026-10-26T18:43:13.209Z",
-  "updated_at": "2026-10-26T23:22:18.791Z",
+  "updated_at": "2026-10-26T23:31:08.755Z",
   "scheduled_date": null,
   "published_at": null,
   "draft_title": "NEW UPDATE \u00b7 Oct 26 Zymtrace \u00b7 Standalone X + LinkedIn",
@@ -34,7 +34,7 @@
           "hide_link_preview": false
         },
         {
-          "text": "Also added @zymtrace GPU-time flamegraphs for both B200 workers on PyTorch 2.14.1. Width shows each worker's share of captured GPU time (%), after worker/GPU filtering. Captures include setup and warmup; the steady-state speedup was measured separately.",
+          "text": "Also added @zymtrace GPU-time flamegraphs for both B200 workers on PyTorch 2.14.1. Width shows each worker's share of captured GPU time (%), after worker/GPU filtering. Captures include setup and warmup. The steady-state speedup was measured separately.",
           "media_ids": [
             "d855f262-56f9-476d-ab56-03c32e873197",
             "d098f4fe-be4c-4fb8-a2e7-42c9b5721004"

@@ -1,6 +1,6 @@
 {
   "status": "PREPARED_UNSENT",
-  "verified_at": "2026-10-26T23:28:05.878323+00:00",
+  "verified_at": "2026-10-26T23:33:38.536300+00:00",
   "asset_commit": "3f2905914d3eefc065111995196741893eed7914",
   "convention_guard_commit": "d6fa505b31d29db064189d94ccf2d33f4e15702b",
   "display_unit": "percentage of captured GPU time",
@@ -40,5 +40,6 @@
   },
   "published": 0,
   "sent": 0,
-  "scheduled": 0
+  "scheduled": 0,
+  "protected_completed_files_unchanged": 104
 }

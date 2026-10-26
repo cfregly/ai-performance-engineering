@@ -5,7 +5,7 @@ Image: https://github.com/cfregly/ai-performance-engineering/blob/96bdb5940a8f67
 
 ---
 
-Also added @zymtrace GPU-time flamegraphs for both B200 workers on PyTorch 2.14.1. Width shows each worker's share of captured GPU time (%), after worker/GPU filtering. Captures include setup and warmup; the steady-state speedup was measured separately.
+Also added @zymtrace GPU-time flamegraphs for both B200 workers on PyTorch 2.14.1. Width shows each worker's share of captured GPU time (%), after worker/GPU filtering. Captures include setup and warmup. The steady-state speedup was measured separately.
 
 ---
 

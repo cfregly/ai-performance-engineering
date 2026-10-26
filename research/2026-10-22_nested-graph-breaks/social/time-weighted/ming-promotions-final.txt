@@ -1,36 +1,36 @@
-container Modal, ID: radix-_r_51_
-			240 text Modal
-			241 text Modal content
-			242 heading Publish, Value: 3
-				243 text Publish
-			244 container
-				245 text Publish  8 posts  thread  to  𝕏 .
-			246 button Publish now
-				247 text Publish now
-			248 container
-				249 container
-					250 image Avatar
-				251 text Chris Fregly @ cfregly
-				252 pop up button (collapsed) Everyone, ID: radix-_r_54_, Secondary Actions: Expand
-					253 text Everyone
-				254 button Preview
-					255 text Preview
-				256 text Your draft starts with an @ mention
-				257 text Starting a post with an "@" makes it a reply, visible only to the tagged account and any mutual followers. It won't appear on your followers' timelines unless they also follow the tagged account.
-				258 button Don't show again
-				259 container
-					260 checkbox 1
-					261 button Auto-RT
-						262 image
-						263 text Auto-RT
-				264 button Auto-Plug
-				265 container
-					266 checkbox 0
-					267 button Auto-DM
-						268 image
-						269 text Auto-DM
-			270 button Close
-				271 image
-				272 text Close
+container Modal, ID: radix-_r_4u_
+			225 text Modal
+			226 text Modal content
+			227 heading Publish, Value: 3
+				228 text Publish
+			229 container
+				230 text Publish  8 posts  thread  to  𝕏 .
+			231 button Publish now
+				232 text Publish now
+			233 container
+				234 container
+					235 image Avatar
+				236 text Chris Fregly @ cfregly
+				237 pop up button (collapsed) Everyone, ID: radix-_r_51_, Secondary Actions: Expand
+					238 text Everyone
+				239 button Preview
+					240 text Preview
+				241 text Your draft starts with an @ mention
+				242 text Starting a post with an "@" makes it a reply, visible only to the tagged account and any mutual followers. It won't appear on your followers' timelines unless they also follow the tagged account.
+				243 button Don't show again
+				244 container
+					245 checkbox 1
+					246 button Auto-RT
+						247 image
+						248 text Auto-RT
+				249 button Auto-Plug
+				250 container
+					251 checkbox 0
+					252 button Auto-DM
+						253 image
+						254 text Auto-DM
+			255 button Close
+				256 image
+				257 text Close
 
-The focused UI element is 239 container Modal, ID: radix-_r_51_
+The focused UI element is 224 container Modal, ID: radix-_r_4u_
