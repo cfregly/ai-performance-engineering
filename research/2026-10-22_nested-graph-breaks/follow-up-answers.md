@@ -77,3 +77,10 @@ graph-break support and 188 with support. The second raw export also includes
 the first worker because their export time filters overlap. Filter by the
 recorded worker PID, GPU, and stream fields. These sampled exports do not
 establish an exact CPU/GPU causal percentage or a new performance result.
+
+The current [public flamegraphs](zymtrace/views/) use GPU-time percentages,
+not row counts. The API defines `c` as event time. Each stack receives the sum
+of its accepted event-time weights divided by the worker total. The base unit
+is undocumented, so no absolute time conversion is applied. Each worker has
+its own 100% width. These captures mix setup, warmup, timing and correctness.
+GPU time inherited by Python/native frames does not measure host CPU time.

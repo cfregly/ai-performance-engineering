@@ -1,0 +1,60 @@
+{
+  "schema_version": 1,
+  "weights": {
+    "quantity": "gpu_time_share",
+    "unit": "fraction",
+    "field": "c",
+    "normalization": "per_worker_sum"
+  },
+  "unit_authority": {
+    "verified": true,
+    "schema_field": "JsonEvent.c",
+    "schema_value": "Time spent in this event.",
+    "absolute_export_unit": "undocumented",
+    "source_url": "https://demo.zymtrace.com/api-docs/openapi.json",
+    "source_path": "zymtrace/views/units/authority.json",
+    "sha256": "c45b6f886098a11727daa5a86b766edaba2d13fe2de71f98dcbea81ffd19492f"
+  },
+  "scope": {
+    "phases": [
+      "setup",
+      "warmup",
+      "timing",
+      "correctness"
+    ],
+    "normalized_width": true,
+    "disclosure": "Each worker fills its own 100% GPU-time width. Percentages divide exported time weights by their worker sum. No absolute time conversion is applied."
+  },
+  "arms": {
+    "disabled": {
+      "expected_pid": 632510,
+      "gpu_uuid": "GPU-7f4a68da-6dbf-a5df-0493-5f3f6e7786fd",
+      "events": {
+        "path": "zymtrace/captures/torch2141-b200-20261026/disabled/zymtrace-export/cuda-events.raw.json",
+        "sha256": "29bf27a908c16899b21fde3eaf458644e16b3c29e97b042514bd3bf26572667f"
+      },
+      "accepted_records": 104,
+      "excluded_records": 0,
+      "sum_exported_time_weights": 0.04519660299999999,
+      "sum_gpu_time_fractions": 1.0,
+      "images": [
+        "zymtrace/views/time-weighted/zymtrace-without-nested-graph-breaks.png"
+      ]
+    },
+    "enabled": {
+      "expected_pid": 632770,
+      "gpu_uuid": "GPU-7f4a68da-6dbf-a5df-0493-5f3f6e7786fd",
+      "events": {
+        "path": "zymtrace/captures/torch2141-b200-20261026/enabled/zymtrace-export/cuda-events.raw.json",
+        "sha256": "9e734975e97702399966d5c5d95454f256affb6b763db7d237b1503a678d1185"
+      },
+      "accepted_records": 188,
+      "excluded_records": 104,
+      "sum_exported_time_weights": 0.06432514837848449,
+      "sum_gpu_time_fractions": 1.0,
+      "images": [
+        "zymtrace/views/time-weighted/zymtrace-with-nested-graph-breaks.png"
+      ]
+    }
+  }
+}

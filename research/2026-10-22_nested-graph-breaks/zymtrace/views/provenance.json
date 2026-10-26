@@ -1,81 +1,85 @@
 {
-  "renderer": "render_profiles.py",
-  "width_unit": "one exported CUDA event row",
+  "renderer": "render_time_profiles.py",
+  "renderer_sha256": "9c2813199a996184a4cb717791728af823c0f427f70e5967024f0c7e3b023fc1",
+  "width_unit": "Percent of captured GPU time, independently normalized per worker",
+  "method": "Filter the original CUDA event export by worker PID, GPU UUID and stream. Sum the API's event-time field c through each ordered stack, then divide by the worker sum. Every bar uses GPU time.",
   "inputs": {
     "disabled": {
-      "sha256": {
-        "captures/torch2141-b200-20261026/disabled/zymtrace-export/cuda-events.raw.json": "29bf27a908c16899b21fde3eaf458644e16b3c29e97b042514bd3bf26572667f",
-        "captures/torch2141-b200-20261026/disabled/zymtrace-export/audit.json": "c2b3c7a01f9d7a919912239d7cf0daed7fd382dfb7c22d9a0c86e15a82bfa1c7",
-        "captures/torch2141-b200-20261026/disabled/zymtrace-export/cuda-flamegraph.raw.json": "e7e19416637f3ab0064a416f15b4648193cbb592186df760ee6c834abd7372db"
-      },
       "pid": 632510,
+      "gpu_uuid": "GPU-7f4a68da-6dbf-a5df-0493-5f3f6e7786fd",
       "accepted_records": 104,
       "excluded_records": 0,
-      "maximum_full_stack_depth": 49,
-      "maximum_projected_depth": 18
+      "sum_exported_time_weights": 0.04519660299999999,
+      "sum_gpu_time_fractions": 1.0,
+      "native_unfiltered_root_weight": 0.045196597,
+      "sha256": {
+        "zymtrace/captures/torch2141-b200-20261026/disabled/zymtrace-export/cuda-events.raw.json": "29bf27a908c16899b21fde3eaf458644e16b3c29e97b042514bd3bf26572667f",
+        "zymtrace/captures/torch2141-b200-20261026/disabled/zymtrace-export/audit.json": "c2b3c7a01f9d7a919912239d7cf0daed7fd382dfb7c22d9a0c86e15a82bfa1c7",
+        "zymtrace/captures/torch2141-b200-20261026/disabled/zymtrace-export/cuda-flamegraph.raw.json": "e7e19416637f3ab0064a416f15b4648193cbb592186df760ee6c834abd7372db"
+      }
     },
     "enabled": {
-      "sha256": {
-        "captures/torch2141-b200-20261026/enabled/zymtrace-export/cuda-events.raw.json": "9e734975e97702399966d5c5d95454f256affb6b763db7d237b1503a678d1185",
-        "captures/torch2141-b200-20261026/enabled/zymtrace-export/audit.json": "05c893367acae8abbca3a0cdcb36244e9ec5c6eef5dd326c2f082842d03044d7",
-        "captures/torch2141-b200-20261026/enabled/zymtrace-export/cuda-flamegraph.raw.json": "30e44102279d7ffb38091c8f1368cedc27ae8e5d8e9644aaa0a275baee26778a"
-      },
       "pid": 632770,
+      "gpu_uuid": "GPU-7f4a68da-6dbf-a5df-0493-5f3f6e7786fd",
       "accepted_records": 188,
       "excluded_records": 104,
-      "maximum_full_stack_depth": 135,
-      "maximum_projected_depth": 11
+      "sum_exported_time_weights": 0.06432514837848449,
+      "sum_gpu_time_fractions": 1.0,
+      "native_unfiltered_root_weight": 0.10951621,
+      "sha256": {
+        "zymtrace/captures/torch2141-b200-20261026/enabled/zymtrace-export/cuda-events.raw.json": "9e734975e97702399966d5c5d95454f256affb6b763db7d237b1503a678d1185",
+        "zymtrace/captures/torch2141-b200-20261026/enabled/zymtrace-export/audit.json": "05c893367acae8abbca3a0cdcb36244e9ec5c6eef5dd326c2f082842d03044d7",
+        "zymtrace/captures/torch2141-b200-20261026/enabled/zymtrace-export/cuda-flamegraph.raw.json": "30e44102279d7ffb38091c8f1368cedc27ae8e5d8e9644aaa0a275baee26778a"
+      }
     }
   },
   "outputs": {
-    "zymtrace-with-nested-graph-breaks.full-stacks.svg": {
-      "sha256": "d5de7c553ac6965a7dc0964a9bc34dc1298c557bec18b99bfde717e962c564c4",
-      "bytes": 189019
+    "zymtrace/views/time-weighted/zymtrace-with-nested-graph-breaks.full-stacks.svg": {
+      "sha256": "148a0073eacfa8a0553239b8404f6d30a0b7d25ef567cb0b630d4d45d5214a12",
+      "bytes": 177347
     },
-    "zymtrace-with-nested-graph-breaks.png": {
-      "sha256": "a51f54a382419b5d2c20d4a59d3c9b99b060a59f6c15e0f28bfb22a51d81be47",
-      "bytes": 278662
+    "zymtrace/views/time-weighted/zymtrace-with-nested-graph-breaks.png": {
+      "sha256": "c6adc65da273a6df2bf159439d3863ce32d0eab723140191618c62ed098475a1",
+      "bytes": 286446
     },
-    "zymtrace-with-nested-graph-breaks.preview.png": {
-      "sha256": "d13b11c71d5bbde5fb9636415aebc787b2cf6e55342e93e7a0ae50bbc5577193",
-      "bytes": 37042
+    "zymtrace/views/time-weighted/zymtrace-with-nested-graph-breaks.preview.png": {
+      "sha256": "39f007f427fbd7f56cda2a4765fbeaca00dece8e828716535bde87770d0b5756",
+      "bytes": 37964
     },
-    "zymtrace-with-nested-graph-breaks.stacks.json": {
-      "sha256": "42abc21c35b17e1a6b011d648d7991b673a28c95ca7b5a71a0c4a4644c54e1aa",
-      "bytes": 685083
+    "zymtrace/views/time-weighted/zymtrace-with-nested-graph-breaks.stacks.json": {
+      "sha256": "9d95d9c11adf5adc5de259af1e76e6dd207af2f8e9a8ebb708a71aec643f7364",
+      "bytes": 704650
     },
-    "zymtrace-with-nested-graph-breaks.svg": {
-      "sha256": "cef2458d5a38ff88ad374df70d6e358bb6cfeb74a448d4f874f008f2a6a7a9ba",
-      "bytes": 32838
+    "zymtrace/views/time-weighted/zymtrace-with-nested-graph-breaks.svg": {
+      "sha256": "3e8500771a67b1c4930602fead33498c1d497302bc169a6bc0f164f9aff8e311",
+      "bytes": 33399
     },
-    "zymtrace-without-nested-graph-breaks.full-stacks.svg": {
-      "sha256": "de1a1aa4506f04c475f116778214b846d13cd800f49173746953cc30fd1c5b57",
-      "bytes": 172695
+    "zymtrace/views/time-weighted/zymtrace-without-nested-graph-breaks.full-stacks.svg": {
+      "sha256": "6d29bf29078909c6d854f7e41c8bba91b7e6d9077fbe65d2dd5b9d52f130d2f7",
+      "bytes": 130479
     },
-    "zymtrace-without-nested-graph-breaks.png": {
-      "sha256": "3c341fff516cd1e02af6f4a37f52dcb9cb01c888168477cb328bdcc1fb50ff80",
-      "bytes": 288344
+    "zymtrace/views/time-weighted/zymtrace-without-nested-graph-breaks.png": {
+      "sha256": "dbed8924effe216425caa92f53d0a8f2e75d38551ff022847a6e6d360b17b58c",
+      "bytes": 229289
     },
-    "zymtrace-without-nested-graph-breaks.preview.png": {
-      "sha256": "bfb81c760932ab5815c4d99670889d11d61959de4221cd4fea1a4a1101269c6f",
-      "bytes": 42831
+    "zymtrace/views/time-weighted/zymtrace-without-nested-graph-breaks.preview.png": {
+      "sha256": "24cae9165f457f64691e8481f1cebb74ebb36d3ba1b4fb65ab1e536e85f2fa6f",
+      "bytes": 33935
     },
-    "zymtrace-without-nested-graph-breaks.stacks.json": {
-      "sha256": "b4a9fad0d873d1c5a4df15538c8d951f49089fabd455eb2bb339cc5a4116eb27",
-      "bytes": 374810
+    "zymtrace/views/time-weighted/zymtrace-without-nested-graph-breaks.stacks.json": {
+      "sha256": "da858ef29d1e92e6d12f78616acc2529e5c49dbe3a5bdce1cf3d5f19b03dd172",
+      "bytes": 385668
     },
-    "zymtrace-without-nested-graph-breaks.svg": {
-      "sha256": "2289e6c3de7ce526e28ffc97eb72c7e3e7c60742df1bf1d2c26c06b2a864cbaf",
-      "bytes": 64165
+    "zymtrace/views/time-weighted/zymtrace-without-nested-graph-breaks.svg": {
+      "sha256": "c2cd69c1ba31a06c73229c473d8176a73affb014576c001769ce60248b67892d",
+      "bytes": 54933
     }
   },
-  "method": "Filter by audited source PID, GPU UUID, cuda kind, stream presence, and positive finite c. Build a prefix tree from actual ordered frame IDs. Width is record count. Main images retain mechanism frames and all CUDA terminal frames. Full-stack SVGs retain every frame.",
   "limits": [
-    "c is used only for the existing export validity check. Its units are not inferred or plotted.",
-    "These records span setup, warmup, timing, and correctness work. Counts are not launch totals, durations, CPU overhead, or a speedup comparison.",
-    "Raw t timestamps have second precision. No timeline is reconstructed.",
-    "The enabled raw export includes prior-worker records. Only its audited PID is included in these derived views.",
-    "Narrow labels are truncated visually. Exact full labels and source frame IDs are retained in the stack JSON and SVG tooltips."
-  ],
-  "renderer_sha256": "bb1849f74fb5dce519ae8a92fccd2716810179b80fd9723947b5841e90fae2e3"
+    "Includes setup, warmup, timing and correctness work.",
+    "These separate captures are not steady-state latency measurements.",
+    "GPU time attributed to a host stack is not CPU execution time.",
+    "Summed GPU activity can overlap and is not elapsed wall time.",
+    "Widths describe exported attributed GPU time. No additional sampling extrapolation is applied."
+  ]
 }

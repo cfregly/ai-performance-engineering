@@ -1,0 +1,81 @@
+{
+  "renderer": "render_profiles.py",
+  "width_unit": "one exported CUDA event row",
+  "inputs": {
+    "disabled": {
+      "sha256": {
+        "captures/torch2141-b200-20261026/disabled/zymtrace-export/cuda-events.raw.json": "29bf27a908c16899b21fde3eaf458644e16b3c29e97b042514bd3bf26572667f",
+        "captures/torch2141-b200-20261026/disabled/zymtrace-export/audit.json": "c2b3c7a01f9d7a919912239d7cf0daed7fd382dfb7c22d9a0c86e15a82bfa1c7",
+        "captures/torch2141-b200-20261026/disabled/zymtrace-export/cuda-flamegraph.raw.json": "e7e19416637f3ab0064a416f15b4648193cbb592186df760ee6c834abd7372db"
+      },
+      "pid": 632510,
+      "accepted_records": 104,
+      "excluded_records": 0,
+      "maximum_full_stack_depth": 49,
+      "maximum_projected_depth": 18
+    },
+    "enabled": {
+      "sha256": {
+        "captures/torch2141-b200-20261026/enabled/zymtrace-export/cuda-events.raw.json": "9e734975e97702399966d5c5d95454f256affb6b763db7d237b1503a678d1185",
+        "captures/torch2141-b200-20261026/enabled/zymtrace-export/audit.json": "05c893367acae8abbca3a0cdcb36244e9ec5c6eef5dd326c2f082842d03044d7",
+        "captures/torch2141-b200-20261026/enabled/zymtrace-export/cuda-flamegraph.raw.json": "30e44102279d7ffb38091c8f1368cedc27ae8e5d8e9644aaa0a275baee26778a"
+      },
+      "pid": 632770,
+      "accepted_records": 188,
+      "excluded_records": 104,
+      "maximum_full_stack_depth": 135,
+      "maximum_projected_depth": 11
+    }
+  },
+  "outputs": {
+    "zymtrace-with-nested-graph-breaks.full-stacks.svg": {
+      "sha256": "d5de7c553ac6965a7dc0964a9bc34dc1298c557bec18b99bfde717e962c564c4",
+      "bytes": 189019
+    },
+    "zymtrace-with-nested-graph-breaks.png": {
+      "sha256": "a51f54a382419b5d2c20d4a59d3c9b99b060a59f6c15e0f28bfb22a51d81be47",
+      "bytes": 278662
+    },
+    "zymtrace-with-nested-graph-breaks.preview.png": {
+      "sha256": "d13b11c71d5bbde5fb9636415aebc787b2cf6e55342e93e7a0ae50bbc5577193",
+      "bytes": 37042
+    },
+    "zymtrace-with-nested-graph-breaks.stacks.json": {
+      "sha256": "42abc21c35b17e1a6b011d648d7991b673a28c95ca7b5a71a0c4a4644c54e1aa",
+      "bytes": 685083
+    },
+    "zymtrace-with-nested-graph-breaks.svg": {
+      "sha256": "cef2458d5a38ff88ad374df70d6e358bb6cfeb74a448d4f874f008f2a6a7a9ba",
+      "bytes": 32838
+    },
+    "zymtrace-without-nested-graph-breaks.full-stacks.svg": {
+      "sha256": "de1a1aa4506f04c475f116778214b846d13cd800f49173746953cc30fd1c5b57",
+      "bytes": 172695
+    },
+    "zymtrace-without-nested-graph-breaks.png": {
+      "sha256": "3c341fff516cd1e02af6f4a37f52dcb9cb01c888168477cb328bdcc1fb50ff80",
+      "bytes": 288344
+    },
+    "zymtrace-without-nested-graph-breaks.preview.png": {
+      "sha256": "bfb81c760932ab5815c4d99670889d11d61959de4221cd4fea1a4a1101269c6f",
+      "bytes": 42831
+    },
+    "zymtrace-without-nested-graph-breaks.stacks.json": {
+      "sha256": "b4a9fad0d873d1c5a4df15538c8d951f49089fabd455eb2bb339cc5a4116eb27",
+      "bytes": 374810
+    },
+    "zymtrace-without-nested-graph-breaks.svg": {
+      "sha256": "2289e6c3de7ce526e28ffc97eb72c7e3e7c60742df1bf1d2c26c06b2a864cbaf",
+      "bytes": 64165
+    }
+  },
+  "method": "Filter by audited source PID, GPU UUID, cuda kind, stream presence, and positive finite c. Build a prefix tree from actual ordered frame IDs. Width is record count. Main images retain mechanism frames and all CUDA terminal frames. Full-stack SVGs retain every frame.",
+  "limits": [
+    "c is used only for the existing export validity check. Its units are not inferred or plotted.",
+    "These records span setup, warmup, timing, and correctness work. Counts are not launch totals, durations, CPU overhead, or a speedup comparison.",
+    "Raw t timestamps have second precision. No timeline is reconstructed.",
+    "The enabled raw export includes prior-worker records. Only its audited PID is included in these derived views.",
+    "Narrow labels are truncated visually. Exact full labels and source frame IDs are retained in the stack JSON and SVG tooltips."
+  ],
+  "renderer_sha256": "bb1849f74fb5dce519ae8a92fccd2716810179b80fd9723947b5841e90fae2e3"
+}

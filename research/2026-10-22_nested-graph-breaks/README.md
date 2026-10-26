@@ -197,7 +197,10 @@ see the bounded controller and capture requirements in [zymtrace/](zymtrace/).
 The [October 26 two-arm B200 capture](zymtrace/captures/torch2141-b200-20261026/)
 passed on PyTorch 2.14.1 and includes downloadable Zymtrace event and
 flamegraph JSON. It is a separate compatibility smoke, not another speedup
-measurement.
+measurement. The current [Zymtrace flamegraphs](zymtrace/views/) weight width
+by percentage of captured GPU time after filtering each worker. They replace
+the earlier record-count diagrams. Their retained API definition, normalization,
+source hashes, renderer, and full weighted stacks are linked beside the images.
 
 ## Posts and replies
 

@@ -1,0 +1,33 @@
+{
+  "verified": true,
+  "event_field": "c",
+  "schema_field": "JsonEvent.c",
+  "schema_value": "Time spent in this event.",
+  "quantity": "gpu_time",
+  "unit": "fraction",
+  "normalization": "per_worker_sum",
+  "absolute_export_unit": "undocumented",
+  "source_url": "https://demo.zymtrace.com/api-docs/openapi.json",
+  "observed_at": "2026-10-26T23:09:53.814633+00:00",
+  "evidence": [
+    {
+      "path": "api-event-time.json",
+      "sha256": "b042ede56301ade3261d19c9f398de4a59b3d864368ef863f2ee9c081d038864",
+      "meaning": "Official event time field, with CUDA records selected by event kind."
+    },
+    {
+      "source_url": "https://docs.zymtrace.com/features/unit-reference/",
+      "meaning": "GPU profiles attribute descendant CUDA GPU time to host frames."
+    },
+    {
+      "source_url": "https://docs.zymtrace.com/features/flamegraphs/flamegraph-controls/",
+      "meaning": "GPU flamegraphs use GPU time and relative percentages."
+    }
+  ],
+  "derivation": "For each accepted worker/GPU CUDA event, fraction = c / sum(c). Any common base-time unit cancels. Percent = 100 * fraction. Width is proportional to time rather than the number of records.",
+  "limits": [
+    "The public JSON schema does not state an absolute unit. No seconds-to-milliseconds conversion is made.",
+    "The native UI duration formatter uses seconds, but its binary payload is separate from this JSON API.",
+    "These are exported attributed GPU-time shares. No undocumented sampling compensation or whole-run extrapolation is assumed."
+  ]
+}

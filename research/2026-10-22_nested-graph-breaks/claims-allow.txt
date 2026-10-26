@@ -32,4 +32,4 @@ NOT ALLOWED
 - Do not turn the failed startup route into a pass or hide the original failed startup control.
 - Do not combine the two cohorts into one sample or attach the original 4.531795x number to fresh run 022.
 - Do not present a single NCU kernel duration, an Nsys span, or a Chrome-trace segment as the whole-call speedup.
-- Do not claim a Zymtrace capture. None was retained for this experiment.
+- Do not describe the later October 26 Zymtrace captures as part of the original latency experiment. Those separate captures establish worker-filtered GPU-time stack visibility, not another speedup or a CPU/GPU causal split.

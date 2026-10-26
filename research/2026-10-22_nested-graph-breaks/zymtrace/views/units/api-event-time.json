@@ -1,0 +1,12 @@
+{
+  "source_url": "https://demo.zymtrace.com/api-docs/openapi.json",
+  "source_sha256": "83d4ed8a4c5bc266ac94e8978ce54db06c6b8726d1d811e068fef4852d683955",
+  "source_bytes": 202281,
+  "source_version": "26.10.1",
+  "schema_pointer": "#/components/schemas/JsonEvent/properties/c",
+  "schema": {
+    "type": "number",
+    "format": "double",
+    "description": "Time spent in this event."
+  }
+}
