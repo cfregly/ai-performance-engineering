@@ -65,6 +65,15 @@ result supports a compiler-mechanism claim only.
 
 ## Was Zymtrace used?
 
-No Zymtrace capture or import was retained for this experiment. The package
-contains preparation code and methods notes only. The retained profiler files
-are Nsys, NCU, SQLite, CSV, and PyTorch Chrome artifacts.
+The original latency experiment used separate unprofiled workers. A later
+43-second B200 compatibility smoke captured both depth-8 workers on PyTorch
+2.14.1 and CUDA 13.0 with Zymtrace 26.10.1. Both passed correctness checks.
+The [raw CUDA events, flamegraphs, worker results, and cleanup receipts](
+zymtrace/captures/torch2141-b200-20261026/) are retained alongside the earlier
+Nsys, NCU, SQLite, CSV, and PyTorch Chrome artifacts.
+
+The Zymtrace audit identifies 104 matching CUDA records without nested
+graph-break support and 188 with support. The second raw export also includes
+the first worker because their export time filters overlap. Filter by the
+recorded worker PID, GPU, and stream fields. These sampled exports do not
+establish an exact CPU/GPU causal percentage or a new performance result.

@@ -1,0 +1,1 @@
+{"base_prefix": "/usr", "cuda_version": "13.0", "prefix": "/root/venvs/aiperf-torch2141-upgrade-20261021", "sys_executable": "/root/venvs/aiperf-torch2141-upgrade-20261021/bin/python", "torch_version": "2.14.1+cu130"}

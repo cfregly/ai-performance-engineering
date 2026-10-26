@@ -1,0 +1,27 @@
+{
+  "expected_gpu_uuid": "GPU-7f4a68da-6dbf-a5df-0493-5f3f6e7786fd",
+  "filter": {
+    "end_ts": 1793046100826,
+    "event_kind": "cuda",
+    "start_ts": 1793046087044
+  },
+  "filter_clock_units": "Unix epoch milliseconds, inclusive start and exclusive end",
+  "matching_cuda_rows": 104,
+  "performance_claim": false,
+  "pid_scope": "export validation only because PID-scoped live-config CEL is not documented",
+  "project_id": "01a179e0-0117-7811-bf59-2c5f4e850e1c",
+  "project_slug": "ngb-root161-zymtrace-20261026-004",
+  "raw_cuda_rows": 104,
+  "raw_events": {
+    "bytes": 40434,
+    "path": "/opt/piq-campaigns/ngb-zymtrace-root161-20261026-004/attempt/disabled/zymtrace-export/cuda-events.raw.json",
+    "sha256": "29bf27a908c16899b21fde3eaf458644e16b3c29e97b042514bd3bf26572667f"
+  },
+  "raw_flamegraph": {
+    "bytes": 58504,
+    "path": "/opt/piq-campaigns/ngb-zymtrace-root161-20261026-004/attempt/disabled/zymtrace-export/cuda-flamegraph.raw.json",
+    "sha256": "e7e19416637f3ab0064a416f15b4648193cbb592186df760ee6c834abd7372db"
+  },
+  "source_pid": 632510,
+  "visibility_only": true
+}

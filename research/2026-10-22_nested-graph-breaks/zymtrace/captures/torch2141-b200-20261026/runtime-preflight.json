@@ -1,0 +1,27 @@
+{
+  "argv": [
+    "/root/venvs/aiperf-torch2141-upgrade-20261021/bin/python",
+    "-B",
+    "-c",
+    "import json,sys,torch;print(json.dumps({'torch_version':str(torch.__version__),'cuda_version':str(torch.version.cuda),'sys_executable':sys.executable,'prefix':sys.prefix,'base_prefix':sys.base_prefix},sort_keys=True))"
+  ],
+  "exit_code": 0,
+  "gpu_api_called": false,
+  "result": {
+    "base_prefix": "/usr",
+    "cuda_version": "13.0",
+    "prefix": "/root/venvs/aiperf-torch2141-upgrade-20261021",
+    "sys_executable": "/root/venvs/aiperf-torch2141-upgrade-20261021/bin/python",
+    "torch_version": "2.14.1+cu130"
+  },
+  "stderr": {
+    "bytes": 0,
+    "path": "/opt/piq-campaigns/ngb-zymtrace-root161-20261026-004/attempt/runtime-preflight.stderr",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "stdout": {
+    "bytes": 218,
+    "path": "/opt/piq-campaigns/ngb-zymtrace-root161-20261026-004/attempt/runtime-preflight.stdout",
+    "sha256": "8a7ecfb62e64b6eb11897fdc8ef3bda1281a3c17f55ed35cc087df632837a99b"
+  }
+}

@@ -90,8 +90,11 @@ retention boilerplate. It leaves exact code examples and profiler data intact.
 
 ## Fresh Zymtrace capture
 
-The intended PyTorch 2.14.1 two-arm capture is waiting for the PIQ comparison
-to finish and a fresh B200 window, following the user's priority decision.
+Both intended PyTorch 2.14.1 workers completed in a fresh custodian-approved
+B200 idle window on October 26, 2026. The controller ran for 43 seconds from
+20:21:10 to 20:21:53 UTC. Both workers passed correctness and runtime checks.
+The [capture directory](zymtrace/captures/torch2141-b200-20261026/) retains the
+raw event and flamegraph exports, audit results, worker results, and cleanup.
 
 One earlier B200 worker ran under system PyTorch 2.13 because the plan resolved
 the virtualenv interpreter symlink. That attempt was rejected and retained
@@ -103,6 +106,10 @@ CPU-only Torch identity check before GPU work. The installed virtualenv was
 read back as Torch 2.14.1+cu130, CUDA 13.0, with the correct executable and
 prefix. The rejected worker, profiler, and temporary rule were cleaned up.
 
-Completion still requires both intended-runtime workers and backend exports,
-plus verified cleanup. No startup, serving, or new performance qualification
-is claimed from the Zymtrace visibility work.
+Backend readback accepted 104 matching CUDA records without nested graph-break
+support and 188 with support. The second raw export includes the earlier
+worker because the time filters overlap. The retained audit identifies each
+worker by PID, GPU, and stream. Both owned worker groups were empty, the
+profiler exited cleanly, the temporary rule was removed at version 12, and
+immediate GPU readback was empty. No startup, serving, or new performance
+qualification is claimed from the Zymtrace visibility work.

@@ -1,0 +1,9 @@
+aiperf-pr38-zymtrace-gateway-1|ghcr.io/zystem-io/zymtrace-pub-gateway:26.10.1|09567b9148fd
+aiperf-pr38-zymtrace-web-1|ghcr.io/zystem-io/zymtrace-pub-backend:26.10.1|0a7dee8f38d0
+aiperf-pr38-zymtrace-ingest-1|ghcr.io/zystem-io/zymtrace-pub-backend:26.10.1|bbe7aca47fc3
+aiperf-pr38-zymtrace-identity-1|ghcr.io/zystem-io/zymtrace-pub-backend:26.10.1|2ec80ad3ac4c
+aiperf-pr38-zymtrace-symdb-1|ghcr.io/zystem-io/zymtrace-pub-backend:26.10.1|3e433e3bf435
+aiperf-pr38-zymtrace-psql-1|postgres:17.4|68362db132e0
+aiperf-pr38-zymtrace-clickhouse-1|clickhouse/clickhouse-server:25.3.14.14|f2ee0bb4859c
+aiperf-pr38-zymtrace-minio-1|pgsty/silo:RELEASE.2026-09-03T13-18-01Z|2f45232bbfac
+aiperf-pr38-zymtrace-ui-1|ghcr.io/zystem-io/zymtrace-pub-ui:26.10.1|70eac764183c

@@ -1,0 +1,189 @@
+{
+  "schema": "nested-graph-breaks-zymtrace-public-capture/v1",
+  "source_repo_commit": "2a4e3fd00dadf2380a5c413af33bb46c4727fce2",
+  "source_archive_sha256": "c1c66d7158a4183c083910ab51af13d15b71f7b88311f012cc074f80439bf161",
+  "transport_archive_sha256": "1951f841411c7e80e17f687ca5c80836214d393f7083750cf7481160182dd133",
+  "files": [
+    {
+      "path": "HANDOFF-COMPLETE.json",
+      "bytes": 16656,
+      "sha256": "fd66e73691802f0256cb1ef6c756935e8bfdc5677a4b68c457f2022926f2094c",
+      "original_archive_path": "attempt/HANDOFF-COMPLETE.json"
+    },
+    {
+      "path": "agent-config-before.json",
+      "bytes": 49,
+      "sha256": "de98e84d0f5ce21218a369b0f9df1439c8c8f40a7055fb324dd78cdac6aa0ab6",
+      "original_archive_path": "attempt/agent-config-before.json"
+    },
+    {
+      "path": "agent-config-enable-after.json",
+      "bytes": 236,
+      "sha256": "b400d4a03f9b18423e67361074a8c8ae9b98929cef6821a1db68c3e521e49de7",
+      "original_archive_path": "attempt/agent-config-enable-after.json"
+    },
+    {
+      "path": "agent-config-enable-request.json",
+      "bytes": 429,
+      "sha256": "4b461022e689c10287e4b821bf7b71efe468d81c891e7cbabdd61092e8a1b34c",
+      "original_archive_path": "attempt/agent-config-enable-request.json"
+    },
+    {
+      "path": "agent-config-restore-after.json",
+      "bytes": 49,
+      "sha256": "4544a3eab36d3b136cf2fa2620bc8ed6be534d5adf455f512b861355ac7d82da",
+      "original_archive_path": "attempt/agent-config-restore-after.json"
+    },
+    {
+      "path": "agent-config-restore-before.json",
+      "bytes": 236,
+      "sha256": "b400d4a03f9b18423e67361074a8c8ae9b98929cef6821a1db68c3e521e49de7",
+      "original_archive_path": "attempt/agent-config-restore-before.json"
+    },
+    {
+      "path": "agent-config-restore-request.json",
+      "bytes": 83,
+      "sha256": "e3fa91fb0b0a71ca997e83d34971664842573a172287caad8ea4f15bf38919fe",
+      "original_archive_path": "attempt/agent-config-restore-request.json"
+    },
+    {
+      "path": "backend-container-images.txt",
+      "bytes": 754,
+      "sha256": "fe84a9d5c40ec15f08a174336423b60af562fc1d28b924f4e218100e75f47a3e",
+      "original_archive_path": "attempt/backend-container-images.txt"
+    },
+    {
+      "path": "disabled/benchmark-result/result.json",
+      "bytes": 26090,
+      "sha256": "09c348be2b3458337b396b843cebda1500c35207967bd5a5ea93093ed0936252",
+      "original_archive_path": "attempt/disabled/benchmark-result/result.json"
+    },
+    {
+      "path": "disabled/zymtrace_launch_manifest.json",
+      "bytes": 879,
+      "sha256": "caf3f0ae91bcde6bad35ecc5d56b261218397b5edd8821dd0930837cc1022f1e",
+      "original_archive_path": "attempt/disabled/profile-wrapper/20261026_202128_benchmark/zymtrace_launch_manifest.json"
+    },
+    {
+      "path": "disabled/worker.stderr.log",
+      "bytes": 2506,
+      "sha256": "b0f8395445a5782c25e0e0e3a25af5ec89a5e79efec0401d97667f5a6d6853b1",
+      "original_archive_path": "attempt/disabled/worker.stderr.log"
+    },
+    {
+      "path": "disabled/worker.stdout.log",
+      "bytes": 1584,
+      "sha256": "8e70175728a76eb2d66bb688369ca03ad1c9c0a482905b074f6d216c4e0c233f",
+      "original_archive_path": "attempt/disabled/worker.stdout.log"
+    },
+    {
+      "path": "disabled/zymtrace-export/audit.json",
+      "bytes": 1099,
+      "sha256": "c2b3c7a01f9d7a919912239d7cf0daed7fd382dfb7c22d9a0c86e15a82bfa1c7",
+      "original_archive_path": "attempt/disabled/zymtrace-export/audit.json"
+    },
+    {
+      "path": "disabled/zymtrace-export/cuda-events.raw.json",
+      "bytes": 40434,
+      "sha256": "29bf27a908c16899b21fde3eaf458644e16b3c29e97b042514bd3bf26572667f",
+      "original_archive_path": "attempt/disabled/zymtrace-export/cuda-events.raw.json"
+    },
+    {
+      "path": "disabled/zymtrace-export/cuda-flamegraph.raw.json",
+      "bytes": 58504,
+      "sha256": "e7e19416637f3ab0064a416f15b4648193cbb592186df760ee6c834abd7372db",
+      "original_archive_path": "attempt/disabled/zymtrace-export/cuda-flamegraph.raw.json"
+    },
+    {
+      "path": "enabled/benchmark-result/result.json",
+      "bytes": 26053,
+      "sha256": "99c516684c66569f2b58fe41c796ba14245aba78a312f501823e4508a06aab91",
+      "original_archive_path": "attempt/enabled/benchmark-result/result.json"
+    },
+    {
+      "path": "enabled/zymtrace_launch_manifest.json",
+      "bytes": 878,
+      "sha256": "6207f73f8db3b8c145fd21de507a70490ea921dbc57503fbf78d3def6ba86611",
+      "original_archive_path": "attempt/enabled/profile-wrapper/20261026_202140_benchmark/zymtrace_launch_manifest.json"
+    },
+    {
+      "path": "enabled/worker.stderr.log",
+      "bytes": 2509,
+      "sha256": "afe1fedffc4905403c5730efec1db69356907cfc9ada6ee63873e5d6152cd08a",
+      "original_archive_path": "attempt/enabled/worker.stderr.log"
+    },
+    {
+      "path": "enabled/worker.stdout.log",
+      "bytes": 1578,
+      "sha256": "e9c4102dacd33e1f9f2c2fce88ce747698c052595645c35bad75063aae7aa4d6",
+      "original_archive_path": "attempt/enabled/worker.stdout.log"
+    },
+    {
+      "path": "enabled/zymtrace-export/audit.json",
+      "bytes": 1098,
+      "sha256": "05c893367acae8abbca3a0cdcb36244e9ec5c6eef5dd326c2f082842d03044d7",
+      "original_archive_path": "attempt/enabled/zymtrace-export/audit.json"
+    },
+    {
+      "path": "enabled/zymtrace-export/cuda-events.raw.json",
+      "bytes": 99623,
+      "sha256": "9e734975e97702399966d5c5d95454f256affb6b763db7d237b1503a678d1185",
+      "original_archive_path": "attempt/enabled/zymtrace-export/cuda-events.raw.json"
+    },
+    {
+      "path": "enabled/zymtrace-export/cuda-flamegraph.raw.json",
+      "bytes": 132892,
+      "sha256": "30e44102279d7ffb38091c8f1368cedc27ae8e5d8e9644aaa0a275baee26778a",
+      "original_archive_path": "attempt/enabled/zymtrace-export/cuda-flamegraph.raw.json"
+    },
+    {
+      "path": "runtime-preflight.json",
+      "bytes": 1064,
+      "sha256": "05e262685d835e7f7535e917ec04b560bac8e79b9ff974a3593d2369be1cce51",
+      "original_archive_path": "attempt/runtime-preflight.json"
+    },
+    {
+      "path": "runtime-preflight.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "original_archive_path": "attempt/runtime-preflight.stderr"
+    },
+    {
+      "path": "runtime-preflight.stdout",
+      "bytes": 218,
+      "sha256": "8a7ecfb62e64b6eb11897fdc8ef3bda1281a3c17f55ed35cc087df632837a99b",
+      "original_archive_path": "attempt/runtime-preflight.stdout"
+    },
+    {
+      "path": "profiler.log",
+      "bytes": 3169,
+      "sha256": "db625083823296f592406d6feec7e435d7d8fcc5c055be48f8b93b6f12267e52",
+      "original_archive_path": "attempt/zymtrace-profiler.log"
+    },
+    {
+      "path": "controller.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "original_archive_path": "controller.stderr"
+    },
+    {
+      "path": "controller.stdout",
+      "bytes": 16656,
+      "sha256": "fd66e73691802f0256cb1ef6c756935e8bfdc5677a4b68c457f2022926f2094c",
+      "original_archive_path": "controller.stdout"
+    },
+    {
+      "path": "cleanup-readback.json",
+      "bytes": 263,
+      "sha256": "11fb568ef0cd3d9d99899d9f79515be3c2069b362979ce4679426c4a2f1cdfe5",
+      "original_archive_path": "receiver-cleanup-readback.json"
+    },
+    {
+      "path": "SOURCE-MANIFEST.json",
+      "bytes": 1233,
+      "sha256": "e3c53d939568f687612691c5f8afb29bd6bd3f9d12a8c50963888cf848f9b8f8",
+      "original_archive_path": "source/SOURCE-MANIFEST.json"
+    }
+  ],
+  "purpose": "Two-arm B200 compatibility and profiler visibility smoke. No new performance qualification."
+}

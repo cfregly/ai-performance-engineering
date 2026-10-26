@@ -1,0 +1,1 @@
+{"config":{"config":{"entries":[{"expression":"host.name == \"fregly-dev\"","settings":[{"setting":{"HighResProfiling":true}}],"expires_at":"2026-10-26T20:30:10.484404Z","project":"01a179e0-0117-7811-bf59-2c5f4e850e1c"}]},"version":11}}

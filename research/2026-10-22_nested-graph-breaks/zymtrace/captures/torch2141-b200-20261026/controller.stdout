@@ -1,0 +1,335 @@
+{
+  "actual_end": "2026-10-26T20:21:53.485285Z",
+  "actual_start": "2026-10-26T20:21:10.484404Z",
+  "arms": [
+    {
+      "arm": "disabled",
+      "assigned_gpu_uuid": "GPU-7f4a68da-6dbf-a5df-0493-5f3f6e7786fd",
+      "clock_units": "Unix epoch milliseconds",
+      "end_ms": 1793046099826,
+      "exit_code": 0,
+      "export": {
+        "expected_gpu_uuid": "GPU-7f4a68da-6dbf-a5df-0493-5f3f6e7786fd",
+        "filter": {
+          "end_ts": 1793046100826,
+          "event_kind": "cuda",
+          "start_ts": 1793046087044
+        },
+        "filter_clock_units": "Unix epoch milliseconds, inclusive start and exclusive end",
+        "matching_cuda_rows": 104,
+        "performance_claim": false,
+        "pid_scope": "export validation only because PID-scoped live-config CEL is not documented",
+        "project_id": "01a179e0-0117-7811-bf59-2c5f4e850e1c",
+        "project_slug": "ngb-root161-zymtrace-20261026-004",
+        "raw_cuda_rows": 104,
+        "raw_events": {
+          "bytes": 40434,
+          "path": "/opt/piq-campaigns/ngb-zymtrace-root161-20261026-004/attempt/disabled/zymtrace-export/cuda-events.raw.json",
+          "sha256": "29bf27a908c16899b21fde3eaf458644e16b3c29e97b042514bd3bf26572667f"
+        },
+        "raw_flamegraph": {
+          "bytes": 58504,
+          "path": "/opt/piq-campaigns/ngb-zymtrace-root161-20261026-004/attempt/disabled/zymtrace-export/cuda-flamegraph.raw.json",
+          "sha256": "e7e19416637f3ab0064a416f15b4648193cbb592186df760ee6c834abd7372db"
+        },
+        "source_pid": 632510,
+        "visibility_only": true
+      },
+      "label": "without nested graph-break support",
+      "owned_launcher_pgid": 632476,
+      "result_path": "/opt/piq-campaigns/ngb-zymtrace-root161-20261026-004/attempt/disabled/benchmark-result/result.json",
+      "result_sha256": "09c348be2b3458337b396b843cebda1500c35207967bd5a5ea93093ed0936252",
+      "result_status": "pass",
+      "source_pid": 632510,
+      "start_ms": 1793046088044,
+      "stderr": "/opt/piq-campaigns/ngb-zymtrace-root161-20261026-004/attempt/disabled/worker.stderr.log",
+      "stderr_sha256": "b0f8395445a5782c25e0e0e3a25af5ec89a5e79efec0401d97667f5a6d6853b1",
+      "stdout": "/opt/piq-campaigns/ngb-zymtrace-root161-20261026-004/attempt/disabled/worker.stdout.log",
+      "stdout_sha256": "8e70175728a76eb2d66bb688369ca03ad1c9c0a482905b074f6d216c4e0c233f",
+      "torch_version": "2.14.1+cu130"
+    },
+    {
+      "arm": "enabled",
+      "assigned_gpu_uuid": "GPU-7f4a68da-6dbf-a5df-0493-5f3f6e7786fd",
+      "clock_units": "Unix epoch milliseconds",
+      "end_ms": 1793046107573,
+      "exit_code": 0,
+      "export": {
+        "expected_gpu_uuid": "GPU-7f4a68da-6dbf-a5df-0493-5f3f6e7786fd",
+        "filter": {
+          "end_ts": 1793046108573,
+          "event_kind": "cuda",
+          "start_ts": 1793046098826
+        },
+        "filter_clock_units": "Unix epoch milliseconds, inclusive start and exclusive end",
+        "matching_cuda_rows": 188,
+        "performance_claim": false,
+        "pid_scope": "export validation only because PID-scoped live-config CEL is not documented",
+        "project_id": "01a179e0-0117-7811-bf59-2c5f4e850e1c",
+        "project_slug": "ngb-root161-zymtrace-20261026-004",
+        "raw_cuda_rows": 292,
+        "raw_events": {
+          "bytes": 99623,
+          "path": "/opt/piq-campaigns/ngb-zymtrace-root161-20261026-004/attempt/enabled/zymtrace-export/cuda-events.raw.json",
+          "sha256": "9e734975e97702399966d5c5d95454f256affb6b763db7d237b1503a678d1185"
+        },
+        "raw_flamegraph": {
+          "bytes": 132892,
+          "path": "/opt/piq-campaigns/ngb-zymtrace-root161-20261026-004/attempt/enabled/zymtrace-export/cuda-flamegraph.raw.json",
+          "sha256": "30e44102279d7ffb38091c8f1368cedc27ae8e5d8e9644aaa0a275baee26778a"
+        },
+        "source_pid": 632770,
+        "visibility_only": true
+      },
+      "label": "with nested graph-break support",
+      "owned_launcher_pgid": 632743,
+      "result_path": "/opt/piq-campaigns/ngb-zymtrace-root161-20261026-004/attempt/enabled/benchmark-result/result.json",
+      "result_sha256": "99c516684c66569f2b58fe41c796ba14245aba78a312f501823e4508a06aab91",
+      "result_status": "pass",
+      "source_pid": 632770,
+      "start_ms": 1793046099826,
+      "stderr": "/opt/piq-campaigns/ngb-zymtrace-root161-20261026-004/attempt/enabled/worker.stderr.log",
+      "stderr_sha256": "afe1fedffc4905403c5730efec1db69356907cfc9ada6ee63873e5d6152cd08a",
+      "stdout": "/opt/piq-campaigns/ngb-zymtrace-root161-20261026-004/attempt/enabled/worker.stdout.log",
+      "stdout_sha256": "e9c4102dacd33e1f9f2c2fce88ce747698c052595645c35bad75063aae7aa4d6",
+      "torch_version": "2.14.1+cu130"
+    }
+  ],
+  "backend_version_source": "running container image tags and IDs",
+  "cleanup": [
+    {
+      "group_empty": true,
+      "kind": "worker",
+      "owned_pgid": 632476
+    },
+    {
+      "group_empty": true,
+      "kind": "worker",
+      "owned_pgid": 632743
+    },
+    {
+      "owned_pgid": 631975,
+      "signal": "SIGINT"
+    },
+    {
+      "final_returncode": 0,
+      "owned_pgid": 631975
+    }
+  ],
+  "commands": [
+    {
+      "argv": [
+        "/root/venvs/aiperf-torch2141-upgrade-20261021/bin/python",
+        "-B",
+        "-c",
+        "import json,sys,torch;print(json.dumps({'torch_version':str(torch.__version__),'cuda_version':str(torch.version.cuda),'sys_executable':sys.executable,'prefix':sys.prefix,'base_prefix':sys.base_prefix},sort_keys=True))"
+      ],
+      "kind": "cpu_runtime_preflight"
+    },
+    {
+      "argv": [
+        "taskset",
+        "--cpu-list",
+        "0-59",
+        "/opt/zymtrace/profiler/zymtrace-profiler",
+        "-collection-agent=127.0.0.1:18080",
+        "-disable-tls",
+        "-project=ngb-root161-zymtrace-20261026-004",
+        "-tracers=python,cuda",
+        "-enable-gpu-metrics=true",
+        "-nvml-auto-scan",
+        "-reporter-interval=1s",
+        "-collect-metrics-interval=5s",
+        "-export-metrics-interval=5s",
+        "-refresh-config-interval=1s"
+      ],
+      "kind": "profiler"
+    },
+    {
+      "argv": [
+        "taskset",
+        "--cpu-list",
+        "0-59",
+        "timeout",
+        "--signal=TERM",
+        "--kill-after=30s",
+        "240s",
+        "env",
+        "CUDA_VISIBLE_DEVICES=GPU-7f4a68da-6dbf-a5df-0493-5f3f6e7786fd",
+        "TORCHINDUCTOR_CACHE_DIR=/opt/piq-campaigns/ngb-zymtrace-root161-20261026-004/attempt/disabled/torchinductor-cache",
+        "TRITON_CACHE_DIR=/opt/piq-campaigns/ngb-zymtrace-root161-20261026-004/attempt/disabled/triton-cache",
+        "ZYMTRACE_CUDA_INJECTION64_PATH=/opt/zymtrace/profiler/libzymtracecudaprofiler.so",
+        "ZYMTRACE_CUDAPROFILER__ENABLE_PC_SAMPLING=false",
+        "ZYMTRACE_CUDAPROFILER__PRINT_STATS=true",
+        "ZYMTRACE_CUDAPROFILER__QUIET=false",
+        "ZYMTRACE_CUDAPROFILER__STACK_TRACE_SAMPLING__ENABLED=true",
+        "ZYMTRACE_CUDAPROFILER__STACK_TRACE_SAMPLING__TARGET=200",
+        "ZYMTRACE_CUDAPROFILER__STACK_TRACE_SAMPLING__WINDOW_SIZE=1",
+        "/opt/piq-campaigns/ngb-zymtrace-root161-20261026-004/source/code/core/scripts/profiling/profile.sh",
+        "/opt/piq-campaigns/ngb-zymtrace-root161-20261026-004/source/research/2026-10-22_nested-graph-breaks/benchmark.py",
+        "--arch",
+        "sm_100",
+        "--tool",
+        "zymtrace",
+        "--output-root",
+        "/opt/piq-campaigns/ngb-zymtrace-root161-20261026-004/attempt/disabled/profile-wrapper",
+        "--python",
+        "/root/venvs/aiperf-torch2141-upgrade-20261021/bin/python",
+        "--",
+        "--case",
+        "nested_break_depth8",
+        "--enabled",
+        "0",
+        "--seed",
+        "0",
+        "--out",
+        "/opt/piq-campaigns/ngb-zymtrace-root161-20261026-004/attempt/disabled/benchmark-result",
+        "--expected-gpu-uuid",
+        "GPU-7f4a68da-6dbf-a5df-0493-5f3f6e7786fd"
+      ],
+      "arm": "disabled",
+      "kind": "worker",
+      "label": "without nested graph-break support",
+      "shell_command": "taskset --cpu-list 0-59 timeout --signal=TERM --kill-after=30s 240s env CUDA_VISIBLE_DEVICES=GPU-7f4a68da-6dbf-a5df-0493-5f3f6e7786fd TORCHINDUCTOR_CACHE_DIR=/opt/piq-campaigns/ngb-zymtrace-root161-20261026-004/attempt/disabled/torchinductor-cache TRITON_CACHE_DIR=/opt/piq-campaigns/ngb-zymtrace-root161-20261026-004/attempt/disabled/triton-cache ZYMTRACE_CUDA_INJECTION64_PATH=/opt/zymtrace/profiler/libzymtracecudaprofiler.so ZYMTRACE_CUDAPROFILER__ENABLE_PC_SAMPLING=false ZYMTRACE_CUDAPROFILER__PRINT_STATS=true ZYMTRACE_CUDAPROFILER__QUIET=false ZYMTRACE_CUDAPROFILER__STACK_TRACE_SAMPLING__ENABLED=true ZYMTRACE_CUDAPROFILER__STACK_TRACE_SAMPLING__TARGET=200 ZYMTRACE_CUDAPROFILER__STACK_TRACE_SAMPLING__WINDOW_SIZE=1 /opt/piq-campaigns/ngb-zymtrace-root161-20261026-004/source/code/core/scripts/profiling/profile.sh /opt/piq-campaigns/ngb-zymtrace-root161-20261026-004/source/research/2026-10-22_nested-graph-breaks/benchmark.py --arch sm_100 --tool zymtrace --output-root /opt/piq-campaigns/ngb-zymtrace-root161-20261026-004/attempt/disabled/profile-wrapper --python /root/venvs/aiperf-torch2141-upgrade-20261021/bin/python -- --case nested_break_depth8 --enabled 0 --seed 0 --out /opt/piq-campaigns/ngb-zymtrace-root161-20261026-004/attempt/disabled/benchmark-result --expected-gpu-uuid GPU-7f4a68da-6dbf-a5df-0493-5f3f6e7786fd",
+      "timeout_seconds": 240
+    },
+    {
+      "argv": [
+        "taskset",
+        "--cpu-list",
+        "0-59",
+        "timeout",
+        "--signal=TERM",
+        "--kill-after=30s",
+        "240s",
+        "env",
+        "CUDA_VISIBLE_DEVICES=GPU-7f4a68da-6dbf-a5df-0493-5f3f6e7786fd",
+        "TORCHINDUCTOR_CACHE_DIR=/opt/piq-campaigns/ngb-zymtrace-root161-20261026-004/attempt/enabled/torchinductor-cache",
+        "TRITON_CACHE_DIR=/opt/piq-campaigns/ngb-zymtrace-root161-20261026-004/attempt/enabled/triton-cache",
+        "ZYMTRACE_CUDA_INJECTION64_PATH=/opt/zymtrace/profiler/libzymtracecudaprofiler.so",
+        "ZYMTRACE_CUDAPROFILER__ENABLE_PC_SAMPLING=false",
+        "ZYMTRACE_CUDAPROFILER__PRINT_STATS=true",
+        "ZYMTRACE_CUDAPROFILER__QUIET=false",
+        "ZYMTRACE_CUDAPROFILER__STACK_TRACE_SAMPLING__ENABLED=true",
+        "ZYMTRACE_CUDAPROFILER__STACK_TRACE_SAMPLING__TARGET=200",
+        "ZYMTRACE_CUDAPROFILER__STACK_TRACE_SAMPLING__WINDOW_SIZE=1",
+        "/opt/piq-campaigns/ngb-zymtrace-root161-20261026-004/source/code/core/scripts/profiling/profile.sh",
+        "/opt/piq-campaigns/ngb-zymtrace-root161-20261026-004/source/research/2026-10-22_nested-graph-breaks/benchmark.py",
+        "--arch",
+        "sm_100",
+        "--tool",
+        "zymtrace",
+        "--output-root",
+        "/opt/piq-campaigns/ngb-zymtrace-root161-20261026-004/attempt/enabled/profile-wrapper",
+        "--python",
+        "/root/venvs/aiperf-torch2141-upgrade-20261021/bin/python",
+        "--",
+        "--case",
+        "nested_break_depth8",
+        "--enabled",
+        "1",
+        "--seed",
+        "0",
+        "--out",
+        "/opt/piq-campaigns/ngb-zymtrace-root161-20261026-004/attempt/enabled/benchmark-result",
+        "--expected-gpu-uuid",
+        "GPU-7f4a68da-6dbf-a5df-0493-5f3f6e7786fd"
+      ],
+      "arm": "enabled",
+      "kind": "worker",
+      "label": "with nested graph-break support",
+      "shell_command": "taskset --cpu-list 0-59 timeout --signal=TERM --kill-after=30s 240s env CUDA_VISIBLE_DEVICES=GPU-7f4a68da-6dbf-a5df-0493-5f3f6e7786fd TORCHINDUCTOR_CACHE_DIR=/opt/piq-campaigns/ngb-zymtrace-root161-20261026-004/attempt/enabled/torchinductor-cache TRITON_CACHE_DIR=/opt/piq-campaigns/ngb-zymtrace-root161-20261026-004/attempt/enabled/triton-cache ZYMTRACE_CUDA_INJECTION64_PATH=/opt/zymtrace/profiler/libzymtracecudaprofiler.so ZYMTRACE_CUDAPROFILER__ENABLE_PC_SAMPLING=false ZYMTRACE_CUDAPROFILER__PRINT_STATS=true ZYMTRACE_CUDAPROFILER__QUIET=false ZYMTRACE_CUDAPROFILER__STACK_TRACE_SAMPLING__ENABLED=true ZYMTRACE_CUDAPROFILER__STACK_TRACE_SAMPLING__TARGET=200 ZYMTRACE_CUDAPROFILER__STACK_TRACE_SAMPLING__WINDOW_SIZE=1 /opt/piq-campaigns/ngb-zymtrace-root161-20261026-004/source/code/core/scripts/profiling/profile.sh /opt/piq-campaigns/ngb-zymtrace-root161-20261026-004/source/research/2026-10-22_nested-graph-breaks/benchmark.py --arch sm_100 --tool zymtrace --output-root /opt/piq-campaigns/ngb-zymtrace-root161-20261026-004/attempt/enabled/profile-wrapper --python /root/venvs/aiperf-torch2141-upgrade-20261021/bin/python -- --case nested_break_depth8 --enabled 1 --seed 0 --out /opt/piq-campaigns/ngb-zymtrace-root161-20261026-004/attempt/enabled/benchmark-result --expected-gpu-uuid GPU-7f4a68da-6dbf-a5df-0493-5f3f6e7786fd",
+      "timeout_seconds": 240
+    }
+  ],
+  "cpu_affinity": "0-59",
+  "effective_hard_cleanup_deadline": "2026-10-26T20:30:10.484404Z",
+  "errors": [],
+  "expected_gpu_uuid": "GPU-7f4a68da-6dbf-a5df-0493-5f3f6e7786fd",
+  "hash_pins": {
+    "benchmark": "4c7a5a8dcef474405be19a87d22cfdeb7ea564c76f19acc67ddcd1125d247689",
+    "injection_library": "46d11e1000c7c81533c6f5a60544c231ca75833c7299923f0caa0dc03f2cff26",
+    "plan_builder": "31b260e5d4be4edb489e0ea1c201c7f5a2f3570db00f7938c5904dc9b8ceb6c3",
+    "profile_wrapper": "17a9117a0d26e138d3c8b12cf81269bf0bd09261f90c5867f6aed21160b65fc6",
+    "profiler_binary": "4e80c86ef9c231b8500981b3703fe0277c12e4c5a06c00271bc7e9a04d9d5dd3",
+    "runtime_owner_checkpoint": "5cda5ecfe40de647a6c2d84942125496bad2a6c9e50b47cdf3a1f316b50f3318"
+  },
+  "high_resolution_enable": {
+    "enabled_version": 11,
+    "rule": {
+      "expires_at": "2026-10-26T20:30:10.484404Z",
+      "expression": "host.name == \"fregly-dev\"",
+      "project": "01a179e0-0117-7811-bf59-2c5f4e850e1c",
+      "settings": [
+        {
+          "setting": {
+            "HighResProfiling": true
+          }
+        }
+      ]
+    }
+  },
+  "high_resolution_restore": {
+    "preserved_entries": 0,
+    "restored_version": 12
+  },
+  "high_resolution_scope": {
+    "expires_at": "2026-10-26T20:30:10.484404Z",
+    "host": "fregly-dev",
+    "pid_export_scope": "required and validated per worker",
+    "pid_live_config_scope": "unsupported because no PID CEL field is documented",
+    "project_id": "01a179e0-0117-7811-bf59-2c5f4e850e1c"
+  },
+  "profiler_log": {
+    "bytes": 3169,
+    "path": "/opt/piq-campaigns/ngb-zymtrace-root161-20261026-004/attempt/zymtrace-profiler.log",
+    "sha256": "db625083823296f592406d6feec7e435d7d8fcc5c055be48f8b93b6f12267e52"
+  },
+  "project": "ngb-root161-zymtrace-20261026-004",
+  "purpose": "Zymtrace visibility only, not performance qualification",
+  "repo_commit": "2a4e3fd00dadf2380a5c413af33bb46c4727fce2",
+  "runtime_preflight": {
+    "argv": [
+      "/root/venvs/aiperf-torch2141-upgrade-20261021/bin/python",
+      "-B",
+      "-c",
+      "import json,sys,torch;print(json.dumps({'torch_version':str(torch.__version__),'cuda_version':str(torch.version.cuda),'sys_executable':sys.executable,'prefix':sys.prefix,'base_prefix':sys.base_prefix},sort_keys=True))"
+    ],
+    "exit_code": 0,
+    "gpu_api_called": false,
+    "record": {
+      "bytes": 1064,
+      "path": "/opt/piq-campaigns/ngb-zymtrace-root161-20261026-004/attempt/runtime-preflight.json",
+      "sha256": "05e262685d835e7f7535e917ec04b560bac8e79b9ff974a3593d2369be1cce51"
+    },
+    "result": {
+      "base_prefix": "/usr",
+      "cuda_version": "13.0",
+      "prefix": "/root/venvs/aiperf-torch2141-upgrade-20261021",
+      "sys_executable": "/root/venvs/aiperf-torch2141-upgrade-20261021/bin/python",
+      "torch_version": "2.14.1+cu130"
+    },
+    "stderr": {
+      "bytes": 0,
+      "path": "/opt/piq-campaigns/ngb-zymtrace-root161-20261026-004/attempt/runtime-preflight.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "stdout": {
+      "bytes": 218,
+      "path": "/opt/piq-campaigns/ngb-zymtrace-root161-20261026-004/attempt/runtime-preflight.stdout",
+      "sha256": "8a7ecfb62e64b6eb11897fdc8ef3bda1281a3c17f55ed35cc087df632837a99b"
+    }
+  },
+  "runtime_preflight_artifact": "/opt/piq-campaigns/ngb-zymtrace-root161-20261026-004/attempt/runtime-preflight.json",
+  "schema": "nested-graph-breaks-zymtrace-capture/v1",
+  "source_closure": {
+    "file_count": 6,
+    "manifest_path": "/opt/piq-campaigns/ngb-zymtrace-root161-20261026-004/source/SOURCE-MANIFEST.json",
+    "manifest_sha256": "e3c53d939568f687612691c5f8afb29bd6bd3f9d12a8c50963888cf848f9b8f8",
+    "mode": "archive_manifest",
+    "repo_commit": "2a4e3fd00dadf2380a5c413af33bb46c4727fce2",
+    "source_closure_sha256": "53e6d49b75eb2ef5b5507a3e34ab7fae5ddbf2d791f49b4540425ac027c2b3ed"
+  },
+  "status": "COMPLETE",
+  "supplied_hard_cleanup_deadline": "2026-10-26T20:33:00Z"
+}

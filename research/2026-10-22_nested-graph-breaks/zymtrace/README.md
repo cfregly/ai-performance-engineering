@@ -1,10 +1,11 @@
 # Zymtrace capture preparation
 
-Status: launcher implementation and runtime checks are complete. A real B200
-capture from a rejected PyTorch 2.13 worker is retained under
-[captures/rejected-torch213-20261026](captures/rejected-torch213-20261026/).
-The intended two-arm PyTorch 2.14.1 capture is waiting for the PIQ comparison to
-finish and a fresh resource window. Nothing was installed or upgraded.
+Status: both B200 workers passed on PyTorch `2.14.1+cu130` and CUDA `13.0`.
+The 43-second capture completed on October 26, 2026 with accepted backend
+exports and verified cleanup. Download the [two-arm capture and flamegraphs](
+captures/torch2141-b200-20261026/). The earlier rejected PyTorch 2.13 capture
+remains under [captures/rejected-torch213-20261026](captures/rejected-torch213-20261026/).
+Nothing was installed or upgraded.
 
 This runbook adds an opt-in Zymtrace visibility lane for the existing
 `nested_break_depth8` benchmark. It reuses the repository's maintained

@@ -194,3 +194,7 @@ with support. The worker retains correctness, runtime identity, raw timing
 samples, and generated-code counters in each `result.json`. Completed examples
 and captures already in the repository remain separate evidence. For Zymtrace,
 see the bounded controller and capture requirements in [zymtrace/](zymtrace/).
+The [October 26 two-arm B200 capture](zymtrace/captures/torch2141-b200-20261026/)
+passed on PyTorch 2.14.1 and includes downloadable Zymtrace event and
+flamegraph JSON. It is a separate compatibility smoke, not another speedup
+measurement.

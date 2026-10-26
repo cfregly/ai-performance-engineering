@@ -1,0 +1,24 @@
+{
+  "cuda_injection64_path": "/opt/zymtrace/profiler/libzymtracecudaprofiler.so",
+  "environment": {
+    "CUDA_INJECTION64_PATH": "/opt/zymtrace/profiler/libzymtracecudaprofiler.so",
+    "CUDA_LAUNCH_BLOCKING": "0",
+    "PYTORCH_ALLOC_CONF": "max_split_size_mb:256",
+    "ZYMTRACE_CUDA_INJECTION64_PATH": "/opt/zymtrace/profiler/libzymtracecudaprofiler.so"
+  },
+  "python": "/root/venvs/aiperf-torch2141-upgrade-20261021/bin/python",
+  "script": "/opt/piq-campaigns/ngb-zymtrace-root161-20261026-004/source/research/2026-10-22_nested-graph-breaks/benchmark.py",
+  "script_args": [
+    "--case",
+    "nested_break_depth8",
+    "--enabled",
+    "0",
+    "--seed",
+    "0",
+    "--out",
+    "/opt/piq-campaigns/ngb-zymtrace-root161-20261026-004/attempt/disabled/benchmark-result",
+    "--expected-gpu-uuid",
+    "GPU-7f4a68da-6dbf-a5df-0493-5f3f6e7786fd"
+  ],
+  "tool": "zymtrace"
+}

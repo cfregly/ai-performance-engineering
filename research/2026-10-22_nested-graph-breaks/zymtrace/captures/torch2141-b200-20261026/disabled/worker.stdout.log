@@ -1,0 +1,12 @@
+=== Profiling Session ===
+Script       : /opt/piq-campaigns/ngb-zymtrace-root161-20261026-004/source/research/2026-10-22_nested-graph-breaks/benchmark.py
+Python       : /root/venvs/aiperf-torch2141-upgrade-20261021/bin/python
+Architecture : sm_100
+Tools        : zymtrace
+Output Dir   : /opt/piq-campaigns/ngb-zymtrace-root161-20261026-004/attempt/disabled/profile-wrapper/20261026_202128_benchmark
+Arguments    : --case nested_break_depth8 --enabled 0 --seed 0 --out /opt/piq-campaigns/ngb-zymtrace-root161-20261026-004/attempt/disabled/benchmark-result --expected-gpu-uuid GPU-7f4a68da-6dbf-a5df-0493-5f3f6e7786fd 
+→ env CUDA_INJECTION64_PATH=/opt/zymtrace/profiler/libzymtracecudaprofiler.so ZYMTRACE_CUDA_INJECTION64_PATH=/opt/zymtrace/profiler/libzymtracecudaprofiler.so /root/venvs/aiperf-torch2141-upgrade-20261021/bin/python /opt/piq-campaigns/ngb-zymtrace-root161-20261026-004/source/research/2026-10-22_nested-graph-breaks/benchmark.py --case nested_break_depth8 --enabled 0 --seed 0 --out /opt/piq-campaigns/ngb-zymtrace-root161-20261026-004/attempt/disabled/benchmark-result --expected-gpu-uuid GPU-7f4a68da-6dbf-a5df-0493-5f3f6e7786fd 
+/opt/piq-campaigns/ngb-zymtrace-root161-20261026-004/attempt/disabled/benchmark-result/result.json
+  ↳ Zymtrace launch manifest: /opt/piq-campaigns/ngb-zymtrace-root161-20261026-004/attempt/disabled/profile-wrapper/20261026_202128_benchmark/zymtrace_launch_manifest.json
+
+Profiling complete. Artifacts available under: /opt/piq-campaigns/ngb-zymtrace-root161-20261026-004/attempt/disabled/profile-wrapper/20261026_202128_benchmark
