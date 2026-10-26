@@ -116,3 +116,11 @@ The [conversation ledger](conversation-ledger.json) records identities and
 parent IDs. The [current snapshot](current-conversation-snapshot.json) records
 exact Typefully text and media for this audit. Existing benchmark files and
 older draft snapshots are preserved.
+
+## October 26 image correction, still unsent
+
+The current Typefully items and native LinkedIn replies use the corrected
+[GPU-time flamegraphs](../zymtrace/views/). Width is each worker's share of
+captured GPU time, normalized independently to 100%. The previous record-count
+images remain in the repository as superseded capture diagnostics. Reply
+parents and person tags are unchanged. No new post or reply was sent.

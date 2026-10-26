@@ -1,0 +1,44 @@
+{
+  "status": "PREPARED_UNSENT",
+  "verified_at": "2026-10-26T23:28:05.878323+00:00",
+  "asset_commit": "3f2905914d3eefc065111995196741893eed7914",
+  "convention_guard_commit": "d6fa505b31d29db064189d94ccf2d33f4e15702b",
+  "display_unit": "percentage of captured GPU time",
+  "formula": "100 * sum(c for stack) / sum(c for worker)",
+  "absolute_unit_conversion": false,
+  "worker_rows": {
+    "without": 104,
+    "with": 188,
+    "previous_worker_rows_excluded_from_with": 104
+  },
+  "independent_review": "PASS",
+  "tests": {
+    "validator_and_convention_guard": 64,
+    "renderer": 5
+  },
+  "draft_ids": [
+    11497664,
+    11481014,
+    11481015,
+    11481016,
+    11481017,
+    11481018
+  ],
+  "native_linkedin_replies": 4,
+  "github_link_audit": {
+    "unique_urls": 16,
+    "occurrences": 37,
+    "failed": 0,
+    "retired_count_media_present": false
+  },
+  "promotion": {
+    "main_auto_retweet": "ON",
+    "main_auto_plug": "ON",
+    "ming_auto_retweet": "ON",
+    "ming_auto_plug": "NOT_APPLICABLE",
+    "linkedin": "NOT_APPLICABLE"
+  },
+  "published": 0,
+  "sent": 0,
+  "scheduled": 0
+}

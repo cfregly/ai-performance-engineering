@@ -1,0 +1,58 @@
+Browser tab: 888034427, Title: "Typefully", URL: "https://typefully.com/".
+1 AXWebArea Typefully, URL: typefully.com/
+	2 container
+		170 text Typefully
+		171 container Modal, ID: radix-_r_5g_
+			172 text Modal
+			173 text Modal content
+			174 heading Auto-Retweet, Value: 3, ID: radix-_r_5h_
+				175 text Auto-Retweet
+			176 container radix-_r_5i_
+				177 text Auto-RTs automatically retweet your post after publish so it reaches more of your followers. They are automatically removed after 12 hours.
+				178 link Description: Learn more., Value: support.typefully.com/en/articles/9881981
+			179 button Edit default settings
+				180 text Edit default settings
+			181 container
+				182 text All times in America › Los Angeles timezone.
+			183 text Post gets published
+			184 image
+			185 container
+				186 text RT after
+				187 text field (settable) 6
+				188 text hours
+			189 container
+				190 text Oct 26, 10:23 PM , if published now
+			191 button Remove
+			192 image
+			193 container
+				194 text RT
+				195 text field (settable) 1
+				196 text days, and
+				197 text field (settable) 1
+				198 text hours after original posting time
+			199 container
+				200 text Oct 27, 5:23 PM , if published now
+			201 button Remove
+			202 image
+			203 container
+				204 text RT after
+				205 text field (settable) 7
+				206 text days, at
+				207 text field (settable) 10
+				208 text :
+				209 text field (settable) 30
+			210 container
+				211 text Nov 2, 9:30 AM , if published now
+			212 button Remove
+			213 text Add a retweet
+			214 button Reset to defaults
+				215 text Reset to defaults
+			216 button Disable
+				217 text Disable
+			218 button (disabled) Save changes
+				219 text Save changes
+			220 button Close
+				221 image
+				222 text Close
+
+The focused UI element is 171 container Modal, ID: radix-_r_5g_

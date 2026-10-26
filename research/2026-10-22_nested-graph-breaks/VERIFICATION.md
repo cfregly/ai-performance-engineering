@@ -120,3 +120,20 @@ assigned GPU before counting stack occurrences. Width represents exported
 record count, not time. The renderer, input hashes, and full stack exports
 are retained in [zymtrace/views/](zymtrace/views/). The original Nsys and NCU
 images remain attached alongside these views.
+
+## October 26 GPU-time flamegraph correction
+
+The current Zymtrace images use GPU-time percentages from the API's event-time
+field, filtered to the exact worker and GPU. Percent normalization avoids an
+unsupported absolute-unit conversion. Both images and phone-width previews
+passed independent review. Full stacks, time weights, fractions, source hashes,
+unit authority and renderer tests are retained beside the images. Count-based
+images are preserved as superseded diagnostics.
+
+The package gate now rejects count weights, guessed absolute units, wrong
+worker/GPU filters, invalid weights, stale image/sidecar hashes and incorrect
+plotted fractions. The committed validator and guard passed 64 tests, and the
+renderer passed five tests. Completed benchmark and capture files are unchanged.
+All six existing Typefully drafts and four native LinkedIn composers remain
+unsent and unscheduled, with their reply parents and mentions verified again.
+See [the current draft receipt](social/time-weighted/receipt.json).

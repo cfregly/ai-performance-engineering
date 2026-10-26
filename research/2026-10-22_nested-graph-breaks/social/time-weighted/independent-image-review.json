@@ -1,0 +1,66 @@
+{
+  "verdict": "PASS",
+  "renderer_verdict": "PASS",
+  "review_scope": "Independent read-only review of retained CUDA weights, PID/GPU selection, metadata, convention guard, both 1800x1120 PNGs and both 400px previews. No GPU actions or repository edits.",
+  "checks": {
+    "disabled": {
+      "pid": 632510,
+      "accepted_records": 104,
+      "excluded_records": 0,
+      "sum_exported_time_weights": 0.04519660299999999,
+      "sum_gpu_time_fractions": 1.0
+    },
+    "enabled": {
+      "pid": 632770,
+      "accepted_records": 188,
+      "excluded_records": 104,
+      "sum_exported_time_weights": 0.06432514837848449,
+      "sum_gpu_time_fractions": 1.0
+    },
+    "sidecar_source_indices_and_weights": "PASS",
+    "provenance_output_hashes_and_bytes": "PASS",
+    "independent_1_to_9_weighting_probe": "PASS",
+    "convention_guard_current_package": "PASS",
+    "full_pngs_visual_inspection": "PASS",
+    "400px_previews_visual_inspection": "PASS",
+    "previous_P2_targeted_recheck": {
+      "unchanged_current_package": "PASS",
+      "historical_count_png_substitution": {
+        "result": "REJECTED",
+        "errors": [
+          "profile arm disabled: active image or sidecar missing from provenance.outputs: zymtrace/views/zymtrace-without-nested-graph-breaks.png",
+          "profile arm disabled: missing or invalid active image or sidecar zymtrace/views/zymtrace-without-nested-graph-breaks.stacks.json",
+          "profile arm enabled: active image or sidecar missing from provenance.outputs: zymtrace/views/zymtrace-with-nested-graph-breaks.png",
+          "profile arm enabled: missing or invalid active image or sidecar zymtrace/views/zymtrace-with-nested-graph-breaks.stacks.json"
+        ]
+      },
+      "modified_active_image": {
+        "result": "REJECTED",
+        "errors": [
+          "profile arm enabled: active image or sidecar hash/bytes mismatch: zymtrace/views/time-weighted/zymtrace-with-nested-graph-breaks.png"
+        ]
+      },
+      "rehashed_incorrect_sidecar_fraction": {
+        "result": "REJECTED",
+        "errors": [
+          "profile arm enabled: sidecar gpu_time_fraction or exported_time_weight differs from filtered source at raw_event_index=3"
+        ]
+      }
+    }
+  },
+  "findings": [
+    {
+      "priority": "P2",
+      "file": "research/post-workflow/tools/check_profile_conventions.py",
+      "line": 169,
+      "problem": "The guard accepts active historical count-weighted PNGs when valid time-fraction metadata remains unchanged. It only checks active image existence/nonempty bytes, without requiring a matching hashed provenance output or rejecting historical count artifacts.",
+      "reproduction": "In an external temporary package, copied retained event sources and current authority/provenance, changed semantics arms.images to existing historical count PNG paths. validate_profile_conventions returned []. Repository unchanged.",
+      "requested_fix": "Require every active image to be a current provenance output with exact SHA-256 and byte count, reject paths designated as superseded count artifacts, and add a focused regression case that substitutes a retained count PNG. Where possible bind weighted sidecars or SVGs to recomputed accepted event weights.",
+      "status": "RESOLVED",
+      "resolution": "Guard now binds active images and sidecars to provenance hashes/byte counts, checks sidecar PID/GPU/unit, exact source index coverage, frame IDs, raw c weights and recomputed fractions. Targeted stale-image and tampered-image/fraction probes are rejected."
+    }
+  ],
+  "scope_assessment": "c/sum(c) correctly cancels a common undocumented base-time unit. Images disclose independent 100% normalization, setup/warmup/timing/correctness scope, descendant CUDA attribution rather than CPU time, overlap rather than wall time, and nonchronological x position. No absolute seconds/ms claims observed.",
+  "visual_assessment": "Both main images have legible headings and scope disclosures without clipping. Function labels truncate in narrow bars, with full labels in SVG/sidecars. At 400px the previews serve layout/navigation, not full function-label reading.",
+  "next_step": "No remaining issue from this independent review. Reuse unchanged renderer and visual verdicts."
+}
