@@ -26,7 +26,6 @@ import prepare_capture
 SCHEMA = "nested-graph-breaks-zymtrace-capture/v1"
 BACKEND_BASE = "http://127.0.0.1:18080"
 COLLECTION_AGENT = "127.0.0.1:18080"
-OPENAPI_PATH = "/api-docs/openapi.json"
 PROJECTS_PATH = "/public/api/v1/projects/search"
 CONFIG_GET_PATH = "/public/api/v1/agent/config/get"
 CONFIG_SET_PATH = "/public/api/v1/agent/config/set"
@@ -402,7 +401,7 @@ def _wait_agent_ready(
         if process.poll() is not None:
             raise CaptureError(f"owned profiler died before readiness: {process.returncode}")
         data = log_path.read_bytes() if log_path.exists() else b""
-        if b"Attached tracer program" in data and b"Watching for live config" in data:
+        if b"Attached tracer program" in data and b"Watching for live config updates" in data:
             ops.sleep(1)
             if process.poll() is not None:
                 raise CaptureError("owned profiler died during config grace")
@@ -686,10 +685,18 @@ def execute(args: argparse.Namespace, ops: SystemOps | None = None) -> dict[str,
         visible_gpus = [line.strip() for line in gpu_check.stdout.splitlines() if line.strip()]
         if sum(_normalize_gpu(item) == _normalize_gpu(args.expected_gpu_uuid) for item in visible_gpus) != 1:
             raise CaptureError("assigned GPU UUID is not present exactly once")
-        openapi_raw, openapi = _request_json(ops, "GET", OPENAPI_PATH, {})
-        _bytes_receipt(run_root / "openapi.raw.json", openapi_raw)
-        if openapi.get("info", {}).get("version") != VERSION:
-            raise CaptureError("backend OpenAPI version is not 26.10.1")
+        backend = ops.run(
+            ["docker", "ps", "--filter",
+             "label=com.docker.compose.project=aiperf-pr38-zymtrace",
+             "--format", "{{.Names}}|{{.Image}}|{{.ID}}"],
+            text=True, capture_output=True, check=True,
+        )
+        _bytes_receipt(run_root / "backend-container-images.txt", backend.stdout.encode())
+        images = [line.split("|")[1] for line in backend.stdout.splitlines()
+                  if len(line.split("|")) == 3 and "zymtrace" in line.split("|")[1]]
+        if len(images) < 3 or any(image.rsplit(":", 1)[-1] != VERSION for image in images):
+            raise CaptureError("running Zymtrace container image tags do not prove version 26.10.1")
+        handback["backend_version_source"] = "running container image tags and IDs"
         projects_raw, projects = _request_json(
             ops, "POST", PROJECTS_PATH, {"pagination": {"page_size": 100, "page": 1}}
         )
