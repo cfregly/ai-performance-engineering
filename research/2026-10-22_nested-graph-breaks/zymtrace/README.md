@@ -75,6 +75,20 @@ wrapper exit is not a successful capture until backend readback is retained.
 
 ## Build the dry-run plan
 
+For execution, `run_capture.py` wraps the plan with one task-owned profiler,
+two sequential workers, backend export, and cleanup. It requires a current
+finite resource handoff and explicit permission for one expiring capture rule.
+The rule is scoped to the actual host and a fresh capture project. Each export
+must then match the worker PID, stream, and assigned GPU. PID-based live-config
+expressions are not documented, so the controller does not invent one.
+
+The controller reserves time for flushing and cleanup, stops only its own
+process groups, and removes only its unchanged rule using the backend's current
+configuration version. It writes a COMPLETE or PARTIAL handback in either case.
+An archive deployment binds every executed source file through a hashed source
+manifest. Run `python run_capture.py --help` for the required runtime pins and
+window arguments. A prepared controller is not a completed capture.
+
 Run this only on the authorized B200 host after checking runtime ownership.
 Every path must be absolute. The run root must not exist yet.
 
