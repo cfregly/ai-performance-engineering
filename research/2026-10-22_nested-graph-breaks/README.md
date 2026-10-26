@@ -176,6 +176,7 @@ reproduction, not the full qualification matrix.
 From this directory, choose your B200 UUID and a new output directory:
 
 ```bash
+python -c "import torch; assert str(torch.__version__) == '2.14.1+cu130', torch.__version__; assert torch.version.cuda == '13.0'"
 export CUDA_VISIBLE_DEVICES=GPU-REPLACE-WITH-YOUR-B200-UUID
 EXAMPLE_ROOT="$(mktemp -d "$PWD/example-run-XXXXXXXX")"
 for support in 0 1; do
