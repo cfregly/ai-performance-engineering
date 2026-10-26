@@ -100,6 +100,25 @@ speedups. The raw CSV retains all metrics and units, including the five
 strictly validated metrics. The unprofiled timing workers establish the
 experiment's latency result.
 
+### Why timing and profiling are separate
+
+The benchmark measures repeated calls with a host wall clock and CUDA
+synchronization before and after each timed call. Separate profiler workers
+collect the execution evidence. Timing normal execution avoids including the
+profiler's tracing and counter-collection overhead in the speedup.
+
+Nsys tracing adds overhead to short, frequent events. NCU can replay kernels
+to collect counters, and these two retained NCU records each report nine
+replay passes. The timeline image selects one fixed call after warmup. Its
+width does not establish the repeated-call speedup. The native reports and
+timing results remain separate evidence from the same experiment. Run 022 is
+an independent repeat of the original published experiment, not the source of
+the original 4.53× number.
+
+These measurement limits are described in NVIDIA's
+[Nsys overhead explanation](https://developer.nvidia.com/blog/understanding-the-visualization-of-overhead-and-latency-in-nsight-systems/)
+and [NCU profiling guide](https://docs.nvidia.com/nsight-compute/ProfilingGuide/index.html).
+
 CPU submission, GPU execution, synchronization, and overlap do not form
 independent causal shares. Neither these reports nor the no-replay ablation
 establishes an exact CPU/GPU causal percentage.
