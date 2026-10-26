@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "status": "draft",
+  "scheduled_at": null,
+  "platforms": [
+    "x",
+    "linkedin"
+  ],
+  "content_files": {
+    "x": "social/x.txt",
+    "linkedin": "social/linkedin.txt"
+  },
+  "readback_verified": true,
+  "draft_id": 11497664,
+  "editor_url": "https://typefully.com/?d=11497664&a=337207",
+  "image_sha256": "80224ffc4fbbe69a7baea869b6b1aa5e3ff19a0ee892235682f10e914dd7a4f7",
+  "texts": {
+    "x": "With nested graph-break support, B200 steady calls were 4.53\u00d7 faster than without it. An independent run measured 4.54\u00d7. Startup was slower and failed its gate. Unprofiled timing. Compiler microbenchmark.\n\nCode: https://github.com/cfregly/ai-performance-engineering/tree/e57c5bb31ec492094b4fd9f73a615195aceab936/research/2026-10-22_nested-graph-breaks/profiles\nImage: https://github.com/cfregly/ai-performance-engineering/blob/96bdb5940a8f67238c07238caac34ab80fe28e84/research/2026-10-22_nested-graph-breaks/image.png",
+    "linkedin": "Two B200 runs now support the same narrow compiler result.\n\nThe original retained microbenchmark measured a 4.531795\u00d7 geometric-mean steady-state speedup with nested graph-break support compared with the same workload without it across four paired seeds. Independent fresh run 022 measured 4.541758\u00d7 under the same depth-8 scope. These are separate results. The second does not replace or rewrite the first.\n\nNeither run qualified startup. In the original run, the first ten compiled-call intervals were 33.2% slower with nested graph-break support on, and the original no-break startup control also failed. That cost is part of the result.\n\nNormal unprofiled workers establish latency. Separate Nsys and NCU captures explain execution structure and add profiling overhead, so their timeline widths and single-kernel durations are not speedup measurements. The retained Nsys view shows 16 graph executions with nested graph-break support off and 2 with it on for the selected post-warmup call. NCU saved one fused Triton kernel per arm, at 6.400 \u00b5s with support off and 20.992 \u00b5s with it on. The support-on kernel does more work per launch.\n\nThis is a controlled PyTorch 2.14.1+cu130 compiler microbenchmark on one NVIDIA B200. It is not a serving, model-throughput, training, or cross-GPU claim.\n\nAttached: retained Nsys and NCU views.\n\nCode: https://github.com/cfregly/ai-performance-engineering/blob/e57c5bb31ec492094b4fd9f73a615195aceab936/research/2026-10-22_nested-graph-breaks/benchmark.py\nNative captures and exports: https://github.com/cfregly/ai-performance-engineering/tree/e57c5bb31ec492094b4fd9f73a615195aceab936/research/2026-10-22_nested-graph-breaks/profiles\nNsys view: https://github.com/cfregly/ai-performance-engineering/blob/e57c5bb31ec492094b4fd9f73a615195aceab936/research/2026-10-22_nested-graph-breaks/profiles/views/nsys-first-post-warmup-invocation.png\nNCU view: https://github.com/cfregly/ai-performance-engineering/blob/e57c5bb31ec492094b4fd9f73a615195aceab936/research/2026-10-22_nested-graph-breaks/profiles/views/ncu-single-kernel-metrics.png\n\nCover: https://github.com/cfregly/ai-performance-engineering/blob/96bdb5940a8f67238c07238caac34ab80fe28e84/research/2026-10-22_nested-graph-breaks/image.png"
+  },
+  "media_ids": [
+    "5c6b9fc6-c22a-4473-a766-d737a3d02f6a",
+    "987556d3-2497-4bcb-88be-af95288f220a",
+    "4f91334b-53b2-44f5-ac8a-2e50326ddc2e"
+  ],
+  "source_commit": "96bdb5940a8f67238c07238caac34ab80fe28e84",
+  "published_at": null
+}

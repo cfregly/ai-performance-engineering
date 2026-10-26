@@ -48,55 +48,49 @@ pre-experiment plan existed or modify the fixed `protocol.json` gates.
 
 ## Image stage
 
-The six audience variants, three concepts, cover, previews, contact sheet,
-sidecars, shipping image, and independent image review are owned by the image
-lane. This file does not predeclare that review's verdict. The package remains
-incomplete until those retained files and the hash-bound `images/review.json`
-are present.
+The package now contains three explainers, six distinct audience variants,
+landscape and square cover images, text sidecars, 400-pixel previews, and contact
+sheets. The cover is a deterministic adaptation of the recovered original
+Gamma export. Its source export and derivation are recorded separately.
+
+An independent reviewer inspected the landscape and square assets and previews.
+`images/review.json` records PASS and binds each asset to its hash. The shipping
+files are exact copies of the selected reviewed cover.
 
 ## Typefully stage
 
-Five existing reader-specific reply drafts were read back as unscheduled and
-unpublished, with two retained Nsys and NCU images each. They remain intact and
-are not represented as one draft.
+The five reader-specific replies remain separate unscheduled drafts, with their
+Nsys and NCU images and repository links. Their prose now names nested graph-break
+support rather than referring to unexplained Boolean values.
 
-A new dual-platform master review draft is specified under `typefully/`, with
-byte-identical package copies under `social/`. Its required title is `Nested
-graph breaks | package review | DRAFT ONLY`. This verification does not claim
-that the new draft exists. The Typefully lane must run the guard, create the
-single unscheduled draft, read back exact X and LinkedIn text plus both media
-attachments, and then write `social/typefully-receipt.json`.
+The single dual-platform package review is draft 11497664:
+https://typefully.com/?a=337207&d=11497664
+
+Its exact X and LinkedIn text, three attached images, and unscheduled state were
+read back. The images are the selected cover plus the Nsys and NCU views.
+`social/typefully-receipt.json` binds the texts, media IDs, and shipping-image hash.
+The copies under `typefully/` and `social/` are byte-identical.
 
 ## Publication state
 
-No package content was scheduled or published by this work. The retained five
-reader drafts remain unscheduled. The new master review draft is pending the
-Typefully lane's guarded creation and exact readback.
+Nothing was published or scheduled by this work. The five reader replies and
+new package-review draft remain unscheduled. The original published post is
+separate from these drafts.
 
 ## Package gate
 
-The retained package CPU suite passed 35 tests:
+The package passes `make check SLUG=2026-10-22_nested-graph-breaks`.
+The wording-check tests pass 42 cases, the existing scientific CPU suite passes
+35 cases, the visual tests pass 7 cases, and the Zymtrace controller tests pass
+20 cases. These checks validate their declared source and artifact scopes.
+They do not rerun or re-qualify the retained GPU measurements.
 
-```text
-python -m unittest test_analyze test_counter_capture test_publication
-Ran 35 tests
-OK
-```
+The public-copy gate rejects unexplained Boolean comparisons and the removed
+retention boilerplate. It leaves exact code examples and profiler data intact.
 
-The latest package gate reached the image and Typefully lanes with no content,
-manifest, source, measurement-receipt, or hash error. Its seven remaining
-items were:
+## Fresh Zymtrace capture
 
-```text
-images/README.md
-images/audiences.md
-image.png
-image-square.png
-image.txt
-images/review.json
-social/typefully-receipt.json
-```
-
-The final package gate must run again after those files are present. A passing
-artifact gate does not independently judge visual quality or re-qualify the
-GPU measurements.
+The fresh capture is still in progress. Its bounded controller and source pins
+are committed. A launch or injected worker alone will not be counted as a
+capture. Completion requires positive backend events for both worker PIDs,
+the assigned GPU and stream IDs, retained exports, and verified cleanup.

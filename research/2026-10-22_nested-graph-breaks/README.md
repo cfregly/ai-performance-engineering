@@ -165,3 +165,31 @@ change requires a new visual review and updated public asset hashes.
 `pytorch-main-dynamo-config.py` is the retained runtime source snapshot used
 for provenance. It is not imported as a replacement for installed PyTorch.
 PyTorch source is distributed under its [BSD-style license](PYTORCH-LICENSE).
+
+## Run a small example
+
+Use the recorded PyTorch 2.14.1+cu130 environment on a B200. The worker compares
+the same depth-8 workload with nested graph-break support off and on. Each
+process uses fresh compiler caches. The two-arm example below is a quick
+reproduction, not the full qualification matrix.
+
+From this directory, choose your B200 UUID and a new output directory:
+
+```bash
+export CUDA_VISIBLE_DEVICES=GPU-REPLACE-WITH-YOUR-B200-UUID
+EXAMPLE_ROOT="$(mktemp -d "$PWD/example-run-XXXXXXXX")"
+for support in 0 1; do
+  env TORCHINDUCTOR_CACHE_DIR="$EXAMPLE_ROOT/$support/inductor" \
+      TRITON_CACHE_DIR="$EXAMPLE_ROOT/$support/triton" \
+      timeout --kill-after=30s 240s python benchmark.py \
+      --case nested_break_depth8 --seed 0 --enabled "$support" \
+      --expected-gpu-uuid "$CUDA_VISIBLE_DEVICES" \
+      --out "$EXAMPLE_ROOT/$support/result"
+done
+```
+
+In this command, `0` means without nested graph-break support and `1` means
+with support. The worker retains correctness, runtime identity, raw timing
+samples, and generated-code counters in each `result.json`. Completed examples
+and captures already in the repository remain separate evidence. For Zymtrace,
+see the bounded controller and capture requirements in [zymtrace/](zymtrace/).

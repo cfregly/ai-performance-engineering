@@ -1,12 +1,10 @@
 # Typefully package-review draft
 
-- Draft title: `Nested graph breaks | package review | DRAFT ONLY`
-- State: create as one new unscheduled dual-platform draft.
-- X text: `x.txt`
-- LinkedIn text: `linkedin.txt`
-- Attach the already uploaded fresh022 Nsys and NCU profile-view media to both platforms.
-- Do not replace or edit the five existing reader-specific reply drafts.
-- Read back both platform texts, both media attachments, draft status, schedule state, and platform settings before writing `../social/typefully-receipt.json`.
+[Open draft 11497664](https://typefully.com/?a=337207&d=11497664).
 
-The copies under `../social/` must remain byte-identical to these two files
-because the package checker binds the receipt to those paths.
+The draft contains tailored X and LinkedIn text and three images: the reviewed
+cover, Nsys view, and NCU view. It is unscheduled and unpublished. The five
+reader-specific replies remain separate drafts with their exact parent targets.
+
+The files here byte-match `../social/`. The exact readback and shipping-image
+hash are in `../social/typefully-receipt.json`.
