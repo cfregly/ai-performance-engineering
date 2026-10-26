@@ -1,0 +1,2 @@
+*.raw.json -text -whitespace
+*.log -text -whitespace

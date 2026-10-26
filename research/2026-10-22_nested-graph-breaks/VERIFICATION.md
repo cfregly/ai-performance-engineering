@@ -82,7 +82,7 @@ separate from these drafts.
 The package passes `make check SLUG=2026-10-22_nested-graph-breaks`.
 The wording-check tests pass 42 cases, the existing scientific CPU suite passes
 35 cases, the visual tests pass 7 cases, and the Zymtrace controller tests pass
-20 cases. These checks validate their declared source and artifact scopes.
+25 cases. These checks validate their declared source and artifact scopes.
 They do not rerun or re-qualify the retained GPU measurements.
 
 The public-copy gate rejects unexplained Boolean comparisons and the removed
@@ -90,7 +90,19 @@ retention boilerplate. It leaves exact code examples and profiler data intact.
 
 ## Fresh Zymtrace capture
 
-The fresh capture is still in progress. Its bounded controller and source pins
-are committed. A launch or injected worker alone will not be counted as a
-capture. Completion requires positive backend events for both worker PIDs,
-the assigned GPU and stream IDs, retained exports, and verified cleanup.
+The intended PyTorch 2.14.1 two-arm capture is waiting for the PIQ comparison
+to finish and a fresh B200 window, following the user's priority decision.
+
+One earlier B200 worker ran under system PyTorch 2.13 because the plan resolved
+the virtualenv interpreter symlink. That attempt was rejected and retained
+separately. Its backend export contains 348 CUDA records with matching PID,
+GPU, and stream fields. It does not satisfy the intended runtime comparison.
+
+The launcher now preserves the virtualenv invocation path and performs a
+CPU-only Torch identity check before GPU work. The installed virtualenv was
+read back as Torch 2.14.1+cu130, CUDA 13.0, with the correct executable and
+prefix. The rejected worker, profiler, and temporary rule were cleaned up.
+
+Completion still requires both intended-runtime workers and backend exports,
+plus verified cleanup. No startup, serving, or new performance qualification
+is claimed from the Zymtrace visibility work.
