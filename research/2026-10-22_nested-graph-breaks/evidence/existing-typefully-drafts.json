@@ -1,65 +1,113 @@
 {
   "schema_version": 1,
-  "observed_at_utc": "2026-10-26T17:59:31.584468+00:00",
+  "observed_at_utc": "2026-10-26T20:56:55.054447+00:00",
   "social_set_id": 337207,
-  "status": "all five retained drafts were unscheduled and unpublished",
-  "role": "reader-specific follow-up drafts, not the new dual-platform package-review draft",
-  "final_handback_sha256": "79fecb6feb9351df2e6188962113009e42a9aed417284f1f7b5c629afd419c05",
+  "status": "all five reader replies are unscheduled and unpublished with Nsys, NCU, and Zymtrace images",
+  "role": "reader replies separate from the shared X and LinkedIn package draft",
   "drafts": [
     {
-      "draft_id": 11481014,
-      "platform": "linkedin",
-      "editor_url": "https://typefully.com/?d=11481014&a=337207",
+      "draft_id": 11481018,
+      "editor_url": "https://typefully.com/?a=337207&d=11481018",
       "status": "draft",
       "scheduled_at": null,
-      "post_count": 1,
-      "media_count": 2,
-      "final_readback_sha256": "d0ec9f72d0b89c3a84b8c6c9010fb6736a7d169f1953158e74d45263db9e97fa",
-      "final_guard_sha256": "699671d39cb7875efad068c4ad1d8ea73a745e6d6ea6ae08629c56d3884bb887"
+      "published_at": null,
+      "platform_post_media_ids": {
+        "x": [
+          [
+            "987556d3-2497-4bcb-88be-af95288f220a"
+          ],
+          [
+            "4f91334b-53b2-44f5-ac8a-2e50326ddc2e"
+          ],
+          [],
+          [],
+          [],
+          [],
+          [
+            "bcaa0ea8-992d-4e31-be13-6ca8ccb9ee47",
+            "1d2f1c21-d794-4e41-afaa-829d36cd371a"
+          ],
+          []
+        ]
+      },
+      "final_readback_sha256": "3cf95dda3103f19aca58f1144280404c8c56d2272ec522def1cf9714e468c99a",
+      "final_guard_sha256": "fac421b209f3c84f60156cdb8ad45abd092464f71e6bbae227c44429f04a6d98"
+    },
+    {
+      "draft_id": 11481014,
+      "editor_url": "https://typefully.com/?a=337207&d=11481014",
+      "status": "draft",
+      "scheduled_at": null,
+      "published_at": null,
+      "platform_post_media_ids": {
+        "linkedin": [
+          [
+            "987556d3-2497-4bcb-88be-af95288f220a",
+            "4f91334b-53b2-44f5-ac8a-2e50326ddc2e",
+            "bcaa0ea8-992d-4e31-be13-6ca8ccb9ee47",
+            "1d2f1c21-d794-4e41-afaa-829d36cd371a"
+          ]
+        ]
+      },
+      "final_readback_sha256": "b9411dfe527a3d1c5085822d438726e84eb8a00cd10833b1707d012f01f96183",
+      "final_guard_sha256": "9f1fa46fa2c27965dd12d27c81d19be5e9d9fd00f064aba10b5d8c0f20bc80ca"
     },
     {
       "draft_id": 11481015,
-      "platform": "linkedin",
-      "editor_url": "https://typefully.com/?d=11481015&a=337207",
+      "editor_url": "https://typefully.com/?a=337207&d=11481015",
       "status": "draft",
       "scheduled_at": null,
-      "post_count": 1,
-      "media_count": 2,
-      "final_readback_sha256": "27f7e120edccc1970b1ecc147b479e0ffa648f3b39b5a1dda7ad4750583cad39",
-      "final_guard_sha256": "6cc2ae9e2495270010c575a553ccec79bb2e252c598d2fd720237a8a233a9111"
+      "published_at": null,
+      "platform_post_media_ids": {
+        "linkedin": [
+          [
+            "987556d3-2497-4bcb-88be-af95288f220a",
+            "4f91334b-53b2-44f5-ac8a-2e50326ddc2e",
+            "bcaa0ea8-992d-4e31-be13-6ca8ccb9ee47",
+            "1d2f1c21-d794-4e41-afaa-829d36cd371a"
+          ]
+        ]
+      },
+      "final_readback_sha256": "710b91ca29f58abc17f33d4dbecebbf2a09c209f8d7bc6dcedb9aaf0644524b1",
+      "final_guard_sha256": "c3c0b575c2b7d104618d47b5275204260376d4573b1263f27915c3a015d17717"
     },
     {
       "draft_id": 11481016,
-      "platform": "linkedin",
-      "editor_url": "https://typefully.com/?d=11481016&a=337207",
+      "editor_url": "https://typefully.com/?a=337207&d=11481016",
       "status": "draft",
       "scheduled_at": null,
-      "post_count": 1,
-      "media_count": 2,
-      "final_readback_sha256": "b091f29df29d1fd3cd69a8c8b18cdc38870a22ef6acfc532cd180c49cdde1df6",
-      "final_guard_sha256": "1e5451f9ab78c70e5af165b2f0e5e92793f569384489719f960a75d529596360"
+      "published_at": null,
+      "platform_post_media_ids": {
+        "linkedin": [
+          [
+            "987556d3-2497-4bcb-88be-af95288f220a",
+            "4f91334b-53b2-44f5-ac8a-2e50326ddc2e",
+            "bcaa0ea8-992d-4e31-be13-6ca8ccb9ee47",
+            "1d2f1c21-d794-4e41-afaa-829d36cd371a"
+          ]
+        ]
+      },
+      "final_readback_sha256": "d31069d86c60e82c101ba529fadc70e593b09998d84cb5426e642f35f175ebf6",
+      "final_guard_sha256": "dfeebbccd47d29e83fc5ecf7a4f557eb91bc78b628327b085eaf237f53e886b9"
     },
     {
       "draft_id": 11481017,
-      "platform": "linkedin",
-      "editor_url": "https://typefully.com/?d=11481017&a=337207",
+      "editor_url": "https://typefully.com/?a=337207&d=11481017",
       "status": "draft",
       "scheduled_at": null,
-      "post_count": 1,
-      "media_count": 2,
-      "final_readback_sha256": "bd0387a4c712e29aa87b49a50e6bbbb08e4a85cd02b3e180ca4853009c9e55c0",
-      "final_guard_sha256": "e692ca1acee2b9b1b4bb92934b70928e7c7502c42e7887a67dd32d98155741c1"
-    },
-    {
-      "draft_id": 11481018,
-      "platform": "x",
-      "editor_url": "https://typefully.com/?d=11481018&a=337207",
-      "status": "draft",
-      "scheduled_at": null,
-      "post_count": 6,
-      "media_count": 2,
-      "final_readback_sha256": "1ccdfcf800c95a73ec1404ecc28052b83272ca0bc5d7b8b5685748f40850b2f4",
-      "final_guard_sha256": "34fe592871d76b401828b0e2f8ae1a9f2294a5e62456422bd1e5be207db36642"
+      "published_at": null,
+      "platform_post_media_ids": {
+        "linkedin": [
+          [
+            "987556d3-2497-4bcb-88be-af95288f220a",
+            "4f91334b-53b2-44f5-ac8a-2e50326ddc2e",
+            "bcaa0ea8-992d-4e31-be13-6ca8ccb9ee47",
+            "1d2f1c21-d794-4e41-afaa-829d36cd371a"
+          ]
+        ]
+      },
+      "final_readback_sha256": "3622a8ef44068eed55616c577d5d7863e44b86a4e3627901c17e53480372c49b",
+      "final_guard_sha256": "94d85418394ff5e3b392896c7ba129468dad20f3ca658b7b5c4b0ff60cbf34cd"
     }
   ]
 }

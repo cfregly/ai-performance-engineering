@@ -1,0 +1,14 @@
+This compares nested graph-break support on and off in a synthetic depth-8 workload: nested Python frames, one explicit graph break, and the same 64 FP32 operations. It is not a training step or a nested-loop benchmark. Backward passes, optimizers, and representative models were not tested, so this result alone does not justify a general default recommendation.
+
+A separate B200 test still found a steady-state gain with CUDA Graph replay off. That does not identify the remaining causal mechanism.
+
+Attached: separate run-022 Nsys/NCU profile views.
+Runnable example: https://github.com/cfregly/ai-performance-engineering/blob/e57c5bb31ec492094b4fd9f73a615195aceab936/research/2026-10-22_nested-graph-breaks/benchmark.py
+Nsys image: https://github.com/cfregly/ai-performance-engineering/blob/e57c5bb31ec492094b4fd9f73a615195aceab936/research/2026-10-22_nested-graph-breaks/profiles/views/nsys-first-post-warmup-invocation.png
+NCU image: https://github.com/cfregly/ai-performance-engineering/blob/e57c5bb31ec492094b4fd9f73a615195aceab936/research/2026-10-22_nested-graph-breaks/profiles/views/ncu-single-kernel-metrics.png
+
+Added Zymtrace captures from both B200 examples on PyTorch 2.14.1. Both passed correctness checks. The attached CUDA stack views filter records to each worker. Width counts records, not elapsed time. They do not establish an exact CPU/GPU causal percentage.
+Captures: https://github.com/cfregly/ai-performance-engineering/tree/7f9e981c45d5448aeacd727eabdcb8a308023732/research/2026-10-22_nested-graph-breaks/zymtrace/captures/torch2141-b200-20261026
+Zymtrace renderer and images: https://github.com/cfregly/ai-performance-engineering/tree/8a14d504e175a6790ee818d244eb96e59601369b/research/2026-10-22_nested-graph-breaks/zymtrace/views
+Without nested graph-break support: https://github.com/cfregly/ai-performance-engineering/blob/8a14d504e175a6790ee818d244eb96e59601369b/research/2026-10-22_nested-graph-breaks/zymtrace/views/zymtrace-without-nested-graph-breaks.png
+With nested graph-break support: https://github.com/cfregly/ai-performance-engineering/blob/8a14d504e175a6790ee818d244eb96e59601369b/research/2026-10-22_nested-graph-breaks/zymtrace/views/zymtrace-with-nested-graph-breaks.png

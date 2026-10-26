@@ -8,29 +8,43 @@ post or the five reader-specific reply drafts.
 
 ## X
 
-B200 microbenchmark: nested graph-break support on/off measured 4.53× steady originally and 4.54× in independent fresh022. Startup gate failed. Timing was unprofiled. Nsys/NCU show structure. Not serving.
+With nested graph-break support, B200 steady calls were 4.53× faster than without it. An independent run measured 4.54×. Startup was slower and failed its gate. Unprofiled timing. Compiler microbenchmark.
 
-Code: https://github.com/cfregly/ai-performance-engineering/tree/e57c5bb31ec492094b4fd9f73a615195aceab936/research/2026-10-22_nested-graph-breaks/profiles
-Image: https://github.com/cfregly/ai-performance-engineering/blob/e57c5bb31ec492094b4fd9f73a615195aceab936/research/2026-10-22_nested-graph-breaks/profiles/views/nsys-first-post-warmup-invocation.png
+Runnable example: https://github.com/cfregly/ai-performance-engineering/blob/e57c5bb31ec492094b4fd9f73a615195aceab936/research/2026-10-22_nested-graph-breaks/benchmark.py
+Image: https://github.com/cfregly/ai-performance-engineering/blob/96bdb5940a8f67238c07238caac34ab80fe28e84/research/2026-10-22_nested-graph-breaks/image.png
+
+---
+
+Zymtrace now captures both B200 examples on PyTorch 2.14.1. CUDA event stacks are filtered to each worker: 104 records without nested graph-break support and 188 with it. Width counts records, not time. These profiles do not establish a CPU/GPU causal percentage.
+
+---
+
+Run the example and inspect the captures:
+Code: https://github.com/cfregly/ai-performance-engineering/blob/2a4e3fd00dadf2380a5c413af33bb46c4727fce2/research/2026-10-22_nested-graph-breaks/benchmark.py
+Capture controller: https://github.com/cfregly/ai-performance-engineering/blob/2a4e3fd00dadf2380a5c413af33bb46c4727fce2/research/2026-10-22_nested-graph-breaks/zymtrace/run_capture.py
+Raw events + flamegraphs: https://github.com/cfregly/ai-performance-engineering/tree/7f9e981c45d5448aeacd727eabdcb8a308023732/research/2026-10-22_nested-graph-breaks/zymtrace/captures/torch2141-b200-20261026
+Image renderer + PNGs: https://github.com/cfregly/ai-performance-engineering/tree/8a14d504e175a6790ee818d244eb96e59601369b/research/2026-10-22_nested-graph-breaks/zymtrace/views
 
 ## LinkedIn
 
-Two B200 runs now support the same narrow compiler result.
+Two B200 runs support the same compiler result. We now also have Zymtrace captures from both example workers.
 
-The original retained microbenchmark measured a 4.531795× geometric-mean steady-state speedup with nested graph-break support compared with the same workload without it across four paired seeds. Independent fresh run 022 measured 4.541758× under the same depth-8 scope. These are separate results. The second does not replace or rewrite the first.
+With nested graph-break support, the depth-8 microbenchmark measured a 4.531795× geometric-mean steady-state speedup across four paired seeds. Independent fresh run 022 measured 4.541758×. The runs remain separate.
 
-Neither run qualified startup. In the original run, the first ten compiled-call intervals were 33.2% slower with nested graph-break support on, and the original no-break startup control also failed. That cost is part of the result.
+Neither run qualified startup. In the original run, the first ten compiled-call intervals were 33.2% slower with nested graph-break support, and the startup control also failed.
 
-Normal unprofiled workers establish latency. Separate Nsys and NCU captures explain execution structure and add profiling overhead, so their timeline widths and single-kernel durations are not speedup measurements. The retained Nsys view shows 16 graph executions with nested graph-break support off and 2 with it on for the selected post-warmup call. NCU saved one fused Triton kernel per arm, at 6.400 µs with support off and 20.992 µs with it on. The support-on kernel does more work per launch.
+Nsys shows 16 graph executions without nested graph-break support and 2 with it for one call after warmup. NCU captured one fused Triton kernel per arm: 6.400 µs without support and 20.992 µs with it. With support, each launch does more work. Profiling adds overhead. The published speedup comes from separate unprofiled repeated calls.
 
-This is a controlled PyTorch 2.14.1+cu130 compiler microbenchmark on one NVIDIA B200. It is not a serving, model-throughput, training, or cross-GPU claim.
+Zymtrace 26.10.1 captured both depth-8 workers on B200, PyTorch 2.14.1+cu130 and CUDA 13.0. Both passed correctness checks. The attached CUDA stack views filter by worker PID: 104 exported records without nested graph-break support and 188 with it. Width counts records, not elapsed time. These profiles do not establish an exact CPU/GPU causal percentage.
 
-Attached: retained Nsys and NCU views.
+This is a compiler microbenchmark. It does not establish a training, serving, or cross-GPU gain.
 
-Code: https://github.com/cfregly/ai-performance-engineering/blob/e57c5bb31ec492094b4fd9f73a615195aceab936/research/2026-10-22_nested-graph-breaks/benchmark.py
-Native captures and exports: https://github.com/cfregly/ai-performance-engineering/tree/e57c5bb31ec492094b4fd9f73a615195aceab936/research/2026-10-22_nested-graph-breaks/profiles
-Nsys view: https://github.com/cfregly/ai-performance-engineering/blob/e57c5bb31ec492094b4fd9f73a615195aceab936/research/2026-10-22_nested-graph-breaks/profiles/views/nsys-first-post-warmup-invocation.png
-NCU view: https://github.com/cfregly/ai-performance-engineering/blob/e57c5bb31ec492094b4fd9f73a615195aceab936/research/2026-10-22_nested-graph-breaks/profiles/views/ncu-single-kernel-metrics.png
+Code: https://github.com/cfregly/ai-performance-engineering/blob/2a4e3fd00dadf2380a5c413af33bb46c4727fce2/research/2026-10-22_nested-graph-breaks/benchmark.py
+Nsys/NCU reports and images: https://github.com/cfregly/ai-performance-engineering/tree/e57c5bb31ec492094b4fd9f73a615195aceab936/research/2026-10-22_nested-graph-breaks/profiles
+Zymtrace raw events and flamegraphs: https://github.com/cfregly/ai-performance-engineering/tree/7f9e981c45d5448aeacd727eabdcb8a308023732/research/2026-10-22_nested-graph-breaks/zymtrace/captures/torch2141-b200-20261026
+Zymtrace renderer and images: https://github.com/cfregly/ai-performance-engineering/tree/8a14d504e175a6790ee818d244eb96e59601369b/research/2026-10-22_nested-graph-breaks/zymtrace/views
+Without nested graph-break support: https://github.com/cfregly/ai-performance-engineering/blob/8a14d504e175a6790ee818d244eb96e59601369b/research/2026-10-22_nested-graph-breaks/zymtrace/views/zymtrace-without-nested-graph-breaks.png
+With nested graph-break support: https://github.com/cfregly/ai-performance-engineering/blob/8a14d504e175a6790ee818d244eb96e59601369b/research/2026-10-22_nested-graph-breaks/zymtrace/views/zymtrace-with-nested-graph-breaks.png
 
 ## Alternate openings
 
@@ -46,7 +60,8 @@ NCU view: https://github.com/cfregly/ai-performance-engineering/blob/e57c5bb31ec
 
 ## Existing reader follow-up drafts
 
-These five drafts remain separate, unscheduled, and unchanged:
+These five drafts remain separate and unscheduled. Each now includes the new
+Zymtrace profile images and capture links alongside Nsys and NCU:
 
 - LinkedIn portability response: https://typefully.com/?d=11481014&a=337207
 - LinkedIn break-even response: https://typefully.com/?d=11481015&a=337207
