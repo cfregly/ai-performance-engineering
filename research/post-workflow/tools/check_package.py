@@ -17,6 +17,11 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
+if __package__:
+    from .check_profile_conventions import validate_profile_conventions
+else:
+    from check_profile_conventions import validate_profile_conventions
+
 
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 CONCEPTS = ["images/a", "images/b", "images/c"]
@@ -699,6 +704,7 @@ def validate_package(package: Path) -> list[str]:
     elif state == "source_reported":
         validate_source_reported(package, errors)
     validate_state(package, state, selected, errors)
+    errors.extend(validate_profile_conventions(package))
     return errors
 
 
