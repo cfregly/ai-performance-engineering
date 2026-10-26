@@ -1,0 +1,325 @@
+{
+  "schema_version": 1,
+  "renderer": "render_profile_carousel.py",
+  "renderer_sha256": "86668a1986967f9f13f405ab87b721a95f843ab2d8f8af71fd8418bc161a82dc",
+  "pages": [
+    {
+      "name": "nsys-profile-square",
+      "canvas": [
+        1400,
+        1400
+      ],
+      "aspect_ratio": "1400:1400",
+      "text_boxes": [
+        {
+          "text": "RETAINED NVIDIA PROFILE",
+          "size_px": 32,
+          "bbox": [
+            62,
+            39.0,
+            422,
+            25
+          ]
+        },
+        {
+          "text": "Nsys: first post-warmup call",
+          "size_px": 56,
+          "bbox": [
+            64,
+            101.0,
+            744,
+            54
+          ]
+        },
+        {
+          "text": "B200 \u00b7 PyTorch 2.14.1 \u00b7 graph-level trace",
+          "size_px": 32,
+          "bbox": [
+            62,
+            172.0,
+            582,
+            32
+          ]
+        },
+        {
+          "text": "Top: without nested graph-break support",
+          "size_px": 44,
+          "bbox": [
+            60,
+            236.0,
+            854,
+            42
+          ]
+        },
+        {
+          "text": "Bottom: with nested graph-break support",
+          "size_px": 44,
+          "bbox": [
+            63,
+            292.0,
+            860,
+            42
+          ]
+        },
+        {
+          "text": "One synchronized invocation per arm.",
+          "size_px": 44,
+          "bbox": [
+            62,
+            1140.0,
+            790,
+            43
+          ]
+        },
+        {
+          "text": "Retained timeline fitted in full. Shared time axis in \u00b5s.",
+          "size_px": 32,
+          "bbox": [
+            62,
+            1206.0,
+            751,
+            31
+          ]
+        },
+        {
+          "text": "Graph-level trace, separate from acceptance timing.",
+          "size_px": 32,
+          "bbox": [
+            61,
+            1254.0,
+            740,
+            32
+          ]
+        },
+        {
+          "text": "Original capture, report and code linked with the post.",
+          "size_px": 30,
+          "bbox": [
+            61,
+            1313.0,
+            712,
+            30
+          ]
+        }
+      ],
+      "bar_boxes": [],
+      "profiles": [],
+      "outputs": {
+        "nsys-profile-square.svg": {
+          "sha256": "c0acffb196b36960f738a7b8b2ba5cb09babeea3afde4582f2001c6178e91e29",
+          "bytes": 212641
+        },
+        "nsys-profile-square.png": {
+          "sha256": "91f1a21d4cf23aac71349fa6b27934b5f79d341118cf2e4360c0382dac1ebf1b",
+          "bytes": 255204
+        },
+        "nsys-profile-square.preview-520.png": {
+          "sha256": "885b491edc0d61032d7aaf43e697e5525894283d1a1ca59bcf2ac5cbfb54fbd9",
+          "bytes": 80400
+        },
+        "nsys-profile-square.preview-400.png": {
+          "sha256": "7f9dad3367c706b3d2435decfa3c0ccdc375980933c867c4d0bf3bb7db10cad9",
+          "bytes": 56398
+        }
+      },
+      "source": {
+        "path": "profiles/views/nsys-first-post-warmup-invocation.png",
+        "sha256": "2821878b9dfe0a2371ea98969d5c371d16da4c356a5976ba718d6449224eb399",
+        "dimensions_px": [
+          2520,
+          1350
+        ]
+      },
+      "image_bounds": [
+        40,
+        364,
+        1320,
+        707.1428571428571
+      ],
+      "image_method": "Unchanged retained PNG bytes embedded as a data URI. Uniform aspect-preserving fit, with no crop or report redraw."
+    },
+    {
+      "name": "ncu-profile-square",
+      "canvas": [
+        1400,
+        1400
+      ],
+      "aspect_ratio": "1400:1400",
+      "text_boxes": [
+        {
+          "text": "RETAINED NVIDIA PROFILE",
+          "size_px": 32,
+          "bbox": [
+            62,
+            39.0,
+            422,
+            25
+          ]
+        },
+        {
+          "text": "NCU: one kernel record per arm",
+          "size_px": 56,
+          "bbox": [
+            64,
+            100.0,
+            840,
+            54
+          ]
+        },
+        {
+          "text": "B200 \u00b7 retained Nsight Compute metrics",
+          "size_px": 32,
+          "bbox": [
+            62,
+            172.0,
+            569,
+            32
+          ]
+        },
+        {
+          "text": "False column: without nested graph-break support",
+          "size_px": 44,
+          "bbox": [
+            63,
+            236.0,
+            1053,
+            42
+          ]
+        },
+        {
+          "text": "True column: with nested graph-break support",
+          "size_px": 44,
+          "bbox": [
+            60,
+            292.0,
+            969,
+            42
+          ]
+        },
+        {
+          "text": "Single-kernel profiler replay.",
+          "size_px": 44,
+          "bbox": [
+            61,
+            1140.0,
+            583,
+            43
+          ]
+        },
+        {
+          "text": "Retained report values and units remain unchanged.",
+          "size_px": 32,
+          "bbox": [
+            62,
+            1206.0,
+            746,
+            32
+          ]
+        },
+        {
+          "text": "Separate from unprofiled acceptance timing.",
+          "size_px": 32,
+          "bbox": [
+            61,
+            1254.0,
+            630,
+            32
+          ]
+        },
+        {
+          "text": "Original capture, report and code linked with the post.",
+          "size_px": 30,
+          "bbox": [
+            61,
+            1313.0,
+            712,
+            30
+          ]
+        }
+      ],
+      "bar_boxes": [],
+      "profiles": [],
+      "outputs": {
+        "ncu-profile-square.svg": {
+          "sha256": "a9a2613eeeb46e16b821af9dd1d421e520b86224ca77b61bb4d569ddd3a42a2c",
+          "bytes": 215287
+        },
+        "ncu-profile-square.png": {
+          "sha256": "69bdee69663e05ff6767766cf4fd52e0fdeac06c6e2254606eb0bd831bf9b0a1",
+          "bytes": 245579
+        },
+        "ncu-profile-square.preview-520.png": {
+          "sha256": "b2c28cf30b7af16e6ef1f806fe0b69dfa9fb50925fdb671a8128986ed863b913",
+          "bytes": 75048
+        },
+        "ncu-profile-square.preview-400.png": {
+          "sha256": "a858f05f749f3dccc36f9821b0b07fcc7ff109fc30896a50af1917d6f4b31e57",
+          "bytes": 51335
+        }
+      },
+      "source": {
+        "path": "profiles/views/ncu-single-kernel-metrics.png",
+        "sha256": "91a0edb9c4ebc8df6d6c9974228552fd1c9044089d3b23a71cb153dd80d121a6",
+        "dimensions_px": [
+          2520,
+          1296
+        ]
+      },
+      "image_bounds": [
+        40,
+        364,
+        1320,
+        678.8571428571429
+      ],
+      "image_method": "Unchanged retained PNG bytes embedded as a data URI. Uniform aspect-preserving fit, with no crop or report redraw."
+    },
+    {
+      "name": "zymtrace-without-nested-graph-breaks-square",
+      "canvas": [
+        1400,
+        1400
+      ],
+      "source": {
+        "path": "zymtrace/views/social-layout/zymtrace-without-nested-graph-breaks-square.svg",
+        "sha256": "7dea08d7e1c0d2d0b31ca842f493f6849cd2ba243d78ff0b6de31cd8d4832918"
+      },
+      "image_method": "Complete existing time-weighted square SVG page, unchanged."
+    },
+    {
+      "name": "zymtrace-with-nested-graph-breaks-square",
+      "canvas": [
+        1400,
+        1400
+      ],
+      "source": {
+        "path": "zymtrace/views/social-layout/zymtrace-with-nested-graph-breaks-square.svg",
+        "sha256": "b347e88ae7a3e568299902991d3bf3cca6c80c15fc1c01e5319a9db8fc5c1ee0"
+      },
+      "image_method": "Complete existing time-weighted square SVG page, unchanged."
+    }
+  ],
+  "pdf": {
+    "name": "linkedin-profiles.pdf",
+    "sha256": "397d3554ba3adb5fc0041968cb2f1a4b8566a7f7243b609d6d5cf74a967b7777",
+    "bytes": 504503,
+    "page_count": 4,
+    "page_sizes_pt": [
+      [
+        1050.0,
+        1050.0
+      ],
+      [
+        1050.0,
+        1050.0
+      ],
+      [
+        1050.0,
+        1050.0
+      ],
+      [
+        1050.0,
+        1050.0
+      ]
+    ]
+  }
+}

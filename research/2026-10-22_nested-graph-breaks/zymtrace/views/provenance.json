@@ -73,6 +73,22 @@
     "zymtrace/views/time-weighted/zymtrace-without-nested-graph-breaks.svg": {
       "sha256": "c2cd69c1ba31a06c73229c473d8176a73affb014576c001769ce60248b67892d",
       "bytes": 54933
+    },
+    "zymtrace/views/social-layout/zymtrace-without-nested-graph-breaks-square.png": {
+      "sha256": "0c64e4c9eccf06ca8ad97e9c92def34b9631183e758bbd400d907d4fa612a271",
+      "bytes": 248268
+    },
+    "zymtrace/views/social-layout/zymtrace-without-nested-graph-breaks-square.stacks.json": {
+      "sha256": "da858ef29d1e92e6d12f78616acc2529e5c49dbe3a5bdce1cf3d5f19b03dd172",
+      "bytes": 385668
+    },
+    "zymtrace/views/social-layout/zymtrace-with-nested-graph-breaks-square.png": {
+      "sha256": "d01080c1519fa755dba58dfe7c111a2a67e28e36cfb220fa8997657ee45e16c9",
+      "bytes": 380634
+    },
+    "zymtrace/views/social-layout/zymtrace-with-nested-graph-breaks-square.stacks.json": {
+      "sha256": "9d95d9c11adf5adc5de259af1e76e6dd207af2f8e9a8ebb708a71aec643f7364",
+      "bytes": 704650
     }
   },
   "limits": [

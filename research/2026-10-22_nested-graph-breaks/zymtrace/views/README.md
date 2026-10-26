@@ -62,3 +62,17 @@ are retained as historical stack-visibility diagnostics. Their widths count
 records. They are superseded for public performance posts by `time-weighted/`.
 Their original metadata is retained in [record-count-provenance.json](record-count-provenance.json).
 Completed captures and benchmark results have not been changed.
+
+## Social layouts
+
+[Social exports](social-layout/) keep the complete focused profile inside the
+platform frame. X uses one square profile per post. LinkedIn uses the
+[four-page PDF](social-layout/linkedin-profiles.pdf) for Nsys, NCU and the two
+Zymtrace profiles. Reader-reply images use a single portrait comparison.
+Large function legends remain readable at 400 pixels. Narrow flamegraph bars
+retain full names in the SVG tooltips and linked full-stack views.
+
+The rendered Typefully preview is checked after upload. Source-canvas bounds
+alone do not detect a platform's crop. The package gate binds actual media IDs,
+source hashes, rendered aspect ratios and visual review to saved readbacks.
+Multi-image grids are not used for these detailed scientific profiles.

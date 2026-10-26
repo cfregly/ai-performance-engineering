@@ -1,0 +1,20 @@
+{
+  "unit": "fraction of captured GPU time",
+  "normalization": "independent per worker",
+  "sources": {
+    "without": {
+      "path": "zymtrace/views/time-weighted/zymtrace-without-nested-graph-breaks.stacks.json",
+      "sha256": "da858ef29d1e92e6d12f78616acc2529e5c49dbe3a5bdce1cf3d5f19b03dd172",
+      "pid": 632510,
+      "gpu_uuid": "GPU-7f4a68da-6dbf-a5df-0493-5f3f6e7786fd",
+      "accepted_records": 104
+    },
+    "with": {
+      "path": "zymtrace/views/time-weighted/zymtrace-with-nested-graph-breaks.stacks.json",
+      "sha256": "9d95d9c11adf5adc5de259af1e76e6dd207af2f8e9a8ebb708a71aec643f7364",
+      "pid": 632770,
+      "gpu_uuid": "GPU-7f4a68da-6dbf-a5df-0493-5f3f6e7786fd",
+      "accepted_records": 188
+    }
+  }
+}
