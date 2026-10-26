@@ -1,0 +1,594 @@
+{
+  "changes": [
+    {
+      "category": "operational metadata",
+      "path": "measurement_phases[0].release.device",
+      "replacement": "<operational-device>"
+    },
+    {
+      "category": "operational metadata",
+      "path": "measurement_phases[0].release.inode",
+      "replacement": "<operational-inode>"
+    },
+    {
+      "category": "operational metadata",
+      "path": "measurement_phases[0].release.path",
+      "replacement": "FRESH-RELEASE-RECEIPT.json"
+    },
+    {
+      "category": "operational metadata",
+      "path": "measurement_phases[0].terminal.device",
+      "replacement": "<operational-device>"
+    },
+    {
+      "category": "operational metadata",
+      "path": "measurement_phases[0].terminal.inode",
+      "replacement": "<operational-inode>"
+    },
+    {
+      "category": "operational metadata",
+      "path": "measurement_phases[0].terminal.path",
+      "replacement": "PRIMARY-TERMINAL-OPERATOR-RESULT.json"
+    },
+    {
+      "category": "operational metadata",
+      "path": "measurement_phases[1].release.device",
+      "replacement": "<operational-device>"
+    },
+    {
+      "category": "operational metadata",
+      "path": "measurement_phases[1].release.inode",
+      "replacement": "<operational-inode>"
+    },
+    {
+      "category": "operational metadata",
+      "path": "measurement_phases[1].release.path",
+      "replacement": "FRESH-RELEASE-RECEIPT.json"
+    },
+    {
+      "category": "operational metadata",
+      "path": "measurement_phases[1].terminal.device",
+      "replacement": "<operational-device>"
+    },
+    {
+      "category": "operational metadata",
+      "path": "measurement_phases[1].terminal.inode",
+      "replacement": "<operational-inode>"
+    },
+    {
+      "category": "operational metadata",
+      "path": "measurement_phases[1].terminal.path",
+      "replacement": "ABLATION-TERMINAL-OPERATOR-RESULT.json"
+    },
+    {
+      "category": "operational metadata",
+      "path": "tail_cells[0].raw_result.device",
+      "replacement": "<operational-device>"
+    },
+    {
+      "category": "operational metadata",
+      "path": "tail_cells[0].raw_result.inode",
+      "replacement": "<operational-inode>"
+    },
+    {
+      "category": "operational metadata",
+      "path": "tail_cells[0].raw_result.mode",
+      "replacement": "<operational-mode>"
+    },
+    {
+      "category": "operational metadata",
+      "path": "tail_cells[0].raw_result.mtime_ns",
+      "replacement": "<operational-mtime_ns>"
+    },
+    {
+      "category": "operational metadata",
+      "path": "tail_cells[0].raw_result.path",
+      "replacement": "result.json"
+    },
+    {
+      "category": "operational metadata",
+      "path": "tail_cells[1].raw_result.device",
+      "replacement": "<operational-device>"
+    },
+    {
+      "category": "operational metadata",
+      "path": "tail_cells[1].raw_result.inode",
+      "replacement": "<operational-inode>"
+    },
+    {
+      "category": "operational metadata",
+      "path": "tail_cells[1].raw_result.mode",
+      "replacement": "<operational-mode>"
+    },
+    {
+      "category": "operational metadata",
+      "path": "tail_cells[1].raw_result.mtime_ns",
+      "replacement": "<operational-mtime_ns>"
+    },
+    {
+      "category": "operational metadata",
+      "path": "tail_cells[1].raw_result.path",
+      "replacement": "result.json"
+    },
+    {
+      "category": "operational metadata",
+      "path": "tail_cells[2].raw_result.device",
+      "replacement": "<operational-device>"
+    },
+    {
+      "category": "operational metadata",
+      "path": "tail_cells[2].raw_result.inode",
+      "replacement": "<operational-inode>"
+    },
+    {
+      "category": "operational metadata",
+      "path": "tail_cells[2].raw_result.mode",
+      "replacement": "<operational-mode>"
+    },
+    {
+      "category": "operational metadata",
+      "path": "tail_cells[2].raw_result.mtime_ns",
+      "replacement": "<operational-mtime_ns>"
+    },
+    {
+      "category": "operational metadata",
+      "path": "tail_cells[2].raw_result.path",
+      "replacement": "result.json"
+    },
+    {
+      "category": "operational metadata",
+      "path": "tail_cells[3].raw_result.device",
+      "replacement": "<operational-device>"
+    },
+    {
+      "category": "operational metadata",
+      "path": "tail_cells[3].raw_result.inode",
+      "replacement": "<operational-inode>"
+    },
+    {
+      "category": "operational metadata",
+      "path": "tail_cells[3].raw_result.mode",
+      "replacement": "<operational-mode>"
+    },
+    {
+      "category": "operational metadata",
+      "path": "tail_cells[3].raw_result.mtime_ns",
+      "replacement": "<operational-mtime_ns>"
+    },
+    {
+      "category": "operational metadata",
+      "path": "tail_cells[3].raw_result.path",
+      "replacement": "result.json"
+    },
+    {
+      "category": "operational metadata",
+      "path": "tail_cells[4].raw_result.device",
+      "replacement": "<operational-device>"
+    },
+    {
+      "category": "operational metadata",
+      "path": "tail_cells[4].raw_result.inode",
+      "replacement": "<operational-inode>"
+    },
+    {
+      "category": "operational metadata",
+      "path": "tail_cells[4].raw_result.mode",
+      "replacement": "<operational-mode>"
+    },
+    {
+      "category": "operational metadata",
+      "path": "tail_cells[4].raw_result.mtime_ns",
+      "replacement": "<operational-mtime_ns>"
+    },
+    {
+      "category": "operational metadata",
+      "path": "tail_cells[4].raw_result.path",
+      "replacement": "result.json"
+    },
+    {
+      "category": "operational metadata",
+      "path": "tail_cells[5].raw_result.device",
+      "replacement": "<operational-device>"
+    },
+    {
+      "category": "operational metadata",
+      "path": "tail_cells[5].raw_result.inode",
+      "replacement": "<operational-inode>"
+    },
+    {
+      "category": "operational metadata",
+      "path": "tail_cells[5].raw_result.mode",
+      "replacement": "<operational-mode>"
+    },
+    {
+      "category": "operational metadata",
+      "path": "tail_cells[5].raw_result.mtime_ns",
+      "replacement": "<operational-mtime_ns>"
+    },
+    {
+      "category": "operational metadata",
+      "path": "tail_cells[5].raw_result.path",
+      "replacement": "result.json"
+    },
+    {
+      "category": "operational metadata",
+      "path": "tail_cells[6].raw_result.device",
+      "replacement": "<operational-device>"
+    },
+    {
+      "category": "operational metadata",
+      "path": "tail_cells[6].raw_result.inode",
+      "replacement": "<operational-inode>"
+    },
+    {
+      "category": "operational metadata",
+      "path": "tail_cells[6].raw_result.mode",
+      "replacement": "<operational-mode>"
+    },
+    {
+      "category": "operational metadata",
+      "path": "tail_cells[6].raw_result.mtime_ns",
+      "replacement": "<operational-mtime_ns>"
+    },
+    {
+      "category": "operational metadata",
+      "path": "tail_cells[6].raw_result.path",
+      "replacement": "result.json"
+    },
+    {
+      "category": "operational metadata",
+      "path": "tail_cells[7].raw_result.device",
+      "replacement": "<operational-device>"
+    },
+    {
+      "category": "operational metadata",
+      "path": "tail_cells[7].raw_result.inode",
+      "replacement": "<operational-inode>"
+    },
+    {
+      "category": "operational metadata",
+      "path": "tail_cells[7].raw_result.mode",
+      "replacement": "<operational-mode>"
+    },
+    {
+      "category": "operational metadata",
+      "path": "tail_cells[7].raw_result.mtime_ns",
+      "replacement": "<operational-mtime_ns>"
+    },
+    {
+      "category": "operational metadata",
+      "path": "tail_cells[7].raw_result.path",
+      "replacement": "result.json"
+    },
+    {
+      "category": "operational metadata",
+      "path": "profiles[0].source_trace.path",
+      "replacement": "profile.chrome.json"
+    },
+    {
+      "category": "operational metadata",
+      "path": "profiles[0].corrected_output.device",
+      "replacement": "<operational-device>"
+    },
+    {
+      "category": "operational metadata",
+      "path": "profiles[0].corrected_output.inode",
+      "replacement": "<operational-inode>"
+    },
+    {
+      "category": "operational metadata",
+      "path": "profiles[0].corrected_output.mode",
+      "replacement": "<operational-mode>"
+    },
+    {
+      "category": "operational metadata",
+      "path": "profiles[0].corrected_output.mtime_ns",
+      "replacement": "<operational-mtime_ns>"
+    },
+    {
+      "category": "operational metadata",
+      "path": "profiles[0].corrected_output.path",
+      "replacement": "original-flag0.corrected-profile.json"
+    },
+    {
+      "category": "operational metadata",
+      "path": "profiles[0].all_five_invocations[0].cpu_marker.pid",
+      "replacement": "<cpu-pid>"
+    },
+    {
+      "category": "operational metadata",
+      "path": "profiles[0].all_five_invocations[0].cpu_marker.tid",
+      "replacement": "<cpu-tid>"
+    },
+    {
+      "category": "operational metadata",
+      "path": "profiles[0].all_five_invocations[1].cpu_marker.pid",
+      "replacement": "<cpu-pid>"
+    },
+    {
+      "category": "operational metadata",
+      "path": "profiles[0].all_five_invocations[1].cpu_marker.tid",
+      "replacement": "<cpu-tid>"
+    },
+    {
+      "category": "operational metadata",
+      "path": "profiles[0].all_five_invocations[2].cpu_marker.pid",
+      "replacement": "<cpu-pid>"
+    },
+    {
+      "category": "operational metadata",
+      "path": "profiles[0].all_five_invocations[2].cpu_marker.tid",
+      "replacement": "<cpu-tid>"
+    },
+    {
+      "category": "operational metadata",
+      "path": "profiles[0].all_five_invocations[3].cpu_marker.pid",
+      "replacement": "<cpu-pid>"
+    },
+    {
+      "category": "operational metadata",
+      "path": "profiles[0].all_five_invocations[3].cpu_marker.tid",
+      "replacement": "<cpu-tid>"
+    },
+    {
+      "category": "operational metadata",
+      "path": "profiles[0].all_five_invocations[4].cpu_marker.pid",
+      "replacement": "<cpu-pid>"
+    },
+    {
+      "category": "operational metadata",
+      "path": "profiles[0].all_five_invocations[4].cpu_marker.tid",
+      "replacement": "<cpu-tid>"
+    },
+    {
+      "category": "operational metadata",
+      "path": "profiles[1].source_trace.path",
+      "replacement": "profile.chrome.json"
+    },
+    {
+      "category": "operational metadata",
+      "path": "profiles[1].corrected_output.device",
+      "replacement": "<operational-device>"
+    },
+    {
+      "category": "operational metadata",
+      "path": "profiles[1].corrected_output.inode",
+      "replacement": "<operational-inode>"
+    },
+    {
+      "category": "operational metadata",
+      "path": "profiles[1].corrected_output.mode",
+      "replacement": "<operational-mode>"
+    },
+    {
+      "category": "operational metadata",
+      "path": "profiles[1].corrected_output.mtime_ns",
+      "replacement": "<operational-mtime_ns>"
+    },
+    {
+      "category": "operational metadata",
+      "path": "profiles[1].corrected_output.path",
+      "replacement": "original-flag1.corrected-profile.json"
+    },
+    {
+      "category": "operational metadata",
+      "path": "profiles[1].all_five_invocations[0].cpu_marker.pid",
+      "replacement": "<cpu-pid>"
+    },
+    {
+      "category": "operational metadata",
+      "path": "profiles[1].all_five_invocations[0].cpu_marker.tid",
+      "replacement": "<cpu-tid>"
+    },
+    {
+      "category": "operational metadata",
+      "path": "profiles[1].all_five_invocations[1].cpu_marker.pid",
+      "replacement": "<cpu-pid>"
+    },
+    {
+      "category": "operational metadata",
+      "path": "profiles[1].all_five_invocations[1].cpu_marker.tid",
+      "replacement": "<cpu-tid>"
+    },
+    {
+      "category": "operational metadata",
+      "path": "profiles[1].all_five_invocations[2].cpu_marker.pid",
+      "replacement": "<cpu-pid>"
+    },
+    {
+      "category": "operational metadata",
+      "path": "profiles[1].all_five_invocations[2].cpu_marker.tid",
+      "replacement": "<cpu-tid>"
+    },
+    {
+      "category": "operational metadata",
+      "path": "profiles[1].all_five_invocations[3].cpu_marker.pid",
+      "replacement": "<cpu-pid>"
+    },
+    {
+      "category": "operational metadata",
+      "path": "profiles[1].all_five_invocations[3].cpu_marker.tid",
+      "replacement": "<cpu-tid>"
+    },
+    {
+      "category": "operational metadata",
+      "path": "profiles[1].all_five_invocations[4].cpu_marker.pid",
+      "replacement": "<cpu-pid>"
+    },
+    {
+      "category": "operational metadata",
+      "path": "profiles[1].all_five_invocations[4].cpu_marker.tid",
+      "replacement": "<cpu-tid>"
+    },
+    {
+      "category": "operational metadata",
+      "path": "profiles[2].source_trace.path",
+      "replacement": "profile.chrome.json"
+    },
+    {
+      "category": "operational metadata",
+      "path": "profiles[2].corrected_output.device",
+      "replacement": "<operational-device>"
+    },
+    {
+      "category": "operational metadata",
+      "path": "profiles[2].corrected_output.inode",
+      "replacement": "<operational-inode>"
+    },
+    {
+      "category": "operational metadata",
+      "path": "profiles[2].corrected_output.mode",
+      "replacement": "<operational-mode>"
+    },
+    {
+      "category": "operational metadata",
+      "path": "profiles[2].corrected_output.mtime_ns",
+      "replacement": "<operational-mtime_ns>"
+    },
+    {
+      "category": "operational metadata",
+      "path": "profiles[2].corrected_output.path",
+      "replacement": "no-cudagraph-flag0.corrected-profile.json"
+    },
+    {
+      "category": "operational metadata",
+      "path": "profiles[2].all_five_invocations[0].cpu_marker.pid",
+      "replacement": "<cpu-pid>"
+    },
+    {
+      "category": "operational metadata",
+      "path": "profiles[2].all_five_invocations[0].cpu_marker.tid",
+      "replacement": "<cpu-tid>"
+    },
+    {
+      "category": "operational metadata",
+      "path": "profiles[2].all_five_invocations[1].cpu_marker.pid",
+      "replacement": "<cpu-pid>"
+    },
+    {
+      "category": "operational metadata",
+      "path": "profiles[2].all_five_invocations[1].cpu_marker.tid",
+      "replacement": "<cpu-tid>"
+    },
+    {
+      "category": "operational metadata",
+      "path": "profiles[2].all_five_invocations[2].cpu_marker.pid",
+      "replacement": "<cpu-pid>"
+    },
+    {
+      "category": "operational metadata",
+      "path": "profiles[2].all_five_invocations[2].cpu_marker.tid",
+      "replacement": "<cpu-tid>"
+    },
+    {
+      "category": "operational metadata",
+      "path": "profiles[2].all_five_invocations[3].cpu_marker.pid",
+      "replacement": "<cpu-pid>"
+    },
+    {
+      "category": "operational metadata",
+      "path": "profiles[2].all_five_invocations[3].cpu_marker.tid",
+      "replacement": "<cpu-tid>"
+    },
+    {
+      "category": "operational metadata",
+      "path": "profiles[2].all_five_invocations[4].cpu_marker.pid",
+      "replacement": "<cpu-pid>"
+    },
+    {
+      "category": "operational metadata",
+      "path": "profiles[2].all_five_invocations[4].cpu_marker.tid",
+      "replacement": "<cpu-tid>"
+    },
+    {
+      "category": "operational metadata",
+      "path": "profiles[3].source_trace.path",
+      "replacement": "profile.chrome.json"
+    },
+    {
+      "category": "operational metadata",
+      "path": "profiles[3].corrected_output.device",
+      "replacement": "<operational-device>"
+    },
+    {
+      "category": "operational metadata",
+      "path": "profiles[3].corrected_output.inode",
+      "replacement": "<operational-inode>"
+    },
+    {
+      "category": "operational metadata",
+      "path": "profiles[3].corrected_output.mode",
+      "replacement": "<operational-mode>"
+    },
+    {
+      "category": "operational metadata",
+      "path": "profiles[3].corrected_output.mtime_ns",
+      "replacement": "<operational-mtime_ns>"
+    },
+    {
+      "category": "operational metadata",
+      "path": "profiles[3].corrected_output.path",
+      "replacement": "no-cudagraph-flag1.corrected-profile.json"
+    },
+    {
+      "category": "operational metadata",
+      "path": "profiles[3].all_five_invocations[0].cpu_marker.pid",
+      "replacement": "<cpu-pid>"
+    },
+    {
+      "category": "operational metadata",
+      "path": "profiles[3].all_five_invocations[0].cpu_marker.tid",
+      "replacement": "<cpu-tid>"
+    },
+    {
+      "category": "operational metadata",
+      "path": "profiles[3].all_five_invocations[1].cpu_marker.pid",
+      "replacement": "<cpu-pid>"
+    },
+    {
+      "category": "operational metadata",
+      "path": "profiles[3].all_five_invocations[1].cpu_marker.tid",
+      "replacement": "<cpu-tid>"
+    },
+    {
+      "category": "operational metadata",
+      "path": "profiles[3].all_five_invocations[2].cpu_marker.pid",
+      "replacement": "<cpu-pid>"
+    },
+    {
+      "category": "operational metadata",
+      "path": "profiles[3].all_five_invocations[2].cpu_marker.tid",
+      "replacement": "<cpu-tid>"
+    },
+    {
+      "category": "operational metadata",
+      "path": "profiles[3].all_five_invocations[3].cpu_marker.pid",
+      "replacement": "<cpu-pid>"
+    },
+    {
+      "category": "operational metadata",
+      "path": "profiles[3].all_five_invocations[3].cpu_marker.tid",
+      "replacement": "<cpu-tid>"
+    },
+    {
+      "category": "operational metadata",
+      "path": "profiles[3].all_five_invocations[4].cpu_marker.pid",
+      "replacement": "<cpu-pid>"
+    },
+    {
+      "category": "operational metadata",
+      "path": "profiles[3].all_five_invocations[4].cpu_marker.tid",
+      "replacement": "<cpu-tid>"
+    },
+    {
+      "category": "superseded status note",
+      "path": "limits",
+      "replacement": "superseded_limit"
+    }
+  ],
+  "public_bytes": 61125,
+  "public_sha256": "4448bcb183a4d66abba840136621bc296a336526b2dcc074a8a60f6bb2545169",
+  "schema": "nested-graph-followup-public-projection/v1",
+  "source_bytes": 61992,
+  "source_sha256": "d7518190c33b30383171cb30649512ac32da63432ba448ba1084290cebf2cbec"
+}

@@ -8,6 +8,12 @@ execute the same worker, selected with `--enabled 0` or `--enabled 1`.
 The retained experiment measured one flag within PyTorch 2.14.1+cu130. It did
 not compare PyTorch versions, model throughput, serving latency, or GPU scaling.
 
+The separate [bounded B200 follow-up](followup/README.md) adds observed
+cold-to-steady crossovers, phase memory and host RSS, a CUDA-Graph-disabled
+ablation, and the corrected retained-trace reader. Its diagnostic results do
+not replace the historical qualification below. The original source, results,
+and figures remain unchanged.
+
 ## Results and limits
 
 One NVIDIA B200 executed the workload while a second B200 stayed idle. The

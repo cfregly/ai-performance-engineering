@@ -1,0 +1,33 @@
+{
+  "complete_raw_archive_sha256": "79205f2ce58e3ca9a59e61587acd2bb04a7a7cce1832a40a13bc4039bc5b74fe",
+  "historical_benchmark_files_modified": 0,
+  "maintained_successors_have_not_been_gpu_executed": true,
+  "measurement_values_and_all_invocation_rows_equal_to_retained_b200_copy": true,
+  "public_projection_manifest": "results/projection-manifest.json",
+  "recorded_reader_executed_on_retained_b200_captures": true,
+  "retained_answer_data_sha256": "e77c4b0260c86fae0883e2f5e860a3d6d9299715e00cb0dbb9faddb8b391323e",
+  "retained_compact_copy_sha256": "d7518190c33b30383171cb30649512ac32da63432ba448ba1084290cebf2cbec",
+  "retained_reader_source_sha256": "dbeefdf49794b75364cca7b6aa28d1297062416b17d757d0ac713aaaa24e09f4",
+  "retained_run_source_sha256": "9d63e1c52a458d787a9cfaa06198e984b4013ffff5867b3083962620c99059cc",
+  "schema": "nested-graph-followup-source-provenance/v1",
+  "source_sha256": {
+    "nested_graphs_diagnostic.py": "57cf049d8b786e08120c703eb94119228e0d7f98af39e4d2c56d6bea552b19e1",
+    "publish_summary.py": "7bf90521e09a5deb10c49d23000c939abcbbdd2a53c173bf56b515af2ad9deed",
+    "recorded_source/nested_graphs_diagnostic.py": "9d63e1c52a458d787a9cfaa06198e984b4013ffff5867b3083962620c99059cc",
+    "recorded_source/retained_trace_reader.py": "dbeefdf49794b75364cca7b6aa28d1297062416b17d757d0ac713aaaa24e09f4",
+    "retained_trace_reader.py": "625f9d6807319db6fe265029260efd30d72ea4018a3c864c91af9fda12a84244",
+    "test_diagnostic_profile_reader.py": "ec70f88957cfb22ee9a74bd8d006e42893fa0deb08b7c0a4f7e7d331c9ef88ea",
+    "test_publish_summary.py": "094e7c648e27a726081dbb4163da2072e132554afb75cc2b17c82fdcec321636",
+    "test_retained_trace_reader.py": "461de675d488b382bedf7d345b73f1e714dfd79a33fc688354cad54e06307e7a"
+  },
+  "unchanged_original_images": {
+    "../graphs/comparison-overview.png": "b77ae39d9be1892a3ecb7bee385d7034f1ee969ee844e2b886c831f92667f93c",
+    "../graphs/region-summary.png": "57c985fc1fb4d75013e52b97f3bb1c0519fa59909ffe0a3d2e8feeea48107f36",
+    "../graphs/startup-decomposition.png": "bf7462613a9ef3b9e8a7780fb1e8d2871d5a47cc4c03105c6ba07175250499f7"
+  },
+  "unchanged_original_sources": {
+    "benchmark.py": "4c7a5a8dcef474405be19a87d22cfdeb7ea564c76f19acc67ddcd1125d247689",
+    "counter_capture.py": "ef6c4dcb00491f1a5034ef14d55b9b505fbd9b6e744b383fd6d8c2868a938583",
+    "profile_capture.py": "ab2bf71e11dab69f0e35f615a6810a15d883a6f26b9bb64430ff24f7d8e9f02e"
+  }
+}

@@ -1,0 +1,1803 @@
+{
+  "limits": [
+    "Controlled B200 compiler diagnostic, not representative training or serving.",
+    "Portability beyond this B200/runtime remains untested.",
+    "Different freshly measured cohorts are an ablation contrast, not an additive CPU/GPU causal percentage.",
+    "All five profile invocation records and all exclusions must be reported. No average over selected valid rows as whole-capture attribution.",
+    "Signed boundary deltas and invalid geometry records remain explicit.",
+    "Original10-marker derived summaries and all raw traces remain unchanged.",
+    "B200 synthetic compiler workload only. No model, serving, training or cross-architecture conclusion.",
+    "No population break-even or memory equivalence tolerance.",
+    "Torch observed_uuid is an object repr. Device assignment is bound by the exact supervisor UUID, one-device CUDA_VISIBLE_DEVICES and fresh nvidia-smi receipt."
+  ],
+  "measurement_phases": [
+    {
+      "elapsed_seconds": 61.296598691958934,
+      "kind": "PRIMARY",
+      "release": {
+        "bytes": 1072,
+        "device": "<operational-device>",
+        "inode": "<operational-inode>",
+        "path": "FRESH-RELEASE-RECEIPT.json",
+        "sha256": "835c612885a3aa33a85966efbfba56b172f89a2bc48b8a19928b70ffbf9d7b8f"
+      },
+      "source_sha256": "9d63e1c52a458d787a9cfaa06198e984b4013ffff5867b3083962620c99059cc",
+      "terminal": {
+        "bytes": 46671,
+        "device": "<operational-device>",
+        "inode": "<operational-inode>",
+        "path": "PRIMARY-TERMINAL-OPERATOR-RESULT.json",
+        "sha256": "caf7e309127a243e71257d72a28e39ccb39839e2f99d23d631d6bf4439ff8ced"
+      }
+    },
+    {
+      "elapsed_seconds": 51.40245714318007,
+      "kind": "ABLATION",
+      "release": {
+        "bytes": 1074,
+        "device": "<operational-device>",
+        "inode": "<operational-inode>",
+        "path": "FRESH-RELEASE-RECEIPT.json",
+        "sha256": "8159015daf9eb7925bfb90e9ba154c78210c71736011d45e4e1047056ebc9666"
+      },
+      "source_sha256": "9d63e1c52a458d787a9cfaa06198e984b4013ffff5867b3083962620c99059cc",
+      "terminal": {
+        "bytes": 47037,
+        "device": "<operational-device>",
+        "inode": "<operational-inode>",
+        "path": "ABLATION-TERMINAL-OPERATOR-RESULT.json",
+        "sha256": "a8b93e2d032eee8a1901e5347a760f3005ac1e55c539518583b190300f508d88"
+      }
+    }
+  ],
+  "memory_phase_rows": [
+    {
+      "cuda": {
+        "max_memory_allocated_bytes": {
+          "MiB": 40.0,
+          "bytes": 41943040
+        },
+        "max_memory_reserved_bytes": {
+          "MiB": 40.0,
+          "bytes": 41943040
+        },
+        "memory_allocated_bytes": {
+          "MiB": 8.0,
+          "bytes": 8388608
+        },
+        "memory_reserved_bytes": {
+          "MiB": 40.0,
+          "bytes": 41943040
+        }
+      },
+      "enabled": 0,
+      "host": {
+        "current_rss_bytes": {
+          "MiB": 979.54296875,
+          "bytes": 1027125248
+        },
+        "high_water_rss_bytes": {
+          "MiB": 979.54296875,
+          "bytes": 1027125248
+        },
+        "platform": "Linux",
+        "source": "/proc/self/status"
+      },
+      "peak_window": "process start through eager",
+      "phase": "input_and_eager_reference_ready",
+      "seed": 0,
+      "variant": "original"
+    },
+    {
+      "cuda": {
+        "max_memory_allocated_bytes": {
+          "MiB": 170.5,
+          "bytes": 178782208
+        },
+        "max_memory_reserved_bytes": {
+          "MiB": 296.0,
+          "bytes": 310378496
+        },
+        "memory_allocated_bytes": {
+          "MiB": 12.0,
+          "bytes": 12582912
+        },
+        "memory_reserved_bytes": {
+          "MiB": 296.0,
+          "bytes": 310378496
+        }
+      },
+      "enabled": 0,
+      "host": {
+        "current_rss_bytes": {
+          "MiB": 1077.96484375,
+          "bytes": 1130328064
+        },
+        "high_water_rss_bytes": {
+          "MiB": 1109.6171875,
+          "bytes": 1163517952
+        },
+        "platform": "Linux",
+        "source": "/proc/self/status"
+      },
+      "peak_window": "first compiled call",
+      "phase": "first_compiled_call",
+      "seed": 0,
+      "variant": "original"
+    },
+    {
+      "cuda": {
+        "max_memory_allocated_bytes": {
+          "MiB": 48.0,
+          "bytes": 50331648
+        },
+        "max_memory_reserved_bytes": {
+          "MiB": 320.0,
+          "bytes": 335544320
+        },
+        "memory_allocated_bytes": {
+          "MiB": 8.0,
+          "bytes": 8388608
+        },
+        "memory_reserved_bytes": {
+          "MiB": 296.0,
+          "bytes": 310378496
+        }
+      },
+      "enabled": 0,
+      "host": {
+        "current_rss_bytes": {
+          "MiB": 1410.60546875,
+          "bytes": 1479127040
+        },
+        "high_water_rss_bytes": {
+          "MiB": 1411.10546875,
+          "bytes": 1479651328
+        },
+        "platform": "Linux",
+        "source": "/proc/self/status"
+      },
+      "peak_window": "calls 2 through 25",
+      "phase": "after_call_25",
+      "seed": 0,
+      "variant": "original"
+    },
+    {
+      "cuda": {
+        "max_memory_allocated_bytes": {
+          "MiB": 8.0,
+          "bytes": 8388608
+        },
+        "max_memory_reserved_bytes": {
+          "MiB": 296.0,
+          "bytes": 310378496
+        },
+        "memory_allocated_bytes": {
+          "MiB": 8.0,
+          "bytes": 8388608
+        },
+        "memory_reserved_bytes": {
+          "MiB": 296.0,
+          "bytes": 310378496
+        }
+      },
+      "enabled": 0,
+      "host": {
+        "current_rss_bytes": {
+          "MiB": 1410.60546875,
+          "bytes": 1479127040
+        },
+        "high_water_rss_bytes": {
+          "MiB": 1411.10546875,
+          "bytes": 1479651328
+        },
+        "platform": "Linux",
+        "source": "/proc/self/status"
+      },
+      "peak_window": "calls 26 through 100",
+      "phase": "after_call_100",
+      "seed": 0,
+      "variant": "original"
+    },
+    {
+      "cuda": {
+        "max_memory_allocated_bytes": {
+          "MiB": 8.0,
+          "bytes": 8388608
+        },
+        "max_memory_reserved_bytes": {
+          "MiB": 296.0,
+          "bytes": 310378496
+        },
+        "memory_allocated_bytes": {
+          "MiB": 8.0,
+          "bytes": 8388608
+        },
+        "memory_reserved_bytes": {
+          "MiB": 296.0,
+          "bytes": 310378496
+        }
+      },
+      "enabled": 0,
+      "host": {
+        "current_rss_bytes": {
+          "MiB": 1410.609375,
+          "bytes": 1479131136
+        },
+        "high_water_rss_bytes": {
+          "MiB": 1411.10546875,
+          "bytes": 1479651328
+        },
+        "platform": "Linux",
+        "source": "/proc/self/status"
+      },
+      "peak_window": "calls 101 through 4000",
+      "phase": "after_call_4000",
+      "seed": 0,
+      "variant": "original"
+    },
+    {
+      "cuda": {
+        "max_memory_allocated_bytes": {
+          "MiB": 40.0,
+          "bytes": 41943040
+        },
+        "max_memory_reserved_bytes": {
+          "MiB": 40.0,
+          "bytes": 41943040
+        },
+        "memory_allocated_bytes": {
+          "MiB": 8.0,
+          "bytes": 8388608
+        },
+        "memory_reserved_bytes": {
+          "MiB": 40.0,
+          "bytes": 41943040
+        }
+      },
+      "enabled": 1,
+      "host": {
+        "current_rss_bytes": {
+          "MiB": 979.48828125,
+          "bytes": 1027067904
+        },
+        "high_water_rss_bytes": {
+          "MiB": 979.48828125,
+          "bytes": 1027067904
+        },
+        "platform": "Linux",
+        "source": "/proc/self/status"
+      },
+      "peak_window": "process start through eager",
+      "phase": "input_and_eager_reference_ready",
+      "seed": 0,
+      "variant": "original"
+    },
+    {
+      "cuda": {
+        "max_memory_allocated_bytes": {
+          "MiB": 146.5,
+          "bytes": 153616384
+        },
+        "max_memory_reserved_bytes": {
+          "MiB": 168.0,
+          "bytes": 176160768
+        },
+        "memory_allocated_bytes": {
+          "MiB": 12.0,
+          "bytes": 12582912
+        },
+        "memory_reserved_bytes": {
+          "MiB": 168.0,
+          "bytes": 176160768
+        }
+      },
+      "enabled": 1,
+      "host": {
+        "current_rss_bytes": {
+          "MiB": 1090.78515625,
+          "bytes": 1143771136
+        },
+        "high_water_rss_bytes": {
+          "MiB": 1122.56640625,
+          "bytes": 1177096192
+        },
+        "platform": "Linux",
+        "source": "/proc/self/status"
+      },
+      "peak_window": "first compiled call",
+      "phase": "first_compiled_call",
+      "seed": 0,
+      "variant": "original"
+    },
+    {
+      "cuda": {
+        "max_memory_allocated_bytes": {
+          "MiB": 20.0,
+          "bytes": 20971520
+        },
+        "max_memory_reserved_bytes": {
+          "MiB": 192.0,
+          "bytes": 201326592
+        },
+        "memory_allocated_bytes": {
+          "MiB": 8.0,
+          "bytes": 8388608
+        },
+        "memory_reserved_bytes": {
+          "MiB": 168.0,
+          "bytes": 176160768
+        }
+      },
+      "enabled": 1,
+      "host": {
+        "current_rss_bytes": {
+          "MiB": 1416.65234375,
+          "bytes": 1485467648
+        },
+        "high_water_rss_bytes": {
+          "MiB": 1417.87109375,
+          "bytes": 1486745600
+        },
+        "platform": "Linux",
+        "source": "/proc/self/status"
+      },
+      "peak_window": "calls 2 through 25",
+      "phase": "after_call_25",
+      "seed": 0,
+      "variant": "original"
+    },
+    {
+      "cuda": {
+        "max_memory_allocated_bytes": {
+          "MiB": 8.0,
+          "bytes": 8388608
+        },
+        "max_memory_reserved_bytes": {
+          "MiB": 168.0,
+          "bytes": 176160768
+        },
+        "memory_allocated_bytes": {
+          "MiB": 8.0,
+          "bytes": 8388608
+        },
+        "memory_reserved_bytes": {
+          "MiB": 168.0,
+          "bytes": 176160768
+        }
+      },
+      "enabled": 1,
+      "host": {
+        "current_rss_bytes": {
+          "MiB": 1416.65234375,
+          "bytes": 1485467648
+        },
+        "high_water_rss_bytes": {
+          "MiB": 1417.87109375,
+          "bytes": 1486745600
+        },
+        "platform": "Linux",
+        "source": "/proc/self/status"
+      },
+      "peak_window": "calls 26 through 100",
+      "phase": "after_call_100",
+      "seed": 0,
+      "variant": "original"
+    },
+    {
+      "cuda": {
+        "max_memory_allocated_bytes": {
+          "MiB": 8.0,
+          "bytes": 8388608
+        },
+        "max_memory_reserved_bytes": {
+          "MiB": 168.0,
+          "bytes": 176160768
+        },
+        "memory_allocated_bytes": {
+          "MiB": 8.0,
+          "bytes": 8388608
+        },
+        "memory_reserved_bytes": {
+          "MiB": 168.0,
+          "bytes": 176160768
+        }
+      },
+      "enabled": 1,
+      "host": {
+        "current_rss_bytes": {
+          "MiB": 1416.65234375,
+          "bytes": 1485467648
+        },
+        "high_water_rss_bytes": {
+          "MiB": 1417.87109375,
+          "bytes": 1486745600
+        },
+        "platform": "Linux",
+        "source": "/proc/self/status"
+      },
+      "peak_window": "calls 101 through 4000",
+      "phase": "after_call_4000",
+      "seed": 0,
+      "variant": "original"
+    },
+    {
+      "cuda": {
+        "max_memory_allocated_bytes": {
+          "MiB": 40.0,
+          "bytes": 41943040
+        },
+        "max_memory_reserved_bytes": {
+          "MiB": 40.0,
+          "bytes": 41943040
+        },
+        "memory_allocated_bytes": {
+          "MiB": 8.0,
+          "bytes": 8388608
+        },
+        "memory_reserved_bytes": {
+          "MiB": 40.0,
+          "bytes": 41943040
+        }
+      },
+      "enabled": 0,
+      "host": {
+        "current_rss_bytes": {
+          "MiB": 979.92578125,
+          "bytes": 1027526656
+        },
+        "high_water_rss_bytes": {
+          "MiB": 979.92578125,
+          "bytes": 1027526656
+        },
+        "platform": "Linux",
+        "source": "/proc/self/status"
+      },
+      "peak_window": "process start through eager",
+      "phase": "input_and_eager_reference_ready",
+      "seed": 0,
+      "variant": "no-cudagraph"
+    },
+    {
+      "cuda": {
+        "max_memory_allocated_bytes": {
+          "MiB": 170.5,
+          "bytes": 178782208
+        },
+        "max_memory_reserved_bytes": {
+          "MiB": 298.0,
+          "bytes": 312475648
+        },
+        "memory_allocated_bytes": {
+          "MiB": 12.0,
+          "bytes": 12582912
+        },
+        "memory_reserved_bytes": {
+          "MiB": 298.0,
+          "bytes": 312475648
+        }
+      },
+      "enabled": 0,
+      "host": {
+        "current_rss_bytes": {
+          "MiB": 1074.51171875,
+          "bytes": 1126707200
+        },
+        "high_water_rss_bytes": {
+          "MiB": 1106.5078125,
+          "bytes": 1160257536
+        },
+        "platform": "Linux",
+        "source": "/proc/self/status"
+      },
+      "peak_window": "first compiled call",
+      "phase": "first_compiled_call",
+      "seed": 0,
+      "variant": "no-cudagraph"
+    },
+    {
+      "cuda": {
+        "max_memory_allocated_bytes": {
+          "MiB": 44.0,
+          "bytes": 46137344
+        },
+        "max_memory_reserved_bytes": {
+          "MiB": 300.0,
+          "bytes": 314572800
+        },
+        "memory_allocated_bytes": {
+          "MiB": 8.0,
+          "bytes": 8388608
+        },
+        "memory_reserved_bytes": {
+          "MiB": 300.0,
+          "bytes": 314572800
+        }
+      },
+      "enabled": 0,
+      "host": {
+        "current_rss_bytes": {
+          "MiB": 1360.16015625,
+          "bytes": 1426231296
+        },
+        "high_water_rss_bytes": {
+          "MiB": 1360.16015625,
+          "bytes": 1426231296
+        },
+        "platform": "Linux",
+        "source": "/proc/self/status"
+      },
+      "peak_window": "calls 2 through 25",
+      "phase": "after_call_25",
+      "seed": 0,
+      "variant": "no-cudagraph"
+    },
+    {
+      "cuda": {
+        "max_memory_allocated_bytes": {
+          "MiB": 44.0,
+          "bytes": 46137344
+        },
+        "max_memory_reserved_bytes": {
+          "MiB": 300.0,
+          "bytes": 314572800
+        },
+        "memory_allocated_bytes": {
+          "MiB": 8.0,
+          "bytes": 8388608
+        },
+        "memory_reserved_bytes": {
+          "MiB": 300.0,
+          "bytes": 314572800
+        }
+      },
+      "enabled": 0,
+      "host": {
+        "current_rss_bytes": {
+          "MiB": 1360.16015625,
+          "bytes": 1426231296
+        },
+        "high_water_rss_bytes": {
+          "MiB": 1360.16015625,
+          "bytes": 1426231296
+        },
+        "platform": "Linux",
+        "source": "/proc/self/status"
+      },
+      "peak_window": "calls 26 through 100",
+      "phase": "after_call_100",
+      "seed": 0,
+      "variant": "no-cudagraph"
+    },
+    {
+      "cuda": {
+        "max_memory_allocated_bytes": {
+          "MiB": 44.0,
+          "bytes": 46137344
+        },
+        "max_memory_reserved_bytes": {
+          "MiB": 300.0,
+          "bytes": 314572800
+        },
+        "memory_allocated_bytes": {
+          "MiB": 12.0,
+          "bytes": 12582912
+        },
+        "memory_reserved_bytes": {
+          "MiB": 300.0,
+          "bytes": 314572800
+        }
+      },
+      "enabled": 0,
+      "host": {
+        "current_rss_bytes": {
+          "MiB": 1360.16015625,
+          "bytes": 1426231296
+        },
+        "high_water_rss_bytes": {
+          "MiB": 1360.16015625,
+          "bytes": 1426231296
+        },
+        "platform": "Linux",
+        "source": "/proc/self/status"
+      },
+      "peak_window": "calls 101 through 4000",
+      "phase": "after_call_4000",
+      "seed": 0,
+      "variant": "no-cudagraph"
+    },
+    {
+      "cuda": {
+        "max_memory_allocated_bytes": {
+          "MiB": 40.0,
+          "bytes": 41943040
+        },
+        "max_memory_reserved_bytes": {
+          "MiB": 40.0,
+          "bytes": 41943040
+        },
+        "memory_allocated_bytes": {
+          "MiB": 8.0,
+          "bytes": 8388608
+        },
+        "memory_reserved_bytes": {
+          "MiB": 40.0,
+          "bytes": 41943040
+        }
+      },
+      "enabled": 1,
+      "host": {
+        "current_rss_bytes": {
+          "MiB": 979.94921875,
+          "bytes": 1027551232
+        },
+        "high_water_rss_bytes": {
+          "MiB": 979.94921875,
+          "bytes": 1027551232
+        },
+        "platform": "Linux",
+        "source": "/proc/self/status"
+      },
+      "peak_window": "process start through eager",
+      "phase": "input_and_eager_reference_ready",
+      "seed": 0,
+      "variant": "no-cudagraph"
+    },
+    {
+      "cuda": {
+        "max_memory_allocated_bytes": {
+          "MiB": 146.5,
+          "bytes": 153616384
+        },
+        "max_memory_reserved_bytes": {
+          "MiB": 170.0,
+          "bytes": 178257920
+        },
+        "memory_allocated_bytes": {
+          "MiB": 12.0,
+          "bytes": 12582912
+        },
+        "memory_reserved_bytes": {
+          "MiB": 170.0,
+          "bytes": 178257920
+        }
+      },
+      "enabled": 1,
+      "host": {
+        "current_rss_bytes": {
+          "MiB": 1077.6953125,
+          "bytes": 1130045440
+        },
+        "high_water_rss_bytes": {
+          "MiB": 1120.7265625,
+          "bytes": 1175166976
+        },
+        "platform": "Linux",
+        "source": "/proc/self/status"
+      },
+      "peak_window": "first compiled call",
+      "phase": "first_compiled_call",
+      "seed": 0,
+      "variant": "no-cudagraph"
+    },
+    {
+      "cuda": {
+        "max_memory_allocated_bytes": {
+          "MiB": 16.0,
+          "bytes": 16777216
+        },
+        "max_memory_reserved_bytes": {
+          "MiB": 172.0,
+          "bytes": 180355072
+        },
+        "memory_allocated_bytes": {
+          "MiB": 8.0,
+          "bytes": 8388608
+        },
+        "memory_reserved_bytes": {
+          "MiB": 172.0,
+          "bytes": 180355072
+        }
+      },
+      "enabled": 1,
+      "host": {
+        "current_rss_bytes": {
+          "MiB": 1359.94921875,
+          "bytes": 1426010112
+        },
+        "high_water_rss_bytes": {
+          "MiB": 1359.94921875,
+          "bytes": 1426010112
+        },
+        "platform": "Linux",
+        "source": "/proc/self/status"
+      },
+      "peak_window": "calls 2 through 25",
+      "phase": "after_call_25",
+      "seed": 0,
+      "variant": "no-cudagraph"
+    },
+    {
+      "cuda": {
+        "max_memory_allocated_bytes": {
+          "MiB": 16.0,
+          "bytes": 16777216
+        },
+        "max_memory_reserved_bytes": {
+          "MiB": 172.0,
+          "bytes": 180355072
+        },
+        "memory_allocated_bytes": {
+          "MiB": 8.0,
+          "bytes": 8388608
+        },
+        "memory_reserved_bytes": {
+          "MiB": 172.0,
+          "bytes": 180355072
+        }
+      },
+      "enabled": 1,
+      "host": {
+        "current_rss_bytes": {
+          "MiB": 1359.94921875,
+          "bytes": 1426010112
+        },
+        "high_water_rss_bytes": {
+          "MiB": 1359.94921875,
+          "bytes": 1426010112
+        },
+        "platform": "Linux",
+        "source": "/proc/self/status"
+      },
+      "peak_window": "calls 26 through 100",
+      "phase": "after_call_100",
+      "seed": 0,
+      "variant": "no-cudagraph"
+    },
+    {
+      "cuda": {
+        "max_memory_allocated_bytes": {
+          "MiB": 16.0,
+          "bytes": 16777216
+        },
+        "max_memory_reserved_bytes": {
+          "MiB": 172.0,
+          "bytes": 180355072
+        },
+        "memory_allocated_bytes": {
+          "MiB": 12.0,
+          "bytes": 12582912
+        },
+        "memory_reserved_bytes": {
+          "MiB": 172.0,
+          "bytes": 180355072
+        }
+      },
+      "enabled": 1,
+      "host": {
+        "current_rss_bytes": {
+          "MiB": 1359.94921875,
+          "bytes": 1426010112
+        },
+        "high_water_rss_bytes": {
+          "MiB": 1359.94921875,
+          "bytes": 1426010112
+        },
+        "platform": "Linux",
+        "source": "/proc/self/status"
+      },
+      "peak_window": "calls 101 through 4000",
+      "phase": "after_call_4000",
+      "seed": 0,
+      "variant": "no-cudagraph"
+    }
+  ],
+  "operation": "Display-only projection. All numbers, unit conversions and ratios were computed on B200 and are copied unchanged.",
+  "per_seed_cumulative_crossings": [
+    {
+      "active_synchronized_calls": {
+        "baseline_final_ns": 5803142678,
+        "candidate_final_ns": 3652493091,
+        "first_candidate_le_baseline_call": 1,
+        "first_sustained_candidate_le_baseline_call": 1
+      },
+      "case": "nested_break_depth8",
+      "claim_limit": "Observed crossover within this paired process horizon only; do not pool seeds or infer a population break-even.",
+      "continuous_wall": {
+        "baseline_final_ns": 5826944215,
+        "candidate_final_ns": 3673467209,
+        "first_candidate_le_baseline_call": 1,
+        "first_sustained_candidate_le_baseline_call": 1
+      },
+      "horizon_calls": 4000,
+      "seed": 0,
+      "variant": "original"
+    },
+    {
+      "active_synchronized_calls": {
+        "baseline_final_ns": 4088838753,
+        "candidate_final_ns": 3790770243,
+        "first_candidate_le_baseline_call": 3014,
+        "first_sustained_candidate_le_baseline_call": 3014
+      },
+      "case": "nested_break_depth8",
+      "claim_limit": "Observed crossover within this paired process horizon only; do not pool seeds or infer a population break-even.",
+      "continuous_wall": {
+        "baseline_final_ns": 4112425760,
+        "candidate_final_ns": 3811325038,
+        "first_candidate_le_baseline_call": 3007,
+        "first_sustained_candidate_le_baseline_call": 3007
+      },
+      "horizon_calls": 4000,
+      "seed": 1,
+      "variant": "original"
+    },
+    {
+      "active_synchronized_calls": {
+        "baseline_final_ns": 3162468443,
+        "candidate_final_ns": 3439209820,
+        "first_candidate_le_baseline_call": null,
+        "first_sustained_candidate_le_baseline_call": null
+      },
+      "case": "nested_break_depth8",
+      "claim_limit": "Observed crossover within this paired process horizon only; do not pool seeds or infer a population break-even.",
+      "continuous_wall": {
+        "baseline_final_ns": 3181392307,
+        "candidate_final_ns": 3457477610,
+        "first_candidate_le_baseline_call": null,
+        "first_sustained_candidate_le_baseline_call": null
+      },
+      "horizon_calls": 4000,
+      "seed": 0,
+      "variant": "no-cudagraph"
+    },
+    {
+      "active_synchronized_calls": {
+        "baseline_final_ns": 3180011886,
+        "candidate_final_ns": 3558783701,
+        "first_candidate_le_baseline_call": null,
+        "first_sustained_candidate_le_baseline_call": null
+      },
+      "case": "nested_break_depth8",
+      "claim_limit": "Observed crossover within this paired process horizon only; do not pool seeds or infer a population break-even.",
+      "continuous_wall": {
+        "baseline_final_ns": 3199142894,
+        "candidate_final_ns": 3576978687,
+        "first_candidate_le_baseline_call": null,
+        "first_sustained_candidate_le_baseline_call": null
+      },
+      "horizon_calls": 4000,
+      "seed": 1,
+      "variant": "no-cudagraph"
+    }
+  ],
+  "profiles": [
+    {
+      "all_five_invocations": [
+        {
+          "boundary_violations": [],
+          "cpu_marker": {
+            "duration_us": 3179.87109375,
+            "end_us": 2130446239406.6272,
+            "event_index": 57,
+            "pid": "<cpu-pid>",
+            "start_us": 2130446236226.756,
+            "tid": "<cpu-tid>"
+          },
+          "cuda_api_count": 36,
+          "cuda_api_union_us_unclamped": 728.21142578125,
+          "cuda_graph_launch_count": 16,
+          "first_kernel_start_from_cpu_marker_us": 1986.1279296875,
+          "geometry_interpretation": "A negative signed_cpu_tail_after_last_kernel_us is retained as a clock/boundary violation. It is not negative GPU time.",
+          "geometry_valid_for_aggregate": true,
+          "gpu_kernel_span_us_unclamped": 1119.48583984375,
+          "invocation_index": 1,
+          "kernel_active_union_us_unclamped": 198.59375,
+          "kernel_count": 32,
+          "signed_cpu_tail_after_last_kernel_us": 74.25732421875
+        },
+        {
+          "boundary_violations": [],
+          "cpu_marker": {
+            "duration_us": 793.7900390625,
+            "end_us": 2130446240220.377,
+            "event_index": 172,
+            "pid": "<cpu-pid>",
+            "start_us": 2130446239426.587,
+            "tid": "<cpu-tid>"
+          },
+          "cuda_api_count": 36,
+          "cuda_api_union_us_unclamped": 111.58837890625,
+          "cuda_graph_launch_count": 16,
+          "first_kernel_start_from_cpu_marker_us": 88.150146484375,
+          "geometry_interpretation": "A negative signed_cpu_tail_after_last_kernel_us is retained as a clock/boundary violation. It is not negative GPU time.",
+          "geometry_valid_for_aggregate": true,
+          "gpu_kernel_span_us_unclamped": 686.527099609375,
+          "invocation_index": 2,
+          "kernel_active_union_us_unclamped": 197.789794921875,
+          "kernel_count": 32,
+          "signed_cpu_tail_after_last_kernel_us": 19.11279296875
+        },
+        {
+          "boundary_violations": [],
+          "cpu_marker": {
+            "duration_us": 649.5419921875,
+            "end_us": 2130446240878.459,
+            "event_index": 287,
+            "pid": "<cpu-pid>",
+            "start_us": 2130446240228.917,
+            "tid": "<cpu-tid>"
+          },
+          "cuda_api_count": 36,
+          "cuda_api_union_us_unclamped": 99.087890625,
+          "cuda_graph_launch_count": 16,
+          "first_kernel_start_from_cpu_marker_us": 71.739013671875,
+          "geometry_interpretation": "A negative signed_cpu_tail_after_last_kernel_us is retained as a clock/boundary violation. It is not negative GPU time.",
+          "geometry_valid_for_aggregate": true,
+          "gpu_kernel_span_us_unclamped": 562.111083984375,
+          "invocation_index": 3,
+          "kernel_active_union_us_unclamped": 196.990966796875,
+          "kernel_count": 32,
+          "signed_cpu_tail_after_last_kernel_us": 15.69189453125
+        },
+        {
+          "boundary_violations": [],
+          "cpu_marker": {
+            "duration_us": 618.761962890625,
+            "end_us": 2130446241503.181,
+            "event_index": 402,
+            "pid": "<cpu-pid>",
+            "start_us": 2130446240884.419,
+            "tid": "<cpu-tid>"
+          },
+          "cuda_api_count": 36,
+          "cuda_api_union_us_unclamped": 95.09716796875,
+          "cuda_graph_launch_count": 16,
+          "first_kernel_start_from_cpu_marker_us": 58.5400390625,
+          "geometry_interpretation": "A negative signed_cpu_tail_after_last_kernel_us is retained as a clock/boundary violation. It is not negative GPU time.",
+          "geometry_valid_for_aggregate": true,
+          "gpu_kernel_span_us_unclamped": 552.607177734375,
+          "invocation_index": 4,
+          "kernel_active_union_us_unclamped": 198.07861328125,
+          "kernel_count": 32,
+          "signed_cpu_tail_after_last_kernel_us": 7.61474609375
+        },
+        {
+          "boundary_violations": [],
+          "cpu_marker": {
+            "duration_us": 627.19189453125,
+            "end_us": 2130446242135.8828,
+            "event_index": 517,
+            "pid": "<cpu-pid>",
+            "start_us": 2130446241508.691,
+            "tid": "<cpu-tid>"
+          },
+          "cuda_api_count": 36,
+          "cuda_api_union_us_unclamped": 96.569091796875,
+          "cuda_graph_launch_count": 16,
+          "first_kernel_start_from_cpu_marker_us": 54.235107421875,
+          "geometry_interpretation": "A negative signed_cpu_tail_after_last_kernel_us is retained as a clock/boundary violation. It is not negative GPU time.",
+          "geometry_valid_for_aggregate": true,
+          "gpu_kernel_span_us_unclamped": 565.5029296875,
+          "invocation_index": 5,
+          "kernel_active_union_us_unclamped": 197.794677734375,
+          "kernel_count": 32,
+          "signed_cpu_tail_after_last_kernel_us": 7.453857421875
+        }
+      ],
+      "claim_limit": "Show all five records and exclusions. Do not quote sums over valid-only invocations as whole-capture attribution or a causal percentage.",
+      "corrected_output": {
+        "bytes": 57249,
+        "device": "<operational-device>",
+        "inode": "<operational-inode>",
+        "mode": "<operational-mode>",
+        "mtime_ns": "<operational-mtime_ns>",
+        "path": "original-flag0.corrected-profile.json",
+        "sha256": "a72f05c53438b7e8c4507df567d7159dbedf817f3ac0ea4d10d6508553526d93"
+      },
+      "enabled": 0,
+      "excluded_invocation_indices": [],
+      "exclusion_counts": {
+        "ambiguous_kernel_correlations_or_containment": 0,
+        "cuda_api_boundary_violations": 0,
+        "kernel_boundary_violations": 0,
+        "malformed_cuda_api_events": 0,
+        "malformed_kernel_events": 0,
+        "unassigned_cuda_api_events": 2,
+        "unassigned_kernel_events": 0
+      },
+      "reader_status": "PASS",
+      "seed": 0,
+      "source_trace": {
+        "bytes": 424220,
+        "mapping_event_count": 1326,
+        "path": "profile.chrome.json",
+        "raw_event_count": 1326,
+        "sha256": "36decead907c0a96ca81b5df856d3467f807bbc6466d0cf167efe6c7d5cffe2f"
+      },
+      "valid_geometry_count": 5,
+      "variant": "original"
+    },
+    {
+      "all_five_invocations": [
+        {
+          "boundary_violations": [],
+          "cpu_marker": {
+            "duration_us": 1749.947998046875,
+            "end_us": 2130453099104.101,
+            "event_index": 57,
+            "pid": "<cpu-pid>",
+            "start_us": 2130453097354.153,
+            "tid": "<cpu-tid>"
+          },
+          "cuda_api_count": 8,
+          "cuda_api_union_us_unclamped": 86.669189453125,
+          "cuda_graph_launch_count": 2,
+          "first_kernel_start_from_cpu_marker_us": 1462.2998046875,
+          "geometry_interpretation": "A negative signed_cpu_tail_after_last_kernel_us is retained as a clock/boundary violation. It is not negative GPU time.",
+          "geometry_valid_for_aggregate": true,
+          "gpu_kernel_span_us_unclamped": 212.4140625,
+          "invocation_index": 1,
+          "kernel_active_union_us_unclamped": 54.783935546875,
+          "kernel_count": 4,
+          "signed_cpu_tail_after_last_kernel_us": 75.234130859375
+        },
+        {
+          "boundary_violations": [],
+          "cpu_marker": {
+            "duration_us": 215.876953125,
+            "end_us": 2130453099339.728,
+            "event_index": 72,
+            "pid": "<cpu-pid>",
+            "start_us": 2130453099123.851,
+            "tid": "<cpu-tid>"
+          },
+          "cuda_api_count": 8,
+          "cuda_api_union_us_unclamped": 29.60986328125,
+          "cuda_graph_launch_count": 2,
+          "first_kernel_start_from_cpu_marker_us": 98.551025390625,
+          "geometry_interpretation": "A negative signed_cpu_tail_after_last_kernel_us is retained as a clock/boundary violation. It is not negative GPU time.",
+          "geometry_valid_for_aggregate": true,
+          "gpu_kernel_span_us_unclamped": 108.286865234375,
+          "invocation_index": 2,
+          "kernel_active_union_us_unclamped": 54.4951171875,
+          "kernel_count": 4,
+          "signed_cpu_tail_after_last_kernel_us": 9.0390625
+        },
+        {
+          "boundary_violations": [
+            {
+              "assignment": "runtime_correlation",
+              "cpu_tail_after_event_end_us": -3.80322265625,
+              "end_from_cpu_marker_end_us": 3.80322265625,
+              "event": {
+                "category": "kernel",
+                "correlation": "130",
+                "dur": 18.496,
+                "event_index": 197,
+                "name": "triton_poi_fused_add_cos_mul_sin_0",
+                "phase": "X",
+                "pid": 0,
+                "tid": 7,
+                "ts": 2130453099475.903
+              },
+              "fully_contained": false,
+              "interpretation": "Signed deltas are retained. A positive end_from_cpu_marker_end_us means the event ended after the CPU marker. It is a boundary/clock issue, not negative GPU time.",
+              "invocation_index": 3,
+              "start_from_cpu_marker_start_us": 128.445068359375
+            }
+          ],
+          "cpu_marker": {
+            "duration_us": 143.137939453125,
+            "end_us": 2130453099490.596,
+            "event_index": 87,
+            "pid": "<cpu-pid>",
+            "start_us": 2130453099347.458,
+            "tid": "<cpu-tid>"
+          },
+          "cuda_api_count": 8,
+          "cuda_api_union_us_unclamped": 18.89990234375,
+          "cuda_graph_launch_count": 2,
+          "first_kernel_start_from_cpu_marker_us": 66.6220703125,
+          "geometry_interpretation": "A negative signed_cpu_tail_after_last_kernel_us is retained as a clock/boundary violation. It is not negative GPU time.",
+          "geometry_valid_for_aggregate": false,
+          "gpu_kernel_span_us_unclamped": 80.319091796875,
+          "invocation_index": 3,
+          "kernel_active_union_us_unclamped": 53.951171875,
+          "kernel_count": 4,
+          "signed_cpu_tail_after_last_kernel_us": -3.80322265625
+        },
+        {
+          "boundary_violations": [
+            {
+              "assignment": "runtime_correlation",
+              "cpu_tail_after_event_end_us": -6.722900390625,
+              "end_from_cpu_marker_end_us": 6.722900390625,
+              "event": {
+                "category": "kernel",
+                "correlation": "178",
+                "dur": 18.912,
+                "event_index": 221,
+                "name": "triton_poi_fused_add_cos_mul_sin_0",
+                "phase": "X",
+                "pid": 0,
+                "tid": 7,
+                "ts": 2130453099610.046
+              },
+              "fully_contained": false,
+              "interpretation": "Signed deltas are retained. A positive end_from_cpu_marker_end_us means the event ended after the CPU marker. It is a boundary/clock issue, not negative GPU time.",
+              "invocation_index": 4,
+              "start_from_cpu_marker_start_us": 114.14990234375
+            }
+          ],
+          "cpu_marker": {
+            "duration_us": 126.339111328125,
+            "end_us": 2130453099622.235,
+            "event_index": 102,
+            "pid": "<cpu-pid>",
+            "start_us": 2130453099495.896,
+            "tid": "<cpu-tid>"
+          },
+          "cuda_api_count": 8,
+          "cuda_api_union_us_unclamped": 17.650146484375,
+          "cuda_graph_launch_count": 2,
+          "first_kernel_start_from_cpu_marker_us": 54.72705078125,
+          "geometry_interpretation": "A negative signed_cpu_tail_after_last_kernel_us is retained as a clock/boundary violation. It is not negative GPU time.",
+          "geometry_valid_for_aggregate": false,
+          "gpu_kernel_span_us_unclamped": 78.3349609375,
+          "invocation_index": 4,
+          "kernel_active_union_us_unclamped": 54.3671875,
+          "kernel_count": 4,
+          "signed_cpu_tail_after_last_kernel_us": -6.722900390625
+        },
+        {
+          "boundary_violations": [
+            {
+              "assignment": "runtime_correlation",
+              "cpu_tail_after_event_end_us": -9.119873046875,
+              "end_from_cpu_marker_end_us": 9.119873046875,
+              "event": {
+                "category": "kernel",
+                "correlation": "226",
+                "dur": 18.88,
+                "event_index": 245,
+                "name": "triton_poi_fused_add_cos_mul_sin_0",
+                "phase": "X",
+                "pid": 0,
+                "tid": 7,
+                "ts": 2130453099734.973
+              },
+              "fully_contained": false,
+              "interpretation": "Signed deltas are retained. A positive end_from_cpu_marker_end_us means the event ended after the CPU marker. It is a boundary/clock issue, not negative GPU time.",
+              "invocation_index": 5,
+              "start_from_cpu_marker_start_us": 108.31787109375
+            }
+          ],
+          "cpu_marker": {
+            "duration_us": 118.077880859375,
+            "end_us": 2130453099744.733,
+            "event_index": 117,
+            "pid": "<cpu-pid>",
+            "start_us": 2130453099626.655,
+            "tid": "<cpu-tid>"
+          },
+          "cuda_api_count": 8,
+          "cuda_api_union_us_unclamped": 17.710205078125,
+          "cuda_graph_launch_count": 2,
+          "first_kernel_start_from_cpu_marker_us": 52.73388671875,
+          "geometry_interpretation": "A negative signed_cpu_tail_after_last_kernel_us is retained as a clock/boundary violation. It is not negative GPU time.",
+          "geometry_valid_for_aggregate": false,
+          "gpu_kernel_span_us_unclamped": 74.4638671875,
+          "invocation_index": 5,
+          "kernel_active_union_us_unclamped": 54.911865234375,
+          "kernel_count": 4,
+          "signed_cpu_tail_after_last_kernel_us": -9.119873046875
+        }
+      ],
+      "claim_limit": "Show all five records and exclusions. Do not quote sums over valid-only invocations as whole-capture attribution or a causal percentage.",
+      "corrected_output": {
+        "bytes": 20461,
+        "device": "<operational-device>",
+        "inode": "<operational-inode>",
+        "mode": "<operational-mode>",
+        "mtime_ns": "<operational-mtime_ns>",
+        "path": "original-flag1.corrected-profile.json",
+        "sha256": "931ab8d0f6fd3dd7ecd3d776ac50329745514126fafdf564135a9f580e73299a"
+      },
+      "enabled": 1,
+      "excluded_invocation_indices": [
+        3,
+        4,
+        5
+      ],
+      "exclusion_counts": {
+        "ambiguous_kernel_correlations_or_containment": 0,
+        "cuda_api_boundary_violations": 0,
+        "kernel_boundary_violations": 3,
+        "malformed_cuda_api_events": 0,
+        "malformed_kernel_events": 0,
+        "unassigned_cuda_api_events": 2,
+        "unassigned_kernel_events": 0
+      },
+      "reader_status": "PASS_WITH_BOUNDARY_EXCLUSIONS",
+      "seed": 0,
+      "source_trace": {
+        "bytes": 71888,
+        "mapping_event_count": 266,
+        "path": "profile.chrome.json",
+        "raw_event_count": 266,
+        "sha256": "b53d52a5e1ca6772c48a6f0c62b205d13621de008d451816eec8cc254318cd71"
+      },
+      "valid_geometry_count": 2,
+      "variant": "original"
+    },
+    {
+      "all_five_invocations": [
+        {
+          "boundary_violations": [],
+          "cpu_marker": {
+            "duration_us": 2189.64208984375,
+            "end_us": 2130785140997.8372,
+            "event_index": 57,
+            "pid": "<cpu-pid>",
+            "start_us": 2130785138808.195,
+            "tid": "<cpu-tid>"
+          },
+          "cuda_api_count": 20,
+          "cuda_api_union_us_unclamped": 73.4599609375,
+          "cuda_graph_launch_count": 0,
+          "first_kernel_start_from_cpu_marker_us": 1394.058837890625,
+          "geometry_interpretation": "A negative signed_cpu_tail_after_last_kernel_us is retained as a clock/boundary violation. It is not negative GPU time.",
+          "geometry_valid_for_aggregate": true,
+          "gpu_kernel_span_us_unclamped": 725.734130859375,
+          "invocation_index": 1,
+          "kernel_active_union_us_unclamped": 63.55322265625,
+          "kernel_count": 16,
+          "signed_cpu_tail_after_last_kernel_us": 69.84912109375
+        },
+        {
+          "boundary_violations": [],
+          "cpu_marker": {
+            "duration_us": 519.5029296875,
+            "end_us": 2130785141534.48,
+            "event_index": 156,
+            "pid": "<cpu-pid>",
+            "start_us": 2130785141014.977,
+            "tid": "<cpu-tid>"
+          },
+          "cuda_api_count": 20,
+          "cuda_api_union_us_unclamped": 41.710205078125,
+          "cuda_graph_launch_count": 0,
+          "first_kernel_start_from_cpu_marker_us": 70.035888671875,
+          "geometry_interpretation": "A negative signed_cpu_tail_after_last_kernel_us is retained as a clock/boundary violation. It is not negative GPU time.",
+          "geometry_valid_for_aggregate": true,
+          "gpu_kernel_span_us_unclamped": 431.01123046875,
+          "invocation_index": 2,
+          "kernel_active_union_us_unclamped": 63.519775390625,
+          "kernel_count": 16,
+          "signed_cpu_tail_after_last_kernel_us": 18.455810546875
+        },
+        {
+          "boundary_violations": [],
+          "cpu_marker": {
+            "duration_us": 452.174072265625,
+            "end_us": 2130785141993.864,
+            "event_index": 255,
+            "pid": "<cpu-pid>",
+            "start_us": 2130785141541.69,
+            "tid": "<cpu-tid>"
+          },
+          "cuda_api_count": 20,
+          "cuda_api_union_us_unclamped": 39.31982421875,
+          "cuda_graph_launch_count": 0,
+          "first_kernel_start_from_cpu_marker_us": 49.983154296875,
+          "geometry_interpretation": "A negative signed_cpu_tail_after_last_kernel_us is retained as a clock/boundary violation. It is not negative GPU time.",
+          "geometry_valid_for_aggregate": true,
+          "gpu_kernel_span_us_unclamped": 387.201904296875,
+          "invocation_index": 3,
+          "kernel_active_union_us_unclamped": 63.520751953125,
+          "kernel_count": 16,
+          "signed_cpu_tail_after_last_kernel_us": 14.989013671875
+        },
+        {
+          "boundary_violations": [],
+          "cpu_marker": {
+            "duration_us": 427.77490234375,
+            "end_us": 2130785142427.199,
+            "event_index": 354,
+            "pid": "<cpu-pid>",
+            "start_us": 2130785141999.424,
+            "tid": "<cpu-tid>"
+          },
+          "cuda_api_count": 20,
+          "cuda_api_union_us_unclamped": 38.748046875,
+          "cuda_graph_launch_count": 0,
+          "first_kernel_start_from_cpu_marker_us": 44.85986328125,
+          "geometry_interpretation": "A negative signed_cpu_tail_after_last_kernel_us is retained as a clock/boundary violation. It is not negative GPU time.",
+          "geometry_valid_for_aggregate": true,
+          "gpu_kernel_span_us_unclamped": 370.883056640625,
+          "invocation_index": 4,
+          "kernel_active_union_us_unclamped": 63.71533203125,
+          "kernel_count": 16,
+          "signed_cpu_tail_after_last_kernel_us": 12.031982421875
+        },
+        {
+          "boundary_violations": [],
+          "cpu_marker": {
+            "duration_us": 415.64501953125,
+            "end_us": 2130785142856.513,
+            "event_index": 453,
+            "pid": "<cpu-pid>",
+            "start_us": 2130785142440.868,
+            "tid": "<cpu-tid>"
+          },
+          "cuda_api_count": 20,
+          "cuda_api_union_us_unclamped": 39.66845703125,
+          "cuda_graph_launch_count": 0,
+          "first_kernel_start_from_cpu_marker_us": 44.507080078125,
+          "geometry_interpretation": "A negative signed_cpu_tail_after_last_kernel_us is retained as a clock/boundary violation. It is not negative GPU time.",
+          "geometry_valid_for_aggregate": true,
+          "gpu_kernel_span_us_unclamped": 358.850830078125,
+          "invocation_index": 5,
+          "kernel_active_union_us_unclamped": 63.488037109375,
+          "kernel_count": 16,
+          "signed_cpu_tail_after_last_kernel_us": 12.287109375
+        }
+      ],
+      "claim_limit": "Show all five records and exclusions. Do not quote sums over valid-only invocations as whole-capture attribution or a causal percentage.",
+      "corrected_output": {
+        "bytes": 33381,
+        "device": "<operational-device>",
+        "inode": "<operational-inode>",
+        "mode": "<operational-mode>",
+        "mtime_ns": "<operational-mtime_ns>",
+        "path": "no-cudagraph-flag0.corrected-profile.json",
+        "sha256": "4c4bf43f9757ad98b8f1be843f39bb772de2979bad2b61ddf55966ff17112892"
+      },
+      "enabled": 0,
+      "excluded_invocation_indices": [],
+      "exclusion_counts": {
+        "ambiguous_kernel_correlations_or_containment": 0,
+        "cuda_api_boundary_violations": 0,
+        "kernel_boundary_violations": 0,
+        "malformed_cuda_api_events": 0,
+        "malformed_kernel_events": 0,
+        "unassigned_cuda_api_events": 2,
+        "unassigned_kernel_events": 0
+      },
+      "reader_status": "PASS",
+      "seed": 0,
+      "source_trace": {
+        "bytes": 263608,
+        "mapping_event_count": 926,
+        "path": "profile.chrome.json",
+        "raw_event_count": 926,
+        "sha256": "3c0184961d37713e573d838e6cb0a85a4d3eab3864db1859be0a8c9fbaf3fe9d"
+      },
+      "valid_geometry_count": 5,
+      "variant": "no-cudagraph"
+    },
+    {
+      "all_five_invocations": [
+        {
+          "boundary_violations": [],
+          "cpu_marker": {
+            "duration_us": 1583.6298828125,
+            "end_us": 2130791622593.0608,
+            "event_index": 57,
+            "pid": "<cpu-pid>",
+            "start_us": 2130791621009.431,
+            "tid": "<cpu-tid>"
+          },
+          "cuda_api_count": 6,
+          "cuda_api_union_us_unclamped": 39.618896484375,
+          "cuda_graph_launch_count": 0,
+          "first_kernel_start_from_cpu_marker_us": 1391.22802734375,
+          "geometry_interpretation": "A negative signed_cpu_tail_after_last_kernel_us is retained as a clock/boundary violation. It is not negative GPU time.",
+          "geometry_valid_for_aggregate": true,
+          "gpu_kernel_span_us_unclamped": 131.39111328125,
+          "invocation_index": 1,
+          "kernel_active_union_us_unclamped": 37.6630859375,
+          "kernel_count": 2,
+          "signed_cpu_tail_after_last_kernel_us": 61.0107421875
+        },
+        {
+          "boundary_violations": [],
+          "cpu_marker": {
+            "duration_us": 136.72802734375,
+            "end_us": 2130791622748.219,
+            "event_index": 70,
+            "pid": "<cpu-pid>",
+            "start_us": 2130791622611.491,
+            "tid": "<cpu-tid>"
+          },
+          "cuda_api_count": 6,
+          "cuda_api_union_us_unclamped": 10.519775390625,
+          "cuda_graph_launch_count": 0,
+          "first_kernel_start_from_cpu_marker_us": 70.4140625,
+          "geometry_interpretation": "A negative signed_cpu_tail_after_last_kernel_us is retained as a clock/boundary violation. It is not negative GPU time.",
+          "geometry_valid_for_aggregate": true,
+          "gpu_kernel_span_us_unclamped": 60.927001953125,
+          "invocation_index": 2,
+          "kernel_active_union_us_unclamped": 38.01611328125,
+          "kernel_count": 2,
+          "signed_cpu_tail_after_last_kernel_us": 5.386962890625
+        },
+        {
+          "boundary_violations": [
+            {
+              "assignment": "runtime_correlation",
+              "cpu_tail_after_event_end_us": -3.950927734375,
+              "end_from_cpu_marker_end_us": 3.950927734375,
+              "event": {
+                "category": "kernel",
+                "correlation": "128",
+                "dur": 18.656,
+                "event_index": 163,
+                "name": "triton_poi_fused_add_cos_mul_sin_0",
+                "phase": "X",
+                "pid": 0,
+                "tid": 7,
+                "ts": 2130791622837.072
+              },
+              "fully_contained": false,
+              "interpretation": "Signed deltas are retained. A positive end_from_cpu_marker_end_us means the event ended after the CPU marker. It is a boundary/clock issue, not negative GPU time.",
+              "invocation_index": 3,
+              "start_from_cpu_marker_start_us": 82.262939453125
+            }
+          ],
+          "cpu_marker": {
+            "duration_us": 96.968017578125,
+            "end_us": 2130791622851.777,
+            "event_index": 83,
+            "pid": "<cpu-pid>",
+            "start_us": 2130791622754.809,
+            "tid": "<cpu-tid>"
+          },
+          "cuda_api_count": 6,
+          "cuda_api_union_us_unclamped": 8.35009765625,
+          "cuda_graph_launch_count": 0,
+          "first_kernel_start_from_cpu_marker_us": 47.286865234375,
+          "geometry_interpretation": "A negative signed_cpu_tail_after_last_kernel_us is retained as a clock/boundary violation. It is not negative GPU time.",
+          "geometry_valid_for_aggregate": false,
+          "gpu_kernel_span_us_unclamped": 53.632080078125,
+          "invocation_index": 3,
+          "kernel_active_union_us_unclamped": 37.152099609375,
+          "kernel_count": 2,
+          "signed_cpu_tail_after_last_kernel_us": -3.950927734375
+        },
+        {
+          "boundary_violations": [
+            {
+              "assignment": "runtime_correlation",
+              "cpu_tail_after_event_end_us": -2.754638671875,
+              "end_from_cpu_marker_end_us": 2.754638671875,
+              "event": {
+                "category": "kernel",
+                "correlation": "175",
+                "dur": 18.848,
+                "event_index": 179,
+                "name": "triton_poi_fused_add_cos_mul_sin_0",
+                "phase": "X",
+                "pid": 0,
+                "tid": 7,
+                "ts": 2130791622942.223
+              },
+              "fully_contained": false,
+              "interpretation": "Signed deltas are retained. A positive end_from_cpu_marker_end_us means the event ended after the CPU marker. It is a boundary/clock issue, not negative GPU time.",
+              "invocation_index": 4,
+              "start_from_cpu_marker_start_us": 85.73583984375
+            }
+          ],
+          "cpu_marker": {
+            "duration_us": 101.8291015625,
+            "end_us": 2130791622958.3162,
+            "event_index": 96,
+            "pid": "<cpu-pid>",
+            "start_us": 2130791622856.487,
+            "tid": "<cpu-tid>"
+          },
+          "cuda_api_count": 6,
+          "cuda_api_union_us_unclamped": 8.28955078125,
+          "cuda_graph_launch_count": 0,
+          "first_kernel_start_from_cpu_marker_us": 53.35205078125,
+          "geometry_interpretation": "A negative signed_cpu_tail_after_last_kernel_us is retained as a clock/boundary violation. It is not negative GPU time.",
+          "geometry_valid_for_aggregate": false,
+          "gpu_kernel_span_us_unclamped": 51.231689453125,
+          "invocation_index": 4,
+          "kernel_active_union_us_unclamped": 37.471923828125,
+          "kernel_count": 2,
+          "signed_cpu_tail_after_last_kernel_us": -2.754638671875
+        },
+        {
+          "boundary_violations": [
+            {
+              "assignment": "runtime_correlation",
+              "cpu_tail_after_event_end_us": -5.656982421875,
+              "end_from_cpu_marker_end_us": 5.656982421875,
+              "event": {
+                "category": "kernel",
+                "correlation": "222",
+                "dur": 18.623,
+                "event_index": 195,
+                "name": "triton_poi_fused_add_cos_mul_sin_0",
+                "phase": "X",
+                "pid": 0,
+                "tid": 7,
+                "ts": 2130791623034.159
+              },
+              "fully_contained": false,
+              "interpretation": "Signed deltas are retained. A positive end_from_cpu_marker_end_us means the event ended after the CPU marker. It is a boundary/clock issue, not negative GPU time.",
+              "invocation_index": 5,
+              "start_from_cpu_marker_start_us": 70.98291015625
+            }
+          ],
+          "cpu_marker": {
+            "duration_us": 83.948974609375,
+            "end_us": 2130791623047.125,
+            "event_index": 109,
+            "pid": "<cpu-pid>",
+            "start_us": 2130791622963.176,
+            "tid": "<cpu-tid>"
+          },
+          "cuda_api_count": 6,
+          "cuda_api_union_us_unclamped": 7.619873046875,
+          "cuda_graph_launch_count": 0,
+          "first_kernel_start_from_cpu_marker_us": 40.294921875,
+          "geometry_interpretation": "A negative signed_cpu_tail_after_last_kernel_us is retained as a clock/boundary violation. It is not negative GPU time.",
+          "geometry_valid_for_aggregate": false,
+          "gpu_kernel_span_us_unclamped": 49.31103515625,
+          "invocation_index": 5,
+          "kernel_active_union_us_unclamped": 37.791015625,
+          "kernel_count": 2,
+          "signed_cpu_tail_after_last_kernel_us": -5.656982421875
+        }
+      ],
+      "claim_limit": "Show all five records and exclusions. Do not quote sums over valid-only invocations as whole-capture attribution or a causal percentage.",
+      "corrected_output": {
+        "bytes": 17516,
+        "device": "<operational-device>",
+        "inode": "<operational-inode>",
+        "mode": "<operational-mode>",
+        "mtime_ns": "<operational-mtime_ns>",
+        "path": "no-cudagraph-flag1.corrected-profile.json",
+        "sha256": "27738640b9b59a4c86d5b094c838221d4c859c12e73c659e178c7c8bd87d8103"
+      },
+      "enabled": 1,
+      "excluded_invocation_indices": [
+        3,
+        4,
+        5
+      ],
+      "exclusion_counts": {
+        "ambiguous_kernel_correlations_or_containment": 0,
+        "cuda_api_boundary_violations": 0,
+        "kernel_boundary_violations": 3,
+        "malformed_cuda_api_events": 0,
+        "malformed_kernel_events": 0,
+        "unassigned_cuda_api_events": 2,
+        "unassigned_kernel_events": 0
+      },
+      "reader_status": "PASS_WITH_BOUNDARY_EXCLUSIONS",
+      "seed": 0,
+      "source_trace": {
+        "bytes": 51855,
+        "mapping_event_count": 216,
+        "path": "profile.chrome.json",
+        "raw_event_count": 216,
+        "sha256": "34113b484bbd9e829e6d35ae432b9917d1c112cc90c26c688695ba1a25220f26"
+      },
+      "valid_geometry_count": 2,
+      "variant": "no-cudagraph"
+    }
+  ],
+  "publication": {
+    "operation": "Copy scientific values. Redact operational metadata. No statistical analysis or unit conversion.",
+    "schema": "nested-graph-followup-public-summary/v1",
+    "source_compact_sha256": "d7518190c33b30383171cb30649512ac32da63432ba448ba1084290cebf2cbec"
+  },
+  "schema": "display-projection-of-B200-draft-answer-data/v1",
+  "source_sha256": "e77c4b0260c86fae0883e2f5e860a3d6d9299715e00cb0dbb9faddb8b391323e",
+  "status": "COMPLETE_WITH_EXPLICIT_PROFILE_BOUNDARY_EXCLUSIONS",
+  "superseded_limit": {
+    "recorded_text": "Profile geometry reader correction remains pending. No additive causal percentage.",
+    "resolution": "Corrected reader completed on all four retained traces. Boundary exclusions remain explicit. No causal percentage follows."
+  },
+  "tail_cells": [
+    {
+      "case": "nested_break_depth8",
+      "enabled": 0,
+      "first_call_ns": 4133729466,
+      "median_synchronized_call_ns": 405980.5,
+      "median_synchronized_call_us": 405.9805,
+      "raw_result": {
+        "bytes": 208174,
+        "device": "<operational-device>",
+        "inode": "<operational-inode>",
+        "mode": "<operational-mode>",
+        "mtime_ns": "<operational-mtime_ns>",
+        "path": "result.json",
+        "sha256": "c01578ee2f60b58caa38250be924d2837a81d2588177d581a56e6004a9eecab2"
+      },
+      "seed": 0,
+      "tail_calls": 1000,
+      "variant": "original"
+    },
+    {
+      "case": "nested_break_depth8",
+      "enabled": 1,
+      "first_call_ns": 3280188064,
+      "median_synchronized_call_ns": 89129.0,
+      "median_synchronized_call_us": 89.129,
+      "raw_result": {
+        "bytes": 204182,
+        "device": "<operational-device>",
+        "inode": "<operational-inode>",
+        "mode": "<operational-mode>",
+        "mtime_ns": "<operational-mtime_ns>",
+        "path": "result.json",
+        "sha256": "990303416956c8dfe2f956bf415e3d344a3241b24dd08eac91a15a45f1e97bc7"
+      },
+      "seed": 0,
+      "tail_calls": 1000,
+      "variant": "original"
+    },
+    {
+      "case": "nested_break_depth8",
+      "enabled": 0,
+      "first_call_ns": 2471558578,
+      "median_synchronized_call_ns": 392255.5,
+      "median_synchronized_call_us": 392.2555,
+      "raw_result": {
+        "bytes": 208177,
+        "device": "<operational-device>",
+        "inode": "<operational-inode>",
+        "mode": "<operational-mode>",
+        "mtime_ns": "<operational-mtime_ns>",
+        "path": "result.json",
+        "sha256": "40bfd87775752e84ce1dadc6703cbd79a8fc9363f3f063f5ecfcd17d83bf897d"
+      },
+      "seed": 1,
+      "tail_calls": 1000,
+      "variant": "original"
+    },
+    {
+      "case": "nested_break_depth8",
+      "enabled": 1,
+      "first_call_ns": 3414538891,
+      "median_synchronized_call_ns": 89523.5,
+      "median_synchronized_call_us": 89.5235,
+      "raw_result": {
+        "bytes": 204187,
+        "device": "<operational-device>",
+        "inode": "<operational-inode>",
+        "mode": "<operational-mode>",
+        "mtime_ns": "<operational-mtime_ns>",
+        "path": "result.json",
+        "sha256": "1b69ad9867633f95b474718e69c7d16b6d6ba75e02f490eed0309c348ce19862"
+      },
+      "seed": 1,
+      "tail_calls": 1000,
+      "variant": "original"
+    },
+    {
+      "case": "nested_break_depth8",
+      "enabled": 0,
+      "first_call_ns": 2447158601,
+      "median_synchronized_call_ns": 177278.0,
+      "median_synchronized_call_us": 177.278,
+      "raw_result": {
+        "bytes": 208271,
+        "device": "<operational-device>",
+        "inode": "<operational-inode>",
+        "mode": "<operational-mode>",
+        "mtime_ns": "<operational-mtime_ns>",
+        "path": "result.json",
+        "sha256": "bc8b25a5ef800655ba3f28cc1e243bf034dea8b1fa5242f3e2beb1d49132ab62"
+      },
+      "seed": 0,
+      "tail_calls": 1000,
+      "variant": "no-cudagraph"
+    },
+    {
+      "case": "nested_break_depth8",
+      "enabled": 1,
+      "first_call_ns": 3222995669,
+      "median_synchronized_call_ns": 53899.5,
+      "median_synchronized_call_us": 53.8995,
+      "raw_result": {
+        "bytes": 204271,
+        "device": "<operational-device>",
+        "inode": "<operational-inode>",
+        "mode": "<operational-mode>",
+        "mtime_ns": "<operational-mtime_ns>",
+        "path": "result.json",
+        "sha256": "dafb19ab6f578133b5a917f19fb55caa46fa37ca209980eb787d7676f0cc9258"
+      },
+      "seed": 0,
+      "tail_calls": 1000,
+      "variant": "no-cudagraph"
+    },
+    {
+      "case": "nested_break_depth8",
+      "enabled": 0,
+      "first_call_ns": 2468973377,
+      "median_synchronized_call_ns": 175962.5,
+      "median_synchronized_call_us": 175.9625,
+      "raw_result": {
+        "bytes": 208273,
+        "device": "<operational-device>",
+        "inode": "<operational-inode>",
+        "mode": "<operational-mode>",
+        "mtime_ns": "<operational-mtime_ns>",
+        "path": "result.json",
+        "sha256": "7c0cb3c2df2cf18e815f53fe2c6e1a94074c509014aec428e7a15e29a2c039aa"
+      },
+      "seed": 1,
+      "tail_calls": 1000,
+      "variant": "no-cudagraph"
+    },
+    {
+      "case": "nested_break_depth8",
+      "enabled": 1,
+      "first_call_ns": 3342088811,
+      "median_synchronized_call_ns": 53850.0,
+      "median_synchronized_call_us": 53.85,
+      "raw_result": {
+        "bytes": 204274,
+        "device": "<operational-device>",
+        "inode": "<operational-inode>",
+        "mode": "<operational-mode>",
+        "mtime_ns": "<operational-mtime_ns>",
+        "path": "result.json",
+        "sha256": "a3ff20171e96a427b5948ba9fdfd92be2e32e6a97552d11115910d7eb16c3a7d"
+      },
+      "seed": 1,
+      "tail_calls": 1000,
+      "variant": "no-cudagraph"
+    }
+  ],
+  "tail_pairs": [
+    {
+      "baseline_median_ns": 405980.5,
+      "baseline_minus_candidate_ns": 316851.5,
+      "baseline_over_candidate_ratio": 4.554976494743574,
+      "candidate_median_ns": 89129.0,
+      "scope": "Descriptive paired tail only. Not startup-inclusive, no population claim.",
+      "seed": 0,
+      "tail_calls": 1000,
+      "variant": "original"
+    },
+    {
+      "baseline_median_ns": 392255.5,
+      "baseline_minus_candidate_ns": 302732.0,
+      "baseline_over_candidate_ratio": 4.381592542740174,
+      "candidate_median_ns": 89523.5,
+      "scope": "Descriptive paired tail only. Not startup-inclusive, no population claim.",
+      "seed": 1,
+      "tail_calls": 1000,
+      "variant": "original"
+    },
+    {
+      "baseline_median_ns": 177278.0,
+      "baseline_minus_candidate_ns": 123378.5,
+      "baseline_over_candidate_ratio": 3.289047208230132,
+      "candidate_median_ns": 53899.5,
+      "scope": "Descriptive paired tail only. Not startup-inclusive, no population claim.",
+      "seed": 0,
+      "tail_calls": 1000,
+      "variant": "no-cudagraph"
+    },
+    {
+      "baseline_median_ns": 175962.5,
+      "baseline_minus_candidate_ns": 122112.5,
+      "baseline_over_candidate_ratio": 3.2676415970287835,
+      "candidate_median_ns": 53850.0,
+      "scope": "Descriptive paired tail only. Not startup-inclusive, no population claim.",
+      "seed": 1,
+      "tail_calls": 1000,
+      "variant": "no-cudagraph"
+    }
+  ],
+  "tail_rule": "Median of last1000raw synchronized intervals for every timeline cell, same tail across all8cells. Descriptive only, no new pass gate. No seed pooling, selection, clipping, or historical4.53x replacement."
+}
