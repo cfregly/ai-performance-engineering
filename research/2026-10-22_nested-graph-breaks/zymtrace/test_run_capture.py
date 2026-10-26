@@ -96,6 +96,18 @@ class WorkerOps(SignalOps):
 
 
 class RunCaptureTest(unittest.TestCase):
+    def test_empty_config_set_success_still_requires_readback(self) -> None:
+        ops = RequestOps([(200, b"")])
+        raw, value = run_capture._request_json(
+            ops, "POST", run_capture.CONFIG_SET_PATH, {"config": {}}
+        )
+        self.assertEqual(raw, b"")
+        self.assertIsNone(value)
+        with self.assertRaisesRegex(run_capture.CaptureError, "invalid JSON"):
+            run_capture._request_json(
+                RequestOps([(200, b"")]), "GET", run_capture.CONFIG_GET_PATH, {}
+            )
+
     def setUp(self) -> None:
         self.temporary = tempfile.TemporaryDirectory()
         self.root = Path(self.temporary.name)

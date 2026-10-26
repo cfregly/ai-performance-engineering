@@ -254,6 +254,8 @@ def _request_json(ops: SystemOps, method: str, path: str, payload: Any) -> tuple
     status, raw = ops.request(method, path, payload)
     if status != 200:
         raise CaptureError(f"{method} {path} returned HTTP {status}")
+    if method == "POST" and path == CONFIG_SET_PATH and not raw.strip():
+        return raw, None
     try:
         return raw, json.loads(raw)
     except json.JSONDecodeError as exc:
@@ -286,7 +288,8 @@ def _append_rule(
         "config": {"config": {"entries": [*entries, rule]}, "version": version}
     }
     _json_write(run_root / "agent-config-enable-request.json", body)
-    _request_json(ops, "POST", CONFIG_SET_PATH, body)
+    set_raw, _ = _request_json(ops, "POST", CONFIG_SET_PATH, body)
+    _bytes_receipt(run_root / "agent-config-enable-response.raw", set_raw)
     after_raw, after = _request_json(ops, "GET", CONFIG_GET_PATH, {"configs": []})
     _bytes_receipt(run_root / "agent-config-enable-after.json", after_raw)
     after_version, after_entries = _config_parts(after)
@@ -312,7 +315,8 @@ def _restore_rule(
     desired.remove(rule)
     body = {"config": {"config": {"entries": desired}, "version": version}}
     _json_write(run_root / "agent-config-restore-request.json", body)
-    _request_json(ops, "POST", CONFIG_SET_PATH, body)
+    set_raw, _ = _request_json(ops, "POST", CONFIG_SET_PATH, body)
+    _bytes_receipt(run_root / "agent-config-restore-response.raw", set_raw)
     after_raw, after = _request_json(ops, "GET", CONFIG_GET_PATH, {"configs": []})
     _bytes_receipt(run_root / "agent-config-restore-after.json", after_raw)
     after_version, after_entries = _config_parts(after)
