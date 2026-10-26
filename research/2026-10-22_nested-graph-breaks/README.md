@@ -198,3 +198,11 @@ The [October 26 two-arm B200 capture](zymtrace/captures/torch2141-b200-20261026/
 passed on PyTorch 2.14.1 and includes downloadable Zymtrace event and
 flamegraph JSON. It is a separate compatibility smoke, not another speedup
 measurement.
+
+## Posts and replies
+
+The [conversation chronology](social/CHRONOLOGY.md) separates the original
+October 21 posts, the October 25 self-replies, and the unsent reader responses.
+It identifies each recipient, the exact parent, and the Typefully copy bank
+or native LinkedIn reply composer. The latest Zymtrace update is a separate
+unscheduled draft.

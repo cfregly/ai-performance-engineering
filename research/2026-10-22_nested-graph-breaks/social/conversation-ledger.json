@@ -1,0 +1,112 @@
+{
+  "schema_version": 1,
+  "observed_at": "2026-10-26T21:46:29.758951+00:00",
+  "timezone": "America/Los_Angeles",
+  "purpose": "Distinguish published posts, self-replies, reader replies, reference copies, and unsent native composers.",
+  "publication_hold": true,
+  "people": [
+    {
+      "name": "ming",
+      "platform": "x",
+      "handle": "ming85GG",
+      "profile": "https://x.com/ming85GG",
+      "question_url": "https://x.com/ming85GG/status/2113141199733453183",
+      "topic": "CPU gaps versus GPU kernel scheduling",
+      "draft_id": 11481018,
+      "tag_verification": "Native question author/profile verified, exact Typefully reply parent and body @mention retained, image tag retained.",
+      "sent": false
+    },
+    {
+      "name": "Abhik Sarkar",
+      "platform": "linkedin",
+      "profile": "https://www.linkedin.com/in/abhiksark/",
+      "parent_post_url": "https://www.linkedin.com/feed/update/urn:li:ugcPost:7518891357956907008/",
+      "parent_comment_id": "7518892754291216385",
+      "topic": "B200 versus other GPUs",
+      "draft_id": 11481014,
+      "tag_verification": "Verified author of exact parent comment. Native Reply automatically inserted a noneditable data-type=mention person chip. Text and one image prepared, unsent.",
+      "native_comment_backup": "social/native-linkedin-replies/11481014.txt",
+      "sent": false
+    },
+    {
+      "name": "Devayush Rout",
+      "platform": "linkedin",
+      "profile": "https://www.linkedin.com/in/devayush-rout/",
+      "parent_post_url": "https://www.linkedin.com/feed/update/urn:li:ugcPost:7518891357956907008/",
+      "parent_comment_id": "7518991000019714048",
+      "topic": "Compilation break-even",
+      "draft_id": 11481015,
+      "tag_verification": "Verified author of exact parent comment. Native Reply automatically inserted a noneditable data-type=mention person chip. Text and one image prepared, unsent.",
+      "native_comment_backup": "social/native-linkedin-replies/11481015.txt",
+      "sent": false
+    },
+    {
+      "name": "Abbas Ali Aloc",
+      "platform": "linkedin",
+      "profile": "https://www.linkedin.com/in/abbasalialoc/",
+      "parent_post_url": "https://www.linkedin.com/feed/update/urn:li:ugcPost:7518891357956907008/",
+      "parent_comment_id": "7519006833911590913",
+      "topic": "Memory footprint",
+      "draft_id": 11481016,
+      "tag_verification": "Verified author of exact parent comment. Native Reply automatically inserted a noneditable data-type=mention person chip. Text and one image prepared, unsent.",
+      "native_comment_backup": "social/native-linkedin-replies/11481016.txt",
+      "sent": false
+    },
+    {
+      "name": "Fuad Munzerin H.",
+      "platform": "linkedin",
+      "profile": "https://www.linkedin.com/in/fuadmunzerinhossain/",
+      "parent_post_url": "https://www.linkedin.com/feed/update/urn:li:ugcPost:7518891357956907008/",
+      "parent_comment_id": "7519060297219911680",
+      "topic": "Training and defaults claim",
+      "draft_id": 11481017,
+      "tag_verification": "Verified author of exact parent comment. Native Reply automatically inserted a noneditable data-type=mention person chip. Text and one image prepared, unsent.",
+      "native_comment_backup": "social/native-linkedin-replies/11481017.txt",
+      "sent": false
+    }
+  ],
+  "company_credits": [
+    {
+      "name": "zymtrace",
+      "x_handle": "zymtrace",
+      "linkedin_profile": "https://www.linkedin.com/company/zymtraceai/",
+      "linkedin_urn": "urn:li:organization:105228663",
+      "reason": "Profiler used for the retained captures",
+      "evidence": "Company website links its social profiles. Native LinkedIn page verified canonical vanity. Typefully resolver and rendered data-mention-id agree."
+    },
+    {
+      "name": "Verda",
+      "x_handle": "verdacloud",
+      "linkedin_profile": "https://www.linkedin.com/company/verda-cloud/",
+      "linkedin_urn": "urn:li:organization:107473669",
+      "reason": "B200 hardware provider credited in the original post",
+      "evidence": "Official website, original native post, Typefully organization resolver, and rendered mention agree."
+    }
+  ],
+  "additional_relevant_comment": {
+    "name": "En\u00e9ias Brum",
+    "profile": "https://www.linkedin.com/in/eneiasbrumjr/",
+    "comment_id": "7520526551713538048",
+    "topic": "Including compilation in readiness checks for autoscaled services",
+    "state": "Observed current comment. A local answer is retained as preparation, not a sent or queued Typefully reply.",
+    "backup_file": "social/native-linkedin-replies/readiness-candidate.txt"
+  },
+  "rules": [
+    "A post @mention does not bind a reply parent.",
+    "Use the exact parent status for X replies and native Reply beneath the exact LinkedIn comment.",
+    "Native LinkedIn personal mentions must resolve, not be plain @name text.",
+    "Keep created, updated, published, and repost times separate.",
+    "Label Typefully LinkedIn copy banks NOT A POST when their real reply lives in the native composer.",
+    "Native unsent composers may be lost on reload. Keep repository and Typefully backups.",
+    "Preserve manual text, media, parent, and tags across edits. Read back afterward.",
+    "Verify dormant promotion settings after final edits. Drafts do not deliver notifications.",
+    "Use relevant verified recipients and contributors. Do not add unrelated names for reach."
+  ],
+  "official_sources": {
+    "typefully_mentions": "https://support.typefully.com/en/articles/13974129-how-to-mention-companies-and-people-on-linkedin",
+    "linkedin_reply": "https://www.linkedin.com/help/linkedin/answer/a524166",
+    "linkedin_mentions": "https://www.linkedin.com/help/linkedin/answer/a525082/mention-people-in-your-posts",
+    "x_replies": "https://help.x.com/en/using-x/mentions-and-replies",
+    "x_threads": "https://help.x.com/en/using-x/create-a-thread"
+  }
+}

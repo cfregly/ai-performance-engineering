@@ -1,0 +1,5 @@
+Agreed that readiness needs its own check. The measured 4.53× gain is for steady calls in a compiler microbenchmark. The first ten compiled-call intervals were 33.2% slower with nested graph-break support. We did not measure an autoscaled service, readiness behavior, or serving tail latency. Those would need a separate end-to-end serving test.
+
+Code: https://github.com/cfregly/ai-performance-engineering/blob/2a4e3fd00dadf2380a5c413af33bb46c4727fce2/research/2026-10-22_nested-graph-breaks/benchmark.py
+Zymtrace captures: https://github.com/cfregly/ai-performance-engineering/tree/7f9e981c45d5448aeacd727eabdcb8a308023732/research/2026-10-22_nested-graph-breaks/zymtrace/captures/torch2141-b200-20261026
+Profile image: https://github.com/cfregly/ai-performance-engineering/blob/8a14d504e175a6790ee818d244eb96e59601369b/research/2026-10-22_nested-graph-breaks/zymtrace/views/zymtrace-with-nested-graph-breaks.png

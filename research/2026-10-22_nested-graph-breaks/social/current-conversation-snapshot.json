@@ -1,0 +1,621 @@
+{
+  "schema_version": 1,
+  "observed_at": "2026-10-26T21:46:29.758951+00:00",
+  "timezone": "America/Los_Angeles",
+  "publication_hold": true,
+  "social_set_id": 337207,
+  "items": [
+    {
+      "draft_id": 11401278,
+      "title": "B200 nested graph breaks | Whiteboard | PyTorch 2.14.1",
+      "status": "published",
+      "scheduled_at": null,
+      "published_at": "2026-10-22T04:30:12.674Z",
+      "published_at_pacific": "2026-10-21T21:30:12.674000-07:00",
+      "typefully_url": "https://typefully.com/?a=337207&d=11401278",
+      "published_urls": {
+        "x": "https://x.com/cfregly/status/2113125661162496389",
+        "linkedin": "https://www.linkedin.com/feed/update/urn:li:ugcPost:7518891357956907008"
+      },
+      "platforms": {
+        "x": {
+          "enabled": true,
+          "posts": [
+            {
+              "text": "Pro tip: Use PyTorch nested graph breaks RIGHT NOW!!!   On my NVIDIA B200 (provided by my friends @VerdaCloud), I ran a microbenchmark with PyTorch 2.14.1 (CUDA 13.0) and nested_graph_breaks=True. This configuration ran my code 4.53\u00d7 faster at steady state.",
+              "media_ids": [
+                "0a3109ed-4a24-4fde-8137-6ec5ef4b5e8f"
+              ],
+              "quote_post_url": null,
+              "subscribers_only": false,
+              "reply_settings": null,
+              "paid_partnership": false,
+              "made_with_ai": false,
+              "hide_link_preview": false
+            },
+            {
+              "text": "At depth 8, synchronized steady median latency fell from 407.57 \u00b5s (without nested graphs) to 89.94 \u00b5s with nested graphs. Every pair improved, with speedups from 4.50\u00d7 to 4.58\u00d7!!",
+              "media_ids": [],
+              "quote_post_url": null,
+              "subscribers_only": false,
+              "reply_settings": null,
+              "paid_partnership": false,
+              "made_with_ai": false,
+              "hide_link_preview": false
+            },
+            {
+              "text": "The depth-8, seed-0 emitted Inductor code shows 16 wrapper regions \u00d7 4 ATen operations without nested graphs, versus 2 regions \u00d7 32 operations with nested graphs. Both arms represent the same 64 operations on 1,048,576 FP32 elements.",
+              "media_ids": [
+                "f0020df1-7bcf-40b8-a160-2bbbbea73f44"
+              ],
+              "quote_post_url": null,
+              "subscribers_only": false,
+              "reply_settings": null,
+              "paid_partnership": false,
+              "made_with_ai": false,
+              "hide_link_preview": false
+            },
+            {
+              "text": "In retained profiles, each of five untimed invocations showed 16 CUDA Graph replay launches without nested graphs versus 2 with nested graphs. With nested graphs: less fragmentation, larger fused regions, and fewer replay launches.",
+              "media_ids": [],
+              "quote_post_url": null,
+              "subscribers_only": false,
+              "reply_settings": null,
+              "paid_partnership": false,
+              "made_with_ai": false,
+              "hide_link_preview": false
+            },
+            {
+              "text": "Cold first call times moved the other way... The sum of the first ten synchronized compiled-call intervals rose from 2.411 s without nested graphs to 3.212 s with nested graphs, a 33.2% increase. The entire net slowdown came from call 1. Calls 2\u201310 were faster with nested graphs, of course. This is a steady-state win with a disclosed cold-start cost.",
+              "media_ids": [
+                "cef660f3-d36a-43fb-94b6-2f664cb0aa32"
+              ],
+              "quote_post_url": null,
+              "subscribers_only": false,
+              "reply_settings": null,
+              "paid_partnership": false,
+              "made_with_ai": false,
+              "hide_link_preview": false
+            },
+            {
+              "text": "The takeaway: inspect emitted compiler fragments and CUDA replay activity, then measure cold first use separately from repeated execution!",
+              "media_ids": [],
+              "quote_post_url": null,
+              "subscribers_only": false,
+              "reply_settings": null,
+              "paid_partnership": false,
+              "made_with_ai": false,
+              "hide_link_preview": false
+            }
+          ],
+          "settings": null
+        },
+        "linkedin": {
+          "enabled": true,
+          "posts": [
+            {
+              "text": "USE PyTorch's nested graph breaks!!  RIGHT NOW!!!  One B200 compiler microbenchmark: same 64 operations, 4.53\u00d7 faster at steady state.\n\nUsing my B200s (provided by my friends @[Verda](urn:li:organization:107473669)), I compared PyTorch's nested_graph_breaks=False and True on an NVIDIA B200 using PyTorch 2.14.1 (CUDA 13.0)\n\nIn a depth-8 nested-graph-break microbenchmark, synchronized steady median latency fell from 407.57 \u00b5s to 89.94 \u00b5s. Those are geometric means across four paired seeds. Every primary pair improved by 4.50\u20134.58\u00d7.\n\nThe depth-8, seed-0 compiler output shows what changed:\n\n- False: 16 compiled regions, 4 ATen operations each.\n- True: 2 compiled regions, 32 ATen operations each.\n- Both: the same 64 operations on 1,048,576 FP32 elements.\n\nThe recorded CUDA traces also show 16 graph replay launches per invocation with False versus 2 with True. That supports the mechanism: less fragmentation, larger fused regions, and fewer replay launches.",
+              "media_ids": [
+                "bb9c46c8-6275-4fdb-9363-c4b6fdc231c4"
+              ],
+              "linkedin_reshare_urn": null,
+              "hide_link_preview": false
+            }
+          ],
+          "settings": {
+            "first_comment": "There is a startup tradeoff, however. The sum of the first ten synchronized compiled-call intervals increased from 2.411 s to 3.212 s, about 33.2%. The extra time is confined to call 1, which takes 0.79\u20130.88 s longer. Calls 2\u201310 are faster with True. Compiling larger fused programs is the best-supported explanation, but exact compiler-phase timings were not recorded.\n \nThis is a steady-state win with a disclosed cold-start cost.\n\nThe engineering takeaway: compare actual compiler fragments and CUDA replay activity, then evaluate cold first-use latency separately from repeated execution."
+          }
+        }
+      },
+      "lifecycle_tags": [],
+      "kind": "published_original"
+    },
+    {
+      "draft_id": 11478186,
+      "title": "X reply | B200 source code and evidence",
+      "status": "published",
+      "scheduled_at": null,
+      "published_at": "2026-10-25T23:55:50.178Z",
+      "published_at_pacific": "2026-10-25T16:55:50.178000-07:00",
+      "typefully_url": "https://typefully.com/?a=337207&d=11478186",
+      "published_urls": {
+        "x": "https://x.com/cfregly/status/2114506248158953932",
+        "linkedin": null
+      },
+      "platforms": {
+        "x": {
+          "enabled": true,
+          "posts": [
+            {
+              "text": "B200 compiler microbenchmark, PyTorch 2.14.1+cu130:\nBenchmark: https://github.com/cfregly/ai-performance-engineering/blob/main/research/2026-10-22_nested-graph-breaks/benchmark.py\nAnalyzer: https://github.com/cfregly/ai-performance-engineering/blob/main/research/2026-10-22_nested-graph-breaks/analyze.py\n24 runs: https://github.com/cfregly/ai-performance-engineering/tree/main/research/2026-10-22_nested-graph-breaks/results\nGraphs: https://github.com/cfregly/ai-performance-engineering/blob/main/research/2026-10-22_nested-graph-breaks/graphs/comparison-overview.png\n\n4.53\u00d7 steady-state speedup. First 10 compiled-call intervals: 33.2% longer with True.",
+              "media_ids": [],
+              "quote_post_url": null,
+              "subscribers_only": false,
+              "reply_settings": null,
+              "paid_partnership": false,
+              "made_with_ai": false,
+              "hide_link_preview": false
+            }
+          ],
+          "settings": {
+            "reply_to_url": "https://x.com/cfregly/status/2113125661162496389",
+            "community_id": null,
+            "share_with_followers": null
+          }
+        }
+      },
+      "lifecycle_tags": [],
+      "kind": "published_self_reply"
+    },
+    {
+      "draft_id": 11480749,
+      "title": "B200 graph image | follow-up to source reply",
+      "status": "published",
+      "scheduled_at": null,
+      "published_at": "2026-10-26T03:30:47.565Z",
+      "published_at_pacific": "2026-10-25T20:30:47.565000-07:00",
+      "typefully_url": "https://typefully.com/?a=337207&d=11480749",
+      "published_urls": {
+        "x": "https://x.com/cfregly/status/2114560342550524196",
+        "linkedin": null
+      },
+      "platforms": {
+        "x": {
+          "enabled": true,
+          "posts": [
+            {
+              "text": "False: 16 regions \u00d7 4 ATen ops.\nTrue: 2 regions \u00d7 32 ops.\nSame 64 operations.\n\nActual generated code, depth 8, seed 0. B200 / PyTorch 2.14.1+cu130 compiler microbenchmark.\n\nCode and evidence are in the parent reply.",
+              "media_ids": [
+                "a0d57ca0-a9a0-4959-be8a-a158bd73aa79"
+              ],
+              "quote_post_url": null,
+              "subscribers_only": false,
+              "reply_settings": null,
+              "paid_partnership": false,
+              "made_with_ai": false,
+              "hide_link_preview": false
+            }
+          ],
+          "settings": {
+            "reply_to_url": "https://x.com/cfregly/status/2114506248158953932",
+            "community_id": null,
+            "share_with_followers": null
+          }
+        }
+      },
+      "lifecycle_tags": [],
+      "kind": "published_self_reply"
+    },
+    {
+      "draft_id": 11478089,
+      "title": "REFERENCE ONLY \u00b7 LinkedIn source comment already live",
+      "status": "draft",
+      "scheduled_at": null,
+      "published_at": null,
+      "published_at_pacific": null,
+      "typefully_url": "https://typefully.com/?a=337207&d=11478089",
+      "published_urls": {
+        "x": null,
+        "linkedin": null
+      },
+      "platforms": {
+        "linkedin": {
+          "enabled": true,
+          "posts": [
+            {
+              "text": "",
+              "media_ids": [],
+              "linkedin_reshare_urn": null,
+              "hide_link_preview": false
+            }
+          ],
+          "settings": {
+            "first_comment": "The code and B200 evidence are now public, using PyTorch 2.14.1+cu130.\nBenchmark (same workload, nested_graph_breaks=False versus True):\nhttps://github.com/cfregly/ai-performance-engineering/blob/main/research/2026-10-22_nested-graph-breaks/benchmark.py\nAnalyzer and acceptance checks:\nhttps://github.com/cfregly/ai-performance-engineering/blob/main/research/2026-10-22_nested-graph-breaks/analyze.py\nAll 24 original result records and qualification:\nhttps://github.com/cfregly/ai-performance-engineering/tree/main/research/2026-10-22_nested-graph-breaks/results\nFalse/True graph comparison:\nhttps://github.com/cfregly/ai-performance-engineering/blob/main/research/2026-10-22_nested-graph-breaks/graphs/comparison-overview.png\nThe 4.53\u00d7 figure is a steady-state invocation speedup in this compiler microbenchmark. With True, the first ten compiled-call intervals took 33.2% longer, and the original startup criteria were not met."
+          }
+        }
+      },
+      "lifecycle_tags": [],
+      "kind": "reference_only",
+      "live_comment_id": "7520319379373465601",
+      "warning": "Saved copy of an already-live LinkedIn self-comment. Not a new post or a publication receipt."
+    },
+    {
+      "draft_id": 11497664,
+      "title": "NEW UPDATE \u00b7 Oct 26 Zymtrace \u00b7 Standalone X + LinkedIn",
+      "status": "draft",
+      "scheduled_at": null,
+      "published_at": null,
+      "published_at_pacific": null,
+      "typefully_url": "https://typefully.com/?a=337207&d=11497664",
+      "published_urls": {
+        "x": null,
+        "linkedin": null
+      },
+      "platforms": {
+        "x": {
+          "enabled": true,
+          "posts": [
+            {
+              "text": "With nested graph-break support, B200 steady calls were 4.53\u00d7 faster than without it. An independent run measured 4.54\u00d7. Startup was slower and failed its gate. Unprofiled timing. Compiler microbenchmark.\n\nRunnable example: https://github.com/cfregly/ai-performance-engineering/blob/e57c5bb31ec492094b4fd9f73a615195aceab936/research/2026-10-22_nested-graph-breaks/benchmark.py\nImage: https://github.com/cfregly/ai-performance-engineering/blob/96bdb5940a8f67238c07238caac34ab80fe28e84/research/2026-10-22_nested-graph-breaks/image.png",
+              "media_ids": [
+                "5c6b9fc6-c22a-4473-a766-d737a3d02f6a",
+                "987556d3-2497-4bcb-88be-af95288f220a",
+                "4f91334b-53b2-44f5-ac8a-2e50326ddc2e"
+              ],
+              "quote_post_url": null,
+              "subscribers_only": false,
+              "reply_settings": null,
+              "paid_partnership": false,
+              "made_with_ai": false,
+              "hide_link_preview": false
+            },
+            {
+              "text": "Zymtrace now captures both B200 examples on PyTorch 2.14.1. CUDA event stacks are filtered to each worker: 104 records without nested graph-break support and 188 with it. Width counts records, not time. These profiles do not establish a CPU/GPU causal percentage.",
+              "media_ids": [
+                "bcaa0ea8-992d-4e31-be13-6ca8ccb9ee47",
+                "1d2f1c21-d794-4e41-afaa-829d36cd371a"
+              ],
+              "quote_post_url": null,
+              "subscribers_only": false,
+              "reply_settings": null,
+              "paid_partnership": false,
+              "made_with_ai": false,
+              "hide_link_preview": false
+            },
+            {
+              "text": "Run the example and inspect the captures:\nCode: https://github.com/cfregly/ai-performance-engineering/blob/2a4e3fd00dadf2380a5c413af33bb46c4727fce2/research/2026-10-22_nested-graph-breaks/benchmark.py\nCapture controller: https://github.com/cfregly/ai-performance-engineering/blob/2a4e3fd00dadf2380a5c413af33bb46c4727fce2/research/2026-10-22_nested-graph-breaks/zymtrace/run_capture.py\nRaw events + flamegraphs: https://github.com/cfregly/ai-performance-engineering/tree/7f9e981c45d5448aeacd727eabdcb8a308023732/research/2026-10-22_nested-graph-breaks/zymtrace/captures/torch2141-b200-20261026\nImage renderer + PNGs: https://github.com/cfregly/ai-performance-engineering/tree/8a14d504e175a6790ee818d244eb96e59601369b/research/2026-10-22_nested-graph-breaks/zymtrace/views\n\nProfiling: @zymtrace. B200: @verdacloud.",
+              "media_ids": [],
+              "quote_post_url": null,
+              "subscribers_only": false,
+              "reply_settings": null,
+              "paid_partnership": false,
+              "made_with_ai": false,
+              "hide_link_preview": false
+            }
+          ],
+          "settings": null
+        },
+        "linkedin": {
+          "enabled": true,
+          "posts": [
+            {
+              "text": "Two B200 runs support the same compiler result. We now also have Zymtrace captures from both example workers.\n\nWith nested graph-break support, the depth-8 microbenchmark measured a 4.531795\u00d7 geometric-mean steady-state speedup across four paired seeds. Independent fresh run 022 measured 4.541758\u00d7. The runs remain separate.\n\nNeither run qualified startup. In the original run, the first ten compiled-call intervals were 33.2% slower with nested graph-break support, and the startup control also failed.\n\nNsys shows 16 graph executions without nested graph-break support and 2 with it for one call after warmup. NCU captured one fused Triton kernel per arm: 6.400 \u00b5s without support and 20.992 \u00b5s with it. With support, each launch does more work. Profiling adds overhead. The published speedup comes from separate unprofiled repeated calls.\n\nZymtrace 26.10.1 captured both depth-8 workers on B200, PyTorch 2.14.1+cu130 and CUDA 13.0. Both passed correctness checks. The attached CUDA stack views filter by worker PID: 104 exported records without nested graph-break support and 188 with it. Width counts records, not elapsed time. These profiles do not establish an exact CPU/GPU causal percentage.\n\nThis is a compiler microbenchmark. It does not establish a training, serving, or cross-GPU gain.\n\nCode: https://github.com/cfregly/ai-performance-engineering/blob/2a4e3fd00dadf2380a5c413af33bb46c4727fce2/research/2026-10-22_nested-graph-breaks/benchmark.py\nNsys/NCU reports and images: https://github.com/cfregly/ai-performance-engineering/tree/e57c5bb31ec492094b4fd9f73a615195aceab936/research/2026-10-22_nested-graph-breaks/profiles\nZymtrace raw events and flamegraphs: https://github.com/cfregly/ai-performance-engineering/tree/7f9e981c45d5448aeacd727eabdcb8a308023732/research/2026-10-22_nested-graph-breaks/zymtrace/captures/torch2141-b200-20261026\nZymtrace renderer and images: https://github.com/cfregly/ai-performance-engineering/tree/8a14d504e175a6790ee818d244eb96e59601369b/research/2026-10-22_nested-graph-breaks/zymtrace/views\nWithout nested graph-break support: https://github.com/cfregly/ai-performance-engineering/blob/8a14d504e175a6790ee818d244eb96e59601369b/research/2026-10-22_nested-graph-breaks/zymtrace/views/zymtrace-without-nested-graph-breaks.png\nWith nested graph-break support: https://github.com/cfregly/ai-performance-engineering/blob/8a14d504e175a6790ee818d244eb96e59601369b/research/2026-10-22_nested-graph-breaks/zymtrace/views/zymtrace-with-nested-graph-breaks.png\n\nProfiling: @[zymtrace](urn:li:organization:105228663). B200 hardware: @[Verda](urn:li:organization:107473669).",
+              "media_ids": [
+                "987556d3-2497-4bcb-88be-af95288f220a",
+                "4f91334b-53b2-44f5-ac8a-2e50326ddc2e",
+                "bcaa0ea8-992d-4e31-be13-6ca8ccb9ee47",
+                "1d2f1c21-d794-4e41-afaa-829d36cd371a"
+              ],
+              "linkedin_reshare_urn": null,
+              "hide_link_preview": false
+            }
+          ],
+          "settings": null
+        }
+      },
+      "lifecycle_tags": [
+        "needs-review"
+      ],
+      "kind": "standalone_update_draft",
+      "parent_post_url": null,
+      "intended_company_mentions": {
+        "x": [
+          "zymtrace",
+          "verdacloud"
+        ],
+        "linkedin": [
+          "urn:li:organization:105228663",
+          "urn:li:organization:107473669"
+        ]
+      }
+    },
+    {
+      "draft_id": 11481018,
+      "title": "MING REPLY \u00b7 X \u00b7 Profiler question \u00b7 UNSCHEDULED",
+      "status": "draft",
+      "scheduled_at": null,
+      "published_at": null,
+      "published_at_pacific": null,
+      "typefully_url": "https://typefully.com/?a=337207&d=11481018",
+      "published_urls": {
+        "x": null,
+        "linkedin": null
+      },
+      "platforms": {
+        "x": {
+          "enabled": true,
+          "posts": [
+            {
+              "text": "@ming85GG Here are the actual Nsight Systems and Nsight Compute captures with and without nested graph-break support on B200 / PyTorch 2.14.1+cu130. The timeline is rendered from Nsys, with exact event spans and a shared scale.",
+              "media_ids": [
+                "987556d3-2497-4bcb-88be-af95288f220a"
+              ],
+              "quote_post_url": null,
+              "subscribers_only": false,
+              "reply_settings": null,
+              "paid_partnership": false,
+              "made_with_ai": false,
+              "hide_link_preview": false
+            },
+            {
+              "text": "NCU recorded one fused Triton kernel: 6.400 \u00b5s without nested graph-break support and 20.992 \u00b5s with it. With support, each launch does more work. These kernel durations do not measure the full-call speedup.",
+              "media_ids": [
+                "4f91334b-53b2-44f5-ac8a-2e50326ddc2e"
+              ],
+              "quote_post_url": null,
+              "subscribers_only": false,
+              "reply_settings": null,
+              "paid_partnership": false,
+              "made_with_ai": false,
+              "hide_link_preview": false
+            },
+            {
+              "text": "With nested graph-break support, Nsys shows 2 graph executions instead of 16. Internal nodes are hidden. Unprofiled repeated calls measured the speedup. Profiling adds overhead. NCU used 9 replay passes. This image shows one call after warmup.",
+              "media_ids": [],
+              "quote_post_url": null,
+              "subscribers_only": false,
+              "reply_settings": null,
+              "paid_partnership": false,
+              "made_with_ai": false,
+              "hide_link_preview": false
+            },
+            {
+              "text": "With CUDA Graph replay off, nested graph-break support gave 3.29\u00d7/3.27\u00d7 tail speedups (two seeds, last 1,000 calls), versus 4.55\u00d7/4.38\u00d7 with replay on. GPU spans for profiled calls 3\u20135 were excluded with support. An exact CPU/GPU causal split is unproven.",
+              "media_ids": [],
+              "quote_post_url": null,
+              "subscribers_only": false,
+              "reply_settings": null,
+              "paid_partnership": false,
+              "made_with_ai": false,
+              "hide_link_preview": false
+            },
+            {
+              "text": "Download the native reports:\nNsys without nested graph-break support: https://github.com/cfregly/ai-performance-engineering/raw/e57c5bb31ec492094b4fd9f73a615195aceab936/research/2026-10-22_nested-graph-breaks/profiles/fresh022/native/nsys/nsys-nested_break_depth8-seed0-baseline.nsys-rep\nNsys with nested graph-break support: https://github.com/cfregly/ai-performance-engineering/raw/e57c5bb31ec492094b4fd9f73a615195aceab936/research/2026-10-22_nested-graph-breaks/profiles/fresh022/native/nsys/nsys-nested_break_depth8-seed0-candidate.nsys-rep\nNCU without nested graph-break support: https://github.com/cfregly/ai-performance-engineering/raw/e57c5bb31ec492094b4fd9f73a615195aceab936/research/2026-10-22_nested-graph-breaks/profiles/fresh022/native/ncu/ncu-nested_break_depth8-seed0-baseline.ncu-rep\nNCU with nested graph-break support: https://github.com/cfregly/ai-performance-engineering/raw/e57c5bb31ec492094b4fd9f73a615195aceab936/research/2026-10-22_nested-graph-breaks/profiles/fresh022/native/ncu/ncu-nested_break_depth8-seed0-candidate.ncu-rep\nExports, Chrome traces, hashes and code: https://github.com/cfregly/ai-performance-engineering/tree/e57c5bb31ec492094b4fd9f73a615195aceab936/research/2026-10-22_nested-graph-breaks/profiles",
+              "media_ids": [],
+              "quote_post_url": null,
+              "subscribers_only": false,
+              "reply_settings": null,
+              "paid_partnership": false,
+              "made_with_ai": false,
+              "hide_link_preview": false
+            },
+            {
+              "text": "Benchmark: https://github.com/cfregly/ai-performance-engineering/blob/e57c5bb31ec492094b4fd9f73a615195aceab936/research/2026-10-22_nested-graph-breaks/benchmark.py\nProfile-view code: https://github.com/cfregly/ai-performance-engineering/blob/e57c5bb31ec492094b4fd9f73a615195aceab936/research/2026-10-22_nested-graph-breaks/profiles/render_profile_views.py\nNsys image: https://github.com/cfregly/ai-performance-engineering/blob/e57c5bb31ec492094b4fd9f73a615195aceab936/research/2026-10-22_nested-graph-breaks/profiles/views/nsys-first-post-warmup-invocation.png\nNCU image: https://github.com/cfregly/ai-performance-engineering/blob/e57c5bb31ec492094b4fd9f73a615195aceab936/research/2026-10-22_nested-graph-breaks/profiles/views/ncu-single-kernel-metrics.png",
+              "media_ids": [],
+              "quote_post_url": null,
+              "subscribers_only": false,
+              "reply_settings": null,
+              "paid_partnership": false,
+              "made_with_ai": false,
+              "hide_link_preview": false
+            },
+            {
+              "text": "Zymtrace now captures both B200 examples on PyTorch 2.14.1. CUDA event stacks are filtered to each worker: 104 records without nested graph-break support and 188 with it. Width counts records, not time. These profiles do not establish a CPU/GPU causal percentage.",
+              "media_ids": [
+                "bcaa0ea8-992d-4e31-be13-6ca8ccb9ee47",
+                "1d2f1c21-d794-4e41-afaa-829d36cd371a"
+              ],
+              "quote_post_url": null,
+              "subscribers_only": false,
+              "reply_settings": null,
+              "paid_partnership": false,
+              "made_with_ai": false,
+              "hide_link_preview": false
+            },
+            {
+              "text": "Run the example and inspect the captures:\nCode: https://github.com/cfregly/ai-performance-engineering/blob/2a4e3fd00dadf2380a5c413af33bb46c4727fce2/research/2026-10-22_nested-graph-breaks/benchmark.py\nCapture controller: https://github.com/cfregly/ai-performance-engineering/blob/2a4e3fd00dadf2380a5c413af33bb46c4727fce2/research/2026-10-22_nested-graph-breaks/zymtrace/run_capture.py\nRaw events + flamegraphs: https://github.com/cfregly/ai-performance-engineering/tree/7f9e981c45d5448aeacd727eabdcb8a308023732/research/2026-10-22_nested-graph-breaks/zymtrace/captures/torch2141-b200-20261026\nImage renderer + PNGs: https://github.com/cfregly/ai-performance-engineering/tree/8a14d504e175a6790ee818d244eb96e59601369b/research/2026-10-22_nested-graph-breaks/zymtrace/views",
+              "media_ids": [],
+              "quote_post_url": null,
+              "subscribers_only": false,
+              "reply_settings": null,
+              "paid_partnership": false,
+              "made_with_ai": false,
+              "hide_link_preview": false
+            }
+          ],
+          "settings": {
+            "reply_to_url": "https://x.com/ming85GG/status/2113141199733453183",
+            "community_id": null,
+            "share_with_followers": null
+          }
+        }
+      },
+      "lifecycle_tags": [
+        "needs-review"
+      ],
+      "recipient": "ming (@ming85GG)",
+      "topic": "CPU gaps and kernel scheduling",
+      "parent_post_url": "https://x.com/ming85GG/status/2113141199733453183",
+      "parent_comment_id": null,
+      "kind": "native_x_reply_draft",
+      "mention_state": "verified handle in text and retained image tag",
+      "native_parent_bound": true
+    },
+    {
+      "draft_id": 11481014,
+      "title": "LI REPLY COPY \u00b7 Abhik Sarkar \u00b7 B200 portability \u00b7 NOT A POST",
+      "status": "draft",
+      "scheduled_at": null,
+      "published_at": null,
+      "published_at_pacific": null,
+      "typefully_url": "https://typefully.com/?a=337207&d=11481014",
+      "published_urls": {
+        "x": null,
+        "linkedin": null
+      },
+      "platforms": {
+        "linkedin": {
+          "enabled": true,
+          "posts": [
+            {
+              "text": "These measurements are from B200 only. Nested graph-break support changes how TorchDynamo/Inductor compiles this synthetic workload. H100 and A100 were not tested. A separate B200 test still found a steady-state gain with CUDA Graph replay off. That does not establish portability across GPUs.\n\nCode: https://github.com/cfregly/ai-performance-engineering/blob/2a4e3fd00dadf2380a5c413af33bb46c4727fce2/research/2026-10-22_nested-graph-breaks/benchmark.py\nZymtrace captures: https://github.com/cfregly/ai-performance-engineering/tree/7f9e981c45d5448aeacd727eabdcb8a308023732/research/2026-10-22_nested-graph-breaks/zymtrace/captures/torch2141-b200-20261026\nProfile image: https://github.com/cfregly/ai-performance-engineering/blob/8a14d504e175a6790ee818d244eb96e59601369b/research/2026-10-22_nested-graph-breaks/zymtrace/views/zymtrace-with-nested-graph-breaks.png",
+              "media_ids": [
+                "987556d3-2497-4bcb-88be-af95288f220a",
+                "4f91334b-53b2-44f5-ac8a-2e50326ddc2e",
+                "bcaa0ea8-992d-4e31-be13-6ca8ccb9ee47",
+                "1d2f1c21-d794-4e41-afaa-829d36cd371a"
+              ],
+              "linkedin_reshare_urn": null,
+              "hide_link_preview": false
+            }
+          ],
+          "settings": null
+        }
+      },
+      "lifecycle_tags": [
+        "needs-review"
+      ],
+      "recipient": "Abhik Sarkar",
+      "topic": "B200 versus other GPUs",
+      "parent_post_url": "https://www.linkedin.com/feed/update/urn:li:ugcPost:7518891357956907008/",
+      "parent_comment_id": "7518892754291216385",
+      "kind": "linkedin_reply_copy_bank",
+      "native_parent_bound_in_typefully": false,
+      "native_composer_state": "prepared_unsent_in_open_LinkedIn_tab",
+      "mention_state": "verified native automatic person mention from the exact parent Reply action",
+      "native_image_count": 1,
+      "backup_file": "social/native-linkedin-replies/11481014.txt"
+    },
+    {
+      "draft_id": 11481015,
+      "title": "LI REPLY COPY \u00b7 Devayush Rout \u00b7 Break-even \u00b7 NOT A POST",
+      "status": "draft",
+      "scheduled_at": null,
+      "published_at": null,
+      "published_at_pacific": null,
+      "typefully_url": "https://typefully.com/?a=337207&d=11481015",
+      "published_urls": {
+        "x": null,
+        "linkedin": null
+      },
+      "platforms": {
+        "linkedin": {
+          "enabled": true,
+          "posts": [
+            {
+              "text": "The original steady-state gains were 2.87\u00d7 at depth 4 and 4.53\u00d7 at depth 8. In a separate 4,000-call depth-8 follow-up, total wall time was ahead from call 1 in seed 0. Seed 1 crossed at call 3,007 and stayed ahead. This includes compilation and between-call time, but excludes imports, input setup, and the eager reference. With CUDA Graph replay off, neither seed broke even within 4,000 calls. These are observed crossovers, not a universal payback point.\n\nCode: https://github.com/cfregly/ai-performance-engineering/blob/2a4e3fd00dadf2380a5c413af33bb46c4727fce2/research/2026-10-22_nested-graph-breaks/benchmark.py\nZymtrace captures: https://github.com/cfregly/ai-performance-engineering/tree/7f9e981c45d5448aeacd727eabdcb8a308023732/research/2026-10-22_nested-graph-breaks/zymtrace/captures/torch2141-b200-20261026\nProfile image: https://github.com/cfregly/ai-performance-engineering/blob/8a14d504e175a6790ee818d244eb96e59601369b/research/2026-10-22_nested-graph-breaks/zymtrace/views/zymtrace-with-nested-graph-breaks.png",
+              "media_ids": [
+                "987556d3-2497-4bcb-88be-af95288f220a",
+                "4f91334b-53b2-44f5-ac8a-2e50326ddc2e",
+                "bcaa0ea8-992d-4e31-be13-6ca8ccb9ee47",
+                "1d2f1c21-d794-4e41-afaa-829d36cd371a"
+              ],
+              "linkedin_reshare_urn": null,
+              "hide_link_preview": false
+            }
+          ],
+          "settings": null
+        }
+      },
+      "lifecycle_tags": [
+        "needs-review"
+      ],
+      "recipient": "Devayush Rout",
+      "topic": "Compilation break-even",
+      "parent_post_url": "https://www.linkedin.com/feed/update/urn:li:ugcPost:7518891357956907008/",
+      "parent_comment_id": "7518991000019714048",
+      "kind": "linkedin_reply_copy_bank",
+      "native_parent_bound_in_typefully": false,
+      "native_composer_state": "prepared_unsent_in_open_LinkedIn_tab",
+      "mention_state": "verified native automatic person mention from the exact parent Reply action",
+      "native_image_count": 1,
+      "backup_file": "social/native-linkedin-replies/11481015.txt"
+    },
+    {
+      "draft_id": 11481016,
+      "title": "LI REPLY COPY \u00b7 Abbas Ali Aloc \u00b7 Memory \u00b7 NOT A POST",
+      "status": "draft",
+      "scheduled_at": null,
+      "published_at": null,
+      "published_at_pacific": null,
+      "typefully_url": "https://typefully.com/?a=337207&d=11481016",
+      "published_urls": {
+        "x": null,
+        "linkedin": null
+      },
+      "platforms": {
+        "linkedin": {
+          "enabled": true,
+          "posts": [
+            {
+              "text": "A separate seed-0 B200 pair measured 8 MiB of PyTorch allocated memory after 4,000 calls in both conditions. Reserved memory was 296 MiB without nested graph-break support and 168 MiB with it. First-call peak allocated memory was 170.5 MiB without support and 146.5 MiB with it. Final host RSS was 1,410.6 MiB without support and 1,416.7 MiB with it. The footprints were not identical. This does not establish a general model-memory improvement.\n\nCode: https://github.com/cfregly/ai-performance-engineering/blob/2a4e3fd00dadf2380a5c413af33bb46c4727fce2/research/2026-10-22_nested-graph-breaks/benchmark.py\nZymtrace captures: https://github.com/cfregly/ai-performance-engineering/tree/7f9e981c45d5448aeacd727eabdcb8a308023732/research/2026-10-22_nested-graph-breaks/zymtrace/captures/torch2141-b200-20261026\nProfile image: https://github.com/cfregly/ai-performance-engineering/blob/8a14d504e175a6790ee818d244eb96e59601369b/research/2026-10-22_nested-graph-breaks/zymtrace/views/zymtrace-with-nested-graph-breaks.png",
+              "media_ids": [
+                "987556d3-2497-4bcb-88be-af95288f220a",
+                "4f91334b-53b2-44f5-ac8a-2e50326ddc2e",
+                "bcaa0ea8-992d-4e31-be13-6ca8ccb9ee47",
+                "1d2f1c21-d794-4e41-afaa-829d36cd371a"
+              ],
+              "linkedin_reshare_urn": null,
+              "hide_link_preview": false
+            }
+          ],
+          "settings": null
+        }
+      },
+      "lifecycle_tags": [
+        "needs-review"
+      ],
+      "recipient": "Abbas Ali Aloc",
+      "topic": "Memory footprint",
+      "parent_post_url": "https://www.linkedin.com/feed/update/urn:li:ugcPost:7518891357956907008/",
+      "parent_comment_id": "7519006833911590913",
+      "kind": "linkedin_reply_copy_bank",
+      "native_parent_bound_in_typefully": false,
+      "native_composer_state": "prepared_unsent_in_open_LinkedIn_tab",
+      "mention_state": "verified native automatic person mention from the exact parent Reply action",
+      "native_image_count": 1,
+      "backup_file": "social/native-linkedin-replies/11481016.txt"
+    },
+    {
+      "draft_id": 11481017,
+      "title": "LI REPLY COPY \u00b7 Fuad Munzerin H. \u00b7 Training/defaults \u00b7 NOT A POST",
+      "status": "draft",
+      "scheduled_at": null,
+      "published_at": null,
+      "published_at_pacific": null,
+      "typefully_url": "https://typefully.com/?a=337207&d=11481017",
+      "published_urls": {
+        "x": null,
+        "linkedin": null
+      },
+      "platforms": {
+        "linkedin": {
+          "enabled": true,
+          "posts": [
+            {
+              "text": "This is a synthetic depth-8 compiler microbenchmark with nested Python frames, one explicit graph break, and the same 64 FP32 operations. It is not a training step or a nested-loop benchmark. Backward passes, optimizers, and representative models were not tested, so the 16-to-2 region change does not justify a general default recommendation. A separate B200 test found a steady-state gain with CUDA Graph replay off, but it does not isolate the remaining causal mechanism.\n\nCode: https://github.com/cfregly/ai-performance-engineering/blob/2a4e3fd00dadf2380a5c413af33bb46c4727fce2/research/2026-10-22_nested-graph-breaks/benchmark.py\nZymtrace captures: https://github.com/cfregly/ai-performance-engineering/tree/7f9e981c45d5448aeacd727eabdcb8a308023732/research/2026-10-22_nested-graph-breaks/zymtrace/captures/torch2141-b200-20261026\nProfile image: https://github.com/cfregly/ai-performance-engineering/blob/8a14d504e175a6790ee818d244eb96e59601369b/research/2026-10-22_nested-graph-breaks/zymtrace/views/zymtrace-with-nested-graph-breaks.png",
+              "media_ids": [
+                "987556d3-2497-4bcb-88be-af95288f220a",
+                "4f91334b-53b2-44f5-ac8a-2e50326ddc2e",
+                "bcaa0ea8-992d-4e31-be13-6ca8ccb9ee47",
+                "1d2f1c21-d794-4e41-afaa-829d36cd371a"
+              ],
+              "linkedin_reshare_urn": null,
+              "hide_link_preview": false
+            }
+          ],
+          "settings": null
+        }
+      },
+      "lifecycle_tags": [
+        "needs-review"
+      ],
+      "recipient": "Fuad Munzerin H.",
+      "topic": "Training and defaults claim",
+      "parent_post_url": "https://www.linkedin.com/feed/update/urn:li:ugcPost:7518891357956907008/",
+      "parent_comment_id": "7519060297219911680",
+      "kind": "linkedin_reply_copy_bank",
+      "native_parent_bound_in_typefully": false,
+      "native_composer_state": "prepared_unsent_in_open_LinkedIn_tab",
+      "mention_state": "verified native automatic person mention from the exact parent Reply action",
+      "native_image_count": 1,
+      "backup_file": "social/native-linkedin-replies/11481017.txt"
+    }
+  ],
+  "notes": [
+    "Published_at is publication metadata; created_at and updated_at do not establish publication order.",
+    "The three published Typefully titles could not be renamed by API. Public posts and their parents were not edited.",
+    "Native LinkedIn reply composers may not survive reload. The Typefully copy banks and repository backups retain the text.",
+    "No reply was sent and no new post was published."
+  ]
+}
