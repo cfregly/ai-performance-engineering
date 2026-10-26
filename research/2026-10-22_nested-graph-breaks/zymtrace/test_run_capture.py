@@ -48,6 +48,24 @@ class RequestOps:
         return self.responses.pop(0)
 
 
+class RuntimeOps:
+    def __init__(self, result: dict[str, str], returncode: int = 0) -> None:
+        self.result = result
+        self.returncode = returncode
+        self.calls: list[tuple[list[str], dict[str, object]]] = []
+
+    def run(
+        self, argv: list[str], **kwargs: object
+    ) -> subprocess.CompletedProcess[str]:
+        self.calls.append((argv, kwargs))
+        return subprocess.CompletedProcess(
+            argv,
+            self.returncode,
+            stdout=json.dumps(self.result),
+            stderr="",
+        )
+
+
 class Process:
     def __init__(self, waits: list[object]) -> None:
         self.pid = 4321
@@ -114,6 +132,50 @@ class RunCaptureTest(unittest.TestCase):
 
     def tearDown(self) -> None:
         self.temporary.cleanup()
+
+    def _runtime_result(self, python: Path, **overrides: str) -> dict[str, str]:
+        result = {
+            "torch_version": "2.14.1+cu130",
+            "cuda_version": "13.0",
+            "sys_executable": str(python),
+            "prefix": str(python.parent.parent),
+            "base_prefix": "/usr",
+        }
+        result.update(overrides)
+        return result
+
+    def test_cpu_runtime_preflight_keeps_chosen_python_path(self) -> None:
+        python = self.root / "venv/bin/python"
+        ops = RuntimeOps(self._runtime_result(python))
+
+        receipt = run_capture._runtime_preflight(ops, python, self.root)
+
+        argv, kwargs = ops.calls[0]
+        self.assertEqual(argv[:3], [str(python), "-B", "-c"])
+        self.assertNotIn("torch.cuda", argv[3])
+        self.assertEqual(kwargs["timeout"], 15)
+        self.assertEqual(receipt["result"]["sys_executable"], str(python))
+        self.assertEqual(len(receipt["record"]["sha256"]), 64)
+
+    def test_cpu_runtime_preflight_rejects_wrong_torch_before_capture(self) -> None:
+        python = self.root / "venv/bin/python"
+        ops = RuntimeOps(
+            self._runtime_result(python, torch_version="2.14.0+cu130")
+        )
+
+        with self.assertRaisesRegex(run_capture.CaptureError, "Torch is not"):
+            run_capture._runtime_preflight(ops, python, self.root)
+
+        self.assertEqual(len(ops.calls), 1)
+
+    def test_cpu_runtime_preflight_rejects_changed_executable_path(self) -> None:
+        python = self.root / "venv/bin/python"
+        ops = RuntimeOps(
+            self._runtime_result(python, sys_executable="/usr/bin/python3.12")
+        )
+
+        with self.assertRaisesRegex(run_capture.CaptureError, "invocation path"):
+            run_capture._runtime_preflight(ops, python, self.root)
 
     def test_restore_removes_only_owned_rule_from_fresh_version(self) -> None:
         original = {"expression": 'host.name == "other"', "settings": []}

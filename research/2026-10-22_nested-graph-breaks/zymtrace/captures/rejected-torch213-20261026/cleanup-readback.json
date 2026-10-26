@@ -1,0 +1,12 @@
+{
+  "gpu_state": {
+    "exit": 0,
+    "stdout": "GPU-7f4a68da-6dbf-a5df-0493-5f3f6e7786fd, 0 MiB, 0 %\nGPU-b4de3d1a-a4fd-27e2-688b-dd8bfb31bfbb, 0 MiB, 0 %\n",
+    "stderr": ""
+  },
+  "compute_processes": {
+    "exit": 0,
+    "stdout": "",
+    "stderr": ""
+  }
+}

@@ -1,0 +1,44 @@
+{
+  "state": "rejected_runtime",
+  "torch_version": "2.13.0+cu130",
+  "intended_torch_version": "2.14.1+cu130",
+  "source_commit": "520626cfcdf0e2b04a1915f2356ee6c916a22c02",
+  "performance_claim": false,
+  "files": [
+    {
+      "path": "cuda-events.raw.json",
+      "bytes": 111804,
+      "sha256": "a52e57a437ee43dce7a964d56df982ffeddac6f52b7e47db34f54064bf12e361"
+    },
+    {
+      "path": "audit.json",
+      "bytes": 1123,
+      "sha256": "77077dd2e0f52070bac683e05343bbe478266d9ca0e8c596b9b4a4adc141b8a0"
+    },
+    {
+      "path": "profiler.log",
+      "bytes": 2749,
+      "sha256": "e6aac5e713c5185e24037c46866b4c010317179377dac49bd14deb654153a6d4"
+    },
+    {
+      "path": "cuda-flamegraph.raw.json",
+      "bytes": 154617,
+      "sha256": "41ac1cd85f6d8cbced78d8e9ea29ad988336a3c34161d8c5148f8576c7bfad86"
+    },
+    {
+      "path": "worker-result.json",
+      "bytes": 26102,
+      "sha256": "6581df7a7404ad2c26dbe80ef040be87319013a645bfb79afa8854de96406465"
+    },
+    {
+      "path": "original-handback.json",
+      "bytes": 7598,
+      "sha256": "345a879c1da61b9130edafff14f69f5c3b50e0ba68891e03026caa220c4802ea"
+    },
+    {
+      "path": "cleanup-readback.json",
+      "bytes": 263,
+      "sha256": "11fb568ef0cd3d9d99899d9f79515be3c2069b362979ce4679426c4a2f1cdfe5"
+    }
+  ]
+}

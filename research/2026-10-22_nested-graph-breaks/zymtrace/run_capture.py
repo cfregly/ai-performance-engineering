@@ -37,6 +37,7 @@ MIN_WORKER_SECONDS = 60
 AGENT_READY_SECONDS = 60
 HTTP_TIMEOUT_SECONDS = 5
 EXPECTED_TORCH = "2.14.1+cu130"
+EXPECTED_TORCH_CUDA = "13.0"
 CPU_AFFINITY_RE = re.compile(r"^[0-9]+(?:-[0-9]+)?(?:,[0-9]+(?:-[0-9]+)?)*$")
 REQUIRED_SOURCE_PATHS = frozenset(
     {
@@ -437,6 +438,69 @@ def _verify_pins(args: argparse.Namespace, plan: dict[str, Any]) -> dict[str, st
     return actual
 
 
+def _runtime_preflight_argv(python: Path) -> list[str]:
+    probe = (
+        "import json,sys,torch;"
+        "print(json.dumps({"
+        "'torch_version':str(torch.__version__),"
+        "'cuda_version':str(torch.version.cuda),"
+        "'sys_executable':sys.executable,"
+        "'prefix':sys.prefix,"
+        "'base_prefix':sys.base_prefix},sort_keys=True))"
+    )
+    return [str(python), "-B", "-c", probe]
+
+
+def _runtime_preflight(
+    ops: SystemOps, python: Path, run_root: Path
+) -> dict[str, Any]:
+    argv = _runtime_preflight_argv(python)
+    completed = ops.run(
+        argv,
+        text=True,
+        capture_output=True,
+        timeout=15,
+        check=False,
+    )
+    stdout_raw = completed.stdout.encode()
+    stderr_raw = completed.stderr.encode()
+    stdout_receipt = _bytes_receipt(
+        run_root / "runtime-preflight.stdout", stdout_raw
+    )
+    stderr_receipt = _bytes_receipt(
+        run_root / "runtime-preflight.stderr", stderr_raw
+    )
+    try:
+        result = json.loads(completed.stdout)
+    except (json.JSONDecodeError, TypeError) as exc:
+        raise CaptureError("runtime preflight did not emit one JSON result") from exc
+    record = {
+        "argv": argv,
+        "exit_code": completed.returncode,
+        "result": result,
+        "stdout": stdout_receipt,
+        "stderr": stderr_receipt,
+        "gpu_api_called": False,
+    }
+    record_receipt = _json_write(run_root / "runtime-preflight.json", record)
+    record["record"] = record_receipt
+    if completed.returncode != 0:
+        raise CaptureError(f"runtime preflight exited {completed.returncode}")
+    if not isinstance(result, dict):
+        raise CaptureError("runtime preflight result is not an object")
+    if result.get("torch_version") != EXPECTED_TORCH:
+        raise CaptureError(f"runtime preflight Torch is not {EXPECTED_TORCH}")
+    if result.get("cuda_version") != EXPECTED_TORCH_CUDA:
+        raise CaptureError(f"runtime preflight CUDA is not {EXPECTED_TORCH_CUDA}")
+    expected_executable = os.path.abspath(python)
+    if result.get("sys_executable") != expected_executable:
+        raise CaptureError("runtime preflight sys.executable changed invocation path")
+    if not all(isinstance(result.get(name), str) and result[name]
+               for name in ("prefix", "base_prefix")):
+        raise CaptureError("runtime preflight lacks Python prefix identity")
+    return record
+
+
 def _verify_source_closure(
     args: argparse.Namespace, ops: SystemOps
 ) -> dict[str, Any]:
@@ -678,6 +742,17 @@ def execute(args: argparse.Namespace, ops: SystemOps | None = None) -> dict[str,
         handback["source_closure"] = _verify_source_closure(args, ops)
         handback["repo_commit"] = args.repo_commit.lower()
         handback["hash_pins"] = _verify_pins(args, plan)
+        chosen_python = Path(plan["source"]["python"])
+        runtime_argv = _runtime_preflight_argv(chosen_python)
+        handback["commands"].append(
+            {"kind": "cpu_runtime_preflight", "argv": runtime_argv}
+        )
+        handback["runtime_preflight_artifact"] = str(
+            run_root / "runtime-preflight.json"
+        )
+        handback["runtime_preflight"] = _runtime_preflight(
+            ops, chosen_python, run_root
+        )
         if ops.competing_agents(args.profiler_binary):
             raise CaptureError("a competing Zymtrace profiler agent is already running")
         gpu_check = ops.run(

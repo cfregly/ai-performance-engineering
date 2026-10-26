@@ -1,7 +1,10 @@
 # Zymtrace capture preparation
 
-Status: preparation only. Zymtrace was not installed, configured, started, or
-used for a capture while preparing this directory.
+Status: launcher implementation and runtime checks are complete. A real B200
+capture from a rejected PyTorch 2.13 worker is retained under
+[captures/rejected-torch213-20261026](captures/rejected-torch213-20261026/).
+The intended two-arm PyTorch 2.14.1 capture is waiting for the PIQ comparison to
+finish and a fresh resource window. Nothing was installed or upgraded.
 
 This runbook adds an opt-in Zymtrace visibility lane for the existing
 `nested_break_depth8` benchmark. It reuses the repository's maintained
@@ -202,3 +205,17 @@ benchmark results, wrapper manifests, exports, hashes, and readback receipt.
 - [Configure MCP](https://docs.zymtrace.com/mcp/configure-mcp/)
 - [MCP token](https://docs.zymtrace.com/mcp/mcp-token/)
 - [Changelog](https://docs.zymtrace.com/changelog/)
+
+## Interpreter identity
+
+A virtualenv interpreter can be a symlink to a system Python. The invocation
+path must be preserved because Python uses it to locate the virtualenv.
+Resolving that symlink before launch silently selected system Torch 2.13 in
+the rejected attempt. The plan now preserves the path and the controller
+checks Torch 2.14.1+cu130, CUDA 13.0, and `sys.executable` in a CPU-only process
+before any GPU or profiler operation.
+
+The configuration API can return an empty HTTP 200 acknowledgment. The
+controller accepts that response only for configuration writes and still
+requires exact current-version state readback after applying or removing its
+single temporary rule. Both regressions have focused tests.

@@ -51,6 +51,18 @@ def _absolute_file(path: Path, label: str, *, executable: bool = False) -> Path:
     return resolved
 
 
+def _absolute_executable_invocation(path: Path, label: str) -> Path:
+    """Validate the target while retaining a virtualenv or shim invocation path."""
+    if not path.is_absolute():
+        raise PlanError(f"{label} must be an absolute path")
+    invocation = Path(os.path.abspath(path))
+    if not invocation.is_file():
+        raise PlanError(f"{label} is not a regular file: {invocation}")
+    if not os.access(invocation, os.R_OK | os.X_OK):
+        raise PlanError(f"{label} is not readable and executable: {invocation}")
+    return invocation
+
+
 def _new_absolute_directory(path: Path, label: str) -> Path:
     if not path.is_absolute():
         raise PlanError(f"{label} must be an absolute path")
@@ -103,7 +115,7 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
         repo_root / "research/2026-10-22_nested-graph-breaks/benchmark.py",
         "nested-graph benchmark",
     )
-    python = _absolute_file(args.python, "Python interpreter", executable=True)
+    python = _absolute_executable_invocation(args.python, "Python interpreter")
     injection_library = _absolute_file(
         args.injection_library, "Zymtrace CUDA injection library"
     )

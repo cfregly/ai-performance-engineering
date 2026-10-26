@@ -125,6 +125,21 @@ class PrepareCaptureTest(unittest.TestCase):
             plan["arms"][1]["environment"]["TORCHINDUCTOR_CACHE_DIR"],
         )
 
+    def test_preserves_virtualenv_python_invocation_symlink(self) -> None:
+        target = self.root / "python3.12"
+        target.write_text("#!/bin/sh\n", encoding="utf-8")
+        target.chmod(0o755)
+        invocation = self.root / "venv/bin/python"
+        invocation.parent.mkdir(parents=True)
+        invocation.symlink_to(target)
+
+        plan = prepare_capture.build_plan(self._args(python=invocation))
+
+        self.assertEqual(plan["source"]["python"], str(invocation))
+        for arm in plan["arms"]:
+            python_index = arm["argv"].index("--python") + 1
+            self.assertEqual(arm["argv"][python_index], str(invocation))
+
     def test_rejects_placeholder_or_url_collection_agent(self) -> None:
         for endpoint in ("ZYMTRACE_URL", "https://zymtrace.example:443/mcp"):
             with self.subTest(endpoint=endpoint):
