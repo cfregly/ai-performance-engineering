@@ -1,0 +1,87 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-10-26T18:32:43.830543+00:00",
+  "state": "complete",
+  "canonical_gamma_url": "https://gamma.app/docs/453-faster-at-steady-state-u5q8j0ibrd2qhu1?mode=doc",
+  "source": {
+    "export_zip": "images/sources/gamma-453-faster-at-steady-state-original.zip",
+    "export_zip_sha256": "89aeb6360afbb8ce289896d8530d5927bb0caf78b78613db947cdb57794d5f63",
+    "export_kind": "existing three-card Gamma PNG export",
+    "export_was_newly_generated_for_this_recovery": false,
+    "source_card": "images/sources/gamma-original-export/1_453-faster-at-steady-state.png",
+    "source_card_sha256": "d43959205955cc07b463d05f5ad2805efeb16e9d275202b6a5b575f4eb375be6",
+    "source_card_dimensions": [
+      2400,
+      3000
+    ],
+    "sampled_palette": {
+      "background": "#FBFBF8",
+      "blue": "#3478BA",
+      "orange": "#E87823"
+    }
+  },
+  "derivation": {
+    "method": "deterministic scientific chart recreation from the verified Gamma first card",
+    "preserved": [
+      "single steady-state latency comparison",
+      "horizontal-bar composition",
+      "warm-white, blue, orange, and ink palette sampled from source pixels",
+      "historical B200 compiler-microbenchmark cohort"
+    ],
+    "replaced": [
+      "ambiguous False/True setting labels",
+      "rounded 4.53x, 407.57 microseconds, and 89.94 microseconds display copy",
+      "portrait layout that does not meet package export dimensions"
+    ],
+    "public_labels": [
+      "Support off",
+      "Support on"
+    ],
+    "exact_values_from_retained_json": {
+      "support_off_steady_us": 407.567,
+      "support_on_steady_us": 89.935,
+      "steady_speedup": 4.531795
+    },
+    "renderer": "images/render_whiteboard_visuals.py",
+    "direct_bitmap_crop": false,
+    "claim_bearing_text_from_image_generation": false
+  },
+  "outputs": [
+    {
+      "path": "images/fun.png",
+      "sha256": "80224ffc4fbbe69a7baea869b6b1aa5e3ff19a0ee892235682f10e914dd7a4f7",
+      "bytes": 61971,
+      "dimensions": [
+        1600,
+        900
+      ]
+    },
+    {
+      "path": "images/fun-square.png",
+      "sha256": "3fb25845dda944fe3f1981cb12369908b88836fe0df0882e1733b529063e6e02",
+      "bytes": 56289,
+      "dimensions": [
+        1080,
+        1080
+      ]
+    },
+    {
+      "path": "images/fun-400.png",
+      "sha256": "8b9cc2069329474ea0e47753ca852d970b18ef4140b61f615229a5b456353c57",
+      "bytes": 28288,
+      "dimensions": [
+        400,
+        225
+      ]
+    },
+    {
+      "path": "images/fun-square-400.png",
+      "sha256": "16f5a3e037817bdc641b61716fda3ce0d6d3056cc379cbdaf894df7b0e6dedc8",
+      "bytes": 44825,
+      "dimensions": [
+        400,
+        400
+      ]
+    }
+  ]
+}

@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "id": "startup-boundary",
+  "accepted": true,
+  "original_cohort": {
+    "primary_startup_measurement": "FAIL",
+    "startup_control": "FAIL",
+    "candidate_first_ten_slower_percent": 33.2,
+    "source": {
+      "path": "results/diagnosis.json",
+      "sha256": "7947aa18f280b8a2f924c8687abea2b918b57b3872959a862e5461b1c4ca865f"
+    }
+  },
+  "fresh022_cohort": {
+    "primary_startup_measurement": "FAIL",
+    "startup_control": "PASS",
+    "source": {
+      "path": "profiles/fresh022/qualification/FINAL-SCIENTIFIC-QUALIFICATION.json",
+      "sha256": "0b836a908264d2592d3a79eb7ff304bf0bc9b0d9031f4ccf7627577ce9844a3a"
+    }
+  },
+  "boundary": "Neither cohort qualifies a startup win. The independent repeat does not retroactively change the original failed startup control."
+}

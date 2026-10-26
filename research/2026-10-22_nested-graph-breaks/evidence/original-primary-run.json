@@ -1,0 +1,64 @@
+{
+  "schema_version": 1,
+  "id": "historical-primary-20261020",
+  "accepted": true,
+  "cohort": "original retained standalone compiler microbenchmark",
+  "workload": {
+    "case": "nested_break_depth8",
+    "baseline": "nested_graph_breaks=False",
+    "candidate": "nested_graph_breaks=True",
+    "same_operations": 64,
+    "dtype": "float32",
+    "elements": 1048576,
+    "seeds": [
+      0,
+      1,
+      2,
+      3
+    ]
+  },
+  "steady_median_invocation": {
+    "geometric_mean_ratio": 4.531794562480241,
+    "observed_min_seed_ratio": 4.495351630265558,
+    "observed_max_seed_ratio": 4.579453627436775,
+    "observed_seed_ratios": [
+      4.52260943098115,
+      4.579453627436775,
+      4.530169356268843,
+      4.495351630265558
+    ],
+    "baseline_geometric_mean_us": 407.567,
+    "candidate_geometric_mean_us": 89.935,
+    "gate": "PASS"
+  },
+  "startup": {
+    "baseline_first_ten_geometric_mean_ms": 2411.177,
+    "candidate_first_ten_geometric_mean_ms": 3211.677,
+    "candidate_slower_percent": 33.2,
+    "measurement_gate": "FAIL",
+    "control_gate": "FAIL",
+    "qualified_startup_win": false
+  },
+  "validation": {
+    "records": 24,
+    "all_correctness_passed": true,
+    "fresh_process_cache_paths_unique": true,
+    "graph_break_mechanism_validated": true,
+    "capture_qualification": "PASS"
+  },
+  "retained_sources": [
+    {
+      "path": "results/analyzer-result.json",
+      "sha256": "8d8b3fad3b07045310b18d0cceca4d395c64c96745a28f3e9799b9380a5c1d25"
+    },
+    {
+      "path": "results/qualification.json",
+      "sha256": "7fee15d624ad93a8b45380a0e163af76ed769a2f446c5ebdbf63ff43813825e9"
+    },
+    {
+      "path": "results/diagnosis.json",
+      "sha256": "7947aa18f280b8a2f924c8687abea2b918b57b3872959a862e5461b1c4ca865f"
+    }
+  ],
+  "scope": "Controlled compiler microbenchmark only. No serving, training, model-quality, or cross-GPU claim."
+}

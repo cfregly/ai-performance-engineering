@@ -1,0 +1,35 @@
+ALLOWED MEASURED CLAIMS
+
+- In the original retained depth-8 B200 compiler microbenchmark, running with nested graph-break support produced a 4.531794562480241x geometric-mean steady median latency ratio relative to running without it across four paired seeds. The individual ratios ranged from 4.495351630265558x to 4.579453627436775x.
+- The original result compared the same 64 FP32 operations under PyTorch 2.14.1+cu130 and Inductor reduce-overhead mode.
+- In that original cohort, the geometric-mean steady medians were 407.567 microseconds with nested graph-break support off and 89.935 microseconds with it on.
+- The original candidate's first ten compiled-call intervals were 33.2 percent slower. The startup route failed, and the no-break startup control also failed.
+- Independent fresh run 022 measured a separate 4.5417580539950775x depth-8 steady geometric-mean ratio across four paired seeds. Its individual ratios ranged from 4.438828272326588x to 4.6530922469391465x.
+- Fresh run 022 passed its steady measurement, steady control, correctness, and capture gates. Its startup measurement did not pass the fixed startup rule.
+- Retained fresh022 Nsys evidence shows 10,160 versus 1,270 whole-capture CUDA Graph launch calls. The fixed post-warmup view shows 16 versus 2 graph executions for the selected invocation.
+- Retained fresh022 NCU evidence contains one matching fused Triton kernel per arm, with saved durations of 6.400 microseconds with nested graph-break support off and 20.992 microseconds with it on. These are single-kernel records, not whole-call speedups.
+- Normal unprofiled workers establish the latency result. Nsys and NCU captures provide separate supporting mechanism evidence and include profiler overhead.
+
+ALLOWED INFERENCE WITH LABEL
+
+- Fewer and larger compiled regions are the leading explanation for the steady result.
+- The larger candidate fused kernel does more work per launch.
+- The retained profiles support an execution-structure explanation. They do not establish an exact CPU or GPU causal share.
+
+REQUIRED QUALIFIERS
+
+- Call this a controlled compiler microbenchmark on one NVIDIA B200.
+- Keep the original 4.531795x result and the independent fresh022 4.541758x result separate.
+- State that neither cohort qualified startup.
+- State that the original startup control failed when discussing the original startup route.
+- State that profiler timings are not the acceptance measurements.
+
+NOT ALLOWED
+
+- Do not describe this as a serving, model-throughput, training, model-quality, or multi-GPU win.
+- Do not generalize the B200 result to H100, A100, or another architecture.
+- Do not call invocation p95 a serving latency percentile.
+- Do not turn the failed startup route into a pass or hide the original failed startup control.
+- Do not combine the two cohorts into one sample or attach the original 4.531795x number to fresh run 022.
+- Do not present a single NCU kernel duration, an Nsys span, or a Chrome-trace segment as the whole-call speedup.
+- Do not claim a Zymtrace capture. None was retained for this experiment.

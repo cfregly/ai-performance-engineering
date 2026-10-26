@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "repository": "cfregly/ai-performance-engineering",
+  "branch": "main",
+  "commit": "cad868447c570fecba713b98d3b6ad777718e1d8",
+  "observed_at_utc": "2026-10-26T17:59:31.584468+00:00",
+  "remote_readback_receipt_sha256": "0ebdd9bbea4d363be07704880f51a7129d942edb3de64f06cc4dff828164ecdd",
+  "remote_readback_scope": [
+    "profiles/README.md",
+    "zymtrace/README.md",
+    "zymtrace/prepare_capture.py",
+    "zymtrace/test_prepare_capture.py"
+  ],
+  "boundary": "This binds the source/current-main handoff. It is not a claim that the new package metadata or images were already committed."
+}

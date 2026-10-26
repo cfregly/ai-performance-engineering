@@ -1,0 +1,13 @@
+Steady Wins, Startup Does Not
+Audience: technical reader
+Evidence state: measured historical cohort
+Core finding: The historical cohort measured a 4.531795x synchronized steady speedup and a 33.2 percent longer first-ten interval total.
+Visible copy:
+- Support off · 407.567 µs
+- Support on · 89.935 µs
+- 4.531795×
+- Support off · 2411.177 ms
+- Support on · 3211.677 ms
+- Support on +33.2% · route FAIL
+Caveat: The startup route failed. Milliseconds and microseconds are kept in separate panels.
+Cohort boundary: Fresh run 022 measured 4.541758x independently. It is not the source of this visual's 4.531795x claim.

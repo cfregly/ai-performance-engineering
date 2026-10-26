@@ -1,0 +1,13 @@
+Four Seeds Agree on the Steady Win
+Audience: Performance and capacity engineers
+Evidence state: measured historical cohort
+Core finding: All four paired seeds measured a steady speedup between 4.495352x and 4.579454x with a 4.531795x geometric mean.
+Visible copy:
+- seed 0 · 4.522609×
+- seed 1 · 4.579454×
+- seed 2 · 4.530169×
+- seed 3 · 4.495352×
+- geometric mean 4.531795×
+- steady PASS · startup FAIL
+Caveat: No confidence interval or population-coverage claim is made.
+Cohort boundary: Fresh run 022 measured 4.541758x independently. It is not the source of this visual's 4.531795x claim.

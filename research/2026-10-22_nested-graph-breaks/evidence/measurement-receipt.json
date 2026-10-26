@@ -1,0 +1,130 @@
+{
+  "schema_version": 1,
+  "state": "measured",
+  "workload_scope": "Controlled PyTorch compiler microbenchmark on one NVIDIA B200. The baseline runs the same depth-8, 64-operation FP32 workload with nested graph-break support off. The candidate runs it with support on. The workload keeps the same graph breaks in both arms. No serving, training, model-quality, multi-GPU, or cross-GPU claim follows.",
+  "runtime_identifier": "Python 3.12.3, PyTorch 2.14.1+cu130, Triton 3.8.0, NVIDIA driver 580.173.02, Inductor reduce-overhead mode",
+  "hardware_identifier": "One owner-granted NVIDIA B200 executed each worker. A second B200 remained idle during the original retained experiment.",
+  "source_revision": "cad868447c570fecba713b98d3b6ad777718e1d8",
+  "source_artifacts": [
+    {
+      "path": "benchmark.py",
+      "sha256": "4c7a5a8dcef474405be19a87d22cfdeb7ea564c76f19acc67ddcd1125d247689"
+    },
+    {
+      "path": "protocol.json",
+      "sha256": "a5ce49eb80a2d44d402d5ce9ef4d9f8ade820472b175a06b822c9a27b2d4b078"
+    },
+    {
+      "path": "source-manifest.json",
+      "sha256": "1855c995c9e9c894efb27c2e854ce3fbaa97915b1c025a796b666ec9b77b9906"
+    },
+    {
+      "path": "evidence/current-source-revision.json",
+      "sha256": "e07935754ed24fd104873db7dcd0f70412cb2df6f02fae63df475f512ce2391f"
+    }
+  ],
+  "accepted_repeats": [
+    {
+      "id": "historical-primary-20261020",
+      "accepted": true,
+      "raw_result": {
+        "path": "evidence/original-primary-run.json",
+        "sha256": "efac6fd3025e59c511a9b2bad36160e835b2a5c203941825afbe635a5cc83855"
+      }
+    },
+    {
+      "id": "independent-fresh022-20261025",
+      "accepted": true,
+      "raw_result": {
+        "path": "evidence/fresh022-repeat.json",
+        "sha256": "7eb577582833142835c4571aab3bde641e6990740c88236ddf8fc1b6bf2fcc8f"
+      }
+    }
+  ],
+  "failed_attempts": [],
+  "guard_receipts": [
+    {
+      "name": "fresh022 retained run and cleanup guard",
+      "accepted": true,
+      "path": "evidence/fresh022-run-guard.json",
+      "sha256": "8df2d2f78e796068cac7da4226eb1b42d09acfa4065ec7df5fe5c8102af22ba1"
+    }
+  ],
+  "profile_evidence": [
+    {
+      "name": "fresh022 native Nsys and NCU evidence",
+      "accepted": true,
+      "path": "evidence/fresh022-profile-evidence.json",
+      "sha256": "ea79195b4eb6ebc86026881ed9c11148347a57e5894c517b05551849ab5cd584"
+    }
+  ],
+  "correctness": {
+    "accepted": true,
+    "path": "evidence/correctness-receipt.json",
+    "sha256": "becd4d5a45252eab1df74bd874585da1eb0e89c0fc6601538e2efb237a473c48"
+  },
+  "expected_power_limit_w": 1000.0,
+  "power_limit_w": 1000.0,
+  "power_limit_evidence": {
+    "path": "evidence/power-limit-readback.json",
+    "sha256": "7d346dc9844620f27534695eeb856d71655574e59164cd656dd40679c9f37ae1"
+  },
+  "claims": [
+    {
+      "id": "original-steady-speedup",
+      "source": {
+        "path": "evidence/original-primary-run.json",
+        "sha256": "efac6fd3025e59c511a9b2bad36160e835b2a5c203941825afbe635a5cc83855"
+      },
+      "accepted_repeat_ids": [
+        "historical-primary-20261020",
+        "independent-fresh022-20261025"
+      ]
+    },
+    {
+      "id": "independent-fresh022-steady-repeat",
+      "source": {
+        "path": "evidence/fresh022-repeat.json",
+        "sha256": "7eb577582833142835c4571aab3bde641e6990740c88236ddf8fc1b6bf2fcc8f"
+      },
+      "accepted_repeat_ids": [
+        "historical-primary-20261020",
+        "independent-fresh022-20261025"
+      ]
+    },
+    {
+      "id": "startup-failure-boundary",
+      "source": {
+        "path": "evidence/startup-boundary.json",
+        "sha256": "245720052bc9c05d88f0d99e48b4f0c9e7a74ae216e8e21a3908878beb11e05a"
+      },
+      "accepted_repeat_ids": [
+        "historical-primary-20261020",
+        "independent-fresh022-20261025"
+      ]
+    },
+    {
+      "id": "profiler-is-supporting-mechanism-evidence",
+      "source": {
+        "path": "evidence/fresh022-profile-evidence.json",
+        "sha256": "ea79195b4eb6ebc86026881ed9c11148347a57e5894c517b05551849ab5cd584"
+      },
+      "accepted_repeat_ids": [
+        "historical-primary-20261020",
+        "independent-fresh022-20261025"
+      ]
+    }
+  ],
+  "route_boundaries": {
+    "historical_primary": {
+      "steady": "PASS",
+      "startup_measurement": "FAIL",
+      "startup_control": "FAIL"
+    },
+    "independent_fresh022": {
+      "steady": "PASS",
+      "startup_measurement": "FAIL",
+      "startup_control": "PASS"
+    }
+  }
+}

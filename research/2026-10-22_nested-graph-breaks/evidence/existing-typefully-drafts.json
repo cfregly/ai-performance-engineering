@@ -1,0 +1,65 @@
+{
+  "schema_version": 1,
+  "observed_at_utc": "2026-10-26T17:59:31.584468+00:00",
+  "social_set_id": 337207,
+  "status": "all five retained drafts were unscheduled and unpublished",
+  "role": "reader-specific follow-up drafts, not the new dual-platform package-review draft",
+  "final_handback_sha256": "79fecb6feb9351df2e6188962113009e42a9aed417284f1f7b5c629afd419c05",
+  "drafts": [
+    {
+      "draft_id": 11481014,
+      "platform": "linkedin",
+      "editor_url": "https://typefully.com/?d=11481014&a=337207",
+      "status": "draft",
+      "scheduled_at": null,
+      "post_count": 1,
+      "media_count": 2,
+      "final_readback_sha256": "d0ec9f72d0b89c3a84b8c6c9010fb6736a7d169f1953158e74d45263db9e97fa",
+      "final_guard_sha256": "699671d39cb7875efad068c4ad1d8ea73a745e6d6ea6ae08629c56d3884bb887"
+    },
+    {
+      "draft_id": 11481015,
+      "platform": "linkedin",
+      "editor_url": "https://typefully.com/?d=11481015&a=337207",
+      "status": "draft",
+      "scheduled_at": null,
+      "post_count": 1,
+      "media_count": 2,
+      "final_readback_sha256": "27f7e120edccc1970b1ecc147b479e0ffa648f3b39b5a1dda7ad4750583cad39",
+      "final_guard_sha256": "6cc2ae9e2495270010c575a553ccec79bb2e252c598d2fd720237a8a233a9111"
+    },
+    {
+      "draft_id": 11481016,
+      "platform": "linkedin",
+      "editor_url": "https://typefully.com/?d=11481016&a=337207",
+      "status": "draft",
+      "scheduled_at": null,
+      "post_count": 1,
+      "media_count": 2,
+      "final_readback_sha256": "b091f29df29d1fd3cd69a8c8b18cdc38870a22ef6acfc532cd180c49cdde1df6",
+      "final_guard_sha256": "1e5451f9ab78c70e5af165b2f0e5e92793f569384489719f960a75d529596360"
+    },
+    {
+      "draft_id": 11481017,
+      "platform": "linkedin",
+      "editor_url": "https://typefully.com/?d=11481017&a=337207",
+      "status": "draft",
+      "scheduled_at": null,
+      "post_count": 1,
+      "media_count": 2,
+      "final_readback_sha256": "bd0387a4c712e29aa87b49a50e6bbbb08e4a85cd02b3e180ca4853009c9e55c0",
+      "final_guard_sha256": "e692ca1acee2b9b1b4bb92934b70928e7c7502c42e7887a67dd32d98155741c1"
+    },
+    {
+      "draft_id": 11481018,
+      "platform": "x",
+      "editor_url": "https://typefully.com/?d=11481018&a=337207",
+      "status": "draft",
+      "scheduled_at": null,
+      "post_count": 6,
+      "media_count": 2,
+      "final_readback_sha256": "1ccdfcf800c95a73ec1404ecc28052b83272ca0bc5d7b8b5685748f40850b2f4",
+      "final_guard_sha256": "34fe592871d76b401828b0e2f8ae1a9f2294a5e62456422bd1e5be207db36642"
+    }
+  ]
+}

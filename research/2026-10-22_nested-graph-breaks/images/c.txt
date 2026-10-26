@@ -1,0 +1,11 @@
+How to Spot Replay Fragmentation
+Audience: technical reader
+Evidence state: measured historical cohort
+Core finding: The retained historical profile recorded 16 versus 2 cudaGraphLaunch events per profiled invocation.
+Visible copy:
+- One profiled invocation
+- 16 cudaGraphLaunch events
+- 2 cudaGraphLaunch events
+- not a profiler screenshot
+Caveat: This is a diagram of retained counts, not a profiler screenshot or latency measurement.
+Cohort boundary: Fresh run 022 measured 4.541758x independently. It is not the source of this visual's 4.531795x claim.

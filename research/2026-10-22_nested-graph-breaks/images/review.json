@@ -1,0 +1,89 @@
+{
+  "schema_version": 1,
+  "reviewer": "Codex package_requirements independent visual reviewer",
+  "independent": true,
+  "verdict": "PASS",
+  "review_scope": [
+    "landscape contact sheet",
+    "square contact sheet",
+    "landscape and square cover",
+    "all ten native 400 by 225 previews",
+    "all ten native 400 by 400 previews",
+    "exact historical cohort numbers and verdicts",
+    "plain support-off and support-on labels",
+    "six distinct audience compositions",
+    "clipping, overlap, hierarchy, and 400-pixel readability",
+    "Gamma first-card origin and deterministic local derivation"
+  ],
+  "checks": {
+    "historical_steady_value_4_531795x": "PASS",
+    "historical_startup_cost_33_2_percent_and_fail": "PASS",
+    "same_workload_and_64_operations_boundary": "PASS",
+    "support_off_and_support_on_labels": "PASS",
+    "all_six_audience_compositions_distinct": "PASS",
+    "landscape_400_pixel_previews_readable": "PASS",
+    "square_400_pixel_previews_readable": "PASS",
+    "no_clipping_or_overlap": "PASS",
+    "gamma_origin_provenance": "PASS"
+  },
+  "gamma_origin": {
+    "verdict": "PASS",
+    "source_export_sha256": "89aeb6360afbb8ce289896d8530d5927bb0caf78b78613db947cdb57794d5f63",
+    "source_first_card_sha256": "d43959205955cc07b463d05f5ad2805efeb16e9d275202b6a5b575f4eb375be6",
+    "derivation": "The shipping cover preserves the verified first card's steady-latency bar comparison and sampled palette. The local deterministic derivation replaces rounded values and contextless Boolean labels with exact retained values and Support off or Support on.",
+    "direct_gamma_bitmap_export": false,
+    "gamma_origin": true
+  },
+  "images": {
+    "images/a": {
+      "verdict": "PASS",
+      "sha256": "055cf5832cc75cb82ba4cfb5144c18bc4700566c8e4cef13877e8224be0882b8",
+      "note": "Mechanism view clearly preserves 64 operations while changing 16 regions by 4 operations into 2 regions by 32 operations."
+    },
+    "images/b": {
+      "verdict": "PASS",
+      "sha256": "397cad35afe46cbcaf2b7d6dc3f2aa0165317c328e1d32da8c4480ba2233e436",
+      "note": "Steady and startup appear on separate scales with 4.531795x, 407.567 microseconds, 89.935 microseconds, 2411.177 milliseconds, 3211.677 milliseconds, and startup FAIL shown correctly."
+    },
+    "images/c": {
+      "verdict": "PASS",
+      "sha256": "524beafcd30f54d858f42b46666ef925109f07fbf9f203b7ec3a2b1ff8f1790d",
+      "note": "Diagnostic pattern clearly compares 16 and 2 replay launches and labels the asset as a diagram rather than a profiler screenshot."
+    },
+    "images/fun": {
+      "verdict": "PASS",
+      "sha256": "80224ffc4fbbe69a7baea869b6b1aa5e3ff19a0ee892235682f10e914dd7a4f7",
+      "note": "Gamma-origin cover uses exact values, plain support labels, steady PASS, and startup FAIL without clipping in landscape, square, or 400-pixel exports."
+    },
+    "images/aud-curious": {
+      "verdict": "PASS",
+      "sha256": "f9e8484908b17e81ade2931c96e9584086d9777838cd34dde5a77929690ff434",
+      "note": "Trip metaphor is distinct, readable, and tied to the exact latency and startup evidence."
+    },
+    "images/aud-ml-engineer": {
+      "verdict": "PASS",
+      "sha256": "3da5f9a8d0966f8dc607f7dbf16f843a15b4ee7f1ffd2dcb04413b221eec9c9f",
+      "note": "Compiler-shape comparison clearly distinguishes 16 versus 2 regions and replay launches while stating that the workload code stayed fixed."
+    },
+    "images/aud-performance-engineer": {
+      "verdict": "PASS",
+      "sha256": "e9e6d2836c596b2602a922d3a9a269ff5c0becf2bacdaa04a38a599bd200c2de",
+      "note": "Four-seed dot plot is distinct and keeps the geometric mean descriptive with steady PASS and startup FAIL."
+    },
+    "images/aud-kernel-engineer": {
+      "verdict": "PASS",
+      "sha256": "c37dff9b5de5c0907d5f7d47bffe139b92a535942abe971ef9b1d1f731a1e9a7",
+      "note": "Launch-granularity view is distinct and keeps replay counts separate from latency measurements."
+    },
+    "images/aud-platform-operations": {
+      "verdict": "PASS",
+      "sha256": "48215d3b2192fae685552cfe235476149dadd3d554580704d21085d77b299f2c",
+      "note": "Operational sequence distinctly separates warmup, steady measurement, and the failed startup route."
+    },
+    "images/aud-business-capacity": {
+      "verdict": "PASS",
+      "sha256": "246b73b7efdcb37f07b784a1b61783f4c4d68b811bdcc2dea4b754ca72a109b1",
+      "note": "Decision card distinctly separates measured compiler behavior from unmeasured serving, cost, and capacity outcomes."
+    }
+  }
+}

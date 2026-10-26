@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "asset": "cover",
+  "audience": "general technical reader",
+  "core_finding": "The historical depth-8 B200 cohort measured 407.567 microseconds with support off and 89.935 microseconds with support on, a 4.531795x steady speedup over the same synthetic work.",
+  "exact_heading": "4.531795x Faster at Steady State",
+  "exact_labels_and_values": [
+    "Support off \u00b7 407.567 \u00b5s",
+    "Support on \u00b7 89.935 \u00b5s",
+    "4.531795x faster at steady state",
+    "same 64 captured operations",
+    "startup route FAIL"
+  ],
+  "evidence_state": "measured",
+  "composition": "A deterministic landscape and square adaptation of the verified existing Gamma first card, retaining its blue/orange bar-chart concept and sampled palette while replacing rounded values and False/True labels with exact evidence and natural support labels.",
+  "required_caveat_or_uncertainty": "Steady execution passed, but the first-ten startup route failed. This is a compiler microbenchmark, not a serving claim.",
+  "source_references": [
+    "images/sources/gamma-original-export/1_453-faster-at-steady-state.png",
+    "README.md",
+    "results/analyzer-result.json"
+  ],
+  "provenance_flag_identifier": "torch._dynamo.config.nested_graph_breaks",
+  "public_setting_labels": [
+    "Support off",
+    "Support on"
+  ],
+  "output": [
+    "1600x900",
+    "1080x1080",
+    "400x225",
+    "400x400"
+  ],
+  "style": {
+    "authority": "/Users/admin/dev/posts/style/whiteboard.md",
+    "background": "#FBFBF8",
+    "ink": "#202326",
+    "blue": "#3478BA",
+    "orange": "#E87823",
+    "heading_font": "Marker Felt local substitute for Caveat Brush",
+    "label_font": "Avenir Next local substitute for Inter"
+  },
+  "renderer": "images/render_whiteboard_visuals.py",
+  "gamma": {
+    "state": "derived_from_verified_existing_gamma_export",
+    "canonical_url": "https://gamma.app/docs/453-faster-at-steady-state-u5q8j0ibrd2qhu1?mode=doc",
+    "source_export": "images/sources/gamma-453-faster-at-steady-state-original.zip",
+    "source_export_sha256": "89aeb6360afbb8ce289896d8530d5927bb0caf78b78613db947cdb57794d5f63",
+    "source_card": "images/sources/gamma-original-export/1_453-faster-at-steady-state.png",
+    "source_card_sha256": "d43959205955cc07b463d05f5ad2805efeb16e9d275202b6a5b575f4eb375be6",
+    "derivation": "Landscape and square scientific chart recreation from Gamma card 1. Palette and chart concept are source-derived; exact values and natural support labels are composited from retained JSON evidence."
+  }
+}

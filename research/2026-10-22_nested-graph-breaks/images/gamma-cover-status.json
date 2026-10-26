@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "state": "integrated_existing_gamma_export",
+  "retained_existing_job_found": true,
+  "canonical_gamma_url": "https://gamma.app/docs/453-faster-at-steady-state-u5q8j0ibrd2qhu1?mode=doc",
+  "export_path": "images/sources/gamma-453-faster-at-steady-state-original.zip",
+  "export_sha256": "89aeb6360afbb8ce289896d8530d5927bb0caf78b78613db947cdb57794d5f63",
+  "source_card": "images/sources/gamma-original-export/1_453-faster-at-steady-state.png",
+  "source_card_sha256": "d43959205955cc07b463d05f5ad2805efeb16e9d275202b6a5b575f4eb375be6",
+  "current_cover": "images/fun.png",
+  "current_cover_origin": "deterministic public-label adaptation of verified Gamma card 1",
+  "current_cover_is_direct_gamma_export": false,
+  "current_cover_is_gamma_origin": true,
+  "derivation_receipt": "images/gamma-cover-derivation.json",
+  "next_step": "Independent visual review of final landscape, square, and 400-pixel outputs."
+}

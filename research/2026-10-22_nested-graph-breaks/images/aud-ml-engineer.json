@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "asset": "audience image",
+  "audience": "ML/AI engineers",
+  "core_finding": "The same workload under fullgraph false emitted 16 versus 2 regions and replay launches when nested graph-break support changed.",
+  "exact_heading": "Nested Support Changes the Compiled Shape",
+  "exact_labels_and_values": [
+    "Support off",
+    "16 regions",
+    "16 replay launches",
+    "Support on",
+    "2 regions",
+    "2 replay launches"
+  ],
+  "evidence_state": "measured",
+  "composition": "Two compiler-shape cards connected from emitted regions to replay launches.",
+  "required_caveat_or_uncertainty": "This does not compare models, serving systems, or PyTorch versions.",
+  "source_references": [
+    "protocol.json",
+    "benchmark.py",
+    "results/nested_break_depth8-seed0-flag0/result.json",
+    "results/nested_break_depth8-seed0-flag1/result.json"
+  ],
+  "provenance_flag_identifier": "torch._dynamo.config.nested_graph_breaks",
+  "public_setting_labels": [
+    "Support off",
+    "Support on"
+  ],
+  "output": [
+    "1600x900",
+    "1080x1080",
+    "400x225",
+    "400x400"
+  ],
+  "style": {
+    "authority": "/Users/admin/dev/posts/style/whiteboard.md",
+    "background": "#FBFBF8",
+    "ink": "#202326",
+    "blue": "#3478BA",
+    "orange": "#E87823",
+    "heading_font": "Marker Felt local substitute for Caveat Brush",
+    "label_font": "Avenir Next local substitute for Inter"
+  },
+  "renderer": "images/render_whiteboard_visuals.py",
+  "gamma": {
+    "state": "not_a_gamma_origin_asset",
+    "note": "This deterministic explainer or audience asset was rendered locally from retained evidence."
+  }
+}

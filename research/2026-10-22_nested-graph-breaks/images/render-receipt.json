@@ -1,0 +1,537 @@
+{
+  "schema_version": 1,
+  "state": "rendered_pending_independent_review",
+  "created_at": "2026-10-26T18:32:43.830543+00:00",
+  "families": 10,
+  "landscape_dimensions": [
+    1600,
+    900
+  ],
+  "square_dimensions": [
+    1080,
+    1080
+  ],
+  "preview_dimensions": [
+    400,
+    225
+  ],
+  "square_preview_dimensions": [
+    400,
+    400
+  ],
+  "families_are_distinct": true,
+  "gamma_stage": "integrated_existing_export_as_public_label_adaptation",
+  "files": [
+    {
+      "path": "images/a-400.png",
+      "sha256": "8e3ba9ae91c5eb5b6a13d33e202526c211bd64d92ecc3581335021b349476ecd",
+      "bytes": 30252,
+      "dimensions": [
+        400,
+        225
+      ]
+    },
+    {
+      "path": "images/a-square-400.png",
+      "sha256": "b3083f594551ebbd3fcd32a479748ca497fec4ab54db9cbbcf50c9531f3bd2f8",
+      "bytes": 89352,
+      "dimensions": [
+        400,
+        400
+      ]
+    },
+    {
+      "path": "images/a-square.png",
+      "sha256": "abb0ab2c7c807624ebe0be960eeab02a8191c361fd4cce435a0bb9720b197f4e",
+      "bytes": 61369,
+      "dimensions": [
+        1080,
+        1080
+      ]
+    },
+    {
+      "path": "images/a.json",
+      "sha256": "d54d45325d01863049d10ed35947badeabbddc3294d66b89a8345d4542f9b044",
+      "bytes": 1592
+    },
+    {
+      "path": "images/a.png",
+      "sha256": "055cf5832cc75cb82ba4cfb5144c18bc4700566c8e4cef13877e8224be0882b8",
+      "bytes": 66960,
+      "dimensions": [
+        1600,
+        900
+      ]
+    },
+    {
+      "path": "images/a.txt",
+      "sha256": "b7f3af6f8a6b39d82ffa3f584acf001ada4ec17dcb47d4b2a8b05085ca22e11e",
+      "bytes": 558
+    },
+    {
+      "path": "images/aud-business-capacity-400.png",
+      "sha256": "5a90351986f1b2154aba02e02cd49d9fff45cce547395d1d3d848977a11594d9",
+      "bytes": 39083,
+      "dimensions": [
+        400,
+        225
+      ]
+    },
+    {
+      "path": "images/aud-business-capacity-square-400.png",
+      "sha256": "a99623c3e6fadd15eeb87562739ea6128befcc7959ed64d3e9a2c912ffd5f0dd",
+      "bytes": 52823,
+      "dimensions": [
+        400,
+        400
+      ]
+    },
+    {
+      "path": "images/aud-business-capacity-square.png",
+      "sha256": "315a65b6c5bde02fc91728e2f1c192067684c8786374136f4c0bf721ce8427d0",
+      "bytes": 73133,
+      "dimensions": [
+        1080,
+        1080
+      ]
+    },
+    {
+      "path": "images/aud-business-capacity.json",
+      "sha256": "6c074c8cf465d5e443d050594a888c8dec67439e28c0eae6951452beb4fd61da",
+      "bytes": 1634
+    },
+    {
+      "path": "images/aud-business-capacity.png",
+      "sha256": "246b73b7efdcb37f07b784a1b61783f4c4d68b811bdcc2dea4b754ca72a109b1",
+      "bytes": 89704,
+      "dimensions": [
+        1600,
+        900
+      ]
+    },
+    {
+      "path": "images/aud-business-capacity.txt",
+      "sha256": "14524a5fa094b5abde83f59b6531ed1609e8f775bf24d290b7e34efb9381b18a",
+      "bytes": 669
+    },
+    {
+      "path": "images/aud-curious-400.png",
+      "sha256": "8a5a88df20ca11d1f7e7e9a3867d0ce3d43d21d3e55d1aad83067e1c87638b74",
+      "bytes": 39080,
+      "dimensions": [
+        400,
+        225
+      ]
+    },
+    {
+      "path": "images/aud-curious-square-400.png",
+      "sha256": "b900153e7eed8d786da1c52ba82fbe33baacd2d972e1cf782f9b2f0b89dc2a7f",
+      "bytes": 81282,
+      "dimensions": [
+        400,
+        400
+      ]
+    },
+    {
+      "path": "images/aud-curious-square.png",
+      "sha256": "84cd53adeb7eb8c2614202a9367c8fc48a0f29ddd4598889c6f085b9a7c098d3",
+      "bytes": 56745,
+      "dimensions": [
+        1080,
+        1080
+      ]
+    },
+    {
+      "path": "images/aud-curious.json",
+      "sha256": "e697d48e7e1dad4e4419b30d6a649e384381e9c3c34d1f6828f952a0a0e821b8",
+      "bytes": 1546
+    },
+    {
+      "path": "images/aud-curious.png",
+      "sha256": "f9e8484908b17e81ade2931c96e9584086d9777838cd34dde5a77929690ff434",
+      "bytes": 74333,
+      "dimensions": [
+        1600,
+        900
+      ]
+    },
+    {
+      "path": "images/aud-curious.txt",
+      "sha256": "1b2d8b5ab3f4fe9ccba1a8030536debcea66ffb38519beea27bd85219506e2d3",
+      "bytes": 568
+    },
+    {
+      "path": "images/aud-kernel-engineer-400.png",
+      "sha256": "16c82b2aa58f2a02cce798342c87ff1c25fddc78a95f3023f001044778672cab",
+      "bytes": 35044,
+      "dimensions": [
+        400,
+        225
+      ]
+    },
+    {
+      "path": "images/aud-kernel-engineer-square-400.png",
+      "sha256": "9e0811d56993b7b393b86e1f861e715ba2844886f2ae035e76c4ef2216a023ea",
+      "bytes": 56477,
+      "dimensions": [
+        400,
+        400
+      ]
+    },
+    {
+      "path": "images/aud-kernel-engineer-square.png",
+      "sha256": "96c43657f7619a508a1557059fa09ecee986c435628f12f172b19cd4e9fe056f",
+      "bytes": 66127,
+      "dimensions": [
+        1080,
+        1080
+      ]
+    },
+    {
+      "path": "images/aud-kernel-engineer.json",
+      "sha256": "3da9cc0e0eb3193e9564dbd90b9d705072413e288c7f493b9461c5f76c679d6a",
+      "bytes": 1691
+    },
+    {
+      "path": "images/aud-kernel-engineer.png",
+      "sha256": "c37dff9b5de5c0907d5f7d47bffe139b92a535942abe971ef9b1d1f731a1e9a7",
+      "bytes": 84251,
+      "dimensions": [
+        1600,
+        900
+      ]
+    },
+    {
+      "path": "images/aud-kernel-engineer.txt",
+      "sha256": "f207c1aa1319651d2f20a9fc24643c161db8d2c47b127108171ffbc8ea6ee3c4",
+      "bytes": 669
+    },
+    {
+      "path": "images/aud-ml-engineer-400.png",
+      "sha256": "ea6aaaa11ca27454f3d0a2b8b8c04fe2e2641627e92c89af78815b0ac0ac723a",
+      "bytes": 34278,
+      "dimensions": [
+        400,
+        225
+      ]
+    },
+    {
+      "path": "images/aud-ml-engineer-square-400.png",
+      "sha256": "3e1e00798ef10254da29a10ade1169aa29ebc2b6e999f4df122e6317e47eb780",
+      "bytes": 44959,
+      "dimensions": [
+        400,
+        400
+      ]
+    },
+    {
+      "path": "images/aud-ml-engineer-square.png",
+      "sha256": "56ef56f53c1b3b8260992e3e0fc49805fd89a1cf8d9f974a4dcbb64031144bf2",
+      "bytes": 66819,
+      "dimensions": [
+        1080,
+        1080
+      ]
+    },
+    {
+      "path": "images/aud-ml-engineer.json",
+      "sha256": "63a7c3f3d848171831440e581b0fbc51b593ff519715536a3bd601e7526a20a3",
+      "bytes": 1636
+    },
+    {
+      "path": "images/aud-ml-engineer.png",
+      "sha256": "3da5f9a8d0966f8dc607f7dbf16f843a15b4ee7f1ffd2dcb04413b221eec9c9f",
+      "bytes": 89565,
+      "dimensions": [
+        1600,
+        900
+      ]
+    },
+    {
+      "path": "images/aud-ml-engineer.txt",
+      "sha256": "9fbd715a5e77f25a56ab210f1f6331a3a54d329ec642c36f31bfae125d7ec4ad",
+      "bytes": 557
+    },
+    {
+      "path": "images/aud-performance-engineer-400.png",
+      "sha256": "b33412edfd5d74aa7519c3e06b45c4b1b9e9abeb7b7414f5862d031b20a50a54",
+      "bytes": 33321,
+      "dimensions": [
+        400,
+        225
+      ]
+    },
+    {
+      "path": "images/aud-performance-engineer-square-400.png",
+      "sha256": "856158838a898911f6644e2c9c283e88c95195d3c128950f64555812391c98f8",
+      "bytes": 46206,
+      "dimensions": [
+        400,
+        400
+      ]
+    },
+    {
+      "path": "images/aud-performance-engineer-square.png",
+      "sha256": "3ce31779234723dcd37eb7b669894dbfaaa97f43283ed50b552db83337df8eb5",
+      "bytes": 60850,
+      "dimensions": [
+        1080,
+        1080
+      ]
+    },
+    {
+      "path": "images/aud-performance-engineer.json",
+      "sha256": "f87ee12ae4a692a4da93e1445c1907af6b527a66e2c2866bc919fe51524b8d8e",
+      "bytes": 1619
+    },
+    {
+      "path": "images/aud-performance-engineer.png",
+      "sha256": "e9e6d2836c596b2602a922d3a9a269ff5c0becf2bacdaa04a38a599bd200c2de",
+      "bytes": 72592,
+      "dimensions": [
+        1600,
+        900
+      ]
+    },
+    {
+      "path": "images/aud-performance-engineer.txt",
+      "sha256": "1c748e3eaa5327807d0f049b2053107df1004d6ec884487302ce82e06fa99ffe",
+      "bytes": 603
+    },
+    {
+      "path": "images/aud-platform-operations-400.png",
+      "sha256": "e363b310311218ecde6edb56ee0d8a19b4bb986612a705a5a6a17a94b7d27ec9",
+      "bytes": 28584,
+      "dimensions": [
+        400,
+        225
+      ]
+    },
+    {
+      "path": "images/aud-platform-operations-square-400.png",
+      "sha256": "d04665547ddb6678cc4d938ee362de2d649ad0071bbadbed33529ba0ebc5b0ff",
+      "bytes": 45044,
+      "dimensions": [
+        400,
+        400
+      ]
+    },
+    {
+      "path": "images/aud-platform-operations-square.png",
+      "sha256": "59248f357cacace9837dab1ded45e1d479a264783cc6207cfaddf0f3d057856d",
+      "bytes": 63937,
+      "dimensions": [
+        1080,
+        1080
+      ]
+    },
+    {
+      "path": "images/aud-platform-operations.json",
+      "sha256": "f0882a2f53b3c2c94555401bffbd9532d7cff68cf690f2dd1bab086111eb64f2",
+      "bytes": 1610
+    },
+    {
+      "path": "images/aud-platform-operations.png",
+      "sha256": "48215d3b2192fae685552cfe235476149dadd3d554580704d21085d77b299f2c",
+      "bytes": 60789,
+      "dimensions": [
+        1600,
+        900
+      ]
+    },
+    {
+      "path": "images/aud-platform-operations.txt",
+      "sha256": "30a968c5150f6b5005f50adc513e8afd30bea12098f353075c96efb76a8cebba",
+      "bytes": 614
+    },
+    {
+      "path": "images/b-400.png",
+      "sha256": "88ed29127e6b33e1f445279883bf5305086cdadf1f55dcff11ed5f7d4469bfb5",
+      "bytes": 32741,
+      "dimensions": [
+        400,
+        225
+      ]
+    },
+    {
+      "path": "images/b-square-400.png",
+      "sha256": "32f1163c5f51df688e7443a2b4d688d85daf836476fb3ce7e9a2e51594c33cba",
+      "bytes": 51889,
+      "dimensions": [
+        400,
+        400
+      ]
+    },
+    {
+      "path": "images/b-square.png",
+      "sha256": "f820ebaa764f7243f7747fd7ebc2e7a41a8c1ce1134015b5aa5acea2c12480f4",
+      "bytes": 70031,
+      "dimensions": [
+        1080,
+        1080
+      ]
+    },
+    {
+      "path": "images/b.json",
+      "sha256": "66f047f2709b3f63383fd8369e0a25227408843df6a58ed6e4302dd0734111d4",
+      "bytes": 1635
+    },
+    {
+      "path": "images/b.png",
+      "sha256": "397cad35afe46cbcaf2b7d6dc3f2aa0165317c328e1d32da8c4480ba2233e436",
+      "bytes": 71640,
+      "dimensions": [
+        1600,
+        900
+      ]
+    },
+    {
+      "path": "images/b.txt",
+      "sha256": "e20448fec5ca326a8ffd4f36206953a5e0a64ea0a1529cb403c5ee9e678a3610",
+      "bytes": 624
+    },
+    {
+      "path": "images/c-400.png",
+      "sha256": "35049f8d72a8729c9017f6dce4ccb769e412c7d63e68884b7fe68cd03575489a",
+      "bytes": 27527,
+      "dimensions": [
+        400,
+        225
+      ]
+    },
+    {
+      "path": "images/c-square-400.png",
+      "sha256": "a4ecb3bfb508ffb02d0add9f7862cdbcb022c8c27fd856d543568e0756701925",
+      "bytes": 53627,
+      "dimensions": [
+        400,
+        400
+      ]
+    },
+    {
+      "path": "images/c-square.png",
+      "sha256": "e2b89022da3f4b01d0db7521fcb9e8b1c105fea1ac50bb98814b2ebcea505689",
+      "bytes": 65728,
+      "dimensions": [
+        1080,
+        1080
+      ]
+    },
+    {
+      "path": "images/c.json",
+      "sha256": "e1e5d5db17557027c270b5acaa2c7fca08deacc1a6c1063c800f24d431d736c7",
+      "bytes": 1581
+    },
+    {
+      "path": "images/c.png",
+      "sha256": "524beafcd30f54d858f42b46666ef925109f07fbf9f203b7ec3a2b1ff8f1790d",
+      "bytes": 64599,
+      "dimensions": [
+        1600,
+        900
+      ]
+    },
+    {
+      "path": "images/c.txt",
+      "sha256": "7c8a24c3569278ddf37cbaf22d29b128b26badd33abc0b998e722bfd545dde6b",
+      "bytes": 557
+    },
+    {
+      "path": "images/contact-sheet-400.png",
+      "sha256": "614a4b8fe79328c6dd9465e50b0f28c9b2d3c1c8ead0061c809fd218efa80a34",
+      "bytes": 49342,
+      "dimensions": [
+        400,
+        225
+      ]
+    },
+    {
+      "path": "images/contact-sheet-square-400.png",
+      "sha256": "3e2dedb68a3def191521fb601b6ad04c0167e9caab940b1d84baff6afcacef05",
+      "bytes": 67924,
+      "dimensions": [
+        400,
+        400
+      ]
+    },
+    {
+      "path": "images/contact-sheet-square.png",
+      "sha256": "34e3fe0cb632ec555b1a4508a11ee58a855a680ea6dd162164f423ca60f82309",
+      "bytes": 196954,
+      "dimensions": [
+        1080,
+        1080
+      ]
+    },
+    {
+      "path": "images/contact-sheet.png",
+      "sha256": "d19014e6b2edd257d2e9dbb7d84c0caae6c29523376a77681b7bdb4318e1ae8d",
+      "bytes": 279267,
+      "dimensions": [
+        1600,
+        900
+      ]
+    },
+    {
+      "path": "images/fun-400.png",
+      "sha256": "8b9cc2069329474ea0e47753ca852d970b18ef4140b61f615229a5b456353c57",
+      "bytes": 28288,
+      "dimensions": [
+        400,
+        225
+      ]
+    },
+    {
+      "path": "images/fun-square-400.png",
+      "sha256": "16f5a3e037817bdc641b61716fda3ce0d6d3056cc379cbdaf894df7b0e6dedc8",
+      "bytes": 44825,
+      "dimensions": [
+        400,
+        400
+      ]
+    },
+    {
+      "path": "images/fun-square.png",
+      "sha256": "3fb25845dda944fe3f1981cb12369908b88836fe0df0882e1733b529063e6e02",
+      "bytes": 56289,
+      "dimensions": [
+        1080,
+        1080
+      ]
+    },
+    {
+      "path": "images/fun.json",
+      "sha256": "d4d1eed2160f51a58411b315cf5e09ec1e441679d95b4a99cf8061e472d641b5",
+      "bytes": 2539
+    },
+    {
+      "path": "images/fun.png",
+      "sha256": "80224ffc4fbbe69a7baea869b6b1aa5e3ff19a0ee892235682f10e914dd7a4f7",
+      "bytes": 61971,
+      "dimensions": [
+        1600,
+        900
+      ]
+    },
+    {
+      "path": "images/fun.txt",
+      "sha256": "d373def562fb01287672f793d04f0f0919dc35f71aeb53f53eea59ca4d8487e1",
+      "bytes": 710
+    },
+    {
+      "path": "images/gallery.html",
+      "sha256": "cd094249ef9086110a38f4ee8eeef58f3525571e9bb35c54b471bfea3684b134",
+      "bytes": 5536
+    },
+    {
+      "path": "images/gamma-cover-derivation.json",
+      "sha256": "732cad715908677dbfd7c447c9f1776b1a012f0cf8e429d391347b4977b654b6",
+      "bytes": 2696
+    },
+    {
+      "path": "images/gamma-cover-status.json",
+      "sha256": "bd1f3bde0cafe5147f53065997242d79ca03cd8f53af539e02f7c4cc68416a8f",
+      "bytes": 941
+    }
+  ]
+}

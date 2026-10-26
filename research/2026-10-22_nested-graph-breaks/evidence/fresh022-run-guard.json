@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "name": "fresh022 retained run and cleanup guard",
+  "accepted": true,
+  "source": {
+    "path": "profiles/fresh022/qualification/FINAL-SCIENTIFIC-QUALIFICATION.json",
+    "sha256": "0b836a908264d2592d3a79eb7ff304bf0bc9b0d9031f4ccf7627577ce9844a3a"
+  },
+  "checks": {
+    "all_28_children_exit_zero": true,
+    "raw_inputs_unchanged": true,
+    "no_exports_analyzer_or_captures_repeated": true,
+    "clock_restoration_passed": true,
+    "cgroup_removed": true,
+    "owner_acknowledgements_retained": 2
+  },
+  "boundary": "Accepted as the fresh022 execution and cleanup receipt. The original cohort remains governed by its separate retained qualification."
+}

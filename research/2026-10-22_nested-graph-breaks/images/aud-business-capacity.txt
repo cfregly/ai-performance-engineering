@@ -1,0 +1,12 @@
+A Fast Steady Loop With a Startup Cost
+Audience: VCs and business readers
+Evidence state: measured historical cohort
+Core finding: The microbenchmark measured a 4.531795x steady speedup and a 33.2 percent first-ten penalty but did not measure serving, cost, or capacity.
+Visible copy:
+- Support on steady · 4.531795× faster
+- Support on first ten · 33.2% longer
+- model throughput · not measured
+- serving latency · not measured
+- cost or capacity · not measured
+Caveat: No cost, capacity, revenue, model-throughput, or serving-latency claim.
+Cohort boundary: Fresh run 022 measured 4.541758x independently. It is not the source of this visual's 4.531795x claim.

@@ -1,0 +1,61 @@
+{
+  "schema_version": 1,
+  "id": "independent-fresh022-20261025",
+  "accepted": true,
+  "cohort": "independent fresh run 022",
+  "workload": {
+    "case": "nested_break_depth8",
+    "baseline": "nested_graph_breaks=False",
+    "candidate": "nested_graph_breaks=True",
+    "seeds": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "records": 24
+  },
+  "steady_median_invocation": {
+    "geometric_mean_ratio": 4.5417580539950775,
+    "observed_min_seed_ratio": 4.438828272326588,
+    "observed_max_seed_ratio": 4.6530922469391465,
+    "observed_seed_ratios": [
+      4.438828272326588,
+      4.547002375611127,
+      4.530652914857948,
+      4.6530922469391465
+    ],
+    "gate": "PASS"
+  },
+  "startup": {
+    "geometric_mean_ratio": 0.7477240061689931,
+    "measurement_gate": "FAIL",
+    "control_gate": "PASS",
+    "qualified_startup_win": false
+  },
+  "validation": {
+    "all_28_children_exit_zero": true,
+    "all_correctness_passed": true,
+    "fresh_process_cache_paths_unique": true,
+    "graph_break_mechanism_validated": true,
+    "clock_restoration_passed": true,
+    "cgroup_removed": true,
+    "capture_qualification_pass": true,
+    "strict_profiler_gates_pass": true
+  },
+  "retained_sources": [
+    {
+      "path": "profiles/fresh022/qualification/FINAL-SCIENTIFIC-QUALIFICATION.json",
+      "sha256": "0b836a908264d2592d3a79eb7ff304bf0bc9b0d9031f4ccf7627577ce9844a3a"
+    },
+    {
+      "path": "profiles/fresh022/qualification/STRICT-PROFILER-QUALIFICATION.json",
+      "sha256": "6c2ec3215b144b06f771e0dfa2e2b90898c0c7744c0504e57d3a9c1a399fc538"
+    },
+    {
+      "path": "profiles/fresh022/manifest.json",
+      "sha256": "5c5103e97c18f81326a731f0af886e18840a09d35d34a9788e77570b515a6618"
+    }
+  ],
+  "scope": "Independent repeat of the controlled compiler microbenchmark. It does not replace the original cohort."
+}

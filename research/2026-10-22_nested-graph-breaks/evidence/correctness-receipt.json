@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "accepted": true,
+  "original_cohort": {
+    "records": 24,
+    "all_correctness_passed": true,
+    "source": {
+      "path": "results/analyzer-result.json",
+      "sha256": "8d8b3fad3b07045310b18d0cceca4d395c64c96745a28f3e9799b9380a5c1d25"
+    }
+  },
+  "fresh022_cohort": {
+    "records": 24,
+    "all_correctness_passed": true,
+    "source": {
+      "path": "profiles/fresh022/qualification/FINAL-SCIENTIFIC-QUALIFICATION.json",
+      "sha256": "0b836a908264d2592d3a79eb7ff304bf0bc9b0d9031f4ccf7627577ce9844a3a"
+    }
+  },
+  "checks": "Eager-reference shape, dtype, finite-value, rtol, and atol checks under the fixed protocol."
+}

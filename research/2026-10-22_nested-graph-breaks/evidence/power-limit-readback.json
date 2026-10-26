@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "cohort": "fresh022",
+  "source_archive_sha256": "f5fedbbed86caade3786b7be0a425c9ed2338a61e30292a73b6027d2862f03cb",
+  "source_archive_binding": "profiles/fresh022/manifest.json#original_archive_sha256",
+  "archive_member": "root/nested-graph-breaks-b200-pr41-006-run-022/control/telemetry/worker-05-nested_break_depth8-seed0-flag0.before.xml",
+  "archive_member_sha256": "a34fb9c36186156870aab6203c6a660a3076941973ec1ccb7f77bd201ec86da1",
+  "device": "NVIDIA B200",
+  "driver_version": "580.173.02",
+  "current_power_limit_w": 1000.0,
+  "requested_power_limit_w": 1000.0,
+  "default_power_limit_w": 1000.0,
+  "software_power_cap_event": "Not Active",
+  "power_brake_slowdown_event": "Not Active",
+  "interpretation": "Exact retained pre-worker telemetry. This receipt does not claim constant power draw."
+}

@@ -1,0 +1,4 @@
+With nested graph-break support, B200 steady calls were 4.53× faster than without it. An independent run measured 4.54×. Startup was slower and failed its gate. Unprofiled timing. Compiler microbenchmark.
+
+Code: https://github.com/cfregly/ai-performance-engineering/tree/e57c5bb31ec492094b4fd9f73a615195aceab936/research/2026-10-22_nested-graph-breaks/profiles
+Image: https://github.com/cfregly/ai-performance-engineering/blob/e57c5bb31ec492094b4fd9f73a615195aceab936/research/2026-10-22_nested-graph-breaks/profiles/views/nsys-first-post-warmup-invocation.png

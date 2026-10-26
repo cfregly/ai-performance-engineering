@@ -1,0 +1,107 @@
+{
+  "schema_version": 1,
+  "package": "research/2026-10-22_nested-graph-breaks",
+  "current_source_revision": "cad868447c570fecba713b98d3b6ad777718e1d8",
+  "claim_scope": "Controlled compiler microbenchmark comparing nested graph-break support off and on for the same depth-8, 64-operation FP32 workload on one NVIDIA B200",
+  "sources": [
+    {
+      "id": "executed-worker",
+      "type": "official_results",
+      "title": "Executed nested graph breaks benchmark worker",
+      "author": "Chris Fregly",
+      "url": "https://github.com/cfregly/ai-performance-engineering/blob/cad868447c570fecba713b98d3b6ad777718e1d8/research/2026-10-22_nested-graph-breaks/benchmark.py",
+      "local_path": "benchmark.py",
+      "evidence_role": "Executed workload source for both arms"
+    },
+    {
+      "id": "fixed-protocol",
+      "type": "official_results",
+      "title": "Fixed B200 nested graph breaks protocol",
+      "author": "Chris Fregly",
+      "url": "https://github.com/cfregly/ai-performance-engineering/blob/cad868447c570fecba713b98d3b6ad777718e1d8/research/2026-10-22_nested-graph-breaks/protocol.json",
+      "local_path": "protocol.json",
+      "evidence_role": "Predeclared workload, measurement, correctness, control, and capture rules"
+    },
+    {
+      "id": "original-analysis",
+      "type": "official_results",
+      "title": "Original retained analyzer result",
+      "author": "Chris Fregly",
+      "url": "https://github.com/cfregly/ai-performance-engineering/blob/cad868447c570fecba713b98d3b6ad777718e1d8/research/2026-10-22_nested-graph-breaks/results/analyzer-result.json",
+      "local_path": "results/analyzer-result.json",
+      "evidence_role": "Original 4.531795x steady result, per-seed ratios, startup failure, and control results"
+    },
+    {
+      "id": "original-qualification",
+      "type": "official_results",
+      "title": "Original retained qualification",
+      "author": "Chris Fregly",
+      "url": "https://github.com/cfregly/ai-performance-engineering/blob/cad868447c570fecba713b98d3b6ad777718e1d8/research/2026-10-22_nested-graph-breaks/results/qualification.json",
+      "local_path": "results/qualification.json",
+      "evidence_role": "Original steady PASS, startup FAIL, startup-control FAIL, and claim limits"
+    },
+    {
+      "id": "fresh022-final-qualification",
+      "type": "official_results",
+      "title": "Independent fresh run 022 final scientific qualification",
+      "author": "Chris Fregly",
+      "url": "https://github.com/cfregly/ai-performance-engineering/blob/e57c5bb31ec492094b4fd9f73a615195aceab936/research/2026-10-22_nested-graph-breaks/profiles/fresh022/qualification/FINAL-SCIENTIFIC-QUALIFICATION.json",
+      "local_path": "profiles/fresh022/qualification/FINAL-SCIENTIFIC-QUALIFICATION.json",
+      "evidence_role": "Independent 4.541758x steady repeat with separate correctness, control, capture, and startup outcomes"
+    },
+    {
+      "id": "fresh022-profiler-qualification",
+      "type": "official_results",
+      "title": "Fresh run 022 strict profiler qualification",
+      "author": "Chris Fregly",
+      "url": "https://github.com/cfregly/ai-performance-engineering/blob/e57c5bb31ec492094b4fd9f73a615195aceab936/research/2026-10-22_nested-graph-breaks/profiles/fresh022/qualification/STRICT-PROFILER-QUALIFICATION.json",
+      "local_path": "profiles/fresh022/qualification/STRICT-PROFILER-QUALIFICATION.json",
+      "evidence_role": "Accepted Nsys and NCU mechanism evidence, separate from timing acceptance"
+    },
+    {
+      "id": "native-profile-index",
+      "type": "official_results",
+      "title": "Native profiler captures, exports, hashes, and tracing limits",
+      "author": "Chris Fregly",
+      "url": "https://github.com/cfregly/ai-performance-engineering/tree/e57c5bb31ec492094b4fd9f73a615195aceab936/research/2026-10-22_nested-graph-breaks/profiles",
+      "local_path": "profiles/README.md",
+      "evidence_role": "Download links and cohort-specific interpretation for retained Nsys, NCU, SQLite, CSV, and Chrome files"
+    },
+    {
+      "id": "nsys-overhead-background",
+      "type": "official_documentation",
+      "title": "Understanding the Visualization of Overhead and Latency in NVIDIA Nsight Systems",
+      "author": "NVIDIA",
+      "url": "https://developer.nvidia.com/blog/understanding-the-visualization-of-overhead-and-latency-in-nsight-systems/",
+      "evidence_role": "Background for why profiled timelines are not timing acceptance measurements"
+    },
+    {
+      "id": "ncu-profiling-guide",
+      "type": "official_documentation",
+      "title": "Nsight Compute Profiling Guide",
+      "author": "NVIDIA",
+      "url": "https://docs.nvidia.com/nsight-compute/ProfilingGuide/index.html",
+      "evidence_role": "Background for replay-based counter collection and profiler overhead"
+    }
+  ],
+  "state_boundaries": {
+    "measured": [
+      "Original 4.531794562480241x steady geometric-mean ratio",
+      "Independent fresh022 4.5417580539950775x steady geometric-mean ratio",
+      "Original startup route failed and the candidate first-ten total was 33.2 percent slower",
+      "Fresh022 startup measurement failed its fixed rule",
+      "Fresh022 Nsys and NCU captures passed the retained strict profiler qualification"
+    ],
+    "inference": [
+      "Fewer and larger compiled regions are the leading explanation for the steady result",
+      "The profiler evidence supports mechanism interpretation but does not allocate an exact CPU or GPU causal percentage"
+    ],
+    "not_established": [
+      "Serving latency or throughput",
+      "Model training throughput or quality",
+      "Cross-GPU portability",
+      "Multi-GPU scaling",
+      "A universal startup payback point"
+    ]
+  }
+}

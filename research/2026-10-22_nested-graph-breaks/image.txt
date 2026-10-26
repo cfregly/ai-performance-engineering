@@ -1,0 +1,12 @@
+4.531795x Faster at Steady State
+Audience: general technical reader
+Evidence state: measured historical cohort
+Core finding: The historical depth-8 B200 cohort measured 407.567 microseconds with support off and 89.935 microseconds with support on, a 4.531795x steady speedup over the same synthetic work.
+Visible copy:
+- Support off · 407.567 µs
+- Support on · 89.935 µs
+- 4.531795x faster at steady state
+- same 64 captured operations
+- startup route FAIL
+Caveat: Steady execution passed, but the first-ten startup route failed. This is a compiler microbenchmark, not a serving claim.
+Cohort boundary: Fresh run 022 measured 4.541758x independently. It is not the source of this visual's 4.531795x claim.

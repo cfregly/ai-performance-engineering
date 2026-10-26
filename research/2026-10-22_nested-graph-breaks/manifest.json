@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "content_state": "measured",
+  "measurement_receipt": "evidence/measurement-receipt.json",
+  "concepts": [
+    "images/a",
+    "images/b",
+    "images/c"
+  ],
+  "cover_stem": "images/fun",
+  "selected_image_stem": "images/fun",
+  "audiences": [
+    {
+      "key": "curious",
+      "reader": "Curious non-specialists",
+      "stem": "images/aud-curious"
+    },
+    {
+      "key": "ml-engineer",
+      "reader": "ML/AI engineers",
+      "stem": "images/aud-ml-engineer"
+    },
+    {
+      "key": "performance-engineer",
+      "reader": "Performance and capacity engineers",
+      "stem": "images/aud-performance-engineer"
+    },
+    {
+      "key": "kernel-engineer",
+      "reader": "CUDA and hardware engineers",
+      "stem": "images/aud-kernel-engineer"
+    },
+    {
+      "key": "platform-operations",
+      "reader": "Platform operations",
+      "stem": "images/aud-platform-operations"
+    },
+    {
+      "key": "business-capacity",
+      "reader": "Business and capacity readers",
+      "stem": "images/aud-business-capacity"
+    }
+  ],
+  "review_receipt": "images/review.json",
+  "typefully_receipt": "social/typefully-receipt.json",
+  "source_revision": "cad868447c570fecba713b98d3b6ad777718e1d8",
+  "evidence_cohorts": [
+    "historical published primary",
+    "independent fresh022 repeat"
+  ]
+}

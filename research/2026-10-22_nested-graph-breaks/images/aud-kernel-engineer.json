@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "asset": "audience image",
+  "audience": "CUDA and hardware engineers",
+  "core_finding": "The historical seed-0 profile recorded 16 versus 2 graph launches per invocation while compiler counters retained 64 captured ATen operations.",
+  "exact_heading": "Replay Count Fell While Work Stayed Fixed",
+  "exact_labels_and_values": [
+    "Support off \u00b7 16 graph launches",
+    "4 ATen ops per emitted region",
+    "Support on \u00b7 2 graph launches",
+    "32 ATen ops per emitted region",
+    "64 captured operations in both arms"
+  ],
+  "evidence_state": "measured",
+  "composition": "Launch strips paired with operations per emitted region.",
+  "required_caveat_or_uncertainty": "Launch counts are not latency and the diagram is not a profiler screenshot.",
+  "source_references": [
+    "results/nested_break_depth8-seed0-flag0/result.json",
+    "results/nested_break_depth8-seed0-flag1/result.json"
+  ],
+  "provenance_flag_identifier": "torch._dynamo.config.nested_graph_breaks",
+  "public_setting_labels": [
+    "Support off",
+    "Support on"
+  ],
+  "output": [
+    "1600x900",
+    "1080x1080",
+    "400x225",
+    "400x400"
+  ],
+  "style": {
+    "authority": "/Users/admin/dev/posts/style/whiteboard.md",
+    "background": "#FBFBF8",
+    "ink": "#202326",
+    "blue": "#3478BA",
+    "orange": "#E87823",
+    "heading_font": "Marker Felt local substitute for Caveat Brush",
+    "label_font": "Avenir Next local substitute for Inter"
+  },
+  "renderer": "images/render_whiteboard_visuals.py",
+  "gamma": {
+    "state": "not_a_gamma_origin_asset",
+    "note": "This deterministic explainer or audience asset was rendered locally from retained evidence."
+  }
+}

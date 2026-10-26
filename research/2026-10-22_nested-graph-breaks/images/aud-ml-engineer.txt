@@ -1,0 +1,13 @@
+Nested Support Changes the Compiled Shape
+Audience: ML/AI engineers
+Evidence state: measured historical cohort
+Core finding: The same workload under fullgraph false emitted 16 versus 2 regions and replay launches when nested graph-break support changed.
+Visible copy:
+- Support off
+- 16 regions
+- 16 replay launches
+- Support on
+- 2 regions
+- 2 replay launches
+Caveat: This does not compare models, serving systems, or PyTorch versions.
+Cohort boundary: Fresh run 022 measured 4.541758x independently. It is not the source of this visual's 4.531795x claim.

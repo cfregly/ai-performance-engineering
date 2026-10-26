@@ -1,0 +1,30 @@
+Asset: cover
+Audience: general technical reader
+Core finding: In the historical depth-8 B200 compiler microbenchmark, synchronized steady median latency was 407.567 microseconds with nested graph-break support off and 89.935 microseconds with support on, a 4.531795x speedup over the same synthetic work.
+Exact heading: 4.531795x Faster at Steady State
+Exact labels and values: Nested graph-break support: off versus on. Support off. 407.567 µs. Support on. 89.935 µs. Same 64 captured operations. Four paired seeds. Startup route FAIL.
+Evidence state: measured historical cohort
+Composition: deterministic landscape and square scientific-chart adaptation of the verified Gamma first card's horizontal-bar concept
+Required caveat: synthetic compiler microbenchmark, not serving. Support-on first ten intervals were 33.2 percent longer and the startup route failed.
+Evidence references: README.md and results/analyzer-result.json
+Gamma source: https://gamma.app/docs/453-faster-at-steady-state-u5q8j0ibrd2qhu1?mode=doc
+Immutable export: images/sources/gamma-453-faster-at-steady-state-original.zip
+Source card: images/sources/gamma-original-export/1_453-faster-at-steady-state.png
+Output: 1600x900, 1080x1080, 400x225, and 400x400
+
+Verify the existing Gamma export and first-card hashes before rendering. Preserve
+the first card's single steady-latency comparison, horizontal-bar concept, and
+pixel-sampled warm-white, blue, orange, and ink palette. Do not copy the source
+card's rounded display numbers or contextless False/True labels.
+
+Render the public cover deterministically from retained evidence. Use natural
+Support off and Support on labels. Keep the exact internal PyTorch flag
+identifier in structured provenance only. Do not add product claims, serving
+results, cost claims, logos, avatars, or citations that are not in the approved
+inputs.
+
+Check the full-size, square, and native 400-pixel views for exact text,
+readable data, clipping, overlap, and clear comparison. Retain the canonical
+Gamma URL, original export bytes, source-card bytes, derivation method, and all
+output hashes. Describe the public cover as Gamma-origin but not as a direct
+Gamma bitmap export.

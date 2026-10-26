@@ -24,10 +24,14 @@ runtime used Python 3.12.3, PyTorch 2.14.1+cu130, Triton 3.8.0, and driver
 580.173.02. The workload used 1,048,576 FP32 elements and Inductor
 `reduce-overhead` with `fullgraph=False`.
 
-| Depth-8 metric | False | True | Comparison |
+Here, **support off** means `nested_graph_breaks=False`, and **support on**
+means `nested_graph_breaks=True`. The workload keeps the same graph breaks and
+the same 64 operations in both arms.
+
+| Depth-8 metric | Support off | Support on | Comparison |
 | --- | ---: | ---: | ---: |
 | Synchronized steady median | 407.567 µs | 89.935 µs | 4.531795× |
-| First ten compiled-call intervals | 2,411.177 ms | 3,211.677 ms | True takes 33.2% longer |
+| First ten compiled-call intervals | 2,411.177 ms | 3,211.677 ms | Support on takes 33.2% longer |
 | Emitted regions, seed 0 | 16 × 4 ATen operations | 2 × 32 ATen operations | Same 64 operations |
 | CUDA Graph replay launches per profiled invocation | 16 | 2 | Five untimed invocations per arm |
 
@@ -46,21 +50,35 @@ The first-ten metric sums ten individually synchronized invocation intervals.
 It excludes process startup, imports, input creation, and eager-reference work.
 Correctness work occurs between calls 1 and 2, so this is not continuous startup
 wall time. The entire net increase came from call 1, which takes 786–876 ms
-longer with True. Calls 2–10 together save about 19 ms. Larger generated fused
+longer with support on. Calls 2–10 together save about 19 ms. Larger generated fused
 programs are the leading explanation. Exact compiler-phase times were not
 recorded, and the no-break control's call-1 excursion remains unexplained.
 
-These historical measurements used the standalone protocol and PyTorch Chrome
+## Independent fresh repeat
+
+Fresh run 022 repeated the same 24-cell compiler microbenchmark on B200. Its
+depth-8 steady geometric-mean speedup was **4.541758×**, with individual seed
+ratios from 4.438828× to 4.653092×. All 24 correctness records passed. The
+steady measurement, control, and capture gates passed. The startup measurement
+still failed its fixed rule, although this repeat's startup control passed.
+
+The original **4.531795×** result remains the primary number above. Fresh run
+022 is an independent repeat. It does not replace the original records or turn
+the failed startup route into a pass. Its retained native Nsys and NCU reports
+provide supporting mechanism evidence. Normal unprofiled workers, not the
+profiled executions, establish the latency result.
+
+The original measurements used the standalone protocol and PyTorch Chrome
 profiles. They are not a newly qualified result from the repository harness.
-The retained telemetry spans varying SM clocks, and this package does not
-assert locked application clocks or successful NCU/Nsys captures for that run.
-New harness measurements must satisfy the current harness gates and carry
-their own provenance. Do not attach the historical 4.53× figure to a new run.
+The retained telemetry spans varying SM clocks, and the original run does not
+claim successful NCU or Nsys captures. Fresh run 022 has its own qualification
+and native captures under `profiles/fresh022/`. Do not attach the historical
+4.53× figure to a new run or merge the two cohorts.
 
 ## Inspect the evidence
 
 - [All 24 result records and qualification](results/README.md)
-- [Interactive False/True comparison](graphs/comparison.html)
+- [Interactive support-off/support-on comparison](graphs/comparison.html)
 - [Region overview](graphs/comparison-overview.svg)
 - [Extracted operator graphs](graphs/compiled-graphs.json)
 - [Frozen protocol with operational identifiers redacted](protocol.json)
@@ -108,6 +126,8 @@ It requires a B200, one explicitly selected GPU UUID, fresh cache directories,
 and an output directory. It performs real CUDA work. The full protocol uses
 three cases, four seeds, and two arms, with a fresh process for each of 24
 workers. Seeds 0 and 2 run False then True. Seeds 1 and 3 reverse that order.
+In this execution description, False means nested graph-break support off and
+True means support on.
 
 For one worker, after acquiring exclusive hardware access and validating the
 runtime and current environment requirements:

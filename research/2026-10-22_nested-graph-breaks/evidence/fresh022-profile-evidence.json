@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "name": "fresh022 native Nsys and NCU evidence",
+  "accepted": true,
+  "tracing_mode": "Nsys graph-level tracing. Internal CUDA Graph node kernels are not present and are not reconstructed.",
+  "timing_role": "Supporting mechanism evidence only. Normal unprofiled workers establish latency.",
+  "strict_qualification": {
+    "path": "profiles/fresh022/qualification/STRICT-PROFILER-QUALIFICATION.json",
+    "sha256": "6c2ec3215b144b06f771e0dfa2e2b90898c0c7744c0504e57d3a9c1a399fc538",
+    "status": "passed"
+  },
+  "native_reports": [
+    {
+      "path": "profiles/fresh022/native/nsys/nsys-nested_break_depth8-seed0-baseline.nsys-rep",
+      "sha256": "c23f9791ae8b588a1ebb7a7737d26af6ba3f8e5c01887ea7c7f7861c92956c92"
+    },
+    {
+      "path": "profiles/fresh022/native/nsys/nsys-nested_break_depth8-seed0-candidate.nsys-rep",
+      "sha256": "5b11be1c3f8e109408d7ca59033441844d23515d48b963a9bbfd10a560692e7e"
+    },
+    {
+      "path": "profiles/fresh022/native/ncu/ncu-nested_break_depth8-seed0-baseline.ncu-rep",
+      "sha256": "28734ca6aa028737adb06ee75313b18d9a7304038ca0cbaf7139c5cffc138e03"
+    },
+    {
+      "path": "profiles/fresh022/native/ncu/ncu-nested_break_depth8-seed0-candidate.ncu-rep",
+      "sha256": "e27671e92e54d760abafc8f702e118139ee1a1102329eb763dca8f5dab883e35"
+    }
+  ],
+  "saved_values": {
+    "whole_capture_cuda_graph_launch_calls": {
+      "baseline": 10160,
+      "candidate": 1270
+    },
+    "whole_capture_kernel_instances": {
+      "baseline": 12167,
+      "candidate": 2639
+    },
+    "matching_ncu_kernel_duration_us": {
+      "baseline": 6.4,
+      "candidate": 20.992
+    }
+  },
+  "view_manifest": {
+    "path": "profiles/views/profile-view-manifest.json",
+    "sha256": "6d3e3cb3b7fa393573bcbace290874d0d0aecc94b8bae46dca180c013f899dbc"
+  }
+}
