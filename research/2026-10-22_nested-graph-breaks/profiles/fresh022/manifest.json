@@ -1,0 +1,228 @@
+{
+  "schema": "nested-graph-breaks-exact-captures/v1",
+  "cohort": "fresh022",
+  "case": "nested_break_depth8",
+  "seed": 0,
+  "baseline_flag": false,
+  "candidate_flag": true,
+  "hardware": "NVIDIA B200",
+  "torch": "2.14.1+cu130",
+  "nsys_version": "2026.5.1.161-265138896106v0",
+  "ncu_version": "2026.2.1.0 build38283040",
+  "original_archive_sha256": "f5fedbbed86caade3786b7be0a425c9ed2338a61e30292a73b6027d2862f03cb",
+  "raw_bytes_unchanged": true,
+  "new_profile_capture_performed": false,
+  "binding_rule": "Actual controller artifacts -> executed offline-profiler-export-result.json -> strict026 -> final scientific qualification. Historical literal hashes in the frozen export recipe are not actual022 capture hashes.",
+  "files": [
+    {
+      "path": "native/ncu/ncu-nested_break_depth8-seed0-baseline.ncu-rep",
+      "bytes": 71075,
+      "sha256": "28734ca6aa028737adb06ee75313b18d9a7304038ca0cbaf7139c5cffc138e03",
+      "archive_member": "root/nested-graph-breaks-b200-pr41-006-run-022/profiles/ncu/ncu-nested_break_depth8-seed0-baseline.ncu-rep"
+    },
+    {
+      "path": "native/ncu/ncu-nested_break_depth8-seed0-candidate.ncu-rep",
+      "bytes": 235706,
+      "sha256": "e27671e92e54d760abafc8f702e118139ee1a1102329eb763dca8f5dab883e35",
+      "archive_member": "root/nested-graph-breaks-b200-pr41-006-run-022/profiles/ncu/ncu-nested_break_depth8-seed0-candidate.ncu-rep"
+    },
+    {
+      "path": "native/nsys/nsys-nested_break_depth8-seed0-baseline.nsys-rep",
+      "bytes": 3423394,
+      "sha256": "c23f9791ae8b588a1ebb7a7737d26af6ba3f8e5c01887ea7c7f7861c92956c92",
+      "archive_member": "root/nested-graph-breaks-b200-pr41-006-run-022/profiles/nsys/nsys-nested_break_depth8-seed0-baseline.nsys-rep"
+    },
+    {
+      "path": "native/nsys/nsys-nested_break_depth8-seed0-baseline.sqlite",
+      "bytes": 9011200,
+      "sha256": "3a83b750ea12709e32a905416e2d8d40cee89f744d3bc4f53e8b68cbc0550c62",
+      "archive_member": "root/nested-graph-breaks-b200-pr41-006-run-022/profiles/nsys/nsys-nested_break_depth8-seed0-baseline.sqlite"
+    },
+    {
+      "path": "native/nsys/nsys-nested_break_depth8-seed0-candidate.nsys-rep",
+      "bytes": 2235130,
+      "sha256": "5b11be1c3f8e109408d7ca59033441844d23515d48b963a9bbfd10a560692e7e",
+      "archive_member": "root/nested-graph-breaks-b200-pr41-006-run-022/profiles/nsys/nsys-nested_break_depth8-seed0-candidate.nsys-rep"
+    },
+    {
+      "path": "native/nsys/nsys-nested_break_depth8-seed0-candidate.sqlite",
+      "bytes": 6328320,
+      "sha256": "ece6637da5e2f530026ada9713c5eafbb9c5bb4e1ffe3ffd30654a19e550bc9a",
+      "archive_member": "root/nested-graph-breaks-b200-pr41-006-run-022/profiles/nsys/nsys-nested_break_depth8-seed0-candidate.sqlite"
+    },
+    {
+      "path": "exports/nsys-candidate_cuda_gpu_kern_sum.csv",
+      "bytes": 6584,
+      "sha256": "8f963e8934a49ac6764b0c088c5f0eeefe3aade88f3145c77a717174cd3a3cf3",
+      "archive_member": "root/nested-graph-breaks-b200-pr41-006-run-022-qualification-001/nsys-candidate_cuda_gpu_kern_sum.csv"
+    },
+    {
+      "path": "exports/nsys-candidate.sqlite",
+      "bytes": 6328320,
+      "sha256": "32ace0e6408eae761af89130f0d96fc2093ab4b61f5661cef3024faeba4ea94b",
+      "archive_member": "root/nested-graph-breaks-b200-pr41-006-run-022-qualification-001/nsys-candidate.sqlite"
+    },
+    {
+      "path": "exports/nsys-baseline.sqlite",
+      "bytes": 9011200,
+      "sha256": "c2028f33c212b1016bb52e5e32e36b49291b415ec63b19bac50c02a258dd7d8d",
+      "archive_member": "root/nested-graph-breaks-b200-pr41-006-run-022-qualification-001/nsys-baseline.sqlite"
+    },
+    {
+      "path": "exports/ncu-candidate-raw.csv",
+      "bytes": 14706,
+      "sha256": "9d6276358dbe0baae979c43f8e4a18df0747722389df2879164763767b9171ae",
+      "archive_member": "root/nested-graph-breaks-b200-pr41-006-run-022-qualification-001/ncu-candidate-raw.csv"
+    },
+    {
+      "path": "exports/ncu-baseline-raw.csv",
+      "bytes": 14710,
+      "sha256": "a9920ed564e52fb33f63f8d2016cd2e54abbaa12c8d6f657a1e40b40f4e57c72",
+      "archive_member": "root/nested-graph-breaks-b200-pr41-006-run-022-qualification-001/ncu-baseline-raw.csv"
+    },
+    {
+      "path": "exports/nsys-baseline_cuda_api_sum.csv",
+      "bytes": 2404,
+      "sha256": "77d413372f1028e5c05395afb313e4c76b5867cd2a7f85a7a15c1cf79f4b4146",
+      "archive_member": "root/nested-graph-breaks-b200-pr41-006-run-022-qualification-001/nsys-baseline_cuda_api_sum.csv"
+    },
+    {
+      "path": "exports/nsys-baseline_cuda_gpu_kern_sum.csv",
+      "bytes": 6579,
+      "sha256": "cdcc047bdd96a9dcda00f19d4a11ef88f9b036a5f3c1028f96d2c595ddb25f9b",
+      "archive_member": "root/nested-graph-breaks-b200-pr41-006-run-022-qualification-001/nsys-baseline_cuda_gpu_kern_sum.csv"
+    },
+    {
+      "path": "exports/offline-profiler-export-result.json",
+      "bytes": 16418,
+      "sha256": "579f69ff51fd11cdf05b7121e97dbcd0305012f7abb9ab84b2ae1e858d1592a0",
+      "archive_member": "root/nested-graph-breaks-b200-pr41-006-run-022-qualification-001/offline-profiler-export-result.json"
+    },
+    {
+      "path": "exports/nsys-candidate_cuda_api_sum.csv",
+      "bytes": 2398,
+      "sha256": "15c90e9198c9ff65422f05e991c7829b69b97334c8af97833b418a064d9173c2",
+      "archive_member": "root/nested-graph-breaks-b200-pr41-006-run-022-qualification-001/nsys-candidate_cuda_api_sum.csv"
+    },
+    {
+      "path": "exports/commands/nsys-candidate-export-sqlite.stdout.txt",
+      "bytes": 26,
+      "sha256": "fcf1cbec15ad2d0d5386dfd9feee33e5676e3e68e8b6061f0ebc027abce6964a",
+      "archive_member": "root/nested-graph-breaks-b200-pr41-006-run-022-qualification-001/commands/nsys-candidate-export-sqlite.stdout.txt"
+    },
+    {
+      "path": "exports/commands/nsys-baseline-stats-csv.stdout.txt",
+      "bytes": 762,
+      "sha256": "9cf9f471272cc522615121096069c3e251d74f24b07ce5a278f756a89354ef52",
+      "archive_member": "root/nested-graph-breaks-b200-pr41-006-run-022-qualification-001/commands/nsys-baseline-stats-csv.stdout.txt"
+    },
+    {
+      "path": "exports/commands/nsys-baseline-export-sqlite.stderr.txt",
+      "bytes": 8101,
+      "sha256": "355ec7de2cfa58d21bdf4ea428d71d66f8374dd4645008f8521b4d923f2e751a",
+      "archive_member": "root/nested-graph-breaks-b200-pr41-006-run-022-qualification-001/commands/nsys-baseline-export-sqlite.stderr.txt"
+    },
+    {
+      "path": "exports/commands/nsys-candidate-stats-csv.stderr.txt",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "archive_member": "root/nested-graph-breaks-b200-pr41-006-run-022-qualification-001/commands/nsys-candidate-stats-csv.stderr.txt"
+    },
+    {
+      "path": "exports/commands/ncu-baseline-raw.stderr.txt",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "archive_member": "root/nested-graph-breaks-b200-pr41-006-run-022-qualification-001/commands/ncu-baseline-raw.stderr.txt"
+    },
+    {
+      "path": "exports/commands/ncu-candidate-raw.stderr.txt",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "archive_member": "root/nested-graph-breaks-b200-pr41-006-run-022-qualification-001/commands/ncu-candidate-raw.stderr.txt"
+    },
+    {
+      "path": "exports/commands/nsys-candidate-export-sqlite.stderr.txt",
+      "bytes": 8101,
+      "sha256": "355ec7de2cfa58d21bdf4ea428d71d66f8374dd4645008f8521b4d923f2e751a",
+      "archive_member": "root/nested-graph-breaks-b200-pr41-006-run-022-qualification-001/commands/nsys-candidate-export-sqlite.stderr.txt"
+    },
+    {
+      "path": "exports/commands/nsys-baseline-stats-csv.stderr.txt",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "archive_member": "root/nested-graph-breaks-b200-pr41-006-run-022-qualification-001/commands/nsys-baseline-stats-csv.stderr.txt"
+    },
+    {
+      "path": "exports/commands/nsys-candidate-stats-csv.stdout.txt",
+      "bytes": 766,
+      "sha256": "10ebd1e0574e4dc0543780828ca156fc270b1a9b8b4b6d2bcafbda878efc04c6",
+      "archive_member": "root/nested-graph-breaks-b200-pr41-006-run-022-qualification-001/commands/nsys-candidate-stats-csv.stdout.txt"
+    },
+    {
+      "path": "exports/commands/nsys-baseline-export-sqlite.stdout.txt",
+      "bytes": 27,
+      "sha256": "236458341618f18142a5bd64714b4cda4ff31738e7b77a7bed6768c6fb82eeec",
+      "archive_member": "root/nested-graph-breaks-b200-pr41-006-run-022-qualification-001/commands/nsys-baseline-export-sqlite.stdout.txt"
+    },
+    {
+      "path": "qualification/FINAL-SCIENTIFIC-QUALIFICATION.json",
+      "bytes": 16709,
+      "sha256": "0b836a908264d2592d3a79eb7ff304bf0bc9b0d9031f4ccf7627577ce9844a3a",
+      "archive_member": "opt/piq-campaigns/root41002512-pr41-research-custody-20261025/retained022-strict-reader026-adjudication-001/FINAL-SCIENTIFIC-QUALIFICATION.json"
+    },
+    {
+      "path": "qualification/STRICT-PROFILER-QUALIFICATION.json",
+      "bytes": 6025,
+      "sha256": "6c2ec3215b144b06f771e0dfa2e2b90898c0c7744c0504e57d3a9c1a399fc538",
+      "archive_member": "opt/piq-campaigns/root41002512-pr41-research-custody-20261025/retained022-strict-reader026-adjudication-001/STRICT-PROFILER-QUALIFICATION.json"
+    },
+    {
+      "path": "worker-results/nsys-nested_break_depth8-seed0-baseline/result.json",
+      "bytes": 26080,
+      "sha256": "6e92c7d97b314952ac2ae14ca04121b24a7e0a176b45386d4c6b9ef63879a82a",
+      "archive_member": "root/nested-graph-breaks-b200-pr41-006-run-022/results/profiler/nsys-nested_break_depth8-seed0-baseline/result.json"
+    },
+    {
+      "path": "worker-results/nsys-nested_break_depth8-seed0-candidate/result.json",
+      "bytes": 26091,
+      "sha256": "69ac406ddfd51e4061c92a7e20b0f8a0bc74c6e689f1e6c8ba96fdec5bb66edd",
+      "archive_member": "root/nested-graph-breaks-b200-pr41-006-run-022/results/profiler/nsys-nested_break_depth8-seed0-candidate/result.json"
+    },
+    {
+      "path": "worker-results/ncu-nested_break_depth8-seed0-baseline/result.json",
+      "bytes": 26083,
+      "sha256": "84f5642a5efec400eb8fc96eeab1bc2d2e900cff91eb9ab608b1ced6f0c53a00",
+      "archive_member": "root/nested-graph-breaks-b200-pr41-006-run-022/results/profiler/ncu-nested_break_depth8-seed0-baseline/result.json"
+    },
+    {
+      "path": "worker-results/ncu-nested_break_depth8-seed0-candidate/result.json",
+      "bytes": 26053,
+      "sha256": "74dddbc0e252a0cc678810a97f440f9e83d08dde7e1d531a696cddc38a8ff89e",
+      "archive_member": "root/nested-graph-breaks-b200-pr41-006-run-022/results/profiler/ncu-nested_break_depth8-seed0-candidate/result.json"
+    },
+    {
+      "path": "timing-seed0/nested_break_depth8-seed0-flag1/result.json",
+      "bytes": 31643,
+      "sha256": "63e4d43d8359ba59daed1f2999ffbc35c6498856df149f0e6a4cb5ee31b07816",
+      "archive_member": "root/nested-graph-breaks-b200-pr41-006-run-022/results/timing/nested_break_depth8-seed0-flag1/result.json"
+    },
+    {
+      "path": "timing-seed0/nested_break_depth8-seed0-flag1/profile.chrome.json",
+      "bytes": 71835,
+      "sha256": "e2ee2d314a8e18e778adcb1ef7051254904357024f5b44512a006105a3017e5e",
+      "archive_member": "root/nested-graph-breaks-b200-pr41-006-run-022/results/timing/nested_break_depth8-seed0-flag1/profile.chrome.json"
+    },
+    {
+      "path": "timing-seed0/nested_break_depth8-seed0-flag0/result.json",
+      "bytes": 31732,
+      "sha256": "2cf1e2091ed07e950f363f8c62aa9f6c1f9a6551e101c5a697aabe54f9960400",
+      "archive_member": "root/nested-graph-breaks-b200-pr41-006-run-022/results/timing/nested_break_depth8-seed0-flag0/result.json"
+    },
+    {
+      "path": "timing-seed0/nested_break_depth8-seed0-flag0/profile.chrome.json",
+      "bytes": 424141,
+      "sha256": "160446372bce67fc375c879f16126c4ae831c13e7bded02aea7c7abe3965b9ed",
+      "archive_member": "root/nested-graph-breaks-b200-pr41-006-run-022/results/timing/nested_break_depth8-seed0-flag0/profile.chrome.json"
+    }
+  ]
+}

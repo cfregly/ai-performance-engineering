@@ -1,0 +1,63 @@
+{
+  "schema": "nested-graph-followup-exact-profile-files/v1",
+  "cohort": "followup-root41002601-and-41002602",
+  "source_archive_sha256": "79205f2ce58e3ca9a59e61587acd2bb04a7a7cce1832a40a13bc4039bc5b74fe",
+  "raw_bytes_unchanged": true,
+  "candidate_geometry_exclusions": [
+    3,
+    4,
+    5
+  ],
+  "files": [
+    {
+      "path": "complete-followup-evidence.tar.gz",
+      "bytes": 695800,
+      "sha256": "79205f2ce58e3ca9a59e61587acd2bb04a7a7cce1832a40a13bc4039bc5b74fe"
+    },
+    {
+      "path": "corrected/no-cudagraph-flag1.corrected-profile.json",
+      "bytes": 17516,
+      "sha256": "27738640b9b59a4c86d5b094c838221d4c859c12e73c659e178c7c8bd87d8103"
+    },
+    {
+      "path": "corrected/original-flag0.corrected-profile.json",
+      "bytes": 57249,
+      "sha256": "a72f05c53438b7e8c4507df567d7159dbedf817f3ac0ea4d10d6508553526d93"
+    },
+    {
+      "path": "corrected/original-flag1.corrected-profile.json",
+      "bytes": 20461,
+      "sha256": "931ab8d0f6fd3dd7ecd3d776ac50329745514126fafdf564135a9f580e73299a"
+    },
+    {
+      "path": "corrected/no-cudagraph-flag0.corrected-profile.json",
+      "bytes": 33381,
+      "sha256": "4c4bf43f9757ad98b8f1be843f39bb772de2979bad2b61ddf55966ff17112892"
+    },
+    {
+      "path": "corrected/CORRECTED-ANALYSIS-AND-CONTRASTS.json",
+      "bytes": 227471,
+      "sha256": "4e714db2e60f7e04271ba9feb742ff46bfcbee2797b7244ec0bb05e2a9cf91de"
+    },
+    {
+      "path": "no-cudagraph/flag1/profile.chrome.json",
+      "bytes": 51855,
+      "sha256": "34113b484bbd9e829e6d35ae432b9917d1c112cc90c26c688695ba1a25220f26"
+    },
+    {
+      "path": "no-cudagraph/flag0/profile.chrome.json",
+      "bytes": 263608,
+      "sha256": "3c0184961d37713e573d838e6cb0a85a4d3eab3864db1859be0a8c9fbaf3fe9d"
+    },
+    {
+      "path": "original/flag1/profile.chrome.json",
+      "bytes": 71888,
+      "sha256": "b53d52a5e1ca6772c48a6f0c62b205d13621de008d451816eec8cc254318cd71"
+    },
+    {
+      "path": "original/flag0/profile.chrome.json",
+      "bytes": 424220,
+      "sha256": "36decead907c0a96ca81b5df856d3467f807bbc6466d0cf167efe6c7d5cffe2f"
+    }
+  ]
+}

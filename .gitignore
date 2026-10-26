@@ -1,6 +1,7 @@
 plans/
 worktrees/
 profiles/
+
 test_results_*/
 code/benchmark_results.txt
 code/ch16/gpt120b_big.txt
@@ -61,3 +62,9 @@ code/vendor/pytorch-src/
 
 # Generated per-machine autotune results
 code/labs/custom_vs_cublas/.autotune_cache.json
+
+# Retained captures published with the nested-graph-breaks research package.
+!/research/2026-10-22_nested-graph-breaks/profiles/
+!/research/2026-10-22_nested-graph-breaks/profiles/**
+/research/2026-10-22_nested-graph-breaks/profiles/**/__pycache__/
+/research/2026-10-22_nested-graph-breaks/profiles/**/.ruff_cache/

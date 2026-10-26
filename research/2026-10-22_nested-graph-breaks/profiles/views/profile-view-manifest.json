@@ -1,0 +1,550 @@
+{
+  "inputs": {
+    "false_ncu_csv": {
+      "archive_member": "root/nested-graph-breaks-b200-pr41-006-run-022-qualification-001/ncu-baseline-raw.csv",
+      "bytes": 14710,
+      "path": "/Users/admin/dev/ai-perf/ai-performance-engineering/research/2026-10-22_nested-graph-breaks/profiles/fresh022/exports/ncu-baseline-raw.csv",
+      "sha256": "a9920ed564e52fb33f63f8d2016cd2e54abbaa12c8d6f657a1e40b40f4e57c72"
+    },
+    "false_sqlite": {
+      "archive_member": "root/nested-graph-breaks-b200-pr41-006-run-022-qualification-001/nsys-baseline.sqlite",
+      "bytes": 9011200,
+      "path": "/Users/admin/dev/ai-perf/ai-performance-engineering/research/2026-10-22_nested-graph-breaks/profiles/fresh022/exports/nsys-baseline.sqlite",
+      "sha256": "c2028f33c212b1016bb52e5e32e36b49291b415ec63b19bac50c02a258dd7d8d"
+    },
+    "true_ncu_csv": {
+      "archive_member": "root/nested-graph-breaks-b200-pr41-006-run-022-qualification-001/ncu-candidate-raw.csv",
+      "bytes": 14706,
+      "path": "/Users/admin/dev/ai-perf/ai-performance-engineering/research/2026-10-22_nested-graph-breaks/profiles/fresh022/exports/ncu-candidate-raw.csv",
+      "sha256": "9d6276358dbe0baae979c43f8e4a18df0747722389df2879164763767b9171ae"
+    },
+    "true_sqlite": {
+      "archive_member": "root/nested-graph-breaks-b200-pr41-006-run-022-qualification-001/nsys-candidate.sqlite",
+      "bytes": 6328320,
+      "path": "/Users/admin/dev/ai-perf/ai-performance-engineering/research/2026-10-22_nested-graph-breaks/profiles/fresh022/exports/nsys-candidate.sqlite",
+      "sha256": "32ace0e6408eae761af89130f0d96fc2093ab4b61f5661cef3024faeba4ea94b"
+    }
+  },
+  "limits": [
+    "Rendered from retained Nsys SQLite, not a native GUI screenshot.",
+    "Graph-level trace spans are shown without reconstructed node-level work.",
+    "Standalone multi_tensor_apply_kernel rows are separate from graph executions.",
+    "The Nsys panels use one shared time scale and exact event spans.",
+    "No clipping, smoothing, interpolation, or causal CPU/GPU fraction is used.",
+    "NCU values and units are copied from one retained raw-page row per arm.",
+    "No benchmark, profiler, export, or GPU work was run."
+  ],
+  "ncu_scope": {
+    "false_kernel_name": "triton_poi_fused_add_cos_mul_sin_0",
+    "metrics": [
+      "gpu__time_duration.avg",
+      "gpu__dram_throughput.avg.pct_of_peak_sustained_elapsed",
+      "sm__throughput.avg.pct_of_peak_sustained_elapsed",
+      "sm__warps_active.avg.pct_of_peak_sustained_active",
+      "lts__throughput.avg.pct_of_peak_sustained_elapsed",
+      "launch__grid_size",
+      "launch__block_size",
+      "launch__registers_per_thread",
+      "launch__shared_mem_per_block",
+      "profiler__replayer_passes"
+    ],
+    "ratios_calculated": false,
+    "rows_per_arm": 1,
+    "true_kernel_name": "triton_poi_fused_add_cos_mul_sin_0",
+    "values_are_verbatim_strings": true
+  },
+  "outputs": {
+    "ncu_table": {
+      "bytes": 160208,
+      "path": "/Users/admin/dev/ai-perf/ai-performance-engineering/research/2026-10-22_nested-graph-breaks/profiles/views/ncu-single-kernel-metrics.png",
+      "sha256": "91a0edb9c4ebc8df6d6c9974228552fd1c9044089d3b23a71cb153dd80d121a6"
+    },
+    "nsys_timeline": {
+      "bytes": 158216,
+      "path": "/Users/admin/dev/ai-perf/ai-performance-engineering/research/2026-10-22_nested-graph-breaks/profiles/views/nsys-first-post-warmup-invocation.png",
+      "sha256": "2821878b9dfe0a2371ea98969d5c371d16da4c356a5976ba718d6449224eb399"
+    }
+  },
+  "schema": "nested-graph-breaks-profile-views/v1",
+  "selection": {
+    "false": {
+      "arm": "false",
+      "graph_calls_per_invocation": 16,
+      "graph_execution_count": 16,
+      "graph_executions": [
+        {
+          "correlation_id": 54151,
+          "end": 6177424852,
+          "graph_exec_id": 5,
+          "graph_id": 4,
+          "start": 6177420436,
+          "stream_id": 7
+        },
+        {
+          "correlation_id": 54163,
+          "end": 6177458836,
+          "graph_exec_id": 8,
+          "graph_id": 7,
+          "start": 6177454036,
+          "stream_id": 7
+        },
+        {
+          "correlation_id": 54175,
+          "end": 6177487508,
+          "graph_exec_id": 11,
+          "graph_id": 10,
+          "start": 6177482708,
+          "stream_id": 7
+        },
+        {
+          "correlation_id": 54187,
+          "end": 6177517363,
+          "graph_exec_id": 14,
+          "graph_id": 13,
+          "start": 6177512403,
+          "stream_id": 7
+        },
+        {
+          "correlation_id": 54199,
+          "end": 6177546259,
+          "graph_exec_id": 17,
+          "graph_id": 16,
+          "start": 6177541075,
+          "stream_id": 7
+        },
+        {
+          "correlation_id": 54211,
+          "end": 6177584243,
+          "graph_exec_id": 20,
+          "graph_id": 19,
+          "start": 6177578963,
+          "stream_id": 7
+        },
+        {
+          "correlation_id": 54223,
+          "end": 6177612883,
+          "graph_exec_id": 23,
+          "graph_id": 22,
+          "start": 6177607635,
+          "stream_id": 7
+        },
+        {
+          "correlation_id": 54235,
+          "end": 6177642547,
+          "graph_exec_id": 26,
+          "graph_id": 25,
+          "start": 6177637043,
+          "stream_id": 7
+        },
+        {
+          "correlation_id": 54247,
+          "end": 6177672243,
+          "graph_exec_id": 29,
+          "graph_id": 28,
+          "start": 6177666739,
+          "stream_id": 7
+        },
+        {
+          "correlation_id": 54259,
+          "end": 6177703955,
+          "graph_exec_id": 32,
+          "graph_id": 31,
+          "start": 6177698483,
+          "stream_id": 7
+        },
+        {
+          "correlation_id": 54271,
+          "end": 6177734707,
+          "graph_exec_id": 35,
+          "graph_id": 34,
+          "start": 6177729171,
+          "stream_id": 7
+        },
+        {
+          "correlation_id": 54283,
+          "end": 6177765267,
+          "graph_exec_id": 38,
+          "graph_id": 37,
+          "start": 6177759923,
+          "stream_id": 7
+        },
+        {
+          "correlation_id": 54295,
+          "end": 6177803891,
+          "graph_exec_id": 41,
+          "graph_id": 40,
+          "start": 6177798835,
+          "stream_id": 7
+        },
+        {
+          "correlation_id": 54307,
+          "end": 6177834675,
+          "graph_exec_id": 44,
+          "graph_id": 43,
+          "start": 6177829523,
+          "stream_id": 7
+        },
+        {
+          "correlation_id": 54319,
+          "end": 6177864499,
+          "graph_exec_id": 47,
+          "graph_id": 46,
+          "start": 6177859251,
+          "stream_id": 7
+        },
+        {
+          "correlation_id": 54331,
+          "end": 6177900339,
+          "graph_exec_id": 50,
+          "graph_id": 49,
+          "start": 6177895091,
+          "stream_id": 7
+        }
+      ],
+      "graph_launch_count": 16,
+      "graph_launch_ordinal_end": 560,
+      "graph_launch_ordinal_start": 545,
+      "graph_launches": [
+        {
+          "correlation_id": 54151,
+          "end": 6177413108,
+          "global_tid": 334309855595924,
+          "name": "cudaGraphLaunch_v10000",
+          "start": 6177409698
+        },
+        {
+          "correlation_id": 54163,
+          "end": 6177444528,
+          "global_tid": 334309855595924,
+          "name": "cudaGraphLaunch_v10000",
+          "start": 6177441508
+        },
+        {
+          "correlation_id": 54175,
+          "end": 6177473537,
+          "global_tid": 334309855595924,
+          "name": "cudaGraphLaunch_v10000",
+          "start": 6177470707
+        },
+        {
+          "correlation_id": 54187,
+          "end": 6177503297,
+          "global_tid": 334309855595924,
+          "name": "cudaGraphLaunch_v10000",
+          "start": 6177500357
+        },
+        {
+          "correlation_id": 54199,
+          "end": 6177532047,
+          "global_tid": 334309855595924,
+          "name": "cudaGraphLaunch_v10000",
+          "start": 6177529197
+        },
+        {
+          "correlation_id": 54211,
+          "end": 6177570316,
+          "global_tid": 334309855595924,
+          "name": "cudaGraphLaunch_v10000",
+          "start": 6177567116
+        },
+        {
+          "correlation_id": 54223,
+          "end": 6177598846,
+          "global_tid": 334309855595924,
+          "name": "cudaGraphLaunch_v10000",
+          "start": 6177595966
+        },
+        {
+          "correlation_id": 54235,
+          "end": 6177628365,
+          "global_tid": 334309855595924,
+          "name": "cudaGraphLaunch_v10000",
+          "start": 6177625415
+        },
+        {
+          "correlation_id": 54247,
+          "end": 6177657575,
+          "global_tid": 334309855595924,
+          "name": "cudaGraphLaunch_v10000",
+          "start": 6177654705
+        },
+        {
+          "correlation_id": 54259,
+          "end": 6177689145,
+          "global_tid": 334309855595924,
+          "name": "cudaGraphLaunch_v10000",
+          "start": 6177686365
+        },
+        {
+          "correlation_id": 54271,
+          "end": 6177720644,
+          "global_tid": 334309855595924,
+          "name": "cudaGraphLaunch_v10000",
+          "start": 6177717704
+        },
+        {
+          "correlation_id": 54283,
+          "end": 6177750404,
+          "global_tid": 334309855595924,
+          "name": "cudaGraphLaunch_v10000",
+          "start": 6177747604
+        },
+        {
+          "correlation_id": 54295,
+          "end": 6177790243,
+          "global_tid": 334309855595924,
+          "name": "cudaGraphLaunch_v10000",
+          "start": 6177787233
+        },
+        {
+          "correlation_id": 54307,
+          "end": 6177820633,
+          "global_tid": 334309855595924,
+          "name": "cudaGraphLaunch_v10000",
+          "start": 6177817843
+        },
+        {
+          "correlation_id": 54319,
+          "end": 6177850343,
+          "global_tid": 334309855595924,
+          "name": "cudaGraphLaunch_v10000",
+          "start": 6177847453
+        },
+        {
+          "correlation_id": 54331,
+          "end": 6177887682,
+          "global_tid": 334309855595924,
+          "name": "cudaGraphLaunch_v10000",
+          "start": 6177884552
+        }
+      ],
+      "kernel_count": 16,
+      "kernels": [
+        {
+          "correlation_id": 54145,
+          "end": 6177419252,
+          "name": "multi_tensor_apply_kernel",
+          "start": 6177410900,
+          "stream_id": 7
+        },
+        {
+          "correlation_id": 54157,
+          "end": 6177451348,
+          "name": "multi_tensor_apply_kernel",
+          "start": 6177442996,
+          "stream_id": 7
+        },
+        {
+          "correlation_id": 54169,
+          "end": 6177481300,
+          "name": "multi_tensor_apply_kernel",
+          "start": 6177473012,
+          "stream_id": 7
+        },
+        {
+          "correlation_id": 54181,
+          "end": 6177510708,
+          "name": "multi_tensor_apply_kernel",
+          "start": 6177502388,
+          "stream_id": 7
+        },
+        {
+          "correlation_id": 54193,
+          "end": 6177539315,
+          "name": "multi_tensor_apply_kernel",
+          "start": 6177530899,
+          "stream_id": 7
+        },
+        {
+          "correlation_id": 54205,
+          "end": 6177576851,
+          "name": "multi_tensor_apply_kernel",
+          "start": 6177568499,
+          "stream_id": 7
+        },
+        {
+          "correlation_id": 54217,
+          "end": 6177606131,
+          "name": "multi_tensor_apply_kernel",
+          "start": 6177597811,
+          "stream_id": 7
+        },
+        {
+          "correlation_id": 54229,
+          "end": 6177635507,
+          "name": "multi_tensor_apply_kernel",
+          "start": 6177627187,
+          "stream_id": 7
+        },
+        {
+          "correlation_id": 54241,
+          "end": 6177665011,
+          "name": "multi_tensor_apply_kernel",
+          "start": 6177656659,
+          "stream_id": 7
+        },
+        {
+          "correlation_id": 54253,
+          "end": 6177696691,
+          "name": "multi_tensor_apply_kernel",
+          "start": 6177688403,
+          "stream_id": 7
+        },
+        {
+          "correlation_id": 54265,
+          "end": 6177728211,
+          "name": "multi_tensor_apply_kernel",
+          "start": 6177719891,
+          "stream_id": 7
+        },
+        {
+          "correlation_id": 54277,
+          "end": 6177758131,
+          "name": "multi_tensor_apply_kernel",
+          "start": 6177749715,
+          "stream_id": 7
+        },
+        {
+          "correlation_id": 54289,
+          "end": 6177797331,
+          "name": "multi_tensor_apply_kernel",
+          "start": 6177788979,
+          "stream_id": 7
+        },
+        {
+          "correlation_id": 54301,
+          "end": 6177827827,
+          "name": "multi_tensor_apply_kernel",
+          "start": 6177819603,
+          "stream_id": 7
+        },
+        {
+          "correlation_id": 54313,
+          "end": 6177857907,
+          "name": "multi_tensor_apply_kernel",
+          "start": 6177849555,
+          "stream_id": 7
+        },
+        {
+          "correlation_id": 54325,
+          "end": 6177893747,
+          "name": "multi_tensor_apply_kernel",
+          "start": 6177885427,
+          "stream_id": 7
+        }
+      ],
+      "post_sync": {
+        "correlation_id": 54336,
+        "end": 6177905282,
+        "global_tid": 334309855595924,
+        "name": "cudaDeviceSynchronize_v3020",
+        "start": 6177899782
+      },
+      "pre_sync": {
+        "correlation_id": 54140,
+        "end": 6177369669,
+        "global_tid": 334309855595924,
+        "name": "cudaDeviceSynchronize_v3020",
+        "start": 6177366199
+      },
+      "prior_replay_invocations": 34,
+      "runtime_event_count": 50,
+      "source_protocol": {
+        "cold_calls": 10,
+        "first_compiled_call_has_replay": false,
+        "latency_trials": 100,
+        "throughput_calls": 500,
+        "warmup_calls": 25
+      },
+      "target_compiled_call_ordinal": 36
+    },
+    "true": {
+      "arm": "true",
+      "graph_calls_per_invocation": 2,
+      "graph_execution_count": 2,
+      "graph_executions": [
+        {
+          "correlation_id": 33474,
+          "end": 6808809077,
+          "graph_exec_id": 5,
+          "graph_id": 4,
+          "start": 6808789877,
+          "stream_id": 7
+        },
+        {
+          "correlation_id": 33486,
+          "end": 6808847445,
+          "graph_exec_id": 8,
+          "graph_id": 7,
+          "start": 6808827829,
+          "stream_id": 7
+        }
+      ],
+      "graph_launch_count": 2,
+      "graph_launch_ordinal_end": 70,
+      "graph_launch_ordinal_start": 69,
+      "graph_launches": [
+        {
+          "correlation_id": 33474,
+          "end": 6808783178,
+          "global_tid": 334316985913149,
+          "name": "cudaGraphLaunch_v10000",
+          "start": 6808779398
+        },
+        {
+          "correlation_id": 33486,
+          "end": 6808820448,
+          "global_tid": 334316985913149,
+          "name": "cudaGraphLaunch_v10000",
+          "start": 6808817068
+        }
+      ],
+      "kernel_count": 2,
+      "kernels": [
+        {
+          "correlation_id": 33468,
+          "end": 6808787893,
+          "name": "multi_tensor_apply_kernel",
+          "start": 6808779542,
+          "stream_id": 7
+        },
+        {
+          "correlation_id": 33480,
+          "end": 6808826613,
+          "name": "multi_tensor_apply_kernel",
+          "start": 6808818229,
+          "stream_id": 7
+        }
+      ],
+      "post_sync": {
+        "correlation_id": 33491,
+        "end": 6808863087,
+        "global_tid": 334316985913149,
+        "name": "cudaDeviceSynchronize_v3020",
+        "start": 6808831328
+      },
+      "pre_sync": {
+        "correlation_id": 33463,
+        "end": 6808738639,
+        "global_tid": 334316985913149,
+        "name": "cudaDeviceSynchronize_v3020",
+        "start": 6808734929
+      },
+      "prior_replay_invocations": 34,
+      "runtime_event_count": 8,
+      "source_protocol": {
+        "cold_calls": 10,
+        "first_compiled_call_has_replay": false,
+        "latency_trials": 100,
+        "throughput_calls": 500,
+        "warmup_calls": 25
+      },
+      "target_compiled_call_ordinal": 36
+    }
+  },
+  "status": "PASS",
+  "transport_manifest": {
+    "path": "/Users/admin/dev/ai-perf/ai-performance-engineering/research/2026-10-22_nested-graph-breaks/profiles/fresh022/manifest.json",
+    "sha256": "5c5103e97c18f81326a731f0af886e18840a09d35d34a9788e77570b515a6618"
+  }
+}

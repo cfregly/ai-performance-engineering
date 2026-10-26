@@ -1,0 +1,22 @@
+{
+  "files": [
+    {
+      "path": "flag0.chrome.json",
+      "bytes": 422226,
+      "sha256": "f178bdaca37b059b3f33356542ae8d20c31d511b737d853fef867fa52bef5290",
+      "flag": false,
+      "tool": "PyTorch Chrome trace",
+      "cohort": "historical002"
+    },
+    {
+      "path": "flag1.chrome.json",
+      "bytes": 71482,
+      "sha256": "9457b012d1c3970f46b1d0fe025b6ac63bfff45d52fb85fee5e01c4bf4f1bb2f",
+      "flag": true,
+      "tool": "PyTorch Chrome trace",
+      "cohort": "historical002"
+    }
+  ],
+  "raw_bytes_unchanged": true,
+  "rerun": false
+}

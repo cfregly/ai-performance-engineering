@@ -14,6 +14,9 @@ ablation, and the corrected retained-trace reader. Its diagnostic results do
 not replace the historical qualification below. The original source, results,
 and figures remain unchanged.
 
+[Download the actual Nsys, NCU, SQLite, CSV, and Chrome captures](profiles/README.md).
+Native reports are retained byte for byte and indexed by cohort, arm, and hash.
+
 ## Results and limits
 
 One NVIDIA B200 executed the workload while a second B200 stayed idle. The

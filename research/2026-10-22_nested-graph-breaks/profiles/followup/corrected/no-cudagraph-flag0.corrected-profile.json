@@ -1,0 +1,1020 @@
+{
+  "aggregate_valid_geometry_only": {
+    "excluded_invocation_indices": [],
+    "included_count": 5,
+    "included_invocation_indices": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "interpretation": "Only invocations with valid CPU boundaries, at least one kernel, and no boundary violation are included. These sums are descriptive trace geometry and are not a causal fraction.",
+    "sum_cpu_marker_duration_us": 4004.739013671875,
+    "sum_cuda_api_union_us_unclamped": 232.906494140625,
+    "sum_kernel_active_union_us_unclamped": 317.797119140625,
+    "total_cuda_api_count": 100,
+    "total_cuda_graph_launch_count": 0,
+    "total_kernel_count": 80
+  },
+  "assignment_diagnostics": {
+    "ambiguous_kernel_correlations_or_containment": [],
+    "cuda_api_boundary_violations": [],
+    "kernel_boundary_violations": [],
+    "malformed_cuda_api_events": [],
+    "malformed_kernel_events": [],
+    "unassigned_cuda_api_events": [
+      {
+        "category": "cuda_runtime",
+        "correlation": "1078",
+        "dur": 15.38,
+        "event_index": 913,
+        "name": "cudaDeviceSynchronize",
+        "phase": "X",
+        "pid": 3681806,
+        "reason": "no exact CPU marker on the same pid/tid fully contains this CUDA API span",
+        "tid": 3681806,
+        "ts": 2130785142866.913
+      },
+      {
+        "category": "cuda_runtime",
+        "correlation": "1082",
+        "dur": 2.66,
+        "event_index": 915,
+        "name": "cudaDeviceSynchronize",
+        "phase": "X",
+        "pid": 3681806,
+        "reason": "no exact CPU marker on the same pid/tid fully contains this CUDA API span",
+        "tid": 3681806,
+        "ts": 2130785142895.883
+      }
+    ],
+    "unassigned_kernel_events": []
+  },
+  "invocations": [
+    {
+      "boundary_violations": [],
+      "cpu_marker": {
+        "duration_us": 2189.64208984375,
+        "end_us": 2130785140997.8372,
+        "event_index": 57,
+        "pid": 3681806,
+        "start_us": 2130785138808.195,
+        "tid": 3681806
+      },
+      "cuda_api_count": 20,
+      "cuda_api_event_indices": [
+        553,
+        555,
+        559,
+        563,
+        567,
+        571,
+        575,
+        579,
+        583,
+        587,
+        591,
+        595,
+        599,
+        603,
+        607,
+        611,
+        615,
+        619,
+        621,
+        623
+      ],
+      "cuda_api_union_us_unclamped": 73.4599609375,
+      "cuda_graph_launch_count": 0,
+      "first_kernel_start_from_cpu_marker_us": 1394.058837890625,
+      "geometry_interpretation": "A negative signed_cpu_tail_after_last_kernel_us is retained as a clock/boundary violation. It is not negative GPU time.",
+      "geometry_valid_for_aggregate": true,
+      "gpu_kernel_span_us_unclamped": 725.734130859375,
+      "invocation_index": 1,
+      "kernel_active_union_us_unclamped": 63.55322265625,
+      "kernel_assignments": [
+        {
+          "assignment": "runtime_correlation",
+          "correlation": "22",
+          "end_from_cpu_marker_end_us": -791.7431640625,
+          "event_index": 557,
+          "fully_contained": true,
+          "start_from_cpu_marker_start_us": 1394.058837890625
+        },
+        {
+          "assignment": "runtime_correlation",
+          "correlation": "34",
+          "end_from_cpu_marker_end_us": -704.22216796875,
+          "event_index": 561,
+          "fully_contained": true,
+          "start_from_cpu_marker_start_us": 1481.2919921875
+        },
+        {
+          "assignment": "runtime_correlation",
+          "correlation": "46",
+          "end_from_cpu_marker_end_us": -651.55029296875,
+          "event_index": 565,
+          "fully_contained": true,
+          "start_from_cpu_marker_start_us": 1534.02783203125
+        },
+        {
+          "assignment": "runtime_correlation",
+          "correlation": "58",
+          "end_from_cpu_marker_end_us": -602.269287109375,
+          "event_index": 569,
+          "fully_contained": true,
+          "start_from_cpu_marker_start_us": 1583.3408203125
+        },
+        {
+          "assignment": "runtime_correlation",
+          "correlation": "70",
+          "end_from_cpu_marker_end_us": -549.116943359375,
+          "event_index": 573,
+          "fully_contained": true,
+          "start_from_cpu_marker_start_us": 1636.301025390625
+        },
+        {
+          "assignment": "runtime_correlation",
+          "correlation": "82",
+          "end_from_cpu_marker_end_us": -505.18115234375,
+          "event_index": 577,
+          "fully_contained": true,
+          "start_from_cpu_marker_start_us": 1680.3330078125
+        },
+        {
+          "assignment": "runtime_correlation",
+          "correlation": "94",
+          "end_from_cpu_marker_end_us": -462.236083984375,
+          "event_index": 581,
+          "fully_contained": true,
+          "start_from_cpu_marker_start_us": 1723.3740234375
+        },
+        {
+          "assignment": "runtime_correlation",
+          "correlation": "106",
+          "end_from_cpu_marker_end_us": -420.7001953125,
+          "event_index": 585,
+          "fully_contained": true,
+          "start_from_cpu_marker_start_us": 1764.8779296875
+        },
+        {
+          "assignment": "runtime_correlation",
+          "correlation": "118",
+          "end_from_cpu_marker_end_us": -368.4111328125,
+          "event_index": 589,
+          "fully_contained": true,
+          "start_from_cpu_marker_start_us": 1817.10205078125
+        },
+        {
+          "assignment": "runtime_correlation",
+          "correlation": "130",
+          "end_from_cpu_marker_end_us": -322.043212890625,
+          "event_index": 593,
+          "fully_contained": true,
+          "start_from_cpu_marker_start_us": 1863.69482421875
+        },
+        {
+          "assignment": "runtime_correlation",
+          "correlation": "142",
+          "end_from_cpu_marker_end_us": -281.59521484375,
+          "event_index": 597,
+          "fully_contained": true,
+          "start_from_cpu_marker_start_us": 1904.11083984375
+        },
+        {
+          "assignment": "runtime_correlation",
+          "correlation": "154",
+          "end_from_cpu_marker_end_us": -240.60302734375,
+          "event_index": 601,
+          "fully_contained": true,
+          "start_from_cpu_marker_start_us": 1945.135009765625
+        },
+        {
+          "assignment": "runtime_correlation",
+          "correlation": "166",
+          "end_from_cpu_marker_end_us": -199.066162109375,
+          "event_index": 605,
+          "fully_contained": true,
+          "start_from_cpu_marker_start_us": 1986.83203125
+        },
+        {
+          "assignment": "runtime_correlation",
+          "correlation": "178",
+          "end_from_cpu_marker_end_us": -160.47412109375,
+          "event_index": 609,
+          "fully_contained": true,
+          "start_from_cpu_marker_start_us": 2025.35986328125
+        },
+        {
+          "assignment": "runtime_correlation",
+          "correlation": "190",
+          "end_from_cpu_marker_end_us": -123.7060546875,
+          "event_index": 613,
+          "fully_contained": true,
+          "start_from_cpu_marker_start_us": 2062.1279296875
+        },
+        {
+          "assignment": "runtime_correlation",
+          "correlation": "202",
+          "end_from_cpu_marker_end_us": -69.84912109375,
+          "event_index": 617,
+          "fully_contained": true,
+          "start_from_cpu_marker_start_us": 2115.98486328125
+        }
+      ],
+      "kernel_count": 16,
+      "signed_cpu_tail_after_last_kernel_us": 69.84912109375
+    },
+    {
+      "boundary_violations": [],
+      "cpu_marker": {
+        "duration_us": 519.5029296875,
+        "end_us": 2130785141534.48,
+        "event_index": 156,
+        "pid": 3681806,
+        "start_us": 2130785141014.977,
+        "tid": 3681806
+      },
+      "cuda_api_count": 20,
+      "cuda_api_event_indices": [
+        625,
+        627,
+        631,
+        635,
+        639,
+        643,
+        647,
+        651,
+        655,
+        659,
+        663,
+        667,
+        671,
+        675,
+        679,
+        683,
+        687,
+        691,
+        693,
+        695
+      ],
+      "cuda_api_union_us_unclamped": 41.710205078125,
+      "cuda_graph_launch_count": 0,
+      "first_kernel_start_from_cpu_marker_us": 70.035888671875,
+      "geometry_interpretation": "A negative signed_cpu_tail_after_last_kernel_us is retained as a clock/boundary violation. It is not negative GPU time.",
+      "geometry_valid_for_aggregate": true,
+      "gpu_kernel_span_us_unclamped": 431.01123046875,
+      "invocation_index": 2,
+      "kernel_active_union_us_unclamped": 63.519775390625,
+      "kernel_assignments": [
+        {
+          "assignment": "runtime_correlation",
+          "correlation": "237",
+          "end_from_cpu_marker_end_us": -445.658935546875,
+          "event_index": 629,
+          "fully_contained": true,
+          "start_from_cpu_marker_start_us": 70.035888671875
+        },
+        {
+          "assignment": "runtime_correlation",
+          "correlation": "249",
+          "end_from_cpu_marker_end_us": -411.899169921875,
+          "event_index": 633,
+          "fully_contained": true,
+          "start_from_cpu_marker_start_us": 103.411865234375
+        },
+        {
+          "assignment": "runtime_correlation",
+          "correlation": "261",
+          "end_from_cpu_marker_end_us": -383.5791015625,
+          "event_index": 637,
+          "fully_contained": true,
+          "start_from_cpu_marker_start_us": 131.85986328125
+        },
+        {
+          "assignment": "runtime_correlation",
+          "correlation": "273",
+          "end_from_cpu_marker_end_us": -356.027099609375,
+          "event_index": 641,
+          "fully_contained": true,
+          "start_from_cpu_marker_start_us": 159.44384765625
+        },
+        {
+          "assignment": "runtime_correlation",
+          "correlation": "285",
+          "end_from_cpu_marker_end_us": -329.2421875,
+          "event_index": 645,
+          "fully_contained": true,
+          "start_from_cpu_marker_start_us": 186.06884765625
+        },
+        {
+          "assignment": "runtime_correlation",
+          "correlation": "297",
+          "end_from_cpu_marker_end_us": -301.882080078125,
+          "event_index": 649,
+          "fully_contained": true,
+          "start_from_cpu_marker_start_us": 213.52490234375
+        },
+        {
+          "assignment": "runtime_correlation",
+          "correlation": "309",
+          "end_from_cpu_marker_end_us": -275.449951171875,
+          "event_index": 653,
+          "fully_contained": true,
+          "start_from_cpu_marker_start_us": 239.95703125
+        },
+        {
+          "assignment": "runtime_correlation",
+          "correlation": "321",
+          "end_from_cpu_marker_end_us": -245.27392578125,
+          "event_index": 657,
+          "fully_contained": true,
+          "start_from_cpu_marker_start_us": 270.133056640625
+        },
+        {
+          "assignment": "runtime_correlation",
+          "correlation": "333",
+          "end_from_cpu_marker_end_us": -215.993896484375,
+          "event_index": 661,
+          "fully_contained": true,
+          "start_from_cpu_marker_start_us": 299.510009765625
+        },
+        {
+          "assignment": "runtime_correlation",
+          "correlation": "345",
+          "end_from_cpu_marker_end_us": -187.096923828125,
+          "event_index": 665,
+          "fully_contained": true,
+          "start_from_cpu_marker_start_us": 328.501953125
+        },
+        {
+          "assignment": "runtime_correlation",
+          "correlation": "357",
+          "end_from_cpu_marker_end_us": -160.18505859375,
+          "event_index": 669,
+          "fully_contained": true,
+          "start_from_cpu_marker_start_us": 355.3818359375
+        },
+        {
+          "assignment": "runtime_correlation",
+          "correlation": "369",
+          "end_from_cpu_marker_end_us": -133.240966796875,
+          "event_index": 673,
+          "fully_contained": true,
+          "start_from_cpu_marker_start_us": 382.35791015625
+        },
+        {
+          "assignment": "runtime_correlation",
+          "correlation": "381",
+          "end_from_cpu_marker_end_us": -107.257080078125,
+          "event_index": 677,
+          "fully_contained": true,
+          "start_from_cpu_marker_start_us": 408.469970703125
+        },
+        {
+          "assignment": "runtime_correlation",
+          "correlation": "393",
+          "end_from_cpu_marker_end_us": -71.095947265625,
+          "event_index": 681,
+          "fully_contained": true,
+          "start_from_cpu_marker_start_us": 444.56591796875
+        },
+        {
+          "assignment": "runtime_correlation",
+          "correlation": "405",
+          "end_from_cpu_marker_end_us": -44.376220703125,
+          "event_index": 685,
+          "fully_contained": true,
+          "start_from_cpu_marker_start_us": 471.350830078125
+        },
+        {
+          "assignment": "runtime_correlation",
+          "correlation": "417",
+          "end_from_cpu_marker_end_us": -18.455810546875,
+          "event_index": 689,
+          "fully_contained": true,
+          "start_from_cpu_marker_start_us": 497.239013671875
+        }
+      ],
+      "kernel_count": 16,
+      "signed_cpu_tail_after_last_kernel_us": 18.455810546875
+    },
+    {
+      "boundary_violations": [],
+      "cpu_marker": {
+        "duration_us": 452.174072265625,
+        "end_us": 2130785141993.864,
+        "event_index": 255,
+        "pid": 3681806,
+        "start_us": 2130785141541.69,
+        "tid": 3681806
+      },
+      "cuda_api_count": 20,
+      "cuda_api_event_indices": [
+        697,
+        699,
+        703,
+        707,
+        711,
+        715,
+        719,
+        723,
+        727,
+        731,
+        735,
+        739,
+        743,
+        747,
+        751,
+        755,
+        759,
+        763,
+        765,
+        767
+      ],
+      "cuda_api_union_us_unclamped": 39.31982421875,
+      "cuda_graph_launch_count": 0,
+      "first_kernel_start_from_cpu_marker_us": 49.983154296875,
+      "geometry_interpretation": "A negative signed_cpu_tail_after_last_kernel_us is retained as a clock/boundary violation. It is not negative GPU time.",
+      "geometry_valid_for_aggregate": true,
+      "gpu_kernel_span_us_unclamped": 387.201904296875,
+      "invocation_index": 3,
+      "kernel_active_union_us_unclamped": 63.520751953125,
+      "kernel_assignments": [
+        {
+          "assignment": "runtime_correlation",
+          "correlation": "452",
+          "end_from_cpu_marker_end_us": -398.384033203125,
+          "event_index": 701,
+          "fully_contained": true,
+          "start_from_cpu_marker_start_us": 49.983154296875
+        },
+        {
+          "assignment": "runtime_correlation",
+          "correlation": "464",
+          "end_from_cpu_marker_end_us": -370.35107421875,
+          "event_index": 705,
+          "fully_contained": true,
+          "start_from_cpu_marker_start_us": 77.72705078125
+        },
+        {
+          "assignment": "runtime_correlation",
+          "correlation": "476",
+          "end_from_cpu_marker_end_us": -345.64697265625,
+          "event_index": 709,
+          "fully_contained": true,
+          "start_from_cpu_marker_start_us": 102.527099609375
+        },
+        {
+          "assignment": "runtime_correlation",
+          "correlation": "488",
+          "end_from_cpu_marker_end_us": -320.655029296875,
+          "event_index": 713,
+          "fully_contained": true,
+          "start_from_cpu_marker_start_us": 127.455078125
+        },
+        {
+          "assignment": "runtime_correlation",
+          "correlation": "500",
+          "end_from_cpu_marker_end_us": -293.51904296875,
+          "event_index": 717,
+          "fully_contained": true,
+          "start_from_cpu_marker_start_us": 154.4951171875
+        },
+        {
+          "assignment": "runtime_correlation",
+          "correlation": "512",
+          "end_from_cpu_marker_end_us": -269.966064453125,
+          "event_index": 721,
+          "fully_contained": true,
+          "start_from_cpu_marker_start_us": 178.111083984375
+        },
+        {
+          "assignment": "runtime_correlation",
+          "correlation": "524",
+          "end_from_cpu_marker_end_us": -246.318115234375,
+          "event_index": 725,
+          "fully_contained": true,
+          "start_from_cpu_marker_start_us": 201.696044921875
+        },
+        {
+          "assignment": "runtime_correlation",
+          "correlation": "536",
+          "end_from_cpu_marker_end_us": -222.830078125,
+          "event_index": 729,
+          "fully_contained": true,
+          "start_from_cpu_marker_start_us": 225.18408203125
+        },
+        {
+          "assignment": "runtime_correlation",
+          "correlation": "548",
+          "end_from_cpu_marker_end_us": -194.734130859375,
+          "event_index": 733,
+          "fully_contained": true,
+          "start_from_cpu_marker_start_us": 253.43994140625
+        },
+        {
+          "assignment": "runtime_correlation",
+          "correlation": "560",
+          "end_from_cpu_marker_end_us": -170.1259765625,
+          "event_index": 737,
+          "fully_contained": true,
+          "start_from_cpu_marker_start_us": 278.080078125
+        },
+        {
+          "assignment": "runtime_correlation",
+          "correlation": "572",
+          "end_from_cpu_marker_end_us": -144.5888671875,
+          "event_index": 741,
+          "fully_contained": true,
+          "start_from_cpu_marker_start_us": 303.68017578125
+        },
+        {
+          "assignment": "runtime_correlation",
+          "correlation": "584",
+          "end_from_cpu_marker_end_us": -121.10107421875,
+          "event_index": 745,
+          "fully_contained": true,
+          "start_from_cpu_marker_start_us": 327.1689453125
+        },
+        {
+          "assignment": "runtime_correlation",
+          "correlation": "596",
+          "end_from_cpu_marker_end_us": -88.364990234375,
+          "event_index": 749,
+          "fully_contained": true,
+          "start_from_cpu_marker_start_us": 360.0009765625
+        },
+        {
+          "assignment": "runtime_correlation",
+          "correlation": "608",
+          "end_from_cpu_marker_end_us": -63.98095703125,
+          "event_index": 753,
+          "fully_contained": true,
+          "start_from_cpu_marker_start_us": 384.385009765625
+        },
+        {
+          "assignment": "runtime_correlation",
+          "correlation": "620",
+          "end_from_cpu_marker_end_us": -39.72509765625,
+          "event_index": 757,
+          "fully_contained": true,
+          "start_from_cpu_marker_start_us": 408.705078125
+        },
+        {
+          "assignment": "runtime_correlation",
+          "correlation": "632",
+          "end_from_cpu_marker_end_us": -14.989013671875,
+          "event_index": 761,
+          "fully_contained": true,
+          "start_from_cpu_marker_start_us": 433.344970703125
+        }
+      ],
+      "kernel_count": 16,
+      "signed_cpu_tail_after_last_kernel_us": 14.989013671875
+    },
+    {
+      "boundary_violations": [],
+      "cpu_marker": {
+        "duration_us": 427.77490234375,
+        "end_us": 2130785142427.199,
+        "event_index": 354,
+        "pid": 3681806,
+        "start_us": 2130785141999.424,
+        "tid": 3681806
+      },
+      "cuda_api_count": 20,
+      "cuda_api_event_indices": [
+        769,
+        771,
+        775,
+        779,
+        783,
+        787,
+        791,
+        795,
+        799,
+        803,
+        807,
+        811,
+        815,
+        819,
+        823,
+        827,
+        831,
+        835,
+        837,
+        839
+      ],
+      "cuda_api_union_us_unclamped": 38.748046875,
+      "cuda_graph_launch_count": 0,
+      "first_kernel_start_from_cpu_marker_us": 44.85986328125,
+      "geometry_interpretation": "A negative signed_cpu_tail_after_last_kernel_us is retained as a clock/boundary violation. It is not negative GPU time.",
+      "geometry_valid_for_aggregate": true,
+      "gpu_kernel_span_us_unclamped": 370.883056640625,
+      "invocation_index": 4,
+      "kernel_active_union_us_unclamped": 63.71533203125,
+      "kernel_assignments": [
+        {
+          "assignment": "runtime_correlation",
+          "correlation": "667",
+          "end_from_cpu_marker_end_us": -379.10693359375,
+          "event_index": 773,
+          "fully_contained": true,
+          "start_from_cpu_marker_start_us": 44.85986328125
+        },
+        {
+          "assignment": "runtime_correlation",
+          "correlation": "679",
+          "end_from_cpu_marker_end_us": -352.770751953125,
+          "event_index": 777,
+          "fully_contained": true,
+          "start_from_cpu_marker_start_us": 70.780029296875
+        },
+        {
+          "assignment": "runtime_correlation",
+          "correlation": "691",
+          "end_from_cpu_marker_end_us": -329.31494140625,
+          "event_index": 781,
+          "fully_contained": true,
+          "start_from_cpu_marker_start_us": 94.427978515625
+        },
+        {
+          "assignment": "runtime_correlation",
+          "correlation": "703",
+          "end_from_cpu_marker_end_us": -305.345947265625,
+          "event_index": 785,
+          "fully_contained": true,
+          "start_from_cpu_marker_start_us": 118.39599609375
+        },
+        {
+          "assignment": "runtime_correlation",
+          "correlation": "715",
+          "end_from_cpu_marker_end_us": -280.449951171875,
+          "event_index": 789,
+          "fully_contained": true,
+          "start_from_cpu_marker_start_us": 143.100830078125
+        },
+        {
+          "assignment": "runtime_correlation",
+          "correlation": "727",
+          "end_from_cpu_marker_end_us": -255.650146484375,
+          "event_index": 793,
+          "fully_contained": true,
+          "start_from_cpu_marker_start_us": 167.96484375
+        },
+        {
+          "assignment": "runtime_correlation",
+          "correlation": "739",
+          "end_from_cpu_marker_end_us": -232.89794921875,
+          "event_index": 797,
+          "fully_contained": true,
+          "start_from_cpu_marker_start_us": 190.781005859375
+        },
+        {
+          "assignment": "runtime_correlation",
+          "correlation": "751",
+          "end_from_cpu_marker_end_us": -209.72998046875,
+          "event_index": 801,
+          "fully_contained": true,
+          "start_from_cpu_marker_start_us": 213.948974609375
+        },
+        {
+          "assignment": "runtime_correlation",
+          "correlation": "763",
+          "end_from_cpu_marker_end_us": -185.02587890625,
+          "event_index": 805,
+          "fully_contained": true,
+          "start_from_cpu_marker_start_us": 238.7490234375
+        },
+        {
+          "assignment": "runtime_correlation",
+          "correlation": "775",
+          "end_from_cpu_marker_end_us": -158.946044921875,
+          "event_index": 809,
+          "fully_contained": true,
+          "start_from_cpu_marker_start_us": 264.892822265625
+        },
+        {
+          "assignment": "runtime_correlation",
+          "correlation": "787",
+          "end_from_cpu_marker_end_us": -133.824951171875,
+          "event_index": 813,
+          "fully_contained": true,
+          "start_from_cpu_marker_start_us": 289.98193359375
+        },
+        {
+          "assignment": "runtime_correlation",
+          "correlation": "799",
+          "end_from_cpu_marker_end_us": -110.113037109375,
+          "event_index": 817,
+          "fully_contained": true,
+          "start_from_cpu_marker_start_us": 313.725830078125
+        },
+        {
+          "assignment": "runtime_correlation",
+          "correlation": "811",
+          "end_from_cpu_marker_end_us": -86.0810546875,
+          "event_index": 821,
+          "fully_contained": true,
+          "start_from_cpu_marker_start_us": 337.949951171875
+        },
+        {
+          "assignment": "runtime_correlation",
+          "correlation": "823",
+          "end_from_cpu_marker_end_us": -62.27294921875,
+          "event_index": 825,
+          "fully_contained": true,
+          "start_from_cpu_marker_start_us": 361.661865234375
+        },
+        {
+          "assignment": "runtime_correlation",
+          "correlation": "835",
+          "end_from_cpu_marker_end_us": -37.919921875,
+          "event_index": 829,
+          "fully_contained": true,
+          "start_from_cpu_marker_start_us": 386.077880859375
+        },
+        {
+          "assignment": "runtime_correlation",
+          "correlation": "847",
+          "end_from_cpu_marker_end_us": -12.031982421875,
+          "event_index": 833,
+          "fully_contained": true,
+          "start_from_cpu_marker_start_us": 411.90185546875
+        }
+      ],
+      "kernel_count": 16,
+      "signed_cpu_tail_after_last_kernel_us": 12.031982421875
+    },
+    {
+      "boundary_violations": [],
+      "cpu_marker": {
+        "duration_us": 415.64501953125,
+        "end_us": 2130785142856.513,
+        "event_index": 453,
+        "pid": 3681806,
+        "start_us": 2130785142440.868,
+        "tid": 3681806
+      },
+      "cuda_api_count": 20,
+      "cuda_api_event_indices": [
+        841,
+        843,
+        847,
+        851,
+        855,
+        859,
+        863,
+        867,
+        871,
+        875,
+        879,
+        883,
+        887,
+        891,
+        895,
+        899,
+        903,
+        907,
+        909,
+        911
+      ],
+      "cuda_api_union_us_unclamped": 39.66845703125,
+      "cuda_graph_launch_count": 0,
+      "first_kernel_start_from_cpu_marker_us": 44.507080078125,
+      "geometry_interpretation": "A negative signed_cpu_tail_after_last_kernel_us is retained as a clock/boundary violation. It is not negative GPU time.",
+      "geometry_valid_for_aggregate": true,
+      "gpu_kernel_span_us_unclamped": 358.850830078125,
+      "invocation_index": 5,
+      "kernel_active_union_us_unclamped": 63.488037109375,
+      "kernel_assignments": [
+        {
+          "assignment": "runtime_correlation",
+          "correlation": "882",
+          "end_from_cpu_marker_end_us": -367.2978515625,
+          "event_index": 845,
+          "fully_contained": true,
+          "start_from_cpu_marker_start_us": 44.507080078125
+        },
+        {
+          "assignment": "runtime_correlation",
+          "correlation": "894",
+          "end_from_cpu_marker_end_us": -339.48974609375,
+          "event_index": 849,
+          "fully_contained": true,
+          "start_from_cpu_marker_start_us": 71.899169921875
+        },
+        {
+          "assignment": "runtime_correlation",
+          "correlation": "906",
+          "end_from_cpu_marker_end_us": -315.552978515625,
+          "event_index": 853,
+          "fully_contained": true,
+          "start_from_cpu_marker_start_us": 96.06005859375
+        },
+        {
+          "assignment": "runtime_correlation",
+          "correlation": "918",
+          "end_from_cpu_marker_end_us": -292.89697265625,
+          "event_index": 857,
+          "fully_contained": true,
+          "start_from_cpu_marker_start_us": 118.748046875
+        },
+        {
+          "assignment": "runtime_correlation",
+          "correlation": "930",
+          "end_from_cpu_marker_end_us": -270.784912109375,
+          "event_index": 861,
+          "fully_contained": true,
+          "start_from_cpu_marker_start_us": 140.76416015625
+        },
+        {
+          "assignment": "runtime_correlation",
+          "correlation": "942",
+          "end_from_cpu_marker_end_us": -248.48095703125,
+          "event_index": 865,
+          "fully_contained": true,
+          "start_from_cpu_marker_start_us": 163.0361328125
+        },
+        {
+          "assignment": "runtime_correlation",
+          "correlation": "954",
+          "end_from_cpu_marker_end_us": -226.720947265625,
+          "event_index": 869,
+          "fully_contained": true,
+          "start_from_cpu_marker_start_us": 184.860107421875
+        },
+        {
+          "assignment": "runtime_correlation",
+          "correlation": "966",
+          "end_from_cpu_marker_end_us": -202.881103515625,
+          "event_index": 873,
+          "fully_contained": true,
+          "start_from_cpu_marker_start_us": 208.635986328125
+        },
+        {
+          "assignment": "runtime_correlation",
+          "correlation": "978",
+          "end_from_cpu_marker_end_us": -179.488037109375,
+          "event_index": 877,
+          "fully_contained": true,
+          "start_from_cpu_marker_start_us": 232.156982421875
+        },
+        {
+          "assignment": "runtime_correlation",
+          "correlation": "990",
+          "end_from_cpu_marker_end_us": -156.0,
+          "event_index": 881,
+          "fully_contained": true,
+          "start_from_cpu_marker_start_us": 255.708984375
+        },
+        {
+          "assignment": "runtime_correlation",
+          "correlation": "1002",
+          "end_from_cpu_marker_end_us": -131.83984375,
+          "event_index": 885,
+          "fully_contained": true,
+          "start_from_cpu_marker_start_us": 279.901123046875
+        },
+        {
+          "assignment": "runtime_correlation",
+          "correlation": "1014",
+          "end_from_cpu_marker_end_us": -108.60791015625,
+          "event_index": 889,
+          "fully_contained": true,
+          "start_from_cpu_marker_start_us": 303.1650390625
+        },
+        {
+          "assignment": "runtime_correlation",
+          "correlation": "1026",
+          "end_from_cpu_marker_end_us": -85.18408203125,
+          "event_index": 893,
+          "fully_contained": true,
+          "start_from_cpu_marker_start_us": 326.68505859375
+        },
+        {
+          "assignment": "runtime_correlation",
+          "correlation": "1038",
+          "end_from_cpu_marker_end_us": -61.375732421875,
+          "event_index": 897,
+          "fully_contained": true,
+          "start_from_cpu_marker_start_us": 350.42919921875
+        },
+        {
+          "assignment": "runtime_correlation",
+          "correlation": "1050",
+          "end_from_cpu_marker_end_us": -36.798828125,
+          "event_index": 901,
+          "fully_contained": true,
+          "start_from_cpu_marker_start_us": 375.006103515625
+        },
+        {
+          "assignment": "runtime_correlation",
+          "correlation": "1062",
+          "end_from_cpu_marker_end_us": -12.287109375,
+          "event_index": 905,
+          "fully_contained": true,
+          "start_from_cpu_marker_start_us": 399.58203125
+        }
+      ],
+      "kernel_count": 16,
+      "signed_cpu_tail_after_last_kernel_us": 12.287109375
+    }
+  ],
+  "limits": [
+    "This reader does not alter, normalize, or recapture the source trace.",
+    "GPU annotation duplicates are not CPU invocation boundaries.",
+    "Boundary violations retain signed deltas and are never clamped.",
+    "Invalid invocation geometry is excluded from aggregate interpretation.",
+    "No host-versus-GPU causal percentage is calculated.",
+    "Profile geometry is not a replacement for acceptance timing."
+  ],
+  "marker_validation": {
+    "all_unique": true,
+    "count_matches": true,
+    "cpu_thread_identities": [
+      {
+        "pid": "3681806",
+        "tid": "3681806"
+      }
+    ],
+    "duplicate_cpu_marker_events": [],
+    "excluded_non_cpu_or_non_complete_same_name_events": [
+      {
+        "category": "gpu_user_annotation",
+        "correlation": null,
+        "dur": 358.853,
+        "event_index": 917,
+        "name": "nested_graphs_compiled_invocation",
+        "phase": "X",
+        "pid": 0,
+        "tid": 7,
+        "ts": 2130785142485.374
+      },
+      {
+        "category": "gpu_user_annotation",
+        "correlation": null,
+        "dur": 370.885,
+        "event_index": 918,
+        "name": "nested_graphs_compiled_invocation",
+        "phase": "X",
+        "pid": 0,
+        "tid": 7,
+        "ts": 2130785142044.283
+      },
+      {
+        "category": "gpu_user_annotation",
+        "correlation": null,
+        "dur": 387.204,
+        "event_index": 919,
+        "name": "nested_graphs_compiled_invocation",
+        "phase": "X",
+        "pid": 0,
+        "tid": 7,
+        "ts": 2130785141591.672
+      },
+      {
+        "category": "gpu_user_annotation",
+        "correlation": null,
+        "dur": 431.013,
+        "event_index": 920,
+        "name": "nested_graphs_compiled_invocation",
+        "phase": "X",
+        "pid": 0,
+        "tid": 7,
+        "ts": 2130785141085.012
+      },
+      {
+        "category": "gpu_user_annotation",
+        "correlation": null,
+        "dur": 725.736,
+        "event_index": 921,
+        "name": "nested_graphs_compiled_invocation",
+        "phase": "X",
+        "pid": 0,
+        "tid": 7,
+        "ts": 2130785140202.253
+      }
+    ],
+    "expected_cpu_invocations": 5,
+    "malformed_count_zero": true,
+    "malformed_cpu_marker_candidates": [],
+    "nonoverlapping": true,
+    "overlapping_cpu_intervals": [],
+    "pass": true,
+    "same_name_event_count": 10,
+    "selected_unique_cpu_invocations": 5,
+    "single_cpu_thread": true
+  },
+  "schema": "nested-graph-breaks-retained-trace-reader/v2",
+  "source_trace": {
+    "bytes": 263608,
+    "mapping_event_count": 926,
+    "path": "/opt/piq-campaigns/ngb-followup-root41002602-ablation-001-20261026/ablation-output-001/cells/profile-nested_break_depth8-seed0-flag0-no-cudagraph/profile.chrome.json",
+    "raw_event_count": 926,
+    "sha256": "3c0184961d37713e573d838e6cb0a85a4d3eab3864db1859be0a8c9fbaf3fe9d"
+  },
+  "status": "PASS"
+}

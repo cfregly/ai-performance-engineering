@@ -1,0 +1,7 @@
+*.nsys-rep binary
+*.ncu-rep binary
+*.sqlite binary
+# Preserve profiler-emitted whitespace as part of the raw file identity.
+*.chrome.json -text -whitespace
+*.csv -text
+fresh022/exports/commands/*.txt -text -whitespace

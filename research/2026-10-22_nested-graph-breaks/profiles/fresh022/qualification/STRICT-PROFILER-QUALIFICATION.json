@@ -1,0 +1,130 @@
+{
+  "disposition": "SUPPORTING_MECHANISM_EVIDENCE_ONLY",
+  "export_result": {
+    "contract": {
+      "actual_source_path": "/opt/piq/dev-fast/state/codex-integration-audit-20261010/main-repairs/research006-direct-publisher-postrun022-qualification-20261025T213035Z/postrun022.py",
+      "actual_source_sha256": "a54f6cb435878e08919ef2ed30731a26b8c0602cc9e62952fecbd791ab4d785b",
+      "authority": {
+        "bytes": 1093,
+        "device": 64772,
+        "inode": 217332732,
+        "mode": 256,
+        "mtime_ns": 1792963838921229236,
+        "path": "/opt/piq-campaigns/root41002512-pr41-research-custody-20261025/postrun022-qualification-001/POSTRUN-AUTHORITY.json",
+        "sha256": "14bee1c74c4017b749a5c46bc05e8ab54e3c337e0ab028b2ef80fb0826a6c2e3"
+      },
+      "raw_capture_binding": "Actual022controller child artifact receipts, not historical literal bindings in recipe.",
+      "raw_inputs_before_sha256": "fb3544ce5e30e2775375682d134546eef1b8fad77af56b21d112db0740fd9a14",
+      "scope": "Fresh022 saved reports only. Original six argv and order unchanged. No recapture."
+    },
+    "schema": "aisp.research005-offline-profiler-export-result.v1",
+    "source_recipe_sha256": "187d157ab6cb8d86c3a880b1acca9fe5721064d7c0dabe470794d4702cdcb960",
+    "status": "passed"
+  },
+  "gates": {
+    "candidate_graph_calls_strictly_less_than_baseline": true,
+    "one_matching_ncu_kernel_per_arm": true,
+    "positive_nsys_graph_calls_per_arm": true,
+    "positive_nsys_kernel_instances_per_arm": true,
+    "strict_ncu_metrics_valid_per_arm": true
+  },
+  "inputs": {
+    "ncu-baseline-raw.csv": {
+      "bytes": 14710,
+      "path": "/root/nested-graph-breaks-b200-pr41-006-run-022-qualification-001/ncu-baseline-raw.csv",
+      "sha256": "a9920ed564e52fb33f63f8d2016cd2e54abbaa12c8d6f657a1e40b40f4e57c72"
+    },
+    "ncu-candidate-raw.csv": {
+      "bytes": 14706,
+      "path": "/root/nested-graph-breaks-b200-pr41-006-run-022-qualification-001/ncu-candidate-raw.csv",
+      "sha256": "9d6276358dbe0baae979c43f8e4a18df0747722389df2879164763767b9171ae"
+    },
+    "nsys-baseline_cuda_api_sum.csv": {
+      "bytes": 2404,
+      "path": "/root/nested-graph-breaks-b200-pr41-006-run-022-qualification-001/nsys-baseline_cuda_api_sum.csv",
+      "sha256": "77d413372f1028e5c05395afb313e4c76b5867cd2a7f85a7a15c1cf79f4b4146"
+    },
+    "nsys-baseline_cuda_gpu_kern_sum.csv": {
+      "bytes": 6579,
+      "path": "/root/nested-graph-breaks-b200-pr41-006-run-022-qualification-001/nsys-baseline_cuda_gpu_kern_sum.csv",
+      "sha256": "cdcc047bdd96a9dcda00f19d4a11ef88f9b036a5f3c1028f96d2c595ddb25f9b"
+    },
+    "nsys-candidate_cuda_api_sum.csv": {
+      "bytes": 2398,
+      "path": "/root/nested-graph-breaks-b200-pr41-006-run-022-qualification-001/nsys-candidate_cuda_api_sum.csv",
+      "sha256": "15c90e9198c9ff65422f05e991c7829b69b97334c8af97833b418a064d9173c2"
+    },
+    "nsys-candidate_cuda_gpu_kern_sum.csv": {
+      "bytes": 6584,
+      "path": "/root/nested-graph-breaks-b200-pr41-006-run-022-qualification-001/nsys-candidate_cuda_gpu_kern_sum.csv",
+      "sha256": "8f963e8934a49ac6764b0c088c5f0eeefe3aade88f3145c77a717174cd3a3cf3"
+    },
+    "offline-profiler-export-result.json": {
+      "bytes": 16418,
+      "path": "/root/nested-graph-breaks-b200-pr41-006-run-022-qualification-001/offline-profiler-export-result.json",
+      "sha256": "579f69ff51fd11cdf05b7121e97dbcd0305012f7abb9ab84b2ae1e858d1592a0"
+    }
+  },
+  "ncu": {
+    "baseline": {
+      "capture_id": "0",
+      "kernel_name": "triton_poi_fused_add_cos_mul_sin_0",
+      "matching_source_rows": 1,
+      "metric_units": {
+        "gpu__dram_throughput.avg.pct_of_peak_sustained_elapsed": "%",
+        "gpu__time_duration.avg": "us",
+        "lts__throughput.avg.pct_of_peak_sustained_elapsed": "%",
+        "sm__throughput.avg.pct_of_peak_sustained_elapsed": "%",
+        "sm__warps_active.avg.pct_of_peak_sustained_active": "%"
+      },
+      "metrics": {
+        "gpu__dram_throughput.avg.pct_of_peak_sustained_elapsed": 17.261867,
+        "gpu__time_duration.avg": 6.4,
+        "lts__throughput.avg.pct_of_peak_sustained_elapsed": 11.632164,
+        "sm__throughput.avg.pct_of_peak_sustained_elapsed": 30.132462,
+        "sm__warps_active.avg.pct_of_peak_sustained_active": 75.796713
+      },
+      "numeric_values_transformed": false,
+      "source_format": "ncu-raw-page-wide"
+    },
+    "candidate": {
+      "capture_id": "0",
+      "kernel_name": "triton_poi_fused_add_cos_mul_sin_0",
+      "matching_source_rows": 1,
+      "metric_units": {
+        "gpu__dram_throughput.avg.pct_of_peak_sustained_elapsed": "%",
+        "gpu__time_duration.avg": "us",
+        "lts__throughput.avg.pct_of_peak_sustained_elapsed": "%",
+        "sm__throughput.avg.pct_of_peak_sustained_elapsed": "%",
+        "sm__warps_active.avg.pct_of_peak_sustained_active": "%"
+      },
+      "metrics": {
+        "gpu__dram_throughput.avg.pct_of_peak_sustained_elapsed": 5.248152,
+        "gpu__time_duration.avg": 20.992,
+        "lts__throughput.avg.pct_of_peak_sustained_elapsed": 3.495593,
+        "sm__throughput.avg.pct_of_peak_sustained_elapsed": 64.497376,
+        "sm__warps_active.avg.pct_of_peak_sustained_active": 82.802779
+      },
+      "numeric_values_transformed": false,
+      "source_format": "ncu-raw-page-wide"
+    }
+  },
+  "nsys": {
+    "baseline": {
+      "cuda_graph_launch_calls": 10160,
+      "kernel_instances": 12167
+    },
+    "candidate": {
+      "cuda_graph_launch_calls": 1270,
+      "kernel_instances": 2639
+    }
+  },
+  "qualification_recipe_sha256": "d4cdfe96e6ef1a1c50e1023b83af4a37f1f90f2f7b1019e0875ad24a70a7e60a",
+  "schema": "aisp.research005-strict-profiler-qualification.v1",
+  "status": "passed",
+  "strict_validator": {
+    "current_controller_sha256": "16d43ce5b50fd9b8d8d68b12075533695c23cb0c3939b6096dec12fe714956d6",
+    "function_source_sha256": "4c5389d10f02ac34c98affb79d4afcbb0bb38e45defbadc5426d25b011dda772",
+    "original_controller_sha256": "f7246a68068f677cc140aacaeb348ea18d7ef163c2ef2b6e9241cf21204a12e8"
+  }
+}

@@ -1,0 +1,605 @@
+{
+  "aggregate_valid_geometry_only": {
+    "excluded_invocation_indices": [
+      3,
+      4,
+      5
+    ],
+    "included_count": 2,
+    "included_invocation_indices": [
+      1,
+      2
+    ],
+    "interpretation": "Only invocations with valid CPU boundaries, at least one kernel, and no boundary violation are included. These sums are descriptive trace geometry and are not a causal fraction.",
+    "sum_cpu_marker_duration_us": 1965.824951171875,
+    "sum_cuda_api_union_us_unclamped": 116.279052734375,
+    "sum_kernel_active_union_us_unclamped": 109.279052734375,
+    "total_cuda_api_count": 16,
+    "total_cuda_graph_launch_count": 4,
+    "total_kernel_count": 8
+  },
+  "assignment_diagnostics": {
+    "ambiguous_kernel_correlations_or_containment": [],
+    "cuda_api_boundary_violations": [],
+    "kernel_boundary_violations": [
+      {
+        "assignment": "runtime_correlation",
+        "cpu_tail_after_event_end_us": -3.80322265625,
+        "end_from_cpu_marker_end_us": 3.80322265625,
+        "event": {
+          "category": "kernel",
+          "correlation": "130",
+          "dur": 18.496,
+          "event_index": 197,
+          "name": "triton_poi_fused_add_cos_mul_sin_0",
+          "phase": "X",
+          "pid": 0,
+          "tid": 7,
+          "ts": 2130453099475.903
+        },
+        "fully_contained": false,
+        "interpretation": "Signed deltas are retained. A positive end_from_cpu_marker_end_us means the event ended after the CPU marker. It is a boundary/clock issue, not negative GPU time.",
+        "invocation_index": 3,
+        "start_from_cpu_marker_start_us": 128.445068359375
+      },
+      {
+        "assignment": "runtime_correlation",
+        "cpu_tail_after_event_end_us": -6.722900390625,
+        "end_from_cpu_marker_end_us": 6.722900390625,
+        "event": {
+          "category": "kernel",
+          "correlation": "178",
+          "dur": 18.912,
+          "event_index": 221,
+          "name": "triton_poi_fused_add_cos_mul_sin_0",
+          "phase": "X",
+          "pid": 0,
+          "tid": 7,
+          "ts": 2130453099610.046
+        },
+        "fully_contained": false,
+        "interpretation": "Signed deltas are retained. A positive end_from_cpu_marker_end_us means the event ended after the CPU marker. It is a boundary/clock issue, not negative GPU time.",
+        "invocation_index": 4,
+        "start_from_cpu_marker_start_us": 114.14990234375
+      },
+      {
+        "assignment": "runtime_correlation",
+        "cpu_tail_after_event_end_us": -9.119873046875,
+        "end_from_cpu_marker_end_us": 9.119873046875,
+        "event": {
+          "category": "kernel",
+          "correlation": "226",
+          "dur": 18.88,
+          "event_index": 245,
+          "name": "triton_poi_fused_add_cos_mul_sin_0",
+          "phase": "X",
+          "pid": 0,
+          "tid": 7,
+          "ts": 2130453099734.973
+        },
+        "fully_contained": false,
+        "interpretation": "Signed deltas are retained. A positive end_from_cpu_marker_end_us means the event ended after the CPU marker. It is a boundary/clock issue, not negative GPU time.",
+        "invocation_index": 5,
+        "start_from_cpu_marker_start_us": 108.31787109375
+      }
+    ],
+    "malformed_cuda_api_events": [],
+    "malformed_kernel_events": [],
+    "unassigned_cuda_api_events": [
+      {
+        "category": "cuda_runtime",
+        "correlation": "243",
+        "dur": 27.53,
+        "event_index": 253,
+        "name": "cudaDeviceSynchronize",
+        "phase": "X",
+        "pid": 3675162,
+        "reason": "no exact CPU marker on the same pid/tid fully contains this CUDA API span",
+        "tid": 3675162,
+        "ts": 2130453099755.343
+      },
+      {
+        "category": "cuda_runtime",
+        "correlation": "247",
+        "dur": 3.16,
+        "event_index": 255,
+        "name": "cudaDeviceSynchronize",
+        "phase": "X",
+        "pid": 3675162,
+        "reason": "no exact CPU marker on the same pid/tid fully contains this CUDA API span",
+        "tid": 3675162,
+        "ts": 2130453099794.833
+      }
+    ],
+    "unassigned_kernel_events": []
+  },
+  "invocations": [
+    {
+      "boundary_violations": [],
+      "cpu_marker": {
+        "duration_us": 1749.947998046875,
+        "end_us": 2130453099104.101,
+        "event_index": 57,
+        "pid": 3675162,
+        "start_us": 2130453097354.153,
+        "tid": 3675162
+      },
+      "cuda_api_count": 8,
+      "cuda_api_event_indices": [
+        133,
+        135,
+        139,
+        143,
+        147,
+        151,
+        153,
+        155
+      ],
+      "cuda_api_union_us_unclamped": 86.669189453125,
+      "cuda_graph_launch_count": 2,
+      "first_kernel_start_from_cpu_marker_us": 1462.2998046875,
+      "geometry_interpretation": "A negative signed_cpu_tail_after_last_kernel_us is retained as a clock/boundary violation. It is not negative GPU time.",
+      "geometry_valid_for_aggregate": true,
+      "gpu_kernel_span_us_unclamped": 212.4140625,
+      "invocation_index": 1,
+      "kernel_active_union_us_unclamped": 54.783935546875,
+      "kernel_assignments": [
+        {
+          "assignment": "runtime_correlation",
+          "correlation": "16",
+          "end_from_cpu_marker_end_us": -279.072265625,
+          "event_index": 137,
+          "fully_contained": true,
+          "start_from_cpu_marker_start_us": 1462.2998046875
+        },
+        {
+          "assignment": "runtime_correlation",
+          "correlation": "22",
+          "end_from_cpu_marker_end_us": -229.087890625,
+          "event_index": 141,
+          "fully_contained": true,
+          "start_from_cpu_marker_start_us": 1501.884033203125
+        },
+        {
+          "assignment": "runtime_correlation",
+          "correlation": "28",
+          "end_from_cpu_marker_end_us": -96.193115234375,
+          "event_index": 145,
+          "fully_contained": true,
+          "start_from_cpu_marker_start_us": 1645.178955078125
+        },
+        {
+          "assignment": "runtime_correlation",
+          "correlation": "34",
+          "end_from_cpu_marker_end_us": -75.234130859375,
+          "event_index": 149,
+          "fully_contained": true,
+          "start_from_cpu_marker_start_us": 1656.057861328125
+        }
+      ],
+      "kernel_count": 4,
+      "signed_cpu_tail_after_last_kernel_us": 75.234130859375
+    },
+    {
+      "boundary_violations": [],
+      "cpu_marker": {
+        "duration_us": 215.876953125,
+        "end_us": 2130453099339.728,
+        "event_index": 72,
+        "pid": 3675162,
+        "start_us": 2130453099123.851,
+        "tid": 3675162
+      },
+      "cuda_api_count": 8,
+      "cuda_api_event_indices": [
+        157,
+        159,
+        163,
+        167,
+        171,
+        175,
+        177,
+        179
+      ],
+      "cuda_api_union_us_unclamped": 29.60986328125,
+      "cuda_graph_launch_count": 2,
+      "first_kernel_start_from_cpu_marker_us": 98.551025390625,
+      "geometry_interpretation": "A negative signed_cpu_tail_after_last_kernel_us is retained as a clock/boundary violation. It is not negative GPU time.",
+      "geometry_valid_for_aggregate": true,
+      "gpu_kernel_span_us_unclamped": 108.286865234375,
+      "invocation_index": 2,
+      "kernel_active_union_us_unclamped": 54.4951171875,
+      "kernel_assignments": [
+        {
+          "assignment": "runtime_correlation",
+          "correlation": "64",
+          "end_from_cpu_marker_end_us": -108.52685546875,
+          "event_index": 161,
+          "fully_contained": true,
+          "start_from_cpu_marker_start_us": 98.551025390625
+        },
+        {
+          "assignment": "runtime_correlation",
+          "correlation": "70",
+          "end_from_cpu_marker_end_us": -87.886962890625,
+          "event_index": 165,
+          "fully_contained": true,
+          "start_from_cpu_marker_start_us": 109.52587890625
+        },
+        {
+          "assignment": "runtime_correlation",
+          "correlation": "76",
+          "end_from_cpu_marker_end_us": -30.63916015625,
+          "event_index": 169,
+          "fully_contained": true,
+          "start_from_cpu_marker_start_us": 176.6298828125
+        },
+        {
+          "assignment": "runtime_correlation",
+          "correlation": "82",
+          "end_from_cpu_marker_end_us": -9.0390625,
+          "event_index": 173,
+          "fully_contained": true,
+          "start_from_cpu_marker_start_us": 188.2138671875
+        }
+      ],
+      "kernel_count": 4,
+      "signed_cpu_tail_after_last_kernel_us": 9.0390625
+    },
+    {
+      "boundary_violations": [
+        {
+          "assignment": "runtime_correlation",
+          "cpu_tail_after_event_end_us": -3.80322265625,
+          "end_from_cpu_marker_end_us": 3.80322265625,
+          "event": {
+            "category": "kernel",
+            "correlation": "130",
+            "dur": 18.496,
+            "event_index": 197,
+            "name": "triton_poi_fused_add_cos_mul_sin_0",
+            "phase": "X",
+            "pid": 0,
+            "tid": 7,
+            "ts": 2130453099475.903
+          },
+          "fully_contained": false,
+          "interpretation": "Signed deltas are retained. A positive end_from_cpu_marker_end_us means the event ended after the CPU marker. It is a boundary/clock issue, not negative GPU time.",
+          "invocation_index": 3,
+          "start_from_cpu_marker_start_us": 128.445068359375
+        }
+      ],
+      "cpu_marker": {
+        "duration_us": 143.137939453125,
+        "end_us": 2130453099490.596,
+        "event_index": 87,
+        "pid": 3675162,
+        "start_us": 2130453099347.458,
+        "tid": 3675162
+      },
+      "cuda_api_count": 8,
+      "cuda_api_event_indices": [
+        181,
+        183,
+        187,
+        191,
+        195,
+        199,
+        201,
+        203
+      ],
+      "cuda_api_union_us_unclamped": 18.89990234375,
+      "cuda_graph_launch_count": 2,
+      "first_kernel_start_from_cpu_marker_us": 66.6220703125,
+      "geometry_interpretation": "A negative signed_cpu_tail_after_last_kernel_us is retained as a clock/boundary violation. It is not negative GPU time.",
+      "geometry_valid_for_aggregate": false,
+      "gpu_kernel_span_us_unclamped": 80.319091796875,
+      "invocation_index": 3,
+      "kernel_active_union_us_unclamped": 53.951171875,
+      "kernel_assignments": [
+        {
+          "assignment": "runtime_correlation",
+          "correlation": "112",
+          "end_from_cpu_marker_end_us": -68.1318359375,
+          "event_index": 185,
+          "fully_contained": true,
+          "start_from_cpu_marker_start_us": 66.6220703125
+        },
+        {
+          "assignment": "runtime_correlation",
+          "correlation": "118",
+          "end_from_cpu_marker_end_us": -47.076904296875,
+          "event_index": 189,
+          "fully_contained": true,
+          "start_from_cpu_marker_start_us": 77.3740234375
+        },
+        {
+          "assignment": "runtime_correlation",
+          "correlation": "124",
+          "end_from_cpu_marker_end_us": -16.0048828125,
+          "event_index": 193,
+          "fully_contained": true,
+          "start_from_cpu_marker_start_us": 118.7490234375
+        },
+        {
+          "assignment": "runtime_correlation",
+          "correlation": "130",
+          "end_from_cpu_marker_end_us": 3.80322265625,
+          "event_index": 197,
+          "fully_contained": false,
+          "start_from_cpu_marker_start_us": 128.445068359375
+        }
+      ],
+      "kernel_count": 4,
+      "signed_cpu_tail_after_last_kernel_us": -3.80322265625
+    },
+    {
+      "boundary_violations": [
+        {
+          "assignment": "runtime_correlation",
+          "cpu_tail_after_event_end_us": -6.722900390625,
+          "end_from_cpu_marker_end_us": 6.722900390625,
+          "event": {
+            "category": "kernel",
+            "correlation": "178",
+            "dur": 18.912,
+            "event_index": 221,
+            "name": "triton_poi_fused_add_cos_mul_sin_0",
+            "phase": "X",
+            "pid": 0,
+            "tid": 7,
+            "ts": 2130453099610.046
+          },
+          "fully_contained": false,
+          "interpretation": "Signed deltas are retained. A positive end_from_cpu_marker_end_us means the event ended after the CPU marker. It is a boundary/clock issue, not negative GPU time.",
+          "invocation_index": 4,
+          "start_from_cpu_marker_start_us": 114.14990234375
+        }
+      ],
+      "cpu_marker": {
+        "duration_us": 126.339111328125,
+        "end_us": 2130453099622.235,
+        "event_index": 102,
+        "pid": 3675162,
+        "start_us": 2130453099495.896,
+        "tid": 3675162
+      },
+      "cuda_api_count": 8,
+      "cuda_api_event_indices": [
+        205,
+        207,
+        211,
+        215,
+        219,
+        223,
+        225,
+        227
+      ],
+      "cuda_api_union_us_unclamped": 17.650146484375,
+      "cuda_graph_launch_count": 2,
+      "first_kernel_start_from_cpu_marker_us": 54.72705078125,
+      "geometry_interpretation": "A negative signed_cpu_tail_after_last_kernel_us is retained as a clock/boundary violation. It is not negative GPU time.",
+      "geometry_valid_for_aggregate": false,
+      "gpu_kernel_span_us_unclamped": 78.3349609375,
+      "invocation_index": 4,
+      "kernel_active_union_us_unclamped": 54.3671875,
+      "kernel_assignments": [
+        {
+          "assignment": "runtime_correlation",
+          "correlation": "160",
+          "end_from_cpu_marker_end_us": -63.1650390625,
+          "event_index": 209,
+          "fully_contained": true,
+          "start_from_cpu_marker_start_us": 54.72705078125
+        },
+        {
+          "assignment": "runtime_correlation",
+          "correlation": "166",
+          "end_from_cpu_marker_end_us": -42.589111328125,
+          "event_index": 213,
+          "fully_contained": true,
+          "start_from_cpu_marker_start_us": 65.157958984375
+        },
+        {
+          "assignment": "runtime_correlation",
+          "correlation": "172",
+          "end_from_cpu_marker_end_us": -14.01318359375,
+          "event_index": 217,
+          "fully_contained": true,
+          "start_from_cpu_marker_start_us": 103.909912109375
+        },
+        {
+          "assignment": "runtime_correlation",
+          "correlation": "178",
+          "end_from_cpu_marker_end_us": 6.722900390625,
+          "event_index": 221,
+          "fully_contained": false,
+          "start_from_cpu_marker_start_us": 114.14990234375
+        }
+      ],
+      "kernel_count": 4,
+      "signed_cpu_tail_after_last_kernel_us": -6.722900390625
+    },
+    {
+      "boundary_violations": [
+        {
+          "assignment": "runtime_correlation",
+          "cpu_tail_after_event_end_us": -9.119873046875,
+          "end_from_cpu_marker_end_us": 9.119873046875,
+          "event": {
+            "category": "kernel",
+            "correlation": "226",
+            "dur": 18.88,
+            "event_index": 245,
+            "name": "triton_poi_fused_add_cos_mul_sin_0",
+            "phase": "X",
+            "pid": 0,
+            "tid": 7,
+            "ts": 2130453099734.973
+          },
+          "fully_contained": false,
+          "interpretation": "Signed deltas are retained. A positive end_from_cpu_marker_end_us means the event ended after the CPU marker. It is a boundary/clock issue, not negative GPU time.",
+          "invocation_index": 5,
+          "start_from_cpu_marker_start_us": 108.31787109375
+        }
+      ],
+      "cpu_marker": {
+        "duration_us": 118.077880859375,
+        "end_us": 2130453099744.733,
+        "event_index": 117,
+        "pid": 3675162,
+        "start_us": 2130453099626.655,
+        "tid": 3675162
+      },
+      "cuda_api_count": 8,
+      "cuda_api_event_indices": [
+        229,
+        231,
+        235,
+        239,
+        243,
+        247,
+        249,
+        251
+      ],
+      "cuda_api_union_us_unclamped": 17.710205078125,
+      "cuda_graph_launch_count": 2,
+      "first_kernel_start_from_cpu_marker_us": 52.73388671875,
+      "geometry_interpretation": "A negative signed_cpu_tail_after_last_kernel_us is retained as a clock/boundary violation. It is not negative GPU time.",
+      "geometry_valid_for_aggregate": false,
+      "gpu_kernel_span_us_unclamped": 74.4638671875,
+      "invocation_index": 5,
+      "kernel_active_union_us_unclamped": 54.911865234375,
+      "kernel_assignments": [
+        {
+          "assignment": "runtime_correlation",
+          "correlation": "208",
+          "end_from_cpu_marker_end_us": -56.7041015625,
+          "event_index": 233,
+          "fully_contained": true,
+          "start_from_cpu_marker_start_us": 52.73388671875
+        },
+        {
+          "assignment": "runtime_correlation",
+          "correlation": "214",
+          "end_from_cpu_marker_end_us": -34.975830078125,
+          "event_index": 237,
+          "fully_contained": true,
+          "start_from_cpu_marker_start_us": 64.446044921875
+        },
+        {
+          "assignment": "runtime_correlation",
+          "correlation": "220",
+          "end_from_cpu_marker_end_us": -12.60791015625,
+          "event_index": 241,
+          "fully_contained": true,
+          "start_from_cpu_marker_start_us": 96.73388671875
+        },
+        {
+          "assignment": "runtime_correlation",
+          "correlation": "226",
+          "end_from_cpu_marker_end_us": 9.119873046875,
+          "event_index": 245,
+          "fully_contained": false,
+          "start_from_cpu_marker_start_us": 108.31787109375
+        }
+      ],
+      "kernel_count": 4,
+      "signed_cpu_tail_after_last_kernel_us": -9.119873046875
+    }
+  ],
+  "limits": [
+    "This reader does not alter, normalize, or recapture the source trace.",
+    "GPU annotation duplicates are not CPU invocation boundaries.",
+    "Boundary violations retain signed deltas and are never clamped.",
+    "Invalid invocation geometry is excluded from aggregate interpretation.",
+    "No host-versus-GPU causal percentage is calculated.",
+    "Profile geometry is not a replacement for acceptance timing."
+  ],
+  "marker_validation": {
+    "all_unique": true,
+    "count_matches": true,
+    "cpu_thread_identities": [
+      {
+        "pid": "3675162",
+        "tid": "3675162"
+      }
+    ],
+    "duplicate_cpu_marker_events": [],
+    "excluded_non_cpu_or_non_complete_same_name_events": [
+      {
+        "category": "gpu_user_annotation",
+        "correlation": null,
+        "dur": 74.466,
+        "event_index": 257,
+        "name": "nested_graphs_compiled_invocation",
+        "phase": "X",
+        "pid": 0,
+        "tid": 7,
+        "ts": 2130453099679.388
+      },
+      {
+        "category": "gpu_user_annotation",
+        "correlation": null,
+        "dur": 78.337,
+        "event_index": 258,
+        "name": "nested_graphs_compiled_invocation",
+        "phase": "X",
+        "pid": 0,
+        "tid": 7,
+        "ts": 2130453099550.622
+      },
+      {
+        "category": "gpu_user_annotation",
+        "correlation": null,
+        "dur": 80.321,
+        "event_index": 259,
+        "name": "nested_graphs_compiled_invocation",
+        "phase": "X",
+        "pid": 0,
+        "tid": 7,
+        "ts": 2130453099414.079
+      },
+      {
+        "category": "gpu_user_annotation",
+        "correlation": null,
+        "dur": 108.289,
+        "event_index": 260,
+        "name": "nested_graphs_compiled_invocation",
+        "phase": "X",
+        "pid": 0,
+        "tid": 7,
+        "ts": 2130453099222.401
+      },
+      {
+        "category": "gpu_user_annotation",
+        "correlation": null,
+        "dur": 212.416,
+        "event_index": 261,
+        "name": "nested_graphs_compiled_invocation",
+        "phase": "X",
+        "pid": 0,
+        "tid": 7,
+        "ts": 2130453098816.452
+      }
+    ],
+    "expected_cpu_invocations": 5,
+    "malformed_count_zero": true,
+    "malformed_cpu_marker_candidates": [],
+    "nonoverlapping": true,
+    "overlapping_cpu_intervals": [],
+    "pass": true,
+    "same_name_event_count": 10,
+    "selected_unique_cpu_invocations": 5,
+    "single_cpu_thread": true
+  },
+  "schema": "nested-graph-breaks-retained-trace-reader/v2",
+  "source_trace": {
+    "bytes": 71888,
+    "mapping_event_count": 266,
+    "path": "/opt/piq-campaigns/ngb-followup-root41002601-primary-001-20261026/primary-output-001/cells/profile-nested_break_depth8-seed0-flag1-original/profile.chrome.json",
+    "raw_event_count": 266,
+    "sha256": "b53d52a5e1ca6772c48a6f0c62b205d13621de008d451816eec8cc254318cd71"
+  },
+  "status": "PASS_WITH_BOUNDARY_EXCLUSIONS"
+}

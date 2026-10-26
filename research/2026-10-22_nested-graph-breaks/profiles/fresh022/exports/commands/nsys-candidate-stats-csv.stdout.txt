@@ -1,0 +1,4 @@
+Processing [/root/nested-graph-breaks-b200-pr41-006-run-022-qualification-001/nsys-candidate.sqlite] with [/root/aiperf-torch2141-upgrade-validation-20261021/profilers-003/sysroot/opt/nvidia/nsight-systems-cli/2026.5.1/target-linux-x64/reports/cuda_api_sum.py] to [/root/nested-graph-breaks-b200-pr41-006-run-022-qualification-001/nsys-candidate_cuda_api_sum.csv]... PROCESSED
+
+Processing [/root/nested-graph-breaks-b200-pr41-006-run-022-qualification-001/nsys-candidate.sqlite] with [/root/aiperf-torch2141-upgrade-validation-20261021/profilers-003/sysroot/opt/nvidia/nsight-systems-cli/2026.5.1/target-linux-x64/reports/cuda_gpu_kern_sum.py] to [/root/nested-graph-breaks-b200-pr41-006-run-022-qualification-001/nsys-candidate_cuda_gpu_kern_sum.csv]... PROCESSED
+

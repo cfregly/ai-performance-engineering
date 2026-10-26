@@ -1,0 +1,428 @@
+{
+  "all28children_exit0": true,
+  "analyzer": {
+    "bytes": 61022,
+    "device": 64772,
+    "inode": 217328692,
+    "mode": 420,
+    "mtime_ns": 1792963932352064269,
+    "path": "/root/nested-graph-breaks-b200-pr41-006-run-022-analysis-001/analyzer-result.json",
+    "sha256": "035b133245a7c98a0eddd82d424f8dea8564a8203a32be4712e5684089257bad"
+  },
+  "analyzer_report": {
+    "bytes": 1382,
+    "device": 64772,
+    "inode": 217328786,
+    "mode": 420,
+    "mtime_ns": 1792963932361064157,
+    "path": "/root/nested-graph-breaks-b200-pr41-006-run-022-analysis-001/analyzer-report.md",
+    "sha256": "94b95410642d7af3f9fddca2c8fea660ab1d349a91a2dd87b144c78f1838fbed"
+  },
+  "authority": {
+    "bytes": 1253,
+    "device": 64772,
+    "inode": 217379846,
+    "mode": 256,
+    "mtime_ns": 1792964049275605913,
+    "path": "/opt/piq-campaigns/root41002512-pr41-research-custody-20261025/retained022-strict-reader026-adjudication-001/RETAINED-PARSER-AUTHORITY.json",
+    "sha256": "d4cdfe96e6ef1a1c50e1023b83af4a37f1f90f2f7b1019e0875ad24a70a7e60a"
+  },
+  "cgroup_removed": true,
+  "claim_limits": [
+    "This is a controlled compiler microbenchmark.",
+    "Invocation p95 is not a serving latency percentile.",
+    "The eager execution is a correctness reference, not a performance competitor.",
+    "The no-break case gates drift validity and does not establish nested-break benefit.",
+    "No serving, model throughput, or model quality conclusion follows."
+  ],
+  "clock_restoration_passed": true,
+  "decision": {
+    "capture_qualification_pass": true,
+    "control_rule": "no_break_depth4 steady median baseline/candidate ratio must be within [0.95, 1.05] for every seed on both routes; startup also requires its cold first-10 ratio within [0.95, 1.05] for every seed",
+    "control_validity_pass": true,
+    "cuda_graph_claim_permitted": true,
+    "failure_semantics": "INCONCLUSIVE retains the full raw matrix; the measurement gate, control-validity gate, capture qualification, or more than one did not pass, so no qualified optimization-win claim is supported",
+    "measurement_gate_pass": true,
+    "measurement_win_kind": "steady_invocation",
+    "primary_case": "nested_break_depth8",
+    "qualified_startup_win": false,
+    "qualified_steady_win": true,
+    "startup_control_validity_pass": true,
+    "startup_rule": "observed minimum of four paired-seed cold-first-10 speedup ratios >= 1.10; candidate steady invocation p95 no more than 3% above baseline for every seed",
+    "steady_control_validity_pass": true,
+    "steady_rule": "observed minimum of four paired-seed median speedup ratios >= 1.10; candidate invocation p95 <= baseline for every seed",
+    "verdict": "PASS",
+    "verdict_scope": "predeclared performance thresholds, no-break control validity, and two-arm CUDA Graph capture qualification",
+    "win_kind": "steady_invocation"
+  },
+  "ended_utc": "2026-10-25T21:34:09.342648+00:00",
+  "ncu_saved_values": {
+    "baseline": {
+      "capture_id": "0",
+      "kernel_name": "triton_poi_fused_add_cos_mul_sin_0",
+      "matching_source_rows": 1,
+      "metric_units": {
+        "gpu__dram_throughput.avg.pct_of_peak_sustained_elapsed": "%",
+        "gpu__time_duration.avg": "us",
+        "lts__throughput.avg.pct_of_peak_sustained_elapsed": "%",
+        "sm__throughput.avg.pct_of_peak_sustained_elapsed": "%",
+        "sm__warps_active.avg.pct_of_peak_sustained_active": "%"
+      },
+      "metrics": {
+        "gpu__dram_throughput.avg.pct_of_peak_sustained_elapsed": 17.261867,
+        "gpu__time_duration.avg": 6.4,
+        "lts__throughput.avg.pct_of_peak_sustained_elapsed": 11.632164,
+        "sm__throughput.avg.pct_of_peak_sustained_elapsed": 30.132462,
+        "sm__warps_active.avg.pct_of_peak_sustained_active": 75.796713
+      },
+      "numeric_values_transformed": false,
+      "source_format": "ncu-raw-page-wide"
+    },
+    "candidate": {
+      "capture_id": "0",
+      "kernel_name": "triton_poi_fused_add_cos_mul_sin_0",
+      "matching_source_rows": 1,
+      "metric_units": {
+        "gpu__dram_throughput.avg.pct_of_peak_sustained_elapsed": "%",
+        "gpu__time_duration.avg": "us",
+        "lts__throughput.avg.pct_of_peak_sustained_elapsed": "%",
+        "sm__throughput.avg.pct_of_peak_sustained_elapsed": "%",
+        "sm__warps_active.avg.pct_of_peak_sustained_active": "%"
+      },
+      "metrics": {
+        "gpu__dram_throughput.avg.pct_of_peak_sustained_elapsed": 5.248152,
+        "gpu__time_duration.avg": 20.992,
+        "lts__throughput.avg.pct_of_peak_sustained_elapsed": 3.495593,
+        "sm__throughput.avg.pct_of_peak_sustained_elapsed": 64.497376,
+        "sm__warps_active.avg.pct_of_peak_sustained_active": 82.802779
+      },
+      "numeric_values_transformed": false,
+      "source_format": "ncu-raw-page-wide"
+    }
+  },
+  "no_exports_analyzer_or_captures_repeated": true,
+  "nsys_saved_values": {
+    "baseline": {
+      "cuda_graph_launch_calls": 10160,
+      "kernel_instances": 12167
+    },
+    "candidate": {
+      "cuda_graph_launch_calls": 1270,
+      "kernel_instances": 2639
+    }
+  },
+  "original_outer_failure_preserved": {
+    "bytes": 10723,
+    "device": 64772,
+    "inode": 217379192,
+    "mode": 384,
+    "mtime_ns": 1792962818467896603,
+    "path": "/root/nested-graph-breaks-b200-pr41-006-run-022/control/outer-run-supervisor-result.json",
+    "sha256": "949f43f9a837e1c2bad58a530bb3ec8598dd90818a515f3ab9ec4903d9e42714"
+  },
+  "original_reader_failure_preserved": {
+    "bytes": 2652,
+    "device": 64772,
+    "inode": 217386992,
+    "mode": 256,
+    "mtime_ns": 1792963840234212867,
+    "path": "/opt/piq-campaigns/root41002512-pr41-research-custody-20261025/postrun022-qualification-001/SCIENTIFIC-QUALIFICATION-RESULT.json",
+    "sha256": "6c261082f94353f56178ab2ec4d8d1690811667abbf28ba34a124d30950b7a83"
+  },
+  "owner_acknowledgements": [
+    {
+      "bytes": 2076,
+      "device": 64772,
+      "inode": 217384905,
+      "mode": 292,
+      "mtime_ns": 1792963396190742326,
+      "path": "/root/nested-graph-breaks-b200-pr41-006-run-022/control/release-acknowledgement.json",
+      "sha256": "396c107dbdd8b2f971afd56f53133457cdfc1615850290f4c0c84ed1da25c903"
+    },
+    {
+      "bytes": 2095,
+      "device": 64772,
+      "inode": 217385120,
+      "mode": 292,
+      "mtime_ns": 1792963396197742239,
+      "path": "/root/nested-graph-breaks-b200-pr41-006-run-022/control/outer-run-release-acknowledgement.json",
+      "sha256": "00d5fd6efcdfd84305fd3efbdbde2c065677cafe552086ae095e1c66104370e2"
+    }
+  ],
+  "qualified": true,
+  "raw_inputs_unchanged": true,
+  "saved_control_summary": {
+    "case": "no_break_depth4",
+    "cold_first_10": {
+      "allowed_inclusive_range": [
+        0.95,
+        1.05
+      ],
+      "every_seed_required": true,
+      "gate_pass": true,
+      "metric": "cold first-10 synchronized compiled-call total",
+      "observed_seed_ratios": [
+        0.9982370556056572,
+        1.0009480963600892,
+        1.0031678294819735,
+        0.9932636951978867
+      ],
+      "per_seed": [
+        {
+          "baseline_over_candidate_ratio": 0.9982370556056572,
+          "seed": 0,
+          "within_predeclared_range": true
+        },
+        {
+          "baseline_over_candidate_ratio": 1.0009480963600892,
+          "seed": 1,
+          "within_predeclared_range": true
+        },
+        {
+          "baseline_over_candidate_ratio": 1.0031678294819735,
+          "seed": 2,
+          "within_predeclared_range": true
+        },
+        {
+          "baseline_over_candidate_ratio": 0.9932636951978867,
+          "seed": 3,
+          "within_predeclared_range": true
+        }
+      ],
+      "status": "PASS"
+    },
+    "failure_semantics": "steady control drift blocks both routes; cold first-10 control drift blocks the startup route while leaving an otherwise qualified steady route eligible",
+    "ratio_definition": "enabled=0 latency divided by enabled=1 latency",
+    "startup_qualification_gate_pass": true,
+    "steady": {
+      "allowed_inclusive_range": [
+        0.95,
+        1.05
+      ],
+      "every_seed_required": true,
+      "gate_pass": true,
+      "metric": "steady median synchronized invocation latency",
+      "observed_seed_ratios": [
+        0.9749034590756668,
+        1.0194188747054536,
+        0.96444595569636,
+        1.0169161369694484
+      ],
+      "per_seed": [
+        {
+          "baseline_over_candidate_ratio": 0.9749034590756668,
+          "seed": 0,
+          "within_predeclared_range": true
+        },
+        {
+          "baseline_over_candidate_ratio": 1.0194188747054536,
+          "seed": 1,
+          "within_predeclared_range": true
+        },
+        {
+          "baseline_over_candidate_ratio": 0.96444595569636,
+          "seed": 2,
+          "within_predeclared_range": true
+        },
+        {
+          "baseline_over_candidate_ratio": 1.0169161369694484,
+          "seed": 3,
+          "within_predeclared_range": true
+        }
+      ],
+      "status": "PASS"
+    },
+    "steady_qualification_gate_pass": true
+  },
+  "saved_primary_summary": {
+    "batched_throughput": {
+      "coverage_claim": null,
+      "geometric_mean_ratio": 6.275855356982313,
+      "observed_max_seed_ratio": 6.399974262430527,
+      "observed_min_seed_ratio": 6.1421203879137085,
+      "observed_seed_ratios": [
+        6.1421203879137085,
+        6.32501137139601,
+        6.239270861742592,
+        6.399974262430527
+      ],
+      "summary_role": "descriptive four-seed summary; no confidence-interval or population-coverage claim"
+    },
+    "case": "nested_break_depth8",
+    "cold_first_10": {
+      "coverage_claim": null,
+      "geometric_mean_ratio": 0.7477240061689931,
+      "observed_max_seed_ratio": 0.763222969855456,
+      "observed_min_seed_ratio": 0.7136086905994646,
+      "observed_seed_ratios": [
+        0.763222969855456,
+        0.7565265905265948,
+        0.7586291681679932,
+        0.7136086905994646
+      ],
+      "summary_role": "descriptive four-seed summary; no confidence-interval or population-coverage claim"
+    },
+    "per_seed": [
+      {
+        "baseline_enabled_0": {
+          "cold_first_10_mean_host_ms": 245.84348990000004,
+          "cold_first_10_total_host_ms": 2458.4348990000003,
+          "first_compiled_call_host_ms": 2420.747302,
+          "steady_median_invocation_host_ms": 0.40132999999999996,
+          "steady_p95_invocation_host_ms": 0.4149025,
+          "throughput_median_per_call_host_ms": 0.38094051
+        },
+        "candidate_enabled_1": {
+          "cold_first_10_mean_host_ms": 322.11227859999997,
+          "cold_first_10_total_host_ms": 3221.122786,
+          "first_compiled_call_host_ms": 3202.225469,
+          "steady_median_invocation_host_ms": 0.09041350000000001,
+          "steady_p95_invocation_host_ms": 0.0963915,
+          "throughput_median_per_call_host_ms": 0.06202101
+        },
+        "cold_first_10_speedup_ratio": 0.763222969855456,
+        "seed": 0,
+        "steady_median_invocation_speedup_ratio": 4.438828272326588,
+        "steady_p95_candidate_over_baseline": 0.23232325666873543,
+        "throughput_speedup_ratio": 6.1421203879137085
+      },
+      {
+        "baseline_enabled_0": {
+          "cold_first_10_mean_host_ms": 245.49236850000003,
+          "cold_first_10_total_host_ms": 2454.923685,
+          "first_compiled_call_host_ms": 2417.036693,
+          "steady_median_invocation_host_ms": 0.41247449999999997,
+          "steady_p95_invocation_host_ms": 0.42632895,
+          "throughput_median_per_call_host_ms": 0.39171877
+        },
+        "candidate_enabled_1": {
+          "cold_first_10_mean_host_ms": 324.4993257,
+          "cold_first_10_total_host_ms": 3244.993257,
+          "first_compiled_call_host_ms": 3225.773693,
+          "steady_median_invocation_host_ms": 0.0907135,
+          "steady_p95_invocation_host_ms": 0.0979145,
+          "throughput_median_per_call_host_ms": 0.06193171
+        },
+        "cold_first_10_speedup_ratio": 0.7565265905265948,
+        "seed": 1,
+        "steady_median_invocation_speedup_ratio": 4.547002375611127,
+        "steady_p95_candidate_over_baseline": 0.22966889769038673,
+        "throughput_speedup_ratio": 6.32501137139601
+      },
+      {
+        "baseline_enabled_0": {
+          "cold_first_10_mean_host_ms": 244.3842588,
+          "cold_first_10_total_host_ms": 2443.842588,
+          "first_compiled_call_host_ms": 2405.957755,
+          "steady_median_invocation_host_ms": 0.4080895,
+          "steady_p95_invocation_host_ms": 0.4229266,
+          "throughput_median_per_call_host_ms": 0.38662453
+        },
+        "candidate_enabled_1": {
+          "cold_first_10_mean_host_ms": 322.1392863,
+          "cold_first_10_total_host_ms": 3221.392863,
+          "first_compiled_call_host_ms": 3202.632782,
+          "steady_median_invocation_host_ms": 0.090073,
+          "steady_p95_invocation_host_ms": 0.0969695,
+          "throughput_median_per_call_host_ms": 0.0619663
+        },
+        "cold_first_10_speedup_ratio": 0.7586291681679932,
+        "seed": 2,
+        "steady_median_invocation_speedup_ratio": 4.530652914857948,
+        "steady_p95_candidate_over_baseline": 0.22928210237899438,
+        "throughput_speedup_ratio": 6.239270861742592
+      },
+      {
+        "baseline_enabled_0": {
+          "cold_first_10_mean_host_ms": 245.3823045,
+          "cold_first_10_total_host_ms": 2453.823045,
+          "first_compiled_call_host_ms": 2415.964344,
+          "steady_median_invocation_host_ms": 0.422424,
+          "steady_p95_invocation_host_ms": 0.4357416,
+          "throughput_median_per_call_host_ms": 0.39636839
+        },
+        "candidate_enabled_1": {
+          "cold_first_10_mean_host_ms": 343.86114929999997,
+          "cold_first_10_total_host_ms": 3438.611493,
+          "first_compiled_call_host_ms": 3419.157134,
+          "steady_median_invocation_host_ms": 0.0907835,
+          "steady_p95_invocation_host_ms": 0.09929494999999999,
+          "throughput_median_per_call_host_ms": 0.061932810000000005
+        },
+        "cold_first_10_speedup_ratio": 0.7136086905994646,
+        "seed": 3,
+        "steady_median_invocation_speedup_ratio": 4.6530922469391465,
+        "steady_p95_candidate_over_baseline": 0.2278757639848938,
+        "throughput_speedup_ratio": 6.399974262430527
+      }
+    ],
+    "role": "predeclared primary",
+    "startup_win_criteria_pass": false,
+    "steady_median_invocation": {
+      "coverage_claim": null,
+      "geometric_mean_ratio": 4.5417580539950775,
+      "observed_max_seed_ratio": 4.6530922469391465,
+      "observed_min_seed_ratio": 4.438828272326588,
+      "observed_seed_ratios": [
+        4.438828272326588,
+        4.547002375611127,
+        4.530652914857948,
+        4.6530922469391465
+      ],
+      "summary_role": "descriptive four-seed summary; no confidence-interval or population-coverage claim"
+    },
+    "steady_p95_no_regression_each_seed": true,
+    "steady_p95_within_3_percent_each_seed": true,
+    "steady_win_criteria_pass": true
+  },
+  "schema": "publisher.pr41-fresh022-final-scientific-qualification.v1",
+  "scope": "controlled compiler microbenchmark; no serving, model-throughput, or model-quality claim",
+  "source_correction": {
+    "bytes": 1314,
+    "path": "/opt/piq/dev-fast/state/codex-integration-audit-20261010/main-repairs/research006-direct-publisher-ncu-column-reader-correction026-20261025T213259Z/SOURCE026-NCU-COLUMN-READER-CORRECTION.json",
+    "sha256": "8a16ba48b2dff40f1e729e4e9503f43c2dc532e7ba577a1a26c6004c9f53521c"
+  },
+  "started_utc": "2026-10-25T21:34:09.279407+00:00",
+  "status": "PASS_FRESH_SCIENTIFIC_QUALIFICATION",
+  "strict_gates": {
+    "candidate_graph_calls_strictly_less_than_baseline": true,
+    "one_matching_ncu_kernel_per_arm": true,
+    "positive_nsys_graph_calls_per_arm": true,
+    "positive_nsys_kernel_instances_per_arm": true,
+    "strict_ncu_metrics_valid_per_arm": true
+  },
+  "strict_profiler": {
+    "bytes": 6025,
+    "device": 64772,
+    "inode": 217379847,
+    "mode": 256,
+    "mtime_ns": 1792964049285605788,
+    "path": "/opt/piq-campaigns/root41002512-pr41-research-custody-20261025/retained022-strict-reader026-adjudication-001/STRICT-PROFILER-QUALIFICATION.json",
+    "sha256": "6c2ec3215b144b06f771e0dfa2e2b90898c0c7744c0504e57d3a9c1a399fc538"
+  },
+  "timing24_profiler4": true,
+  "validation": {
+    "all_correctness_passed": true,
+    "expected_matrix": {
+      "arms": [
+        0,
+        1
+      ],
+      "cases": [
+        "no_break_depth4",
+        "nested_break_depth4",
+        "nested_break_depth8"
+      ],
+      "seeds": [
+        0,
+        1,
+        2,
+        3
+      ]
+    },
+    "fresh_process_cache_paths_unique": true,
+    "graph_break_mechanism_validated": true,
+    "records": 24,
+    "status": "PASS"
+  }
+}

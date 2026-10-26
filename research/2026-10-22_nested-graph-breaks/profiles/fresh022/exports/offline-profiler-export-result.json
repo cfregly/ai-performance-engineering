@@ -1,0 +1,398 @@
+{
+  "commands": [
+    {
+      "argv": [
+        "/root/aiperf-torch2141-upgrade-validation-20261021/profilers-003/sysroot/opt/nvidia/nsight-systems-cli/2026.5.1/target-linux-x64/nsys",
+        "export",
+        "--type=sqlite",
+        "--force-overwrite=false",
+        "--output=/root/nested-graph-breaks-b200-pr41-006-run-022-qualification-001/nsys-baseline.sqlite",
+        "/root/nested-graph-breaks-b200-pr41-006-run-022/profiles/nsys/nsys-nested_break_depth8-seed0-baseline.nsys-rep"
+      ],
+      "cleanup": {
+        "exit_code": 0,
+        "group_empty": true,
+        "leader_reaped": true
+      },
+      "created": [
+        {
+          "bytes": 9011200,
+          "device": 64772,
+          "inode": 217332802,
+          "mode": 420,
+          "mtime_ns": 1792963839176226057,
+          "path": "/root/nested-graph-breaks-b200-pr41-006-run-022-qualification-001/nsys-baseline.sqlite",
+          "sha256": "c2028f33c212b1016bb52e5e32e36b49291b415ec63b19bac50c02a258dd7d8d"
+        }
+      ],
+      "ended_utc": "2026-10-25T21:30:39.180058+00:00",
+      "id": "nsys-baseline-export-sqlite",
+      "inputs": {
+        "/root/nested-graph-breaks-b200-pr41-006-run-022/profiles/nsys/nsys-nested_break_depth8-seed0-baseline.nsys-rep": {
+          "bytes": 3423394,
+          "device": 64772,
+          "inode": 217318444,
+          "mode": 436,
+          "mtime_ns": 1792962755021676989,
+          "path": "/root/nested-graph-breaks-b200-pr41-006-run-022/profiles/nsys/nsys-nested_break_depth8-seed0-baseline.nsys-rep",
+          "sha256": "c23f9791ae8b588a1ebb7a7737d26af6ba3f8e5c01887ea7c7f7861c92956c92"
+        }
+      },
+      "started_utc": "2026-10-25T21:30:39.016142+00:00",
+      "stderr": {
+        "bytes": 8101,
+        "device": 64772,
+        "inode": 217332769,
+        "mode": 420,
+        "mtime_ns": 1792963839175226069,
+        "path": "/root/nested-graph-breaks-b200-pr41-006-run-022-qualification-001/commands/nsys-baseline-export-sqlite.stderr.txt",
+        "sha256": "355ec7de2cfa58d21bdf4ea428d71d66f8374dd4645008f8521b4d923f2e751a"
+      },
+      "stdout": {
+        "bytes": 27,
+        "device": 64772,
+        "inode": 217332743,
+        "mode": 420,
+        "mtime_ns": 1792963839031227864,
+        "path": "/root/nested-graph-breaks-b200-pr41-006-run-022-qualification-001/commands/nsys-baseline-export-sqlite.stdout.txt",
+        "sha256": "236458341618f18142a5bd64714b4cda4ff31738e7b77a7bed6768c6fb82eeec"
+      },
+      "timed_out": false
+    },
+    {
+      "argv": [
+        "/root/aiperf-torch2141-upgrade-validation-20261021/profilers-003/sysroot/opt/nvidia/nsight-systems-cli/2026.5.1/target-linux-x64/nsys",
+        "stats",
+        "--report=cuda_api_sum,cuda_gpu_kern_sum",
+        "--format=csv",
+        "--output=/root/nested-graph-breaks-b200-pr41-006-run-022-qualification-001/nsys-baseline",
+        "--force-overwrite=false",
+        "/root/nested-graph-breaks-b200-pr41-006-run-022-qualification-001/nsys-baseline.sqlite"
+      ],
+      "cleanup": {
+        "exit_code": 0,
+        "group_empty": true,
+        "leader_reaped": true
+      },
+      "created": [
+        {
+          "bytes": 2404,
+          "device": 64772,
+          "inode": 217385861,
+          "mode": 420,
+          "mtime_ns": 1792963839272224860,
+          "path": "/root/nested-graph-breaks-b200-pr41-006-run-022-qualification-001/nsys-baseline_cuda_api_sum.csv",
+          "sha256": "77d413372f1028e5c05395afb313e4c76b5867cd2a7f85a7a15c1cf79f4b4146"
+        },
+        {
+          "bytes": 6579,
+          "device": 64772,
+          "inode": 217385862,
+          "mode": 420,
+          "mtime_ns": 1792963839279224773,
+          "path": "/root/nested-graph-breaks-b200-pr41-006-run-022-qualification-001/nsys-baseline_cuda_gpu_kern_sum.csv",
+          "sha256": "cdcc047bdd96a9dcda00f19d4a11ef88f9b036a5f3c1028f96d2c595ddb25f9b"
+        }
+      ],
+      "ended_utc": "2026-10-25T21:30:39.322000+00:00",
+      "id": "nsys-baseline-stats-csv",
+      "inputs": {
+        "/root/nested-graph-breaks-b200-pr41-006-run-022-qualification-001/nsys-baseline.sqlite": {
+          "bytes": 9011200,
+          "device": 64772,
+          "inode": 217332802,
+          "mode": 420,
+          "mtime_ns": 1792963839176226057,
+          "path": "/root/nested-graph-breaks-b200-pr41-006-run-022-qualification-001/nsys-baseline.sqlite",
+          "sha256": "c2028f33c212b1016bb52e5e32e36b49291b415ec63b19bac50c02a258dd7d8d"
+        }
+      },
+      "started_utc": "2026-10-25T21:30:39.208198+00:00",
+      "stderr": {
+        "bytes": 0,
+        "device": 64772,
+        "inode": 217385860,
+        "mode": 420,
+        "mtime_ns": 1792963839207225670,
+        "path": "/root/nested-graph-breaks-b200-pr41-006-run-022-qualification-001/commands/nsys-baseline-stats-csv.stderr.txt",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "stdout": {
+        "bytes": 762,
+        "device": 64772,
+        "inode": 217366441,
+        "mode": 420,
+        "mtime_ns": 1792963839279224773,
+        "path": "/root/nested-graph-breaks-b200-pr41-006-run-022-qualification-001/commands/nsys-baseline-stats-csv.stdout.txt",
+        "sha256": "9cf9f471272cc522615121096069c3e251d74f24b07ce5a278f756a89354ef52"
+      },
+      "timed_out": false
+    },
+    {
+      "argv": [
+        "/root/aiperf-torch2141-upgrade-validation-20261021/profilers-003/sysroot/opt/nvidia/nsight-systems-cli/2026.5.1/target-linux-x64/nsys",
+        "export",
+        "--type=sqlite",
+        "--force-overwrite=false",
+        "--output=/root/nested-graph-breaks-b200-pr41-006-run-022-qualification-001/nsys-candidate.sqlite",
+        "/root/nested-graph-breaks-b200-pr41-006-run-022/profiles/nsys/nsys-nested_break_depth8-seed0-candidate.nsys-rep"
+      ],
+      "cleanup": {
+        "exit_code": 0,
+        "group_empty": true,
+        "leader_reaped": true
+      },
+      "created": [
+        {
+          "bytes": 6328320,
+          "device": 64772,
+          "inode": 217385891,
+          "mode": 420,
+          "mtime_ns": 1792963839468222416,
+          "path": "/root/nested-graph-breaks-b200-pr41-006-run-022-qualification-001/nsys-candidate.sqlite",
+          "sha256": "32ace0e6408eae761af89130f0d96fc2093ab4b61f5661cef3024faeba4ea94b"
+        }
+      ],
+      "ended_utc": "2026-10-25T21:30:39.480840+00:00",
+      "id": "nsys-candidate-export-sqlite",
+      "inputs": {
+        "/root/nested-graph-breaks-b200-pr41-006-run-022/profiles/nsys/nsys-nested_break_depth8-seed0-candidate.nsys-rep": {
+          "bytes": 2235130,
+          "device": 64772,
+          "inode": 217386526,
+          "mode": 436,
+          "mtime_ns": 1792962769752495936,
+          "path": "/root/nested-graph-breaks-b200-pr41-006-run-022/profiles/nsys/nsys-nested_break_depth8-seed0-candidate.nsys-rep",
+          "sha256": "5b11be1c3f8e109408d7ca59033441844d23515d48b963a9bbfd10a560692e7e"
+        }
+      },
+      "started_utc": "2026-10-25T21:30:39.367142+00:00",
+      "stderr": {
+        "bytes": 8101,
+        "device": 64772,
+        "inode": 217385890,
+        "mode": 420,
+        "mtime_ns": 1792963839467222429,
+        "path": "/root/nested-graph-breaks-b200-pr41-006-run-022-qualification-001/commands/nsys-candidate-export-sqlite.stderr.txt",
+        "sha256": "355ec7de2cfa58d21bdf4ea428d71d66f8374dd4645008f8521b4d923f2e751a"
+      },
+      "stdout": {
+        "bytes": 26,
+        "device": 64772,
+        "inode": 217385889,
+        "mode": 420,
+        "mtime_ns": 1792963839377223551,
+        "path": "/root/nested-graph-breaks-b200-pr41-006-run-022-qualification-001/commands/nsys-candidate-export-sqlite.stdout.txt",
+        "sha256": "fcf1cbec15ad2d0d5386dfd9feee33e5676e3e68e8b6061f0ebc027abce6964a"
+      },
+      "timed_out": false
+    },
+    {
+      "argv": [
+        "/root/aiperf-torch2141-upgrade-validation-20261021/profilers-003/sysroot/opt/nvidia/nsight-systems-cli/2026.5.1/target-linux-x64/nsys",
+        "stats",
+        "--report=cuda_api_sum,cuda_gpu_kern_sum",
+        "--format=csv",
+        "--output=/root/nested-graph-breaks-b200-pr41-006-run-022-qualification-001/nsys-candidate",
+        "--force-overwrite=false",
+        "/root/nested-graph-breaks-b200-pr41-006-run-022-qualification-001/nsys-candidate.sqlite"
+      ],
+      "cleanup": {
+        "exit_code": 0,
+        "group_empty": true,
+        "leader_reaped": true
+      },
+      "created": [
+        {
+          "bytes": 2398,
+          "device": 64772,
+          "inode": 217386468,
+          "mode": 420,
+          "mtime_ns": 1792963839550221394,
+          "path": "/root/nested-graph-breaks-b200-pr41-006-run-022-qualification-001/nsys-candidate_cuda_api_sum.csv",
+          "sha256": "15c90e9198c9ff65422f05e991c7829b69b97334c8af97833b418a064d9173c2"
+        },
+        {
+          "bytes": 6584,
+          "device": 64772,
+          "inode": 217386469,
+          "mode": 420,
+          "mtime_ns": 1792963839552221369,
+          "path": "/root/nested-graph-breaks-b200-pr41-006-run-022-qualification-001/nsys-candidate_cuda_gpu_kern_sum.csv",
+          "sha256": "8f963e8934a49ac6764b0c088c5f0eeefe3aade88f3145c77a717174cd3a3cf3"
+        }
+      ],
+      "ended_utc": "2026-10-25T21:30:39.564592+00:00",
+      "id": "nsys-candidate-stats-csv",
+      "inputs": {
+        "/root/nested-graph-breaks-b200-pr41-006-run-022-qualification-001/nsys-candidate.sqlite": {
+          "bytes": 6328320,
+          "device": 64772,
+          "inode": 217385891,
+          "mode": 420,
+          "mtime_ns": 1792963839468222416,
+          "path": "/root/nested-graph-breaks-b200-pr41-006-run-022-qualification-001/nsys-candidate.sqlite",
+          "sha256": "32ace0e6408eae761af89130f0d96fc2093ab4b61f5661cef3024faeba4ea94b"
+        }
+      },
+      "started_utc": "2026-10-25T21:30:39.500649+00:00",
+      "stderr": {
+        "bytes": 0,
+        "device": 64772,
+        "inode": 217386467,
+        "mode": 420,
+        "mtime_ns": 1792963839499222030,
+        "path": "/root/nested-graph-breaks-b200-pr41-006-run-022-qualification-001/commands/nsys-candidate-stats-csv.stderr.txt",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "stdout": {
+        "bytes": 766,
+        "device": 64772,
+        "inode": 217385893,
+        "mode": 420,
+        "mtime_ns": 1792963839552221369,
+        "path": "/root/nested-graph-breaks-b200-pr41-006-run-022-qualification-001/commands/nsys-candidate-stats-csv.stdout.txt",
+        "sha256": "10ebd1e0574e4dc0543780828ca156fc270b1a9b8b4b6d2bcafbda878efc04c6"
+      },
+      "timed_out": false
+    },
+    {
+      "argv": [
+        "/root/aiperf-torch2141-upgrade-validation-20261021/profilers-003/sysroot/opt/nvidia/nsight-compute/2026.2.1/target/linux-desktop-glibc_2_11_3-x64/ncu",
+        "--import",
+        "/root/nested-graph-breaks-b200-pr41-006-run-022/profiles/ncu/ncu-nested_break_depth8-seed0-baseline.ncu-rep",
+        "--csv",
+        "--page",
+        "raw"
+      ],
+      "cleanup": {
+        "exit_code": 0,
+        "group_empty": true,
+        "leader_reaped": true
+      },
+      "created": [
+        {
+          "bytes": 14710,
+          "device": 64772,
+          "inode": 217386924,
+          "mode": 420,
+          "mtime_ns": 1792963839798218303,
+          "path": "/root/nested-graph-breaks-b200-pr41-006-run-022-qualification-001/ncu-baseline-raw.csv",
+          "sha256": "a9920ed564e52fb33f63f8d2016cd2e54abbaa12c8d6f657a1e40b40f4e57c72"
+        }
+      ],
+      "ended_utc": "2026-10-25T21:30:39.849664+00:00",
+      "id": "ncu-baseline-raw-csv",
+      "inputs": {
+        "/root/nested-graph-breaks-b200-pr41-006-run-022/profiles/ncu/ncu-nested_break_depth8-seed0-baseline.ncu-rep": {
+          "bytes": 71075,
+          "device": 64772,
+          "inode": 217318468,
+          "mode": 420,
+          "mtime_ns": 1792962777266403552,
+          "path": "/root/nested-graph-breaks-b200-pr41-006-run-022/profiles/ncu/ncu-nested_break_depth8-seed0-baseline.ncu-rep",
+          "sha256": "28734ca6aa028737adb06ee75313b18d9a7304038ca0cbaf7139c5cffc138e03"
+        }
+      },
+      "started_utc": "2026-10-25T21:30:39.583197+00:00",
+      "stderr": {
+        "bytes": 0,
+        "device": 64772,
+        "inode": 217386925,
+        "mode": 420,
+        "mtime_ns": 1792963839582220995,
+        "path": "/root/nested-graph-breaks-b200-pr41-006-run-022-qualification-001/commands/ncu-baseline-raw.stderr.txt",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "stdout": {
+        "bytes": 14710,
+        "device": 64772,
+        "inode": 217386924,
+        "mode": 420,
+        "mtime_ns": 1792963839798218303,
+        "path": "/root/nested-graph-breaks-b200-pr41-006-run-022-qualification-001/ncu-baseline-raw.csv",
+        "sha256": "a9920ed564e52fb33f63f8d2016cd2e54abbaa12c8d6f657a1e40b40f4e57c72"
+      },
+      "timed_out": false
+    },
+    {
+      "argv": [
+        "/root/aiperf-torch2141-upgrade-validation-20261021/profilers-003/sysroot/opt/nvidia/nsight-compute/2026.2.1/target/linux-desktop-glibc_2_11_3-x64/ncu",
+        "--import",
+        "/root/nested-graph-breaks-b200-pr41-006-run-022/profiles/ncu/ncu-nested_break_depth8-seed0-candidate.ncu-rep",
+        "--csv",
+        "--page",
+        "raw"
+      ],
+      "cleanup": {
+        "exit_code": 0,
+        "group_empty": true,
+        "leader_reaped": true
+      },
+      "created": [
+        {
+          "bytes": 14706,
+          "device": 64772,
+          "inode": 217386987,
+          "mode": 420,
+          "mtime_ns": 1792963840059215049,
+          "path": "/root/nested-graph-breaks-b200-pr41-006-run-022-qualification-001/ncu-candidate-raw.csv",
+          "sha256": "9d6276358dbe0baae979c43f8e4a18df0747722389df2879164763767b9171ae"
+        }
+      ],
+      "ended_utc": "2026-10-25T21:30:40.087282+00:00",
+      "id": "ncu-candidate-raw-csv",
+      "inputs": {
+        "/root/nested-graph-breaks-b200-pr41-006-run-022/profiles/ncu/ncu-nested_break_depth8-seed0-candidate.ncu-rep": {
+          "bytes": 235706,
+          "device": 64772,
+          "inode": 217386852,
+          "mode": 420,
+          "mtime_ns": 1792962787940272279,
+          "path": "/root/nested-graph-breaks-b200-pr41-006-run-022/profiles/ncu/ncu-nested_break_depth8-seed0-candidate.ncu-rep",
+          "sha256": "e27671e92e54d760abafc8f702e118139ee1a1102329eb763dca8f5dab883e35"
+        }
+      },
+      "started_utc": "2026-10-25T21:30:39.870921+00:00",
+      "stderr": {
+        "bytes": 0,
+        "device": 64772,
+        "inode": 217386988,
+        "mode": 420,
+        "mtime_ns": 1792963839870217405,
+        "path": "/root/nested-graph-breaks-b200-pr41-006-run-022-qualification-001/commands/ncu-candidate-raw.stderr.txt",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "stdout": {
+        "bytes": 14706,
+        "device": 64772,
+        "inode": 217386987,
+        "mode": 420,
+        "mtime_ns": 1792963840059215049,
+        "path": "/root/nested-graph-breaks-b200-pr41-006-run-022-qualification-001/ncu-candidate-raw.csv",
+        "sha256": "9d6276358dbe0baae979c43f8e4a18df0747722389df2879164763767b9171ae"
+      },
+      "timed_out": false
+    }
+  ],
+  "contract": {
+    "actual_source_path": "/opt/piq/dev-fast/state/codex-integration-audit-20261010/main-repairs/research006-direct-publisher-postrun022-qualification-20261025T213035Z/postrun022.py",
+    "actual_source_sha256": "a54f6cb435878e08919ef2ed30731a26b8c0602cc9e62952fecbd791ab4d785b",
+    "authority": {
+      "bytes": 1093,
+      "device": 64772,
+      "inode": 217332732,
+      "mode": 256,
+      "mtime_ns": 1792963838921229236,
+      "path": "/opt/piq-campaigns/root41002512-pr41-research-custody-20261025/postrun022-qualification-001/POSTRUN-AUTHORITY.json",
+      "sha256": "14bee1c74c4017b749a5c46bc05e8ab54e3c337e0ab028b2ef80fb0826a6c2e3"
+    },
+    "raw_capture_binding": "Actual022controller child artifact receipts, not historical literal bindings in recipe.",
+    "raw_inputs_before_sha256": "fb3544ce5e30e2775375682d134546eef1b8fad77af56b21d112db0740fd9a14",
+    "scope": "Fresh022 saved reports only. Original six argv and order unchanged. No recapture."
+  },
+  "failure": null,
+  "schema": "aisp.research005-offline-profiler-export-result.v1",
+  "source_recipe_sha256": "187d157ab6cb8d86c3a880b1acca9fe5721064d7c0dabe470794d4702cdcb960",
+  "status": "passed"
+}
