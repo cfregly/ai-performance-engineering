@@ -20,10 +20,11 @@ from urllib.parse import urlsplit
 if __package__:
     from .check_profile_conventions import validate_profile_conventions
     from .check_social_preview import validate_social_preview
+    from .check_public_projection import validate_public_projection
 else:
     from check_profile_conventions import validate_profile_conventions
     from check_social_preview import validate_social_preview
-from check_public_projection import validate_public_projection
+    from check_public_projection import validate_public_projection
 
 
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
@@ -678,6 +679,8 @@ def validate_package(package: Path) -> list[str]:
     if manifest is None:
         return errors
     audience_stems, selected, state = validate_manifest(manifest, errors)
+    if isinstance(manifest, dict) and manifest.get("review_status") in {"PENDING", "REVIEW_BLOCKED"}:
+        errors.append("required technical review is " + manifest["review_status"] + "; private preview only")
     stems = [*CONCEPTS, COVER, *audience_stems]
     validate_public_copy(package, stems, errors)
     hashes: dict[str, str] = {}

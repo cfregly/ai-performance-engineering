@@ -189,6 +189,17 @@ class PackageGateTests(unittest.TestCase):
         errors = validate_package(self.package)
         self.assertTrue(any(phrase in error for error in errors), f"{phrase!r} absent from {errors!r}")
 
+    def test_explicit_review_block_prevents_readiness(self) -> None:
+        path = self.package / "manifest.json"
+        manifest = json.loads(path.read_text())
+        manifest["review_status"] = "REVIEW_BLOCKED"
+        path.write_text(json.dumps(manifest))
+        self.assertTrue(any("private preview only" in error for error in validate_package(self.package)))
+
+    def test_array_manifest_is_a_validation_error(self) -> None:
+        (self.package / "manifest.json").write_text("[]")
+        self.assertTrue(any("manifest must be a JSON object" in error for error in validate_package(self.package)))
+
     def test_valid_fixture_passes(self) -> None:
         self.assertNotIn("measurement_receipt", self.read_json("manifest.json"))
         self.assertEqual(validate_package(self.package), [])

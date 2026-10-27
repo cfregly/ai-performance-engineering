@@ -2,11 +2,11 @@
   "files": [
     {
       "path": "tools/check_package.py",
-      "sha256": "cfcaa4a54460337b7ea13cdb4275af6d0023821feb9f0e8c9068f88b2d142dd0"
+      "sha256": "cb06a6793293228bdb3055e206e16a6c1492cb35d58864f6c6af7aebc595ef21"
     },
     {
       "path": "tools/test_check_package.py",
-      "sha256": "4a0147015c50b49783dda673c81219c876253f34f012b5d84b6ca2ec67732002"
+      "sha256": "f3c15ba656e374be5039f92dd5b09cdaf4dbca87d03b02b6da5c31ee65922be6"
     },
     {
       "path": "tools/check_profile_conventions.py",
