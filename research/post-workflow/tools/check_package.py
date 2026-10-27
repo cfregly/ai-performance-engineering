@@ -23,6 +23,7 @@ if __package__:
 else:
     from check_profile_conventions import validate_profile_conventions
     from check_social_preview import validate_social_preview
+from check_public_projection import validate_public_projection
 
 
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
@@ -705,9 +706,15 @@ def validate_package(package: Path) -> list[str]:
         validate_measurement(package, errors)
     elif state == "source_reported":
         validate_source_reported(package, errors)
+    if "claim_scope_review" in manifest:
+        if manifest["claim_scope_review"] != "claim-scope-review.md":
+            errors.append("manifest claim_scope_review must equal claim-scope-review.md")
+        else:
+            require_file(package, "claim-scope-review.md", errors)
     validate_state(package, state, selected, errors)
     errors.extend(validate_profile_conventions(package))
     errors.extend(validate_social_preview(package))
+    errors.extend(validate_public_projection(package))
     return errors
 
 

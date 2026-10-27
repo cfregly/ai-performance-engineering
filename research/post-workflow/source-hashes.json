@@ -2,7 +2,7 @@
   "files": [
     {
       "path": "tools/check_package.py",
-      "sha256": "04c2550121a7032ec7268b9049143779c280b3b7ababb49b94aca8aea4cd1299"
+      "sha256": "cfcaa4a54460337b7ea13cdb4275af6d0023821feb9f0e8c9068f88b2d142dd0"
     },
     {
       "path": "tools/test_check_package.py",
@@ -18,11 +18,35 @@
     },
     {
       "path": "tools/check_social_preview.py",
-      "sha256": "70aeaf90c230e6be87a3594683dd63d162ebb7658470539f7fa105e784d81941"
+      "sha256": "b4c94a5a83423c804443fe021bebfa5155bef42c5114810aee2e2a88dcea77d4"
     },
     {
       "path": "tools/test_check_social_preview.py",
-      "sha256": "e8992ad2b3c9bbb89adbac87e62d9991cb28b27b898faa5c99eaed25ceff00a4"
+      "sha256": "bd9c4e2ea33eba49903fa904f67b5d63bfc0626877a391c615efbcad9ec85172"
+    },
+    {
+      "path": "tools/check_public_projection.py",
+      "sha256": "bef384b9b28b9b4ca44b5efdb270944915a9884a97fbacd7f5e5ff332fb2bdea"
+    },
+    {
+      "path": "tools/test_check_public_projection.py",
+      "sha256": "6c1b2b3135701c21af4b4e16b9d09a0ce432c7658d084c50b16ae22ff8af2662"
+    },
+    {
+      "path": "tools/pipeline_config.py",
+      "sha256": "7e950591beb204a6a346298d5431c91278a8d797e6097bea35a431d9a090f63d"
+    },
+    {
+      "path": "tools/test_pipeline_config.py",
+      "sha256": "aa2f123536cc3e66a585c3e58b3514c1107f658db916eaa46864a2684bedadd2"
+    },
+    {
+      "path": "pipeline.example.json",
+      "sha256": "e6a1b5e85178b2100e9fef41aa6a21694a039f33dda0f4a643cc9e4c4980cf25"
+    },
+    {
+      "path": "templates/claim-scope-review.md",
+      "sha256": "b3591a9394bd889af84325465876383e6305b7433cd24b4b9e3f2b7a1642faf4"
     }
   ]
 }

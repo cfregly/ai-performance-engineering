@@ -1,11 +1,14 @@
 import hashlib
+import importlib.util
 import json
 from pathlib import Path
+import shutil
 import struct
 import tempfile
 import unittest
+from unittest import mock
 
-from tools.check_social_preview import validate_social_preview
+from tools.check_social_preview import _pdf_page_count, validate_social_preview
 
 
 class SocialPreviewTests(unittest.TestCase):
@@ -13,8 +16,8 @@ class SocialPreviewTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.package = Path(self.temp.name)
         (self.package / "social").mkdir()
-        (self.package / "zymtrace/views").mkdir(parents=True)
-        self.write("zymtrace/views/profile-semantics.json", {})
+        (self.package / "profiles").mkdir()
+        self.write("profiles/profile-semantics.json", {})
         # The guard needs only the PNG signature and IHDR dimensions.
         (self.package / "profile.png").write_bytes(b"\x89PNG\r\n\x1a\n" + struct.pack(">I", 13) + b"IHDR" + struct.pack(">II", 1200, 747))
         self.readback = {"id": 123, "updated_at": "2026-10-26T10:00:00Z", "platforms": {platform: {"posts": [{"media_ids": [f"{platform}-image"]}]} for platform in ("x", "linkedin")}}
@@ -153,6 +156,10 @@ class SocialPreviewTests(unittest.TestCase):
         pdf += b"xref\n0 5\n0000000000 65535 f \n" + b"".join(f"{offset:010d} 00000 n \n".encode() for offset in offsets[1:])
         pdf += f"trailer\n<< /Size 5 /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n".encode()
         (self.package / "comparison.pdf").write_bytes(pdf)
+        # Exercise receipt logic without requiring optional PDF tools in the test environment.
+        page_count = mock.patch("tools.check_social_preview._pdf_page_count", return_value=2)
+        page_count.start()
+        self.addCleanup(page_count.stop)
         images = self.receipt["platforms"]["linkedin"]["images"]
         self.receipt["platforms"]["linkedin"]["attachment_sources"][images[0]["media_id"]] = {"path": "comparison.pdf", "sha256": self.digest("comparison.pdf"), "media_type": "pdf", "page_count": 2}
         images[0].update(page_index=1, document_source_path="comparison.pdf", document_sha256=self.digest("comparison.pdf"), safe_content_box=[0, 0, 1200, 747], overlay_insets={"top": 0, "bottom": 0, "left": 0, "right": 0})
@@ -194,6 +201,21 @@ class SocialPreviewTests(unittest.TestCase):
         self.document_pages().pop()
         self.assertTrue(any("every PDF page 1..2" in error for error in self.validate()))
 
+    def test_pdf_overlay_rejects_ambiguous_contain_box_and_position(self):
+        images = self.document_pages()
+        for image in images:
+            image.update(object_fit="contain", object_position="0% 0%", rendered_width=510, rendered_height=747, safe_content_box=[0, 60, 1200, 600], overlay_insets={"top": 40, "bottom": 0, "left": 0, "right": 0})
+        errors = self.validate()
+        self.assertTrue(any("matching source and rendered aspect ratios" in error for error in errors))
+        self.assertTrue(any("centered object_position" in error for error in errors))
+
+    def test_pdf_overlay_uses_uniform_contain_scale_with_rounding(self):
+        images = self.document_pages()
+        for image in images:
+            image.update(object_fit="contain", rendered_width=510, rendered_height=318.5, safe_content_box=[0, 600, 1200, 100], overlay_insets={"top": 255.6, "bottom": 0, "left": 0, "right": 0})
+        # Uniform contain puts content at 255.5125, while separate axis scales give 255.823.
+        self.assertTrue(any("intersects preview overlay controls" in error for error in self.validate()))
+
     def test_pdf_cannot_masquerade_as_image_or_omit_document_fields(self):
         images = self.document_pages()
         images[:] = [images[0]]
@@ -214,15 +236,108 @@ class SocialPreviewTests(unittest.TestCase):
         self.assertTrue(any("attachment_sources" in error for error in self.validate()))
 
     def test_generic_manifest_requires_preview_receipt(self):
-        (self.package / "zymtrace/views/profile-semantics.json").unlink()
+        (self.package / "profiles/profile-semantics.json").unlink()
         self.write("manifest.json", {"scientific_profiles": True})
         self.assertTrue(validate_social_preview(self.package))
 
     def test_generic_profiles_semantics_requires_preview_receipt(self):
-        (self.package / "zymtrace/views/profile-semantics.json").unlink()
-        (self.package / "profiles").mkdir()
-        self.write("profiles/profile-semantics.json", {})
         self.assertTrue(validate_social_preview(self.package))
+
+    def internal_layout(self):
+        internal = self.package / "_internal"
+        internal.mkdir()
+        (self.package / "social").rename(internal / "social")
+        (self.package / "profiles").rename(internal / "profiles")
+        (internal / "images").mkdir()
+        (self.package / "profile.png").rename(internal / "images/profile.png")
+        for spec in self.receipt["platforms"].values():
+            spec["raw_readback"]["path"] = "_internal/social/readback.json"
+            for image in spec["images"]:
+                image["source_path"] = "_internal/images/profile.png"
+            for source in spec["attachment_sources"].values():
+                source["path"] = "_internal/images/profile.png"
+        self.write("_internal/social/readback.json", self.readback)
+        for spec in self.receipt["platforms"].values():
+            spec["raw_readback"]["sha256"] = self.digest("_internal/social/readback.json")
+        self.write("_internal/social/profile-preview.json", self.receipt)
+
+    def test_internal_metadata_and_private_evidence(self):
+        self.internal_layout()
+        self.assertEqual(validate_social_preview(self.package), [])
+
+    def test_internal_readback_can_verify_public_png(self):
+        self.internal_layout()
+        (self.package / "images").mkdir()
+        (self.package / "_internal/images/profile.png").rename(self.package / "images/profile.png")
+        for spec in self.receipt["platforms"].values():
+            for image in spec["images"]:
+                image["source_path"] = "images/profile.png"
+            for source in spec["attachment_sources"].values():
+                source["path"] = "images/profile.png"
+        self.write("_internal/social/profile-preview.json", self.receipt)
+        self.assertEqual(validate_social_preview(self.package), [])
+
+    def test_internal_manifest_requires_receipt(self):
+        (self.package / "profiles/profile-semantics.json").unlink()
+        (self.package / "_internal").mkdir()
+        self.write("_internal/manifest.json", {"scientific_profiles": True})
+        errors = validate_social_preview(self.package)
+        self.assertTrue(any("_internal/social/profile-preview.json" in error for error in errors))
+
+    def test_internal_receipt_takes_precedence_over_legacy_receipt(self):
+        self.assertEqual(self.validate(), [])
+        (self.package / "_internal/profiles").mkdir(parents=True)
+        self.write("_internal/profiles/profile-semantics.json", {})
+        self.assertTrue(any("_internal/social/profile-preview.json" in error for error in validate_social_preview(self.package)))
+
+    def test_explicit_receipt_override_and_path_boundary(self):
+        self.assertEqual(self.validate(), [])
+        (self.package / "social/profile-preview.json").rename(self.package / "social/custom.json")
+        self.assertEqual(validate_social_preview(self.package, Path("social/custom.json")), [])
+        self.assertTrue(validate_social_preview(self.package, Path("../outside.json")))
+
+    def test_explicit_receipt_requires_file_without_marker(self):
+        (self.package / "profiles/profile-semantics.json").unlink()
+        self.assertTrue(validate_social_preview(self.package, Path("social/custom.json")))
+
+    def test_default_receipt_symlink_cannot_escape_package(self):
+        self.assertEqual(self.validate(), [])
+        with tempfile.TemporaryDirectory() as outside:
+            external = Path(outside) / "receipt.json"
+            external.write_text(json.dumps(self.receipt), encoding="utf-8")
+            receipt = self.package / "social/profile-preview.json"
+            receipt.unlink()
+            receipt.symlink_to(external)
+            self.assertTrue(any("receipt must stay within the package" in error for error in validate_social_preview(self.package)))
+
+    def test_default_metadata_directory_symlink_cannot_escape_package(self):
+        with tempfile.TemporaryDirectory() as outside:
+            (self.package / "_internal").symlink_to(outside, target_is_directory=True)
+            self.assertTrue(any("metadata must stay within the package" in error for error in validate_social_preview(self.package)))
+
+    def test_default_metadata_file_symlinks_cannot_escape_package(self):
+        for relative, label in (("manifest.json", "manifest"), ("profiles/profile-semantics.json", "semantics")):
+            with self.subTest(relative=relative), tempfile.TemporaryDirectory() as outside:
+                path = self.package / relative
+                original = path.read_bytes() if path.exists() else None
+                path.unlink(missing_ok=True)
+                external = Path(outside) / "metadata.json"
+                external.write_text("{}", encoding="utf-8")
+                path.symlink_to(external)
+                self.assertTrue(any(f"{label} must stay within the package" in error for error in validate_social_preview(self.package)))
+                path.unlink()
+                if original is not None:
+                    path.write_bytes(original)
+
+    @unittest.skipUnless(shutil.which("pdfinfo") or importlib.util.find_spec("pypdf"), "optional PDF parser is not installed")
+    def test_installed_parser_reads_real_two_page_pdf(self):
+        self.document_pages()
+        self.assertEqual(_pdf_page_count((self.package / "comparison.pdf").read_bytes()), 2)
+
+    def test_missing_pdf_parser_fails_with_actionable_error(self):
+        with mock.patch("tools.check_social_preview.shutil.which", return_value=None), mock.patch.dict("sys.modules", {"pypdf": None}):
+            with self.assertRaisesRegex(ValueError, "existing pdfinfo or pypdf"):
+                _pdf_page_count(b"%PDF-1.4\n")
 
 
 if __name__ == "__main__":

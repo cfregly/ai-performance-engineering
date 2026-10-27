@@ -33,3 +33,7 @@ Update this snapshot and tests whenever that validator changes.
 ## Scientific profile previews
 
 Declare `scientific_profiles: true` in a package manifest and follow [PROFILE_CONVENTIONS.md](PROFILE_CONVENTIONS.md). Run `python3 research/post-workflow/tools/check_package.py /absolute/package/path`. The preview gate binds every media ID to its source file, checks all document pages and rejects crop or overlay failures. Review the final Typefully editor and phone-width preview after upload. Keep source, final draft, schedule and publication as separate states.
+
+## Configurable shared pipeline
+
+`tools/pipeline_config.py` validates an owner profile from `pipeline.example.json`: private drafts repository, public repository and subdirectory, local research hours and IANA timezone, GPU host and theme. It performs no external actions. The same configuration and profile-preview tools are proposed upstream so authors can use different profiles with common code. `check_public_projection.py` validates an explicit staged public copy against retained sources, including scientific captures, without exporting or publishing files. New private drafts may require the claim-scope template before their final check.

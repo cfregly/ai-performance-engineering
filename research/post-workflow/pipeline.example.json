@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "identity": {
+    "name": "Example Author",
+    "github_owner": "example-user"
+  },
+  "repositories": {
+    "drafts": "example-user/research-drafts",
+    "public": "example-user/research",
+    "public_path": "research",
+    "drafts_path": "posts"
+  },
+  "schedule": {
+    "timezone": "America/Los_Angeles",
+    "hours": [5, 17],
+    "minute": 0
+  },
+  "gpu": {
+    "ssh_host": "gpu-host",
+    "max_smoke_seconds": 180
+  },
+  "publication": {
+    "mode": "draft_only"
+  },
+  "theme": "whiteboard"
+}

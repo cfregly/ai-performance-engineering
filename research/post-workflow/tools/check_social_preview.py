@@ -1,27 +1,28 @@
-"""Check retained scientific-image previews against saved draft readbacks.
+#!/usr/bin/env python3
+"""Check scientific-image previews against retained sources and draft readbacks.
 
-Packages with zymtrace/views/profile-semantics.json require a schema_version=1
-social/profile-preview.json receipt. The same applies to profiles/profile-semantics.json
-or manifest.json with scientific_profiles=true. Each platform records raw_readback with a
-package-relative path and sha256. Its JSON must retain the matching draft id and
-platform posts with media_ids (or media objects with id fields). Every attached
-media ID in those posts requires a reviewed image or document-page entry.
-Related drafts use additional_drafts entries with platform, draft_id,
-raw_readback and images. They pass the same checks as the primary platforms.
-Each platform also requires attachment_sources, keyed by every attached media
-ID, with path, sha256 and media_type=image|pdf. PDFs require page_count matching
-the retained PDF, and reviews must cover every page from 1 through page_count.
+Why: a complete source image can still be cropped, distorted or covered by
+controls in a social preview. This check binds reviewed images and every PDF
+page to saved draft media, verifies source hashes, and checks rendered geometry.
+A separate visual review establishes whether key labels remain readable.
 
-PDF carousel pages may repeat one media_id with distinct positive page_index
-values. Each page records document_source_path and document_sha256 for the same
-retained PDF, plus source_path and source_sha256 for its reviewed PNG rendering.
-Document pages also record safe_content_box=[x,y,width,height] in PNG pixels,
-overlay_insets={top,bottom,left,right} in rendered CSS pixels, and a visual
-controls_clear review. Scientific content must stay clear of those controls.
+Usage:
+    python3 tools/check_social_preview.py posts/<slug>
+    python3 tools/check_social_preview.py posts/<slug> --receipt _internal/review.json
+    python3 -m unittest tools.test_check_social_preview
 
-Geometry checks catch cropping and distortion. The visual_review flags record a
-human or image-capable review of the actual rendered preview. Geometry alone
-cannot establish label readability. checked_at records that review, not a TTL.
+Metadata lives under _internal/ when that directory exists, or at the package
+root for legacy packages. A receipt is required when manifest.json declares
+scientific_profiles=true or profiles/profile-semantics.json exists. An existing
+receipt is always checked. --receipt selects a package-relative receipt and
+requires it even without an opt-in marker. All retained source paths are
+relative to the package root, including paths into _internal/.
+PDF overlay checks require centered pages with matching source and rendered
+aspect ratios within 0.5%. Other layouts require a measured page image box.
+
+Outputs: one actionable error per line. No files, accounts or drafts are changed.
+Exit 0 when no receipt is required or all checks pass. Exit 1 on failed checks.
+The receipt schema and PDF parser requirements are in SOCIAL_PROFILE_PREVIEWS.md.
 """
 from __future__ import annotations
 
@@ -119,11 +120,31 @@ def _platform_posts(readback, draft_id, platform):
             yield candidate, [post for post in section["posts"] if isinstance(post, dict)]
 
 
-def validate_social_preview(package: Path) -> list[str]:
+def validate_social_preview(package: Path, receipt: Path | None = None) -> list[str]:
     """Return actionable errors for retained rendered scientific-image previews."""
     package = Path(package).resolve()
-    receipt_path = package / "social/profile-preview.json"
-    manifest_path = package / "manifest.json"
+    try:
+        metadata = (package / "_internal" if (package / "_internal").is_dir() else package).resolve()
+        if not metadata.is_relative_to(package):
+            return ["profile preview metadata must stay within the package"]
+        if receipt is None:
+            receipt_path = metadata / "social/profile-preview.json"
+        else:
+            receipt = Path(receipt)
+            if receipt.is_absolute():
+                return ["profile preview receipt must be a package-relative path within the package"]
+            receipt_path = package / receipt
+        checked_paths = {}
+        for label, path in (("receipt", receipt_path), ("manifest", metadata / "manifest.json"), ("semantics", metadata / "profiles/profile-semantics.json")):
+            path = path.resolve()
+            if not path.is_relative_to(package):
+                return [f"profile preview {label} must stay within the package"]
+            checked_paths[label] = path
+        receipt_path = checked_paths["receipt"]
+        manifest_path = checked_paths["manifest"]
+        semantics_path = checked_paths["semantics"]
+    except (OSError, RuntimeError) as exc:
+        return [f"profile preview cannot resolve metadata paths ({exc})"]
     manifest = {}
     if manifest_path.exists():
         try:
@@ -131,7 +152,7 @@ def validate_social_preview(package: Path) -> list[str]:
         except (OSError, ValueError):
             pass  # The package checker reports invalid manifests.
     scientific_profiles = isinstance(manifest, dict) and manifest.get("scientific_profiles") is True
-    if not receipt_path.exists() and not scientific_profiles and not any((package / relative).exists() for relative in ("zymtrace/views/profile-semantics.json", "profiles/profile-semantics.json")):
+    if receipt is None and not receipt_path.exists() and not scientific_profiles and not semantics_path.exists():
         return []
     errors: list[str] = []
     pdf_page_counts = {}
@@ -161,9 +182,10 @@ def validate_social_preview(package: Path) -> list[str]:
             return None
         return data
 
-    receipt = read_json(receipt_path, "social/profile-preview.json")
+    receipt_label = str(receipt_path.relative_to(package))
+    receipt = read_json(receipt_path, receipt_label)
     if not isinstance(receipt, dict):
-        return [*errors, "social/profile-preview.json must be an object"]
+        return [*errors, f"{receipt_label} must be an object"]
     if receipt.get("schema_version") != 1 or isinstance(receipt.get("schema_version"), bool):
         errors.append("profile preview schema_version must be 1")
     if receipt.get("verified") is not True:
@@ -332,6 +354,10 @@ def validate_social_preview(package: Path) -> list[str]:
             if document_identity is not None:
                 if not isinstance(review, dict) or review.get("controls_clear") is not True:
                     errors.append(f"{image_label}: document visual_review.controls_clear must be true")
+                position = image.get("object_position")
+                centered = isinstance(position, str) and " ".join(position.lower().split()) in ("50% 50%", "center", "center center")
+                if not centered:
+                    errors.append(f"{image_label}: PDF overlay checks require centered object_position")
                 box = image.get("safe_content_box")
                 insets = image.get("overlay_insets")
                 valid_box = isinstance(box, list) and len(box) == 4 and all(type(value) in (int, float) and math.isfinite(value) and value >= 0 for value in box) and box[2] > 0 and box[3] > 0
@@ -348,9 +374,17 @@ def validate_social_preview(package: Path) -> list[str]:
                     elif valid_dimensions and valid_insets:
                         scale_x = rendered_width / source_width
                         scale_y = rendered_height / source_height
-                        clearances = {"left": x * scale_x, "right": rendered_width - (x + width) * scale_x, "top": y * scale_y, "bottom": rendered_height - (y + height) * scale_y}
-                        if any(clearances[side] + 1e-6 < insets[side] for side in clearances):
-                            errors.append(f"{image_label}: safe scientific content intersects preview overlay controls")
+                        if min(scale_x / scale_y, scale_y / scale_x) < 1 - MAX_AREA_LOSS:
+                            errors.append(f"{image_label}: PDF overlay checks require matching source and rendered aspect ratios within 0.5%")
+                        elif centered:
+                            fit = image.get("object_fit")
+                            if fit in ("contain", "cover"):
+                                scale_x = scale_y = (min if fit == "contain" else max)(scale_x, scale_y)
+                            offset_x = (rendered_width - source_width * scale_x) / 2
+                            offset_y = (rendered_height - source_height * scale_y) / 2
+                            clearances = {"left": offset_x + x * scale_x, "right": rendered_width - offset_x - (x + width) * scale_x, "top": offset_y + y * scale_y, "bottom": rendered_height - offset_y - (y + height) * scale_y}
+                            if any(clearances[side] + 1e-6 < insets[side] for side in clearances):
+                                errors.append(f"{image_label}: safe scientific content intersects preview overlay controls")
         for missing_media in sorted(attached_media - set(seen)):
             errors.append(f"{label}: attached media_id {missing_media} is missing rendered image review")
         for media_id in sorted(attached_media):
@@ -365,8 +399,9 @@ def validate_social_preview(package: Path) -> list[str]:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("package", type=Path)
+    parser.add_argument("--receipt", type=Path, help="Package-relative receipt override")
     args = parser.parse_args()
-    errors = validate_social_preview(args.package)
+    errors = validate_social_preview(args.package, args.receipt)
     for error in errors:
         print(error)
     return int(bool(errors))
