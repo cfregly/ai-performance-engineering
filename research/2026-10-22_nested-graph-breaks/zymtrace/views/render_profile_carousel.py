@@ -62,9 +62,9 @@ def main():
     previous = {item.get('source_square_name', item['name']): item for item in source_manifest['pages']}
     manifest = {'schema_version': 2, 'renderer': Path(__file__).name,
                 'renderer_sha256': social.source.digest(Path(__file__)),
-                'canvas_px': [1400, 1750], 'content_translation_px': [0, 175],
-                'content_scale': 1, 'reserved_overlay_px': 120,
-                'method': 'Each unchanged 1400px square SVG is nested at y=175 on a 1400x1750 portrait page. Blank top and bottom buffers protect the content from viewer controls.',
+                'canvas_px': [1750, 1750], 'content_translation_px': [175, 175],
+                'content_scale': 1, 'reserved_overlay_px': 140,
+                'method': 'Each unchanged 1400px square SVG is nested at x=175,y=175 on a 1750px square page. Blank 175px margins on all four sides protect content from viewer controls.',
                 'pages': []}
     ET.register_namespace('', 'http://www.w3.org/2000/svg')
     pages = []
@@ -73,34 +73,36 @@ def main():
         original = ET.fromstring(source_path.read_text())
         if original.attrib.get('viewBox') != '0 0 1400 1400':
             raise ValueError('Expected the existing full square source without rescaling')
-        original.set('x', '0')
+        original.set('x', '175')
         original.set('y', '175')
-        wrapper = ET.Element('{http://www.w3.org/2000/svg}svg', {'width': '1400', 'height': '1750', 'viewBox': '0 0 1400 1750'})
-        ET.SubElement(wrapper, '{http://www.w3.org/2000/svg}rect', {'width': '1400', 'height': '1750', 'fill': '#f8fafc'})
+        wrapper = ET.Element('{http://www.w3.org/2000/svg}svg', {'width': '1750', 'height': '1750', 'viewBox': '0 0 1750 1750'})
+        ET.SubElement(wrapper, '{http://www.w3.org/2000/svg}rect', {'width': '1750', 'height': '1750', 'fill': '#f8fafc'})
         wrapper.append(original)
         name = f'linkedin-page-{index:02d}'
         path = OUTPUT / (name + '.svg')
         path.write_text(ET.tostring(wrapper, encoding='unicode') + '\n')
         outputs = [path]
-        for width in (1400, 400, 520):
-            png = OUTPUT / (name + ('.png' if width == 1400 else f'.preview-{width}.png'))
+        for width in (1750, 400, 520):
+            png = OUTPUT / (name + ('.png' if width == 1750 else f'.preview-{width}.png'))
             subprocess.run(['rsvg-convert', '-w', str(width), '-o', str(png), str(path)], check=True)
             outputs.append(png)
         source_data = layout_manifest['cards'].get(source_name, previous[source_name])
         text_boxes = []
         for box in source_data.get('text_boxes', []):
             x, y, w, h = box['bbox']
-            y -= source_data.get('content_bounds', [0, 0, 0, 0])[1]
-            shifted = [x, y + 175, w, h]
-            if y + 175 < 120 or y + 175 + h > 1750 - 120:
+            offset = source_data.get('content_bounds', [0, 0, 0, 0])
+            x -= offset[0]
+            y -= offset[1]
+            shifted = [x + 175, y + 175, w, h]
+            if min(x + 175, y + 175) < 140 or x + 175 + w > 1750 - 140 or y + 175 + h > 1750 - 140:
                 raise ValueError('Text overlaps the reserved viewer control area')
             text_boxes.append({**box, 'bbox': shifted})
-        manifest['pages'].append({'name': name, 'canvas': [1400, 1750],
+        manifest['pages'].append({'name': name, 'canvas': [1750, 1750],
             'source_square_name': source_name, 'source': {'path': str(source_path.relative_to(PACKAGE)), 'sha256': social.source.digest(source_path)},
             'source_artifact': previous[source_name].get('source_artifact', previous[source_name].get('source')),
-            'source_canvas': [1400, 1400], 'content_bounds': [0, 175, 1400, 1400],
+            'source_canvas': [1400, 1400], 'content_bounds': [175, 175, 1400, 1400],
             'text_boxes': text_boxes,
-            'image_method': 'Complete existing SVG nested at y=175. All source content retained at its original size, with no crop or content rescaling.',
+            'image_method': 'Complete existing SVG nested at x=175,y=175 with blank 175px margins on all four sides. All source content retained at its original size, with no crop or content rescaling.',
             'outputs': {item.name: {'sha256': social.source.digest(item), 'bytes': item.stat().st_size} for item in outputs}})
         pages.append(path)
     writer = PdfWriter()
@@ -119,8 +121,8 @@ def main():
     if not output.read_bytes().startswith(b'%PDF-'):
         raise ValueError('Missing PDF file signature')
     final = PdfReader(output)
-    if len(final.pages) != 4 or any(abs(float(p.mediabox.height) / float(p.mediabox.width) - 1.25) > 1e-6 for p in final.pages):
-        raise ValueError('Expected exactly four 4:5 portrait PDF pages')
+    if len(final.pages) != 4 or any(abs(float(p.mediabox.height) / float(p.mediabox.width) - 1.0) > 1e-6 for p in final.pages):
+        raise ValueError('Expected exactly four square PDF pages')
     manifest['pdf'] = {'name': output.name, 'sha256': social.source.digest(output), 'bytes': output.stat().st_size, 'magic': '%PDF-',
         'page_count': len(final.pages), 'page_sizes_pt': [[float(p.mediabox.width), float(p.mediabox.height)] for p in final.pages]}
     (OUTPUT / 'carousel-manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')

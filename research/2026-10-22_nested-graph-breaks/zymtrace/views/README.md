@@ -71,7 +71,7 @@ platform frame. X uses one fitted profile per post. LinkedIn uses the
 Zymtrace profiles. Reader-reply images use a single portrait comparison.
 Large function legends remain readable at 400 pixels. The X export matches
 the measured 520 × 510 editor frame. LinkedIn PDF pages leave 175-pixel
-top and bottom margins for the document controls. Narrow flamegraph bars
+margins on all four sides for the document controls. Narrow flamegraph bars
 retain full names in the SVG tooltips and linked full-stack views.
 
 The rendered Typefully preview is checked after upload. Source-canvas bounds

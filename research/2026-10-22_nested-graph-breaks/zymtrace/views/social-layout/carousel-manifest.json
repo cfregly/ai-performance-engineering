@@ -1,23 +1,23 @@
 {
   "schema_version": 2,
   "renderer": "render_profile_carousel.py",
-  "renderer_sha256": "743ab4f32df5513b81da835c79e0e1683ca38d6176dcc86018ad35ac00da313d",
+  "renderer_sha256": "3e3e4091225def70cb05e2e28cbdb6a4c9d00f74e8071dfdc308a573c798874b",
   "canvas_px": [
-    1400,
+    1750,
     1750
   ],
   "content_translation_px": [
-    0,
+    175,
     175
   ],
   "content_scale": 1,
-  "reserved_overlay_px": 120,
-  "method": "Each unchanged 1400px square SVG is nested at y=175 on a 1400x1750 portrait page. Blank top and bottom buffers protect the content from viewer controls.",
+  "reserved_overlay_px": 140,
+  "method": "Each unchanged 1400px square SVG is nested at x=175,y=175 on a 1750px square page. Blank 175px margins on all four sides protect content from viewer controls.",
   "pages": [
     {
       "name": "linkedin-page-01",
       "canvas": [
-        1400,
+        1750,
         1750
       ],
       "source_square_name": "nsys-profile-square",
@@ -38,7 +38,7 @@
         1400
       ],
       "content_bounds": [
-        0,
+        175,
         175,
         1400,
         1400
@@ -48,7 +48,7 @@
           "text": "RETAINED NVIDIA PROFILE",
           "size_px": 32,
           "bbox": [
-            62,
+            237,
             214.0,
             422,
             25
@@ -58,7 +58,7 @@
           "text": "Nsys: first post-warmup call",
           "size_px": 56,
           "bbox": [
-            64,
+            239,
             276.0,
             744,
             54
@@ -68,7 +68,7 @@
           "text": "B200 \u00b7 PyTorch 2.14.1 \u00b7 graph-level trace",
           "size_px": 32,
           "bbox": [
-            62,
+            237,
             347.0,
             582,
             32
@@ -78,7 +78,7 @@
           "text": "Top: without nested graph-break support",
           "size_px": 44,
           "bbox": [
-            60,
+            235,
             411.0,
             854,
             42
@@ -88,7 +88,7 @@
           "text": "Bottom: with nested graph-break support",
           "size_px": 44,
           "bbox": [
-            63,
+            238,
             467.0,
             860,
             42
@@ -98,7 +98,7 @@
           "text": "One synchronized invocation per arm.",
           "size_px": 44,
           "bbox": [
-            62,
+            237,
             1315.0,
             790,
             43
@@ -108,7 +108,7 @@
           "text": "Retained timeline fitted in full. Shared time axis in \u00b5s.",
           "size_px": 32,
           "bbox": [
-            62,
+            237,
             1381.0,
             751,
             31
@@ -118,7 +118,7 @@
           "text": "Graph-level trace, separate from acceptance timing.",
           "size_px": 32,
           "bbox": [
-            61,
+            236,
             1429.0,
             740,
             32
@@ -128,37 +128,37 @@
           "text": "Original capture, report and code linked with the post.",
           "size_px": 30,
           "bbox": [
-            61,
+            236,
             1488.0,
             712,
             30
           ]
         }
       ],
-      "image_method": "Complete existing SVG nested at y=175. All source content retained at its original size, with no crop or content rescaling.",
+      "image_method": "Complete existing SVG nested at x=175,y=175 with blank 175px margins on all four sides. All source content retained at its original size, with no crop or content rescaling.",
       "outputs": {
         "linkedin-page-01.svg": {
-          "sha256": "82206ad0c5a7afbdb327daf3351a3286e967f0f9de5957ee6da334692e33f082",
-          "bytes": 212769
+          "sha256": "7d3d4a1725f71de352964b59898d46de79cb9aeb39b1b3bbba1278ab39a9e53e",
+          "bytes": 212771
         },
         "linkedin-page-01.png": {
-          "sha256": "76e5b0fdb71ec3221c2c36243dee628a838093e9a94668826bd80fbc952508f3",
-          "bytes": 258870
+          "sha256": "c15f5229c51fae7a01bb2df8f28ea13d22bec1832556f93eda22a64d3ab448dc",
+          "bytes": 262714
         },
         "linkedin-page-01.preview-400.png": {
-          "sha256": "4d01b6739619ecbf1ab8954745fff01d4c112c4e75e34b15fdf0f6cae9667c61",
-          "bytes": 57020
+          "sha256": "c5ce17037f1dab31f59e88d30b20a15f29bb592748219d9204af5fff150b8257",
+          "bytes": 42408
         },
         "linkedin-page-01.preview-520.png": {
-          "sha256": "beb0d09105118667866220f31ac69aff32dbd1e78b07142ac7534b42e8b9585e",
-          "bytes": 81318
+          "sha256": "ad830dadaa8a8c3008fee96b5669d81c075449884081c76982bfa729000e90c6",
+          "bytes": 61958
         }
       }
     },
     {
       "name": "linkedin-page-02",
       "canvas": [
-        1400,
+        1750,
         1750
       ],
       "source_square_name": "ncu-profile-square",
@@ -179,7 +179,7 @@
         1400
       ],
       "content_bounds": [
-        0,
+        175,
         175,
         1400,
         1400
@@ -189,7 +189,7 @@
           "text": "RETAINED NVIDIA PROFILE",
           "size_px": 32,
           "bbox": [
-            62,
+            237,
             214.0,
             422,
             25
@@ -199,7 +199,7 @@
           "text": "NCU: one kernel record per arm",
           "size_px": 56,
           "bbox": [
-            64,
+            239,
             275.0,
             840,
             54
@@ -209,7 +209,7 @@
           "text": "B200 \u00b7 retained Nsight Compute metrics",
           "size_px": 32,
           "bbox": [
-            62,
+            237,
             347.0,
             569,
             32
@@ -219,7 +219,7 @@
           "text": "False column: without nested graph-break support",
           "size_px": 44,
           "bbox": [
-            63,
+            238,
             411.0,
             1053,
             42
@@ -229,7 +229,7 @@
           "text": "True column: with nested graph-break support",
           "size_px": 44,
           "bbox": [
-            60,
+            235,
             467.0,
             969,
             42
@@ -239,7 +239,7 @@
           "text": "Single-kernel profiler replay.",
           "size_px": 44,
           "bbox": [
-            61,
+            236,
             1315.0,
             583,
             43
@@ -249,7 +249,7 @@
           "text": "Retained report values and units remain unchanged.",
           "size_px": 32,
           "bbox": [
-            62,
+            237,
             1381.0,
             746,
             32
@@ -259,7 +259,7 @@
           "text": "Separate from unprofiled acceptance timing.",
           "size_px": 32,
           "bbox": [
-            61,
+            236,
             1429.0,
             630,
             32
@@ -269,37 +269,37 @@
           "text": "Original capture, report and code linked with the post.",
           "size_px": 30,
           "bbox": [
-            61,
+            236,
             1488.0,
             712,
             30
           ]
         }
       ],
-      "image_method": "Complete existing SVG nested at y=175. All source content retained at its original size, with no crop or content rescaling.",
+      "image_method": "Complete existing SVG nested at x=175,y=175 with blank 175px margins on all four sides. All source content retained at its original size, with no crop or content rescaling.",
       "outputs": {
         "linkedin-page-02.svg": {
-          "sha256": "ec8eab0ad92c5e27a3add560e2fc4e36e0d460c41535707d874a96f9327fc9cf",
-          "bytes": 215415
+          "sha256": "80bd8d42ed3c940ce4d061603f2fec029b8488cbf256fb3a32f518c6808da293",
+          "bytes": 215417
         },
         "linkedin-page-02.png": {
-          "sha256": "f2a852003b4f55ecffdd29f4178caf8ff98a33a9e362f5562c45722e293357ef",
-          "bytes": 248098
+          "sha256": "ef2ba905f3ece5c2506a5f90bc769928efc34690e1020c68c870f7017a642a63",
+          "bytes": 253598
         },
         "linkedin-page-02.preview-400.png": {
-          "sha256": "0671b4886754b0057ccfa1fe3d43229f34d01a7246c53cf4c66c02fab584d64c",
-          "bytes": 52006
+          "sha256": "26b82068ced8ccdf27165b3dbf39487d728c103b6a36db46380c2f7150cbf69c",
+          "bytes": 38086
         },
         "linkedin-page-02.preview-520.png": {
-          "sha256": "1f849ae41d782ded311e96c57a46792932daf3b988349362b2a4415803ebe43c",
-          "bytes": 75910
+          "sha256": "ad29022a49fa4e6c38cb0efadbf84f462864db32c611ad016c8e7490b27dfcf5",
+          "bytes": 56608
         }
       }
     },
     {
       "name": "linkedin-page-03",
       "canvas": [
-        1400,
+        1750,
         1750
       ],
       "source_square_name": "zymtrace-without-nested-graph-breaks-square",
@@ -316,7 +316,7 @@
         1400
       ],
       "content_bounds": [
-        0,
+        175,
         175,
         1400,
         1400
@@ -326,7 +326,7 @@
           "text": "ZYMTRACE / CAPTURED GPU TIME",
           "size_px": 32,
           "bbox": [
-            60,
+            235,
             214.0,
             546,
             25
@@ -336,7 +336,7 @@
           "text": "Without nested",
           "size_px": 56,
           "bbox": [
-            60,
+            235,
             277.0,
             401,
             43
@@ -346,7 +346,7 @@
           "text": "graph-break support",
           "size_px": 56,
           "bbox": [
-            61,
+            236,
             343.0,
             545,
             54
@@ -356,7 +356,7 @@
           "text": "B200 \u00b7 PyTorch 2.14.1 \u00b7 depth-8 microbenchmark",
           "size_px": 32,
           "bbox": [
-            62,
+            237,
             410.0,
             700,
             31
@@ -366,7 +366,7 @@
           "text": "Bar width = % of this worker\u2019s captured GPU time",
           "size_px": 32,
           "bbox": [
-            62,
+            237,
             460.0,
             756,
             31
@@ -376,7 +376,7 @@
           "text": "All captured GPU work",
           "size_px": 22,
           "bbox": [
-            66,
+            241,
             521.0,
             221,
             22
@@ -386,7 +386,7 @@
           "text": "ngb_nested_break_depth8_entry",
           "size_px": 22,
           "bbox": [
-            69.74732812603722,
+            244.74732812603722,
             552.0,
             316,
             21
@@ -396,7 +396,7 @@
           "text": "ngb_nested_break_depth8_fram\u2026",
           "size_px": 22,
           "bbox": [
-            69.74732812603722,
+            244.74732812603722,
             581.0,
             331,
             22
@@ -406,7 +406,7 @@
           "text": "ngb_nested_break_depth8\u2026",
           "size_px": 22,
           "bbox": [
-            91.86756798619258,
+            266.86756798619257,
             612.0,
             276,
             21
@@ -416,7 +416,7 @@
           "text": "ngb_nested_break_de\u2026",
           "size_px": 22,
           "bbox": [
-            111.58035536476893,
+            286.58035536476893,
             642.0,
             234,
             21
@@ -426,7 +426,7 @@
           "text": "ngb_nested_break\u2026",
           "size_px": 22,
           "bbox": [
-            134.89015998052804,
+            309.89015998052804,
             672.0,
             198,
             21
@@ -436,7 +436,7 @@
           "text": "ngb_nested_b\u2026",
           "size_px": 22,
           "bbox": [
-            151.79897329232415,
+            326.79897329232415,
             702.0,
             156,
             21
@@ -446,7 +446,7 @@
           "text": "ngb_nest\u2026",
           "size_px": 22,
           "bbox": [
-            174.93884008585414,
+            349.93884008585417,
             732.0,
             108,
             21
@@ -456,7 +456,7 @@
           "text": "ngb_\u2026",
           "size_px": 22,
           "bbox": [
-            193.49038567919825,
+            368.49038567919825,
             762.0,
             67,
             21
@@ -466,7 +466,7 @@
           "text": "triton_poi_fused_add_cos_\u2026",
           "size_px": 22,
           "bbox": [
-            414.45750448078275,
+            589.4575044807827,
             551.0,
             280,
             22
@@ -476,7 +476,7 @@
           "text": "void at::native::(anonymous namespace)::multi_tensor_apply_\u2026",
           "size_px": 22,
           "bbox": [
-            714.0012391299543,
+            889.0012391299543,
             551.0,
             616,
             22
@@ -486,7 +486,7 @@
           "text": "Key functions \u00b7 inclusive GPU time",
           "size_px": 32,
           "bbox": [
-            62,
+            237,
             1117.0,
             531,
             31
@@ -496,7 +496,7 @@
           "text": "CUDAGraphNode.run",
           "size_px": 44,
           "bbox": [
-            61,
+            236,
             1165.0,
             422,
             43
@@ -506,7 +506,7 @@
           "text": "27.01%",
           "size_px": 44,
           "bbox": [
-            1194,
+            1369,
             1166.0,
             145,
             33
@@ -516,7 +516,7 @@
           "text": "CUDAGraph.replay",
           "size_px": 44,
           "bbox": [
-            61,
+            236,
             1222.0,
             376,
             43
@@ -526,7 +526,7 @@
           "text": "8.73%",
           "size_px": 44,
           "bbox": [
-            1218,
+            1393,
             1223.0,
             121,
             33
@@ -536,7 +536,7 @@
           "text": "cuLaunchKernel",
           "size_px": 44,
           "bbox": [
-            61,
+            236,
             1280.0,
             310,
             33
@@ -546,7 +546,7 @@
           "text": "18.45%",
           "size_px": 44,
           "bbox": [
-            1198,
+            1373,
             1280.0,
             143,
             33
@@ -556,7 +556,7 @@
           "text": "cuGraphLaunch",
           "size_px": 44,
           "bbox": [
-            61,
+            236,
             1336.0,
             306,
             43
@@ -566,7 +566,7 @@
           "text": "8.73%",
           "size_px": 44,
           "bbox": [
-            1218,
+            1393,
             1337.0,
             121,
             33
@@ -576,7 +576,7 @@
           "text": "Each arm normalized separately. Inclusive shares overlap.",
           "size_px": 28,
           "bbox": [
-            62,
+            237,
             1392.0,
             728,
             28
@@ -586,7 +586,7 @@
           "text": "Includes setup, warmup, timing and correctness work.",
           "size_px": 28,
           "bbox": [
-            62,
+            237,
             1437.0,
             672,
             28
@@ -596,7 +596,7 @@
           "text": "GPU time attributed to host frames is not CPU execution time.",
           "size_px": 28,
           "bbox": [
-            61,
+            236,
             1482.0,
             776,
             22
@@ -606,37 +606,37 @@
           "text": "Not steady-state latency. Full function stacks linked with the post.",
           "size_px": 28,
           "bbox": [
-            62,
+            237,
             1527.0,
             814,
             28
           ]
         }
       ],
-      "image_method": "Complete existing SVG nested at y=175. All source content retained at its original size, with no crop or content rescaling.",
+      "image_method": "Complete existing SVG nested at x=175,y=175 with blank 175px margins on all four sides. All source content retained at its original size, with no crop or content rescaling.",
       "outputs": {
         "linkedin-page-03.svg": {
-          "sha256": "677602ddea5c77c25df2651e2b9197c345338474b07ae1f23db12422fcf34f41",
-          "bytes": 56515
+          "sha256": "a644f624b89fe76ba594e0f7ebc7038a53b838aa4fa1b61efce2f2d6d6b840de",
+          "bytes": 56517
         },
         "linkedin-page-03.png": {
-          "sha256": "3c5b634dceab1c8978d3b14f801d09c8654048b2ca94d8007279b47db070980f",
-          "bytes": 251239
+          "sha256": "d79550e14f2ce9805b894644d1b279ab0635c1defdd9b25736a544d40b66cba4",
+          "bytes": 256343
         },
         "linkedin-page-03.preview-400.png": {
-          "sha256": "5e8377142d766ce8a55ceee2c93693fe200568a881bbc71ffbe169b641565f85",
-          "bytes": 56287
+          "sha256": "08afb7507778e15f4f340f60f8f606677e23c01885007065d7fa72808dc78fe3",
+          "bytes": 41932
         },
         "linkedin-page-03.preview-520.png": {
-          "sha256": "5074b1267c2623f465a731090ad769c8c19c36928a970f43cbf8e8ae90018fe3",
-          "bytes": 80185
+          "sha256": "7a735a76d1d17b3d86f9cf1944417fd96ff8e0ea23d9b18938bbf12636a47820",
+          "bytes": 59948
         }
       }
     },
     {
       "name": "linkedin-page-04",
       "canvas": [
-        1400,
+        1750,
         1750
       ],
       "source_square_name": "zymtrace-with-nested-graph-breaks-square",
@@ -653,7 +653,7 @@
         1400
       ],
       "content_bounds": [
-        0,
+        175,
         175,
         1400,
         1400
@@ -663,7 +663,7 @@
           "text": "ZYMTRACE / CAPTURED GPU TIME",
           "size_px": 32,
           "bbox": [
-            60,
+            235,
             214.0,
             546,
             25
@@ -673,7 +673,7 @@
           "text": "With nested",
           "size_px": 56,
           "bbox": [
-            60,
+            235,
             277.0,
             314,
             43
@@ -683,7 +683,7 @@
           "text": "graph-break support",
           "size_px": 56,
           "bbox": [
-            61,
+            236,
             343.0,
             545,
             54
@@ -693,7 +693,7 @@
           "text": "B200 \u00b7 PyTorch 2.14.1 \u00b7 depth-8 microbenchmark",
           "size_px": 32,
           "bbox": [
-            62,
+            237,
             410.0,
             700,
             31
@@ -703,7 +703,7 @@
           "text": "Bar width = % of this worker\u2019s captured GPU time",
           "size_px": 32,
           "bbox": [
-            62,
+            237,
             460.0,
             756,
             31
@@ -713,7 +713,7 @@
           "text": "All captured GPU work",
           "size_px": 22,
           "bbox": [
-            66,
+            241,
             521.0,
             221,
             22
@@ -723,7 +723,7 @@
           "text": "ngb_nested_break_depth8_entry",
           "size_px": 22,
           "bbox": [
-            76.3719686606144,
+            251.3719686606144,
             552.0,
             316,
             21
@@ -733,7 +733,7 @@
           "text": "CUDAGraphTreeManage\u2026",
           "size_px": 22,
           "bbox": [
-            75.3719686606144,
+            250.3719686606144,
             581.0,
             265,
             22
@@ -743,7 +743,7 @@
           "text": "CUDAGraphTreeManage\u2026",
           "size_px": 22,
           "bbox": [
-            75.3719686606144,
+            250.3719686606144,
             611.0,
             265,
             22
@@ -753,7 +753,7 @@
           "text": "CUDAGraphTreeManage\u2026",
           "size_px": 22,
           "bbox": [
-            75.3719686606144,
+            250.3719686606144,
             641.0,
             265,
             22
@@ -763,7 +763,7 @@
           "text": "CUDAGraphTreeManage\u2026",
           "size_px": 22,
           "bbox": [
-            75.3719686606144,
+            250.3719686606144,
             671.0,
             265,
             22
@@ -773,7 +773,7 @@
           "text": "CUDAWarmupNode.run",
           "size_px": 22,
           "bbox": [
-            75.3719686606144,
+            250.3719686606144,
             701.0,
             231,
             22
@@ -783,7 +783,7 @@
           "text": "cuLaunchKernel",
           "size_px": 22,
           "bbox": [
-            75.3719686606144,
+            250.3719686606144,
             732.0,
             156,
             17
@@ -793,7 +793,7 @@
           "text": "triton_poi\u2026",
           "size_px": 22,
           "bbox": [
-            75.3719686606144,
+            250.3719686606144,
             762.0,
             109,
             21
@@ -803,7 +803,7 @@
           "text": "void at::nativ\u2026",
           "size_px": 22,
           "bbox": [
-            200.78920532272187,
+            375.78920532272184,
             762.0,
             142,
             17
@@ -813,7 +813,7 @@
           "text": "CUDAGraphTreeManager.run",
           "size_px": 22,
           "bbox": [
-            356.7101106827526,
+            531.7101106827527,
             581.0,
             288,
             22
@@ -823,7 +823,7 @@
           "text": "CUDAGraphTreeManager._run",
           "size_px": 22,
           "bbox": [
-            356.7101106827526,
+            531.7101106827527,
             611.0,
             300,
             22
@@ -833,7 +833,7 @@
           "text": "CUDAGraphTreeManager.run",
           "size_px": 22,
           "bbox": [
-            358.0233801765967,
+            533.0233801765967,
             641.0,
             288,
             22
@@ -843,7 +843,7 @@
           "text": "CUDAGraphTreeManager._run",
           "size_px": 22,
           "bbox": [
-            358.0233801765967,
+            533.0233801765967,
             671.0,
             300,
             22
@@ -853,7 +853,7 @@
           "text": "CUDAGraphTreeManager.exec\u2026",
           "size_px": 22,
           "bbox": [
-            358.0233801765967,
+            533.0233801765967,
             701.0,
             324,
             22
@@ -863,7 +863,7 @@
           "text": "CUDAGraphNode.run",
           "size_px": 22,
           "bbox": [
-            358.0233801765967,
+            533.0233801765967,
             731.0,
             211,
             22
@@ -873,7 +873,7 @@
           "text": "CUDA\u2026",
           "size_px": 22,
           "bbox": [
-            358.0233801765967,
+            533.0233801765967,
             761.0,
             83,
             18
@@ -883,7 +883,7 @@
           "text": "cuLaun\u2026",
           "size_px": 22,
           "bbox": [
-            358.0233801765967,
+            533.0233801765967,
             792.0,
             91,
             17
@@ -893,7 +893,7 @@
           "text": "void at:\u2026",
           "size_px": 22,
           "bbox": [
-            358.0233801765967,
+            533.0233801765967,
             822.0,
             90,
             17
@@ -903,7 +903,7 @@
           "text": "CUDAGraphNode.ru\u2026",
           "size_px": 22,
           "bbox": [
-            463.4829001368013,
+            638.4829001368013,
             761.0,
             220,
             22
@@ -913,7 +913,7 @@
           "text": "CUDAGraph.replay",
           "size_px": 22,
           "bbox": [
-            463.4829001368013,
+            638.4829001368013,
             791.0,
             188,
             22
@@ -923,7 +923,7 @@
           "text": "cuGraphLaunch",
           "size_px": 22,
           "bbox": [
-            463.4829001368013,
+            638.4829001368013,
             821.0,
             153,
             22
@@ -933,7 +933,7 @@
           "text": "triton_poi_fused_add\u2026",
           "size_px": 22,
           "bbox": [
-            463.4829001368013,
+            638.4829001368013,
             851.0,
             222,
             22
@@ -943,7 +943,7 @@
           "text": "torch_dynamo_resume_in_ngb_nested_break_depth8_frame_0\u2026",
           "size_px": 22,
           "bbox": [
-            698.0805869916717,
+            873.0805869916717,
             581.0,
             630,
             22
@@ -953,7 +953,7 @@
           "text": "CUDAGraphTreeManager.a\u2026",
           "size_px": 22,
           "bbox": [
-            698.0805869916717,
+            873.0805869916717,
             611.0,
             290,
             22
@@ -963,7 +963,7 @@
           "text": "CUDAGraphTreeManager.run",
           "size_px": 22,
           "bbox": [
-            698.0805869916717,
+            873.0805869916717,
             641.0,
             288,
             22
@@ -973,7 +973,7 @@
           "text": "CUDAGraphTreeManager._\u2026",
           "size_px": 22,
           "bbox": [
-            698.0805869916717,
+            873.0805869916717,
             671.0,
             290,
             22
@@ -983,7 +983,7 @@
           "text": "CUDAGraphTreeManager.r\u2026",
           "size_px": 22,
           "bbox": [
-            698.0805869916717,
+            873.0805869916717,
             701.0,
             285,
             22
@@ -993,7 +993,7 @@
           "text": "CUDAWarmupNode.run",
           "size_px": 22,
           "bbox": [
-            698.0805869916717,
+            873.0805869916717,
             731.0,
             231,
             22
@@ -1003,7 +1003,7 @@
           "text": "cuLaunchKernel",
           "size_px": 22,
           "bbox": [
-            698.0805869916717,
+            873.0805869916717,
             762.0,
             156,
             17
@@ -1013,7 +1013,7 @@
           "text": "triton_poi\u2026",
           "size_px": 22,
           "bbox": [
-            698.0805869916717,
+            873.0805869916717,
             792.0,
             109,
             21
@@ -1023,7 +1023,7 @@
           "text": "void at::nativ\u2026",
           "size_px": 22,
           "bbox": [
-            828.6116154707174,
+            1003.6116154707174,
             792.0,
             142,
             17
@@ -1033,7 +1033,7 @@
           "text": "CUDAGraphTreeManager.run",
           "size_px": 22,
           "bbox": [
-            1001.2070637980407,
+            1176.2070637980407,
             611.0,
             288,
             22
@@ -1043,7 +1043,7 @@
           "text": "CUDAGraphTreeManager._run",
           "size_px": 22,
           "bbox": [
-            1001.2070637980407,
+            1176.2070637980407,
             641.0,
             300,
             22
@@ -1053,7 +1053,7 @@
           "text": "CUDAGraphTreeManager.exec\u2026",
           "size_px": 22,
           "bbox": [
-            1001.2070637980407,
+            1176.2070637980407,
             671.0,
             324,
             22
@@ -1063,7 +1063,7 @@
           "text": "CUDAGraphNode.run",
           "size_px": 22,
           "bbox": [
-            1001.2070637980407,
+            1176.2070637980407,
             701.0,
             211,
             22
@@ -1073,7 +1073,7 @@
           "text": "CUDA\u2026",
           "size_px": 22,
           "bbox": [
-            1001.2070637980407,
+            1176.2070637980407,
             731.0,
             83,
             18
@@ -1083,7 +1083,7 @@
           "text": "cuLaun\u2026",
           "size_px": 22,
           "bbox": [
-            1001.2070637980407,
+            1176.2070637980407,
             762.0,
             91,
             17
@@ -1093,7 +1093,7 @@
           "text": "void at:\u2026",
           "size_px": 22,
           "bbox": [
-            1001.2070637980407,
+            1176.2070637980407,
             792.0,
             90,
             17
@@ -1103,7 +1103,7 @@
           "text": "CUDAGraphNode.ru\u2026",
           "size_px": 22,
           "bbox": [
-            1107.9201591841875,
+            1282.9201591841875,
             731.0,
             220,
             22
@@ -1113,7 +1113,7 @@
           "text": "CUDAGraph.replay",
           "size_px": 22,
           "bbox": [
-            1107.9201591841875,
+            1282.9201591841875,
             761.0,
             188,
             22
@@ -1123,7 +1123,7 @@
           "text": "cuGraphLaunch",
           "size_px": 22,
           "bbox": [
-            1107.9201591841875,
+            1282.9201591841875,
             791.0,
             153,
             22
@@ -1133,7 +1133,7 @@
           "text": "triton_poi_fused_add\u2026",
           "size_px": 22,
           "bbox": [
-            1107.9201591841875,
+            1282.9201591841875,
             821.0,
             222,
             22
@@ -1143,7 +1143,7 @@
           "text": "Key functions \u00b7 inclusive GPU time",
           "size_px": 32,
           "bbox": [
-            62,
+            237,
             1117.0,
             531,
             31
@@ -1153,7 +1153,7 @@
           "text": "CUDAGraphNode.run",
           "size_px": 44,
           "bbox": [
-            61,
+            236,
             1165.0,
             422,
             43
@@ -1163,7 +1163,7 @@
           "text": "53.50%",
           "size_px": 44,
           "bbox": [
-            1194,
+            1369,
             1166.0,
             145,
             33
@@ -1173,7 +1173,7 @@
           "text": "CUDAGraph.replay",
           "size_px": 44,
           "bbox": [
-            61,
+            236,
             1222.0,
             376,
             43
@@ -1183,7 +1183,7 @@
           "text": "36.98%",
           "size_px": 44,
           "bbox": [
-            1194,
+            1369,
             1223.0,
             145,
             33
@@ -1193,7 +1193,7 @@
           "text": "cuLaunchKernel",
           "size_px": 44,
           "bbox": [
-            61,
+            236,
             1280.0,
             310,
             33
@@ -1203,7 +1203,7 @@
           "text": "61.31%",
           "size_px": 44,
           "bbox": [
-            1194,
+            1369,
             1280.0,
             145,
             33
@@ -1213,7 +1213,7 @@
           "text": "cuGraphLaunch",
           "size_px": 44,
           "bbox": [
-            61,
+            236,
             1336.0,
             306,
             43
@@ -1223,7 +1223,7 @@
           "text": "36.98%",
           "size_px": 44,
           "bbox": [
-            1194,
+            1369,
             1337.0,
             145,
             33
@@ -1233,7 +1233,7 @@
           "text": "Each arm normalized separately. Inclusive shares overlap.",
           "size_px": 28,
           "bbox": [
-            62,
+            237,
             1392.0,
             728,
             28
@@ -1243,7 +1243,7 @@
           "text": "Includes setup, warmup, timing and correctness work.",
           "size_px": 28,
           "bbox": [
-            62,
+            237,
             1437.0,
             672,
             28
@@ -1253,7 +1253,7 @@
           "text": "GPU time attributed to host frames is not CPU execution time.",
           "size_px": 28,
           "bbox": [
-            61,
+            236,
             1482.0,
             776,
             22
@@ -1263,55 +1263,55 @@
           "text": "Not steady-state latency. Full function stacks linked with the post.",
           "size_px": 28,
           "bbox": [
-            62,
+            237,
             1527.0,
             814,
             28
           ]
         }
       ],
-      "image_method": "Complete existing SVG nested at y=175. All source content retained at its original size, with no crop or content rescaling.",
+      "image_method": "Complete existing SVG nested at x=175,y=175 with blank 175px margins on all four sides. All source content retained at its original size, with no crop or content rescaling.",
       "outputs": {
         "linkedin-page-04.svg": {
-          "sha256": "3031ec0f377068ed5684128f30341dcb95773b70200d0ed078b5e684685ca98c",
-          "bytes": 34666
+          "sha256": "f018f892f8ccd7ec20f35ceb54386af70a6b740b2b77c6db3a456a3a0b9dde77",
+          "bytes": 34668
         },
         "linkedin-page-04.png": {
-          "sha256": "d9ea4e0a79197260bd44dae7ca732772d2f74835dfc3349da41c09fc15db80eb",
-          "bytes": 383289
+          "sha256": "b8dfb4a54fafca6763cbab0440ff87f110b5405c5850483944df7aed846e0c5a",
+          "bytes": 389386
         },
         "linkedin-page-04.preview-400.png": {
-          "sha256": "4dafa1d85ee5e26309aad7c753493b79d3d31e9073e104e7892c792535238fda",
-          "bytes": 78786
+          "sha256": "bc6e7190c20c2ec45f41af9d9a5fcbc547d68cbdfcee3f8d6410f60488b9cba1",
+          "bytes": 57867
         },
         "linkedin-page-04.preview-520.png": {
-          "sha256": "e5fe95df9afe35faee4de3d9e2ef8c88b5919beef88cedda388bb5d4f39b54bd",
-          "bytes": 116502
+          "sha256": "71a875dbb0b5705a8cd2c1ff0a33ac1613756e2635b1a05efd8c06bf320adaa2",
+          "bytes": 85028
         }
       }
     }
   ],
   "pdf": {
     "name": "linkedin-profiles.pdf",
-    "sha256": "c094c4f72f5b05d907ecfd07c6e5bb30e8a0174b09d37eaf4ccdcf9b642a444b",
-    "bytes": 504697,
+    "sha256": "13f3daf0e1ae2278725943cc6079cbbc91dd9ca22f020f217c4a40f3cc8f4a72",
+    "bytes": 504782,
     "magic": "%PDF-",
     "page_count": 4,
     "page_sizes_pt": [
       [
-        1050.0,
+        1312.5,
         1312.5
       ],
       [
-        1050.0,
+        1312.5,
         1312.5
       ],
       [
-        1050.0,
+        1312.5,
         1312.5
       ],
       [
-        1050.0,
+        1312.5,
         1312.5
       ]
     ]
