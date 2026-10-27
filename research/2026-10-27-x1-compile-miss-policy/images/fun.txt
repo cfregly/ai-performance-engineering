@@ -1,0 +1,7 @@
+ILLUSTRATIVE EDUCATIONAL DIAGRAM
+Choose your compile-miss policy
+Needs recompilation
+Raise an error
+Serve eagerly
+Valid cached code stays usable.
+Illustrative routing. No new performance measurement.

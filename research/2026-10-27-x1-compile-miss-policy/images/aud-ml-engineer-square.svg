@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1080" viewBox="0 0 1080 1080">
+<rect width="100%" height="100%" fill="#FBFBF8"/>
+<defs><marker id="arrow" viewBox="0 0 12 12" refX="9" refY="6" markerWidth="5" markerHeight="5" orient="auto"><path d="M1 1 L10 6 L1 11" fill="none" stroke="context-stroke" stroke-width="2"/></marker></defs>
+<text x="70" y="95" font-family="Bradley Hand" font-size="57" fill="#202326" text-anchor="start" font-weight="normal">
+<tspan x="70" dy="0">Warm up. Then choose a policy.</tspan>
+</text>
+<text x="72" y="153" font-family="Arial, Helvetica, sans-serif" font-size="30" fill="#202326" text-anchor="start" font-weight="normal">
+<tspan x="72" dy="0">Keep cache coverage and miss behavior separate</tspan>
+</text>
+<path d="M74 183 Q330 178 655 185" fill="none" stroke="#202326" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="95" y="250" width="890" height="175" rx="22" fill="#EDF4F9" stroke="#3478BA" stroke-width="4"/>
+<path d="M109 253 Q504.40000000000003 248 969 253" fill="none" stroke="#3478BA" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="140" y="315" font-family="Arial, Helvetica, sans-serif" font-size="39" fill="#202326" text-anchor="start" font-weight="normal">
+<tspan x="140" dy="0">1   Cover expected inputs</tspan>
+<tspan x="140" dy="47.58">     Build valid cached artifacts</tspan>
+</text>
+<path d="M540 450 Q543.0 475.5 540 505" fill="none" stroke="#202326" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<text x="540" y="579" font-family="Bradley Hand" font-size="44" fill="#202326" text-anchor="middle" font-weight="normal">
+<tspan x="540" dy="0">2   Select one miss policy</tspan>
+</text>
+<rect x="95" y="640" width="420" height="200" rx="22" fill="#FCF0E6" stroke="#E87823" stroke-width="4"/>
+<path d="M109 643 Q288.20000000000005 638 499 643" fill="none" stroke="#E87823" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="565" y="640" width="420" height="200" rx="22" fill="#FCF0E6" stroke="#E87823" stroke-width="4"/>
+<path d="M579 643 Q758.2 638 969 643" fill="none" stroke="#E87823" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="305" y="708" font-family="Arial, Helvetica, sans-serif" font-size="38" fill="#202326" text-anchor="middle" font-weight="normal">
+<tspan x="305" dy="0">Raise</tspan>
+<tspan x="305" dy="46.36">Expose the miss</tspan>
+</text>
+<text x="775" y="708" font-family="Arial, Helvetica, sans-serif" font-size="38" fill="#202326" text-anchor="middle" font-weight="normal">
+<tspan x="775" dy="0">Run eager</tspan>
+<tspan x="775" dy="46.36">Record fallback</tspan>
+</text>
+<text x="540" y="925" font-family="Arial, Helvetica, sans-serif" font-size="35" fill="#202326" text-anchor="middle" font-weight="normal">
+<tspan x="540" dy="0">A valid cache hit still runs compiled</tspan>
+</text>
+<text x="72" y="1032" font-family="Arial, Helvetica, sans-serif" font-size="24" fill="#202326" text-anchor="start" font-weight="normal">
+<tspan x="72" dy="0">ILLUSTRATIVE  ·  Background compile is not promised</tspan>
+</text>
+</svg>

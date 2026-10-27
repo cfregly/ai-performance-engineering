@@ -1,0 +1,5 @@
+ILLUSTRATIVE EDUCATIONAL DIAGRAM
+
+CUDA and hardware engineers: this conceptual GPU-workload stack shows host guard and policy decisions before execution. A valid compiled artifact can launch GPU kernels. Eager fallback can also launch GPU operations when the workload targets the GPU. With fullgraph=True, a rejected call stops before that call executes. No CPU/GPU timing, captured trace, or profiler result is represented.
+
+Source authority: PyTorch torch.compiler.set_stance documentation: https://docs.pytorch.org/docs/2.14/generated/torch.compiler.set_stance.html. Exact API identifiers and runnable demonstration belong in the article/code. All artwork is vector source with exact editable SVG labels. No timings, speedups, Nsys or NCU results are represented.

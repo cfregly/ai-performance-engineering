@@ -1,0 +1,5 @@
+ILLUSTRATIVE EDUCATIONAL DIAGRAM
+
+Platform operations: representative warmup and a declared miss policy make unexpected-input behavior explicit. Valid matches use compiled artifacts. For misses choose either reject and investigate or run eager and record. This is an illustrative operating plan, not measured availability or latency.
+
+Source authority: PyTorch torch.compiler.set_stance documentation: https://docs.pytorch.org/docs/2.14/generated/torch.compiler.set_stance.html. Exact API identifiers and runnable demonstration belong in the article/code. All artwork is vector source with exact editable SVG labels. No timings, speedups, Nsys or NCU results are represented.

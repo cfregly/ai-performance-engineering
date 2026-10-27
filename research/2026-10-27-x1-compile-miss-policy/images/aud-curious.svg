@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900">
+<rect width="100%" height="100%" fill="#FBFBF8"/>
+<defs><marker id="arrow" viewBox="0 0 12 12" refX="9" refY="6" markerWidth="5" markerHeight="5" orient="auto"><path d="M1 1 L10 6 L1 11" fill="none" stroke="context-stroke" stroke-width="2"/></marker></defs>
+<text x="95" y="105" font-family="Bradley Hand" font-size="70" fill="#202326" text-anchor="start" font-weight="normal">
+<tspan x="95" dy="0">A fast path needs a match</tspan>
+</text>
+<text x="98" y="171" font-family="Arial, Helvetica, sans-serif" font-size="38" fill="#202326" text-anchor="start" font-weight="normal">
+<tspan x="98" dy="0">A cached program has conditions it can accept</tspan>
+</text>
+<path d="M98 203 Q420 196 825 205" fill="none" stroke="#202326" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="100" y="280" font-family="Bradley Hand" font-size="44" fill="#202326" text-anchor="start" font-weight="normal">
+<tspan x="100" dy="0">Input</tspan>
+</text>
+<text x="580" y="280" font-family="Bradley Hand" font-size="44" fill="#202326" text-anchor="start" font-weight="normal">
+<tspan x="580" dy="0">Cached conditions</tspan>
+</text>
+<text x="1190" y="280" font-family="Bradley Hand" font-size="44" fill="#202326" text-anchor="start" font-weight="normal">
+<tspan x="1190" dy="0">Outcome</tspan>
+</text>
+<ellipse cx="170" cy="415" rx="62" ry="60.76" fill="#FBFBF8" stroke="#3478BA" stroke-width="5"/>
+<text x="170" y="435" font-family="Arial, Helvetica, sans-serif" font-size="54" fill="#202326" text-anchor="middle" font-weight="normal">
+<tspan x="170" dy="0">A</tspan>
+</text>
+<path d="M265 415 Q398.0 413.0 525 415" fill="none" stroke="#3478BA" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<rect x="570" y="346" width="435" height="136" rx="22" fill="#EDF4F9" stroke="#3478BA" stroke-width="4"/>
+<path d="M584 349 Q770.1 344 989 349" fill="none" stroke="#3478BA" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="788" y="432" font-family="Arial, Helvetica, sans-serif" font-size="53" fill="#202326" text-anchor="middle" font-weight="normal">
+<tspan x="788" dy="0">Match</tspan>
+</text>
+<path d="M1045 415 Q1098.0 413.0 1145 415" fill="none" stroke="#3478BA" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<text x="1200" y="431" font-family="Arial, Helvetica, sans-serif" font-size="49" fill="#202326" text-anchor="start" font-weight="normal">
+<tspan x="1200" dy="0">Compiled</tspan>
+</text>
+<ellipse cx="170" cy="625" rx="62" ry="60.76" fill="#FBFBF8" stroke="#E87823" stroke-width="5"/>
+<text x="170" y="645" font-family="Arial, Helvetica, sans-serif" font-size="54" fill="#202326" text-anchor="middle" font-weight="normal">
+<tspan x="170" dy="0">B</tspan>
+</text>
+<path d="M265 625 Q398.0 623.0 525 625" fill="none" stroke="#E87823" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<rect x="570" y="556" width="435" height="136" rx="22" fill="#FCF0E6" stroke="#E87823" stroke-width="4"/>
+<path d="M584 559 Q770.1 554 989 559" fill="none" stroke="#E87823" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="788" y="642" font-family="Arial, Helvetica, sans-serif" font-size="53" fill="#202326" text-anchor="middle" font-weight="normal">
+<tspan x="788" dy="0">No match</tspan>
+</text>
+<path d="M1045 625 Q1098.0 623.0 1145 625" fill="none" stroke="#E87823" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<text x="1200" y="641" font-family="Arial, Helvetica, sans-serif" font-size="49" fill="#202326" text-anchor="start" font-weight="normal">
+<tspan x="1200" dy="0">Stop or</tspan>
+<tspan x="1200" dy="59.78">run eager</tspan>
+</text>
+<text x="98" y="852" font-family="Arial, Helvetica, sans-serif" font-size="30" fill="#202326" text-anchor="start" font-weight="normal">
+<tspan x="98" dy="0">ILLUSTRATIVE  ·  A / B are example inputs; speed still needs measurement</tspan>
+</text>
+</svg>

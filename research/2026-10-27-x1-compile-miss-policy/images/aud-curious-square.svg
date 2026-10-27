@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1080" viewBox="0 0 1080 1080">
+<rect width="100%" height="100%" fill="#FBFBF8"/>
+<defs><marker id="arrow" viewBox="0 0 12 12" refX="9" refY="6" markerWidth="5" markerHeight="5" orient="auto"><path d="M1 1 L10 6 L1 11" fill="none" stroke="context-stroke" stroke-width="2"/></marker></defs>
+<text x="70" y="95" font-family="Bradley Hand" font-size="57" fill="#202326" text-anchor="start" font-weight="normal">
+<tspan x="70" dy="0">A fast path needs a match</tspan>
+</text>
+<text x="72" y="153" font-family="Arial, Helvetica, sans-serif" font-size="30" fill="#202326" text-anchor="start" font-weight="normal">
+<tspan x="72" dy="0">A cached program has conditions it can accept</tspan>
+</text>
+<path d="M74 183 Q330 178 655 185" fill="none" stroke="#202326" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+<ellipse cx="170" cy="320" rx="56" ry="54.879999999999995" fill="#FBFBF8" stroke="#3478BA" stroke-width="5"/>
+<text x="170" y="339" font-family="Arial, Helvetica, sans-serif" font-size="51" fill="#202326" text-anchor="middle" font-weight="normal">
+<tspan x="170" dy="0">A</tspan>
+</text>
+<path d="M250 320 Q315.5 318.0 375 320" fill="none" stroke="#3478BA" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<rect x="415" y="252" width="540" height="160" rx="22" fill="#EDF4F9" stroke="#3478BA" stroke-width="4"/>
+<path d="M429 255 Q663.4 250 939 255" fill="none" stroke="#3478BA" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="685" y="312" font-family="Arial, Helvetica, sans-serif" font-size="41" fill="#202326" text-anchor="middle" font-weight="normal">
+<tspan x="685" dy="0">Match → compiled</tspan>
+</text>
+<ellipse cx="170" cy="615" rx="56" ry="54.879999999999995" fill="#FBFBF8" stroke="#E87823" stroke-width="5"/>
+<text x="170" y="634" font-family="Arial, Helvetica, sans-serif" font-size="51" fill="#202326" text-anchor="middle" font-weight="normal">
+<tspan x="170" dy="0">B</tspan>
+</text>
+<path d="M250 615 Q315.5 613.0 375 615" fill="none" stroke="#E87823" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<rect x="415" y="547" width="540" height="160" rx="22" fill="#FCF0E6" stroke="#E87823" stroke-width="4"/>
+<path d="M429 550 Q663.4 545 939 550" fill="none" stroke="#E87823" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="685" y="607" font-family="Arial, Helvetica, sans-serif" font-size="41" fill="#202326" text-anchor="middle" font-weight="normal">
+<tspan x="685" dy="0">No match</tspan>
+<tspan x="685" dy="50.019999999999996">Stop or run eager</tspan>
+</text>
+<text x="95" y="891" font-family="Arial, Helvetica, sans-serif" font-size="37" fill="#202326" text-anchor="start" font-weight="normal">
+<tspan x="95" dy="0">The choice is about behavior.</tspan>
+<tspan x="95" dy="45.14">Speed still needs measurement.</tspan>
+</text>
+<text x="72" y="1032" font-family="Arial, Helvetica, sans-serif" font-size="24" fill="#202326" text-anchor="start" font-weight="normal">
+<tspan x="72" dy="0">ILLUSTRATIVE  ·  A / B are example inputs</tspan>
+</text>
+</svg>

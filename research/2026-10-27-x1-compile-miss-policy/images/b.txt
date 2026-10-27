@@ -1,0 +1,5 @@
+ILLUSTRATIVE EDUCATIONAL DIAGRAM
+
+Hypothetical logical input sequence A, B, A, B after warmup retained only an artifact valid for A. Each call is independent and a rejected call is caught so the example continues. Fail-on-recompile outcomes: compiled, rejected, compiled, rejected. Eager-on-recompile outcomes: compiled, eager, compiled, eager. Each policy has two compiled outcomes and two miss outcomes. No B artifact is added under either policy. Counts are illustrative, not measured timings.
+
+Source authority: PyTorch torch.compiler.set_stance documentation: https://docs.pytorch.org/docs/2.14/generated/torch.compiler.set_stance.html. Exact API identifiers and runnable demonstration belong in the article/code. All artwork is vector source with exact editable SVG labels. No timings, speedups, Nsys or NCU results are represented.

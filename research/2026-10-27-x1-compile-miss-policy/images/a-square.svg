@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1080" viewBox="0 0 1080 1080">
+<rect width="100%" height="100%" fill="#FBFBF8"/>
+<defs><marker id="arrow" viewBox="0 0 12 12" refX="9" refY="6" markerWidth="5" markerHeight="5" orient="auto"><path d="M1 1 L10 6 L1 11" fill="none" stroke="context-stroke" stroke-width="2"/></marker></defs>
+<text x="70" y="95" font-family="Bradley Hand" font-size="57" fill="#202326" text-anchor="start" font-weight="normal">
+<tspan x="70" dy="0">Choose the cache-miss policy</tspan>
+</text>
+<text x="72" y="153" font-family="Arial, Helvetica, sans-serif" font-size="30" fill="#202326" text-anchor="start" font-weight="normal">
+<tspan x="72" dy="0">After representative warmup</tspan>
+</text>
+<path d="M74 183 Q330 178 655 185" fill="none" stroke="#202326" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="95" y="238" width="890" height="150" rx="22" fill="#EDF4F9" stroke="#3478BA" stroke-width="4"/>
+<path d="M109 241 Q504.40000000000003 236 969 241" fill="none" stroke="#3478BA" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="135" y="295" font-family="Arial, Helvetica, sans-serif" font-size="43" fill="#3478BA" text-anchor="start" font-weight="normal">
+<tspan x="135" dy="0">Valid cached artifact</tspan>
+</text>
+<path d="M575 307 Q615.5 305.0 650 307" fill="none" stroke="#3478BA" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<text x="690" y="320" font-family="Arial, Helvetica, sans-serif" font-size="39" fill="#3478BA" text-anchor="start" font-weight="normal">
+<tspan x="690" dy="0">Run</tspan>
+<tspan x="690" dy="47.58">compiled</tspan>
+</text>
+<text x="105" y="466" font-family="Bradley Hand" font-size="48" fill="#202326" text-anchor="start" font-weight="normal">
+<tspan x="105" dy="0">No matching artifact?</tspan>
+</text>
+<path d="M540 495 Q543.0 523.0 540 555" fill="none" stroke="#E87823" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<path d="M270 556 Q543.0 554.0 810 556" fill="none" stroke="#E87823" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M270 556 Q273.0 581.0 270 610" fill="none" stroke="#E87823" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<path d="M810 556 Q813.0 581.0 810 610" fill="none" stroke="#E87823" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<rect x="95" y="634" width="402" height="210" rx="22" fill="#FCF0E6" stroke="#E87823" stroke-width="4"/>
+<path d="M109 637 Q279.92 632 481 637" fill="none" stroke="#E87823" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="582" y="634" width="402" height="210" rx="22" fill="#FCF0E6" stroke="#E87823" stroke-width="4"/>
+<path d="M596 637 Q766.9200000000001 632 968 637" fill="none" stroke="#E87823" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="296" y="700" font-family="Arial, Helvetica, sans-serif" font-size="40" fill="#202326" text-anchor="middle" font-weight="normal">
+<tspan x="296" dy="0">Fail fast</tspan>
+<tspan x="296" dy="48.8">Raise an error</tspan>
+</text>
+<text x="783" y="700" font-family="Arial, Helvetica, sans-serif" font-size="40" fill="#202326" text-anchor="middle" font-weight="normal">
+<tspan x="783" dy="0">Eager fallback</tspan>
+<tspan x="783" dy="48.8">Run eager</tspan>
+</text>
+<text x="540" y="920" font-family="Arial, Helvetica, sans-serif" font-size="35" fill="#202326" text-anchor="middle" font-weight="normal">
+<tspan x="540" dy="0">Choose one miss behavior</tspan>
+</text>
+<text x="72" y="1032" font-family="Arial, Helvetica, sans-serif" font-size="24" fill="#202326" text-anchor="start" font-weight="normal">
+<tspan x="72" dy="0">ILLUSTRATIVE  ·  Background compile is not promised</tspan>
+</text>
+</svg>

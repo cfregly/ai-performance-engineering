@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900">
+<rect width="100%" height="100%" fill="#FBFBF8"/>
+<defs><marker id="arrow" viewBox="0 0 12 12" refX="9" refY="6" markerWidth="5" markerHeight="5" orient="auto"><path d="M1 1 L10 6 L1 11" fill="none" stroke="context-stroke" stroke-width="2"/></marker></defs>
+<text x="95" y="105" font-family="Bradley Hand" font-size="70" fill="#202326" text-anchor="start" font-weight="normal">
+<tspan x="95" dy="0">Agree on the exception path</tspan>
+</text>
+<text x="98" y="171" font-family="Arial, Helvetica, sans-serif" font-size="38" fill="#202326" text-anchor="start" font-weight="normal">
+<tspan x="98" dy="0">Warmup coverage is a scope decision</tspan>
+</text>
+<path d="M98 203 Q420 196 825 205" fill="none" stroke="#202326" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="100" y="320" font-family="Bradley Hand" font-size="67" fill="#3478BA" text-anchor="start" font-weight="normal">
+<tspan x="100" dy="0">1</tspan>
+</text>
+<path d="M100 350 Q235 342 465 352" fill="none" stroke="#202326" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="100" y="435" font-family="Bradley Hand" font-size="46" fill="#202326" text-anchor="start" font-weight="normal">
+<tspan x="100" dy="0">Covered inputs</tspan>
+</text>
+<text x="100" y="522" font-family="Arial, Helvetica, sans-serif" font-size="43" fill="#202326" text-anchor="start" font-weight="normal">
+<tspan x="100" dy="0">Representative</tspan>
+<tspan x="100" dy="52.46">warmup</tspan>
+</text>
+<text x="610" y="320" font-family="Bradley Hand" font-size="67" fill="#E87823" text-anchor="start" font-weight="normal">
+<tspan x="610" dy="0">2</tspan>
+</text>
+<path d="M610 350 Q745 342 975 352" fill="none" stroke="#202326" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="610" y="435" font-family="Bradley Hand" font-size="46" fill="#202326" text-anchor="start" font-weight="normal">
+<tspan x="610" dy="0">Unexpected inputs</tspan>
+</text>
+<text x="610" y="522" font-family="Arial, Helvetica, sans-serif" font-size="43" fill="#202326" text-anchor="start" font-weight="normal">
+<tspan x="610" dy="0">Reject or</tspan>
+<tspan x="610" dy="52.46">run eager</tspan>
+</text>
+<text x="1120" y="320" font-family="Bradley Hand" font-size="67" fill="#E87823" text-anchor="start" font-weight="normal">
+<tspan x="1120" dy="0">3</tspan>
+</text>
+<path d="M1120 350 Q1255 342 1485 352" fill="none" stroke="#202326" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="1120" y="435" font-family="Bradley Hand" font-size="46" fill="#202326" text-anchor="start" font-weight="normal">
+<tspan x="1120" dy="0">Outcome records</tspan>
+</text>
+<text x="1120" y="522" font-family="Arial, Helvetica, sans-serif" font-size="43" fill="#202326" text-anchor="start" font-weight="normal">
+<tspan x="1120" dy="0">Compiled, eager,</tspan>
+<tspan x="1120" dy="52.46">or rejected</tspan>
+</text>
+<text x="800" y="741" font-family="Arial, Helvetica, sans-serif" font-size="43" fill="#202326" text-anchor="middle" font-weight="normal">
+<tspan x="800" dy="0">Agree on behavior first. Measure performance separately.</tspan>
+</text>
+<text x="98" y="852" font-family="Arial, Helvetica, sans-serif" font-size="30" fill="#202326" text-anchor="start" font-weight="normal">
+<tspan x="98" dy="0">ILLUSTRATIVE  ·  No speed, cost or SLA result</tspan>
+</text>
+</svg>

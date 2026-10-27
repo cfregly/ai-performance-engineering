@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1080" viewBox="0 0 1080 1080">
+<rect width="100%" height="100%" fill="#FBFBF8"/>
+<defs><marker id="arrow" viewBox="0 0 12 12" refX="9" refY="6" markerWidth="5" markerHeight="5" orient="auto"><path d="M1 1 L10 6 L1 11" fill="none" stroke="context-stroke" stroke-width="2"/></marker></defs>
+<text x="70" y="95" font-family="Bradley Hand" font-size="57" fill="#202326" text-anchor="start" font-weight="normal">
+<tspan x="70" dy="0">See misses. Then count outcomes.</tspan>
+</text>
+<text x="72" y="153" font-family="Arial, Helvetica, sans-serif" font-size="30" fill="#202326" text-anchor="start" font-weight="normal">
+<tspan x="72" dy="0">A diagnostic sequence, not a performance result</tspan>
+</text>
+<path d="M74 183 Q330 178 655 185" fill="none" stroke="#202326" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+<ellipse cx="158" cy="310" rx="51" ry="49.98" fill="#FBFBF8" stroke="#3478BA" stroke-width="5"/>
+<text x="158" y="327" font-family="Arial, Helvetica, sans-serif" font-size="48" fill="#202326" text-anchor="middle" font-weight="normal">
+<tspan x="158" dy="0">1</tspan>
+</text>
+<text x="250" y="298" font-family="Bradley Hand" font-size="49" fill="#202326" text-anchor="start" font-weight="normal">
+<tspan x="250" dy="0">Warm up</tspan>
+</text>
+<text x="250" y="357" font-family="Arial, Helvetica, sans-serif" font-size="34" fill="#202326" text-anchor="start" font-weight="normal">
+<tspan x="250" dy="0">Representative inputs</tspan>
+</text>
+<path d="M157 376 Q160.0 404.5 157 437" fill="none" stroke="#202326" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<ellipse cx="158" cy="544" rx="51" ry="49.98" fill="#FBFBF8" stroke="#3478BA" stroke-width="5"/>
+<text x="158" y="561" font-family="Arial, Helvetica, sans-serif" font-size="48" fill="#202326" text-anchor="middle" font-weight="normal">
+<tspan x="158" dy="0">2</tspan>
+</text>
+<text x="250" y="532" font-family="Bradley Hand" font-size="49" fill="#202326" text-anchor="start" font-weight="normal">
+<tspan x="250" dy="0">Inspect misses</tspan>
+</text>
+<text x="250" y="591" font-family="Arial, Helvetica, sans-serif" font-size="34" fill="#202326" text-anchor="start" font-weight="normal">
+<tspan x="250" dy="0">Recompile logs + guards</tspan>
+</text>
+<path d="M157 610 Q160.0 638.5 157 671" fill="none" stroke="#202326" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<ellipse cx="158" cy="778" rx="51" ry="49.98" fill="#FBFBF8" stroke="#E87823" stroke-width="5"/>
+<text x="158" y="795" font-family="Arial, Helvetica, sans-serif" font-size="48" fill="#202326" text-anchor="middle" font-weight="normal">
+<tspan x="158" dy="0">3</tspan>
+</text>
+<text x="250" y="766" font-family="Bradley Hand" font-size="49" fill="#202326" text-anchor="start" font-weight="normal">
+<tspan x="250" dy="0">Count routes</tspan>
+</text>
+<text x="250" y="825" font-family="Arial, Helvetica, sans-serif" font-size="34" fill="#202326" text-anchor="start" font-weight="normal">
+<tspan x="250" dy="0">Compiled / eager / rejected</tspan>
+</text>
+<text x="72" y="1032" font-family="Arial, Helvetica, sans-serif" font-size="24" fill="#202326" text-anchor="start" font-weight="normal">
+<tspan x="72" dy="0">ILLUSTRATIVE  ·  Use logs to explain misses</tspan>
+</text>
+</svg>

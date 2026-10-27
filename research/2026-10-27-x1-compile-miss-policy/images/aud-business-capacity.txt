@@ -1,0 +1,5 @@
+ILLUSTRATIVE EDUCATIONAL DIAGRAM
+
+Business and capacity readers: agree on covered inputs, behavior for unexpected inputs, and route outcome records. Warmup is coverage, not a guarantee that every future input matches. Choose rejection or eager execution for misses. No speed, cost, capacity, or SLA result is claimed.
+
+Source authority: PyTorch torch.compiler.set_stance documentation: https://docs.pytorch.org/docs/2.14/generated/torch.compiler.set_stance.html. Exact API identifiers and runnable demonstration belong in the article/code. All artwork is vector source with exact editable SVG labels. No timings, speedups, Nsys or NCU results are represented.

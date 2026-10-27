@@ -1,0 +1,68 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900">
+<rect width="100%" height="100%" fill="#FBFBF8"/>
+<defs><marker id="arrow" viewBox="0 0 12 12" refX="9" refY="6" markerWidth="5" markerHeight="5" orient="auto"><path d="M1 1 L10 6 L1 11" fill="none" stroke="context-stroke" stroke-width="2"/></marker></defs>
+<text x="95" y="105" font-family="Bradley Hand" font-size="70" fill="#202326" text-anchor="start" font-weight="normal">
+<tspan x="95" dy="0">Same calls. Different miss outcomes.</tspan>
+</text>
+<text x="98" y="171" font-family="Arial, Helvetica, sans-serif" font-size="38" fill="#202326" text-anchor="start" font-weight="normal">
+<tspan x="98" dy="0">Hypothetical: warmup cached A, but not B</tspan>
+</text>
+<path d="M98 203 Q420 196 825 205" fill="none" stroke="#202326" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="100" y="292" font-family="Arial, Helvetica, sans-serif" font-size="44" fill="#202326" text-anchor="start" font-weight="normal">
+<tspan x="100" dy="0">Input after warmup</tspan>
+</text>
+<ellipse cx="660" cy="280" rx="53" ry="51.94" fill="#FBFBF8" stroke="#3478BA" stroke-width="5"/>
+<text x="660" y="298" font-family="Arial, Helvetica, sans-serif" font-size="49" fill="#202326" text-anchor="middle" font-weight="normal">
+<tspan x="660" dy="0">A</tspan>
+</text>
+<ellipse cx="885" cy="280" rx="53" ry="51.94" fill="#FBFBF8" stroke="#E87823" stroke-width="5"/>
+<text x="885" y="298" font-family="Arial, Helvetica, sans-serif" font-size="49" fill="#202326" text-anchor="middle" font-weight="normal">
+<tspan x="885" dy="0">B</tspan>
+</text>
+<ellipse cx="1110" cy="280" rx="53" ry="51.94" fill="#FBFBF8" stroke="#3478BA" stroke-width="5"/>
+<text x="1110" y="298" font-family="Arial, Helvetica, sans-serif" font-size="49" fill="#202326" text-anchor="middle" font-weight="normal">
+<tspan x="1110" dy="0">A</tspan>
+</text>
+<ellipse cx="1335" cy="280" rx="53" ry="51.94" fill="#FBFBF8" stroke="#E87823" stroke-width="5"/>
+<text x="1335" y="298" font-family="Arial, Helvetica, sans-serif" font-size="49" fill="#202326" text-anchor="middle" font-weight="normal">
+<tspan x="1335" dy="0">B</tspan>
+</text>
+<text x="100" y="439" font-family="Bradley Hand" font-size="48" fill="#202326" text-anchor="start" font-weight="normal">
+<tspan x="100" dy="0">Fail fast</tspan>
+</text>
+<path d="M100 484 Q800.5 482.0 1495 484" fill="none" stroke="#202326" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="660" y="447" font-family="Arial, Helvetica, sans-serif" font-size="60" fill="#3478BA" text-anchor="middle" font-weight="bold">
+<tspan x="660" dy="0">C</tspan>
+</text>
+<text x="885" y="447" font-family="Arial, Helvetica, sans-serif" font-size="60" fill="#E87823" text-anchor="middle" font-weight="bold">
+<tspan x="885" dy="0">R</tspan>
+</text>
+<text x="1110" y="447" font-family="Arial, Helvetica, sans-serif" font-size="60" fill="#3478BA" text-anchor="middle" font-weight="bold">
+<tspan x="1110" dy="0">C</tspan>
+</text>
+<text x="1335" y="447" font-family="Arial, Helvetica, sans-serif" font-size="60" fill="#E87823" text-anchor="middle" font-weight="bold">
+<tspan x="1335" dy="0">R</tspan>
+</text>
+<text x="100" y="607" font-family="Bradley Hand" font-size="48" fill="#202326" text-anchor="start" font-weight="normal">
+<tspan x="100" dy="0">Eager fallback</tspan>
+</text>
+<path d="M100 652 Q800.5 650.0 1495 652" fill="none" stroke="#202326" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="660" y="615" font-family="Arial, Helvetica, sans-serif" font-size="60" fill="#3478BA" text-anchor="middle" font-weight="bold">
+<tspan x="660" dy="0">C</tspan>
+</text>
+<text x="885" y="615" font-family="Arial, Helvetica, sans-serif" font-size="60" fill="#E87823" text-anchor="middle" font-weight="bold">
+<tspan x="885" dy="0">E</tspan>
+</text>
+<text x="1110" y="615" font-family="Arial, Helvetica, sans-serif" font-size="60" fill="#3478BA" text-anchor="middle" font-weight="bold">
+<tspan x="1110" dy="0">C</tspan>
+</text>
+<text x="1335" y="615" font-family="Arial, Helvetica, sans-serif" font-size="60" fill="#E87823" text-anchor="middle" font-weight="bold">
+<tspan x="1335" dy="0">E</tspan>
+</text>
+<text x="100" y="744" font-family="Arial, Helvetica, sans-serif" font-size="40" fill="#202326" text-anchor="start" font-weight="normal">
+<tspan x="100" dy="0">C = compiled     R = rejected     E = eager</tspan>
+</text>
+<text x="98" y="852" font-family="Arial, Helvetica, sans-serif" font-size="30" fill="#202326" text-anchor="start" font-weight="normal">
+<tspan x="98" dy="0">ILLUSTRATIVE  ·  Logical counts, not timings; no B artifact is added</tspan>
+</text>
+</svg>

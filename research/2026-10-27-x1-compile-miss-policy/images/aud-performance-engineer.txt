@@ -1,0 +1,5 @@
+ILLUSTRATIVE EDUCATIONAL DIAGRAM
+
+Performance and capacity engineers: hypothetical A, B, A, B calls after warming only A produce two valid-artifact uses and two misses. Those misses are eager or rejected according to the selected stance. Logical route counts are not latency, throughput, serving performance, or capacity evidence.
+
+Source authority: PyTorch torch.compiler.set_stance documentation: https://docs.pytorch.org/docs/2.14/generated/torch.compiler.set_stance.html. Exact API identifiers and runnable demonstration belong in the article/code. All artwork is vector source with exact editable SVG labels. No timings, speedups, Nsys or NCU results are represented.
