@@ -1,0 +1,154 @@
+{
+  "schema_version": 1,
+  "renderer": "render_x_profiles.py",
+  "renderer_sha256": "979cf3174254c658d61005831d17b85d2749fdf653faa4d0bd4af25994bf9046",
+  "canvas": [
+    1428,
+    1400
+  ],
+  "source_canvas": [
+    1400,
+    1400
+  ],
+  "content_offset": [
+    14,
+    0
+  ],
+  "content_scale": 1,
+  "observed_display_frame": [
+    520,
+    510
+  ],
+  "expected_object_fit_cover_loss_fraction": 0.0003844675124953234,
+  "method": "Unchanged square SVG nested at x=14, y=0 with 14px side margins. No source rescaling or cropping.",
+  "cards": {
+    "nsys-profile-x": {
+      "source": {
+        "path": "zymtrace/views/social-layout/nsys-profile-square.svg",
+        "sha256": "c0acffb196b36960f738a7b8b2ba5cb09babeea3afde4582f2001c6178e91e29"
+      },
+      "content_bounds": [
+        14,
+        0,
+        1400,
+        1400
+      ],
+      "outputs": {
+        "nsys-profile-x.svg": {
+          "sha256": "9ae0f0982d61d4be194b6332f59498a602fc567b8104934ce0006ad1f76a33d5",
+          "bytes": 212768
+        },
+        "nsys-profile-x.png": {
+          "sha256": "4efa3b6ae3d502a49b4e234b9c8a68e1f6866d4ebedee5ae2d11ec1fb42ab13b",
+          "bytes": 255548
+        },
+        "nsys-profile-x.preview-400.png": {
+          "sha256": "f12b49c97e786c0d33bc34aee22709a3c7373b39c0d4d20ec39a1c0d6cf90f95",
+          "bytes": 60636
+        },
+        "nsys-profile-x.preview-520.png": {
+          "sha256": "99109e83298d487124213ecdfa70781593e8e5a2dcccdf0c5cdb788d88725517",
+          "bytes": 87048
+        }
+      }
+    },
+    "ncu-profile-x": {
+      "source": {
+        "path": "zymtrace/views/social-layout/ncu-profile-square.svg",
+        "sha256": "a9a2613eeeb46e16b821af9dd1d421e520b86224ca77b61bb4d569ddd3a42a2c"
+      },
+      "content_bounds": [
+        14,
+        0,
+        1400,
+        1400
+      ],
+      "outputs": {
+        "ncu-profile-x.svg": {
+          "sha256": "3d32d0596e5396b8b4ce2cfb03af35d1e0cda1c07f826d690b8dc7ced0fe5c6e",
+          "bytes": 215414
+        },
+        "ncu-profile-x.png": {
+          "sha256": "13a0054a46f95baaa7106cb6a003ecff742840cd633f206ae1dfde313ce2ede4",
+          "bytes": 245946
+        },
+        "ncu-profile-x.preview-400.png": {
+          "sha256": "7429073ac5abccb73a20b229b6915acc922e4e20d012fc5473e60fdd3c2decfb",
+          "bytes": 56225
+        },
+        "ncu-profile-x.preview-520.png": {
+          "sha256": "582f9232d16fe8b633ecc34f997eb195eba349e1b2eb5a503ff8e30e429e0844",
+          "bytes": 80630
+        }
+      }
+    },
+    "zymtrace-without-nested-graph-breaks-x": {
+      "source": {
+        "path": "zymtrace/views/social-layout/zymtrace-without-nested-graph-breaks-square.svg",
+        "sha256": "7dea08d7e1c0d2d0b31ca842f493f6849cd2ba243d78ff0b6de31cd8d4832918"
+      },
+      "content_bounds": [
+        14,
+        0,
+        1400,
+        1400
+      ],
+      "outputs": {
+        "zymtrace-without-nested-graph-breaks-x.svg": {
+          "sha256": "4ad8b36209d64af0086b6bf9315a5a34b7f983dd4ea73e40c9a5bfb78adb308f",
+          "bytes": 56514
+        },
+        "zymtrace-without-nested-graph-breaks-x.png": {
+          "sha256": "80d5ac799296e99365fa1ccb13316804f4501e31aef4edb5d1887e40b4227a2b",
+          "bytes": 248466
+        },
+        "zymtrace-without-nested-graph-breaks-x.preview-400.png": {
+          "sha256": "296deef93e3b45923c44710ba6845543ebf623ecd78ecc600c898774672ce141",
+          "bytes": 60104
+        },
+        "zymtrace-without-nested-graph-breaks-x.preview-520.png": {
+          "sha256": "6004d2fb808c249caa56db68ca3b1ebc229a1e9fccd76ea6e92b1ff1d5e4db37",
+          "bytes": 85780
+        },
+        "zymtrace-without-nested-graph-breaks-x.stacks.json": {
+          "sha256": "da858ef29d1e92e6d12f78616acc2529e5c49dbe3a5bdce1cf3d5f19b03dd172",
+          "bytes": 385668
+        }
+      }
+    },
+    "zymtrace-with-nested-graph-breaks-x": {
+      "source": {
+        "path": "zymtrace/views/social-layout/zymtrace-with-nested-graph-breaks-square.svg",
+        "sha256": "b347e88ae7a3e568299902991d3bf3cca6c80c15fc1c01e5319a9db8fc5c1ee0"
+      },
+      "content_bounds": [
+        14,
+        0,
+        1400,
+        1400
+      ],
+      "outputs": {
+        "zymtrace-with-nested-graph-breaks-x.svg": {
+          "sha256": "e15cc43ba0af1edc3a497584fa08274245b2bf59637cd9462716b79855cd2daf",
+          "bytes": 34665
+        },
+        "zymtrace-with-nested-graph-breaks-x.png": {
+          "sha256": "00a5f359ecfbde45f44456d52a081bf6f6b32bbddfcc8500dc70671c70a6780e",
+          "bytes": 380925
+        },
+        "zymtrace-with-nested-graph-breaks-x.preview-400.png": {
+          "sha256": "2f1549381d4eb56d9962a191ce2a3c6863a257a395373c749e79085051a100e1",
+          "bytes": 83987
+        },
+        "zymtrace-with-nested-graph-breaks-x.preview-520.png": {
+          "sha256": "dd97e9b0405bb44ca419613a2a1077996792cbac0a56a268b7a32a7f58968fca",
+          "bytes": 122432
+        },
+        "zymtrace-with-nested-graph-breaks-x.stacks.json": {
+          "sha256": "9d95d9c11adf5adc5de259af1e76e6dd207af2f8e9a8ebb708a71aec643f7364",
+          "bytes": 704650
+        }
+      }
+    }
+  }
+}

@@ -66,13 +66,21 @@ Completed captures and benchmark results have not been changed.
 ## Social layouts
 
 [Social exports](social-layout/) keep the complete focused profile inside the
-platform frame. X uses one square profile per post. LinkedIn uses the
+platform frame. X uses one fitted profile per post. LinkedIn uses the
 [four-page PDF](social-layout/linkedin-profiles.pdf) for Nsys, NCU and the two
 Zymtrace profiles. Reader-reply images use a single portrait comparison.
-Large function legends remain readable at 400 pixels. Narrow flamegraph bars
+Large function legends remain readable at 400 pixels. The X export matches
+the measured 520 × 510 editor frame. LinkedIn PDF pages leave 175-pixel
+top and bottom margins for the document controls. Narrow flamegraph bars
 retain full names in the SVG tooltips and linked full-stack views.
 
 The rendered Typefully preview is checked after upload. Source-canvas bounds
 alone do not detect a platform's crop. The package gate binds actual media IDs,
 source hashes, rendered aspect ratios and visual review to saved readbacks.
 Multi-image grids are not used for these detailed scientific profiles.
+
+To reproduce the social formats, render the weighted views first, then run
+`python3 render_social_profiles.py` and `python3 render_x_profiles.py`.
+`python3 render_profile_carousel.py` also requires `pypdf` and builds the four
+PDF pages. The renderers use the existing Pango and librsvg libraries. They
+make no network or GPU calls.

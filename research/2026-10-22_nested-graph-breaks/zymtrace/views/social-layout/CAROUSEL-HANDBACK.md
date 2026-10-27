@@ -1,22 +1,24 @@
 # LinkedIn profile carousel handback
 
-Objective: retain Nsys, NCU, and both complete Zymtrace profiles in one LinkedIn PDF, with one profile view per page.
+Objective: preserve complete profile pages while keeping titles and footers clear of Typefully's top and bottom PDF viewer controls.
 
 Status: COMPLETE for local assembly. No uploads, account actions, commits, installations, or GPU work were performed.
 
-`linkedin-profiles.pdf` contains exactly four square pages, each 1050 × 1050 PDF points:
+`linkedin-profiles.pdf` contains exactly four portrait pages. Each source SVG remains 1400 × 1400 pixels and is nested unchanged at y=175 on a 1400 × 1750 page, with 175px blank buffers above and below. PDF pages measure 1050 × 1312.5 points. No source content was rescaled or cropped.
 
-1. Retained Nsys first post-warmup synchronized invocation, fitted fully inside a square page.
-2. Retained NCU single-kernel metrics, fitted fully inside a square page.
-3. Complete existing square Zymtrace profile without nested graph-break support.
-4. Complete existing square Zymtrace profile with nested graph-break support.
+Pages:
 
-`nsys-profile-square` and `ncu-profile-square` each include a PNG, SVG, 400px preview, and 520px preview. Their headings are 56px, their arm labels are 44px, and their retained PNG bytes are embedded unchanged. The image aspect ratios are preserved without cropping. Original report values and screenshots were not redrawn. Their compact report text requires opening the PDF at a larger size for detailed reading.
+1. `linkedin-page-01.svg/png`: Nsys first post-warmup synchronized invocation.
+2. `linkedin-page-02.svg/png`: NCU single-kernel metrics.
+3. `linkedin-page-03.svg/png`: Zymtrace without nested graph-break support.
+4. `linkedin-page-04.svg/png`: Zymtrace with nested graph-break support.
 
-`carousel-manifest.json` records source and output hashes, unchanged embedded-image method, image bounds, text ink bounds, and PDF page geometry. The renderer is `../render_profile_carousel.py` and uses the existing bundled Python with pypdf 6.10.0, plus `rsvg-convert -f pdf` for individual pages.
+Every page has 400px and 520px previews. These portrait PNGs match the PDF geometry and are the page images to use for the package guard. Original Nsight square pages, X square cards, and portrait comparison remain unchanged. Native LinkedIn reader replies and copy banks can keep the original portrait comparison.
 
-Validation passed: exactly four square PDF pages, embedded screenshot bytes match the retained source hashes, and every image/text bounding box fits inside its page. The two new PNG pages were inspected in full and at 400px and 520px. No clipping was observed. Existing Zymtrace cards remain unchanged.
+`carousel-manifest.json` records the source and output hashes, 1400 × 1750 page geometry, 175px content translation, scale 1, image bounds, translated text ink bounds, and PDF page dimensions. The helper `../render_profile_carousel.py` uses the existing bundled Python, pypdf, and `rsvg-convert -f pdf`. It reuses the existing source squares without rewriting them.
 
-Blockers: none for local assembly. Parent owner must upload the PDF and verify the actual Typefully LinkedIn carousel. Native LinkedIn reader replies and copy banks can keep the portrait comparison image.
+Validation passed: the output begins with `%PDF-`, contains exactly four portrait pages, and every nested SVG is structurally equal to its original after removing only its added x/y positioning attributes. Every text bounding box clears the first and last 120px of its page. The parent observed Typefully's controls covering about 116 source pixels. Both blank buffers exceed that area. All four final 400px portrait previews were inspected and show complete content without clipping. Detailed original Nsight report text requires opening the PDF at a larger size.
 
-PDF SHA-256: `397d3554ba3adb5fc0041968cb2f1a4b8566a7f7243b609d6d5cf74a967b7777`.
+Blockers: none for local assembly. Parent owner must upload the revised PDF and verify the actual Typefully carousel with controls visible.
+
+PDF SHA-256: `c094c4f72f5b05d907ecfd07c6e5bb30e8a0174b09d37eaf4ccdcf9b642a444b`.

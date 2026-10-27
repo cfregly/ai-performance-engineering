@@ -39,7 +39,8 @@
       "sum_gpu_time_fractions": 1.0,
       "images": [
         "zymtrace/views/time-weighted/zymtrace-without-nested-graph-breaks.png",
-        "zymtrace/views/social-layout/zymtrace-without-nested-graph-breaks-square.png"
+        "zymtrace/views/social-layout/zymtrace-without-nested-graph-breaks-square.png",
+        "zymtrace/views/social-layout/zymtrace-without-nested-graph-breaks-x.png"
       ]
     },
     "enabled": {
@@ -55,7 +56,8 @@
       "sum_gpu_time_fractions": 1.0,
       "images": [
         "zymtrace/views/time-weighted/zymtrace-with-nested-graph-breaks.png",
-        "zymtrace/views/social-layout/zymtrace-with-nested-graph-breaks-square.png"
+        "zymtrace/views/social-layout/zymtrace-with-nested-graph-breaks-square.png",
+        "zymtrace/views/social-layout/zymtrace-with-nested-graph-breaks-x.png"
       ]
     }
   }
