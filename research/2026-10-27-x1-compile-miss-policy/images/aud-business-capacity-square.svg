@@ -28,7 +28,7 @@
 </text>
 <text x="215" y="575" font-family="Arial, Helvetica, sans-serif" font-size="35" fill="#202326" text-anchor="start" font-weight="normal">
 <tspan x="215" dy="0">Reject or</tspan>
-<tspan x="215" dy="42.699999999999996">run eager</tspan>
+<tspan x="215" dy="42.699999999999996">run eagerly</tspan>
 </text>
 <text x="95" y="754" font-family="Bradley Hand" font-size="53" fill="#E87823" text-anchor="start" font-weight="normal">
 <tspan x="95" dy="0">3</tspan>
@@ -40,8 +40,5 @@
 <text x="215" y="805" font-family="Arial, Helvetica, sans-serif" font-size="35" fill="#202326" text-anchor="start" font-weight="normal">
 <tspan x="215" dy="0">Compiled, eager,</tspan>
 <tspan x="215" dy="42.699999999999996">or rejected</tspan>
-</text>
-<text x="72" y="1032" font-family="Arial, Helvetica, sans-serif" font-size="24" fill="#202326" text-anchor="start" font-weight="normal">
-<tspan x="72" dy="0">ILLUSTRATIVE  ·  No speed, cost or SLA result</tspan>
 </text>
 </svg>

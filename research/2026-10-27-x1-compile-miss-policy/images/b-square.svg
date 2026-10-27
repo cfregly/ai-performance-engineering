@@ -5,7 +5,7 @@
 <tspan x="70" dy="0">Same calls. Different outcomes.</tspan>
 </text>
 <text x="72" y="153" font-family="Arial, Helvetica, sans-serif" font-size="30" fill="#202326" text-anchor="start" font-weight="normal">
-<tspan x="72" dy="0">Hypothetical: warmup cached A, but not B</tspan>
+<tspan x="72" dy="0">Example: warmup cached A, but not B</tspan>
 </text>
 <path d="M74 183 Q330 178 655 185" fill="none" stroke="#202326" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
 <text x="95" y="280" font-family="Arial, Helvetica, sans-serif" font-size="40" fill="#202326" text-anchor="start" font-weight="normal">
@@ -67,9 +67,9 @@
 </text>
 <text x="95" y="895" font-family="Arial, Helvetica, sans-serif" font-size="30" fill="#202326" text-anchor="start" font-weight="normal">
 <tspan x="95" dy="0">C = compiled    R = rejected</tspan>
-<tspan x="95" dy="36.6">E = eager; no B artifact is added</tspan>
+<tspan x="95" dy="36.6">E = eager. No B artifact is added</tspan>
 </text>
 <text x="72" y="1032" font-family="Arial, Helvetica, sans-serif" font-size="24" fill="#202326" text-anchor="start" font-weight="normal">
-<tspan x="72" dy="0">ILLUSTRATIVE  ·  Logical counts, not timings</tspan>
+<tspan x="72" dy="0">Rejected calls are caught so the example continues</tspan>
 </text>
 </svg>

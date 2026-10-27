@@ -5,7 +5,7 @@
 <tspan x="95" dy="0">Same calls. Different miss outcomes.</tspan>
 </text>
 <text x="98" y="171" font-family="Arial, Helvetica, sans-serif" font-size="38" fill="#202326" text-anchor="start" font-weight="normal">
-<tspan x="98" dy="0">Hypothetical: warmup cached A, but not B</tspan>
+<tspan x="98" dy="0">Example: warmup cached A, but not B</tspan>
 </text>
 <path d="M98 203 Q420 196 825 205" fill="none" stroke="#202326" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
 <text x="100" y="292" font-family="Arial, Helvetica, sans-serif" font-size="44" fill="#202326" text-anchor="start" font-weight="normal">
@@ -63,6 +63,6 @@
 <tspan x="100" dy="0">C = compiled     R = rejected     E = eager</tspan>
 </text>
 <text x="98" y="852" font-family="Arial, Helvetica, sans-serif" font-size="30" fill="#202326" text-anchor="start" font-weight="normal">
-<tspan x="98" dy="0">ILLUSTRATIVE  ·  Logical counts, not timings; no B artifact is added</tspan>
+<tspan x="98" dy="0">Rejected calls are caught. No B artifact is added.</tspan>
 </text>
 </svg>

@@ -35,12 +35,12 @@
 </text>
 <text x="783" y="700" font-family="Arial, Helvetica, sans-serif" font-size="40" fill="#202326" text-anchor="middle" font-weight="normal">
 <tspan x="783" dy="0">Eager fallback</tspan>
-<tspan x="783" dy="48.8">Run eager</tspan>
+<tspan x="783" dy="48.8">Run eagerly</tspan>
 </text>
 <text x="540" y="920" font-family="Arial, Helvetica, sans-serif" font-size="35" fill="#202326" text-anchor="middle" font-weight="normal">
 <tspan x="540" dy="0">Choose one miss behavior</tspan>
 </text>
 <text x="72" y="1032" font-family="Arial, Helvetica, sans-serif" font-size="24" fill="#202326" text-anchor="start" font-weight="normal">
-<tspan x="72" dy="0">ILLUSTRATIVE  ·  Background compile is not promised</tspan>
+<tspan x="72" dy="0">Eager fallback runs without recompiling</tspan>
 </text>
 </svg>

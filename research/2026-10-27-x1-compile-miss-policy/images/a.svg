@@ -37,12 +37,9 @@
 </text>
 <text x="1297" y="546" font-family="Arial, Helvetica, sans-serif" font-size="47" fill="#202326" text-anchor="middle" font-weight="normal">
 <tspan x="1297" dy="0">Eager fallback</tspan>
-<tspan x="1297" dy="57.339999999999996">Run eager</tspan>
+<tspan x="1297" dy="57.339999999999996">Run eagerly</tspan>
 </text>
 <text x="800" y="774" font-family="Arial, Helvetica, sans-serif" font-size="40" fill="#202326" text-anchor="middle" font-weight="normal">
-<tspan x="800" dy="0">Fallback does not promise a background compile</tspan>
-</text>
-<text x="98" y="852" font-family="Arial, Helvetica, sans-serif" font-size="30" fill="#202326" text-anchor="start" font-weight="normal">
-<tspan x="98" dy="0">ILLUSTRATIVE</tspan>
+<tspan x="800" dy="0">Fallback runs the call without recompiling</tspan>
 </text>
 </svg>

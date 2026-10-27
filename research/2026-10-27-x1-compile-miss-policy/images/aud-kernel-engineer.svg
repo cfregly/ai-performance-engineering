@@ -5,7 +5,7 @@
 <tspan x="95" dy="0">Routing comes before kernel execution</tspan>
 </text>
 <text x="98" y="171" font-family="Arial, Helvetica, sans-serif" font-size="38" fill="#202326" text-anchor="start" font-weight="normal">
-<tspan x="98" dy="0">fullgraph=True example; no captured trace</tspan>
+<tspan x="98" dy="0">With fullgraph=True</tspan>
 </text>
 <path d="M98 203 Q420 196 825 205" fill="none" stroke="#202326" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
 <text x="100" y="270" font-family="Arial, Helvetica, sans-serif" font-size="32" fill="#202326" text-anchor="start" font-weight="normal">
@@ -18,7 +18,7 @@
 </text>
 <text x="145" y="464" font-family="Arial, Helvetica, sans-serif" font-size="41" fill="#202326" text-anchor="start" font-weight="normal">
 <tspan x="145" dy="0">Valid artifact?</tspan>
-<tspan x="145" dy="50.019999999999996">Miss: raise or run eager</tspan>
+<tspan x="145" dy="50.019999999999996">Miss: raise or run eagerly</tspan>
 </text>
 <path d="M745 365 Q895.5 363.0 1040 365" fill="none" stroke="#3478BA" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow)"/>
 <text x="875" y="320" font-family="Arial, Helvetica, sans-serif" font-size="37" fill="#3478BA" text-anchor="middle" font-weight="normal">
@@ -36,8 +36,5 @@
 </text>
 <text x="800" y="751" font-family="Arial, Helvetica, sans-serif" font-size="40" fill="#202326" text-anchor="middle" font-weight="normal">
 <tspan x="800" dy="0">With fullgraph=True, rejection stops this call</tspan>
-</text>
-<text x="98" y="852" font-family="Arial, Helvetica, sans-serif" font-size="30" fill="#202326" text-anchor="start" font-weight="normal">
-<tspan x="98" dy="0">ILLUSTRATIVE</tspan>
 </text>
 </svg>

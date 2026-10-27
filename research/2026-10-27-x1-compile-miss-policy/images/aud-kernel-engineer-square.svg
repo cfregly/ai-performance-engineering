@@ -5,7 +5,7 @@
 <tspan x="70" dy="0">Routing happens before kernels</tspan>
 </text>
 <text x="72" y="153" font-family="Arial, Helvetica, sans-serif" font-size="30" fill="#202326" text-anchor="start" font-weight="normal">
-<tspan x="72" dy="0">fullgraph=True example; no captured trace</tspan>
+<tspan x="72" dy="0">With fullgraph=True</tspan>
 </text>
 <path d="M74 183 Q330 178 655 185" fill="none" stroke="#202326" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
 <text x="95" y="270" font-family="Arial, Helvetica, sans-serif" font-size="30" fill="#202326" text-anchor="start" font-weight="normal">
@@ -31,15 +31,11 @@
 <path d="M770 650 Q773.0 670.5 770 695" fill="none" stroke="#E87823" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow)"/>
 <rect x="95" y="738" width="890" height="170" rx="22" fill="#FBFBF8" stroke="#202326" stroke-width="4"/>
 <path d="M109 741 Q504.40000000000003 736 969 741" fill="none" stroke="#202326" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<text x="540" y="810" font-family="Arial, Helvetica, sans-serif" font-size="40" fill="#202326" text-anchor="middle" font-weight="normal">
+<text x="540" y="835" font-family="Arial, Helvetica, sans-serif" font-size="40" fill="#202326" text-anchor="middle" font-weight="normal">
 <tspan x="540" dy="0">GPU kernels</tspan>
-<tspan x="540" dy="48.8">No timing is implied</tspan>
 </text>
 <text x="540" y="942" font-family="Arial, Helvetica, sans-serif" font-size="31" fill="#202326" text-anchor="middle" font-weight="normal">
 <tspan x="540" dy="0">With fullgraph=True,</tspan>
 <tspan x="540" dy="37.82">rejection stops this call</tspan>
-</text>
-<text x="72" y="1032" font-family="Arial, Helvetica, sans-serif" font-size="24" fill="#202326" text-anchor="start" font-weight="normal">
-<tspan x="72" dy="0">ILLUSTRATIVE</tspan>
 </text>
 </svg>

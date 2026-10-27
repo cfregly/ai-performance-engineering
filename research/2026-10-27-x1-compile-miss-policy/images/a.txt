@@ -1,5 +1,3 @@
-ILLUSTRATIVE EDUCATIONAL DIAGRAM
+After representative warmup, a valid cached artifact runs compiled. With fail_on_recompile selected, a call that requires recompilation raises an error. With eager_on_recompile selected, it runs eagerly.
 
-Mechanism: a valid cached artifact runs compiled in either policy. If no artifact matches after representative warmup, choose fail-on-recompile to raise or eager-on-recompile to run eagerly. The eager fallback does not promise a background compile.
-
-Source authority: PyTorch torch.compiler.set_stance documentation: https://docs.pytorch.org/docs/2.14/generated/torch.compiler.set_stance.html. Exact API identifiers and runnable demonstration belong in the article/code. All artwork is vector source with exact editable SVG labels. No timings, speedups, Nsys or NCU results are represented.
+Source: https://docs.pytorch.org/docs/2.14/generated/torch.compiler.set_stance.html

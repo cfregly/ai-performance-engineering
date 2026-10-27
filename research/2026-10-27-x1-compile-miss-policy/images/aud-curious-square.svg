@@ -27,13 +27,13 @@
 <path d="M429 550 Q663.4 545 939 550" fill="none" stroke="#E87823" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
 <text x="685" y="607" font-family="Arial, Helvetica, sans-serif" font-size="41" fill="#202326" text-anchor="middle" font-weight="normal">
 <tspan x="685" dy="0">No match</tspan>
-<tspan x="685" dy="50.019999999999996">Stop or run eager</tspan>
+<tspan x="685" dy="50.019999999999996">Stop or run eagerly</tspan>
 </text>
 <text x="95" y="891" font-family="Arial, Helvetica, sans-serif" font-size="37" fill="#202326" text-anchor="start" font-weight="normal">
-<tspan x="95" dy="0">The choice is about behavior.</tspan>
-<tspan x="95" dy="45.14">Speed still needs measurement.</tspan>
+<tspan x="95" dy="0">The miss policy decides how</tspan>
+<tspan x="95" dy="45.14">to handle an unmatched input.</tspan>
 </text>
 <text x="72" y="1032" font-family="Arial, Helvetica, sans-serif" font-size="24" fill="#202326" text-anchor="start" font-weight="normal">
-<tspan x="72" dy="0">ILLUSTRATIVE  ·  A / B are example inputs</tspan>
+<tspan x="72" dy="0">A / B are example inputs</tspan>
 </text>
 </svg>

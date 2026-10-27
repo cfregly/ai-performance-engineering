@@ -5,7 +5,7 @@
 <tspan x="70" dy="0">Count each call's route</tspan>
 </text>
 <text x="72" y="153" font-family="Arial, Helvetica, sans-serif" font-size="30" fill="#202326" text-anchor="start" font-weight="normal">
-<tspan x="72" dy="0">Hypothetical: A B A B; warmup cached only A</tspan>
+<tspan x="72" dy="0">Example: A B A B. Warmup cached only A</tspan>
 </text>
 <path d="M74 183 Q330 178 655 185" fill="none" stroke="#202326" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
 <ellipse cx="540" cy="302" rx="70" ry="68.6" fill="#FBFBF8" stroke="#202326" stroke-width="5"/>
@@ -39,6 +39,6 @@
 <tspan x="800" dy="46.36">rejected</tspan>
 </text>
 <text x="72" y="1032" font-family="Arial, Helvetica, sans-serif" font-size="24" fill="#202326" text-anchor="start" font-weight="normal">
-<tspan x="72" dy="0">ILLUSTRATIVE  ·  Counts ≠ timings</tspan>
+<tspan x="72" dy="0">Each call is independent. Rejected calls are caught.</tspan>
 </text>
 </svg>

@@ -5,7 +5,7 @@
 <tspan x="95" dy="0">See misses. Then count outcomes.</tspan>
 </text>
 <text x="98" y="171" font-family="Arial, Helvetica, sans-serif" font-size="38" fill="#202326" text-anchor="start" font-weight="normal">
-<tspan x="98" dy="0">A diagnostic sequence, not a performance result</tspan>
+<tspan x="98" dy="0">Warm up, inspect guard failures, count routes</tspan>
 </text>
 <path d="M98 203 Q420 196 825 205" fill="none" stroke="#202326" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
 <ellipse cx="292" cy="355" rx="62" ry="60.76" fill="#FBFBF8" stroke="#3478BA" stroke-width="5"/>
@@ -47,6 +47,6 @@
 <tspan x="800" dy="0">Inspect why inputs miss before changing behavior</tspan>
 </text>
 <text x="98" y="852" font-family="Arial, Helvetica, sans-serif" font-size="30" fill="#202326" text-anchor="start" font-weight="normal">
-<tspan x="98" dy="0">ILLUSTRATIVE  ·  The code shows the logging command</tspan>
+<tspan x="98" dy="0">Use recompile logs to explain misses</tspan>
 </text>
 </svg>
