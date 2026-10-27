@@ -11,7 +11,7 @@
     "implementation": "aisp_vllm_pd_proxy"
   },
   "runtime": {
-    "version": "0.26.0",
+    "version": "0.33.0.dev0+cu130.torch2141",
     "build_id": "REPLACE_WITH_VLLM_BUILD_ID"
   },
   "workload": {

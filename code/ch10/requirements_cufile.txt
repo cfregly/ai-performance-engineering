@@ -5,13 +5,16 @@
 
 # CUDA Python bindings with cuFile support (CUDA 13.0+)
 # Note: This requires CUDA 13.0+ to be installed on the system
-cuda-python>=13.0.0
+cuda-python==13.1.1
+cuda-bindings==13.1.1
+nvidia-cufile==1.15.1.6
 
 # PyTorch for GPU tensor operations
-torch>=2.0.0
+--extra-index-url https://download.pytorch.org/whl/cu130
+torch==2.14.1+cu130
 
 # NumPy for data generation
-numpy>=1.24.0
+numpy==2.1.2
 
 # Installation notes:
 # ====================
@@ -32,10 +35,9 @@ numpy>=1.24.0
 #    - NVMe SSD on supported PCIe configuration
 #    - GDS-capable system (see NVIDIA GDS documentation)
 # 
-# Fallback behavior:
-# ==================
-# If GDS is not available, the example will:
-# - Use traditional CPU-mediated path
-# - Display simulated GDS performance characteristics
-# - Serve as educational comparison
+# Failure behavior:
+# =================
+# The example exits with a concrete SKIPPED diagnostic before reporting metrics
+# when the CUDA GPU, cuFile runtime, GDS configuration, or temporary storage path
+# cannot support the real transfer. It never emits simulated performance results.
 

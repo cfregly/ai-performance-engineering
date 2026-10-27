@@ -13,7 +13,6 @@ from typing import Any
 
 import torch
 import torch.distributed as dist
-import torch.distributed._functional_collectives as funcol
 
 from ch04.distributed_helper import run_main_with_skip_status
 from ch04.gradient_compression_multigpu_result import (
@@ -46,35 +45,32 @@ class _Buffers:
 
 
 class _ObservedCollective:
-    """Adapt a functional collective tensor to the core wait-recorder protocol."""
+    """Pair an out-of-place result with its public asynchronous Work handle."""
 
-    def __init__(self, value: torch.Tensor) -> None:
+    def __init__(self, value: torch.Tensor, work: Any) -> None:
         self._value: torch.Tensor | None = value
-        self._result: torch.Tensor | None = None
+        self._work: Any | None = work
 
     def wait(self) -> torch.Tensor:
-        if self._result is None:
-            if self._value is None:
-                raise RuntimeError("Functional collective result was already released")
-            wait = getattr(self._value, "wait", None)
+        if self._value is None:
+            raise RuntimeError("Out-of-place collective result was already released")
+        if self._work is not None:
+            wait = getattr(self._work, "wait", None)
             if not callable(wait):
-                raise TypeError("Functional collective result does not expose wait()")
-            self._result = wait()
-            self._value = None
-        return self._result
+                raise TypeError("Asynchronous all-reduce did not return a Work handle")
+            wait()
+            self._work = None
+        return self._value
 
     def take_result(self) -> torch.Tensor:
         result = self.wait()
-        self._result = None
+        self._value = None
         return result
 
 
 def _profile_range(contract: GradientCompressionResultContract) -> str:
     suffix = "_comm_only" if contract.comm_only else ""
-    return (
-        f"{contract.variant}_gradient_compression_"
-        f"{contract.pair_compression}{suffix}_multigpu"
-    )
+    return f"{contract.variant}_gradient_compression_{contract.pair_compression}{suffix}_multigpu"
 
 
 def _make_input(
@@ -117,17 +113,24 @@ def _make_buffers(
 def _collective(
     value: torch.Tensor,
     *,
-    reduce_op: str,
+    reduce_op: dist.ReduceOp,
     group: Any,
     recorder: DistributedWorkRecorder | None,
 ) -> _ObservedCollective:
     collective_group = dist.group.WORLD if group is None else group
-    work = _ObservedCollective(
-        funcol.all_reduce(value, reduce_op, collective_group)
+    # The public API reduces in place. Clone first to retain the prior
+    # out-of-place result and keep the caller's payload unchanged.
+    result = value.clone()
+    work = dist.all_reduce(
+        result,
+        op=reduce_op,
+        group=collective_group,
+        async_op=True,
     )
+    observed = _ObservedCollective(result, work)
     if recorder is not None:
-        recorder.record_async_collective(work)
-    return work
+        recorder.record_async_collective(observed)
+    return observed
 
 
 def _complete(
@@ -176,7 +179,7 @@ def _global_int8_scale(
     local_max = initial_input.abs().max()
     work = _collective(
         local_max,
-        reduce_op="max",
+        reduce_op=dist.ReduceOp.MAX,
         group=group,
         recorder=recorder,
     )
@@ -268,7 +271,7 @@ def _reduce_payload(
     works = [
         _collective(
             payload[section],
-            reduce_op="sum",
+            reduce_op=dist.ReduceOp.SUM,
             group=group,
             recorder=recorder,
         )
@@ -385,9 +388,7 @@ def _build_independent_reference(
     scale = torch.where(scale == 0, torch.ones_like(scale), scale)
     reference_int = torch.zeros_like(initial_input, dtype=torch.int32)
     for rank_input in rank_inputs:
-        reference_int.add_(
-            rank_input.div(scale).round().clamp(-limit, limit).to(torch.int32)
-        )
+        reference_int.add_(rank_input.div(scale).round().clamp(-limit, limit).to(torch.int32))
     return reference_int.float().mul_(scale)
 
 
@@ -464,9 +465,7 @@ def execute_workload(
     dist.all_reduce(elapsed_max, op=dist.ReduceOp.MAX, group=group)
     time_per_iter_ms = float(elapsed_max.item()) / contract.iterations
     if not math.isfinite(time_per_iter_ms) or time_per_iter_ms <= 0:
-        raise RuntimeError(
-            "Gradient-compression worker timing must be finite and positive"
-        )
+        raise RuntimeError("Gradient-compression worker timing must be finite and positive")
     if final_output is None:
         raise RuntimeError("Gradient-compression worker produced no timed output")
     timed_output = _dequantize_comm_only(contract, final_output, buffers)
@@ -504,9 +503,7 @@ def _init_distributed() -> tuple[int, torch.device]:
         raise RuntimeError("SKIPPED: torch.distributed is unavailable")
     missing = [name for name in ("RANK", "WORLD_SIZE", "LOCAL_RANK") if name not in os.environ]
     if missing:
-        raise RuntimeError(
-            "SKIPPED: gradient-compression worker requires torchrun rank context"
-        )
+        raise RuntimeError("SKIPPED: gradient-compression worker requires torchrun rank context")
     local_rank = resolve_local_rank()
     torch.cuda.set_device(local_rank)
     if not dist.is_initialized():

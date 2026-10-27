@@ -11,11 +11,14 @@ benchmark:
 runtime_contract:
   scope: lab_specific_isolated_environment
   qualification_role: current_source_target
-  pytorch: "2.13.0+cu130_exact_readback_required"
+  pytorch: "2.14.1+cu130_exact_readback_required"
   pytorch_cuda: "13.0_exact_readback_required"
   triton: optional_recorded_at_runtime_nonbinding
   triton_role: unused_by_lab_source
   global_repository_default_changed: false
+  historical_runtime_evidence:
+    - pytorch: "2.13.0+cu130"
+      qualification_scope: historical_only_not_current_source
 workload:
   type: diagnostic
   bounded_search:

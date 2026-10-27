@@ -53,7 +53,18 @@ Edit the template first. Replace build ids, model paths, GPU ids, clocks, and ru
 
 The example P/D launch specs use the bundled process group launcher. The SGLang spec follows the `--disaggregation-mode` and `sglang_router --pd-disaggregation` contract. The vLLM spec uses `NixlConnector` and the bundled proxy, which accepts nonempty text or explicit token ids, sends a real prefill request with `do_remote_decode`, passes returned `kv_transfer_params`, and streams decode with `do_remote_prefill`.
 
-The checked template targets vLLM 0.26.0 and SGLang 0.5.20. The validated SGLang 0.5.20 build provides per-event completion `token_ids` and first-event `prompt_token_ids`. Its model gateway rejects an integer-array completion prompt, so the template uses `text_with_token_id_attestation`. The trace text was encoded with the pinned Qwen3 tokenizer and the engine must echo the exact authoritative prompt ids. A cancelled text request must echo those ids before client cancellation or the request is rejected.
+The checked template targets the repository's current source-built vLLM
+`0.33.0.dev0+cu130.torch2141` and SGLang 0.5.20. The vLLM template update is a
+runtime target, not retained B200 validation. The prior vLLM 0.26.0 template
+and its retained results remain historical evidence. Re-run the identity,
+request, P/D transfer, telemetry, and correctness gates before using the
+current template for a performance claim. The validated SGLang 0.5.20 build
+provides per-event completion `token_ids` and first-event `prompt_token_ids`.
+Its model gateway rejects an integer-array completion prompt, so the template
+uses `text_with_token_id_attestation`. The trace text was encoded with the
+pinned Qwen3 tokenizer and the engine must echo the exact authoritative prompt
+ids. A cancelled text request must echo those ids before client cancellation or
+the request is rejected.
 
 ## Endpoint and stream contract
 
@@ -85,7 +96,12 @@ For engine runs, each arm must set `CUDA_VISIBLE_DEVICES` to the complete fixed 
 
 The tool reads the observed application graphics clock from `nvidia-smi` and requires an exact match with each declared GPU clock before and after activation. On exit it sends TERM and then a bounded KILL to the owned process group. A failed startup writes `startup-cleanup.json` and proves that the fleet is idle before the next arm.
 
-The profile also fixes `admission_max_concurrency`. The replay client uses that bound. Engine launch commands should set the corresponding native server limit. The template uses vLLM `--max-num-seqs` and SGLang `--max-running-requests`. vLLM 0.26.0 does not expose `--max-num-queued-reqs`.
+The profile also fixes `admission_max_concurrency`. The replay client uses that
+bound. Engine launch commands should set the corresponding native server
+limit. The template uses vLLM `--max-num-seqs` and SGLang
+`--max-running-requests`. Confirm the current vLLM queue-limit surface from the
+live `0.33.0.dev0+cu130.torch2141` command help before adding a separate queue
+cap to the launch template.
 
 ## Native identity and telemetry
 

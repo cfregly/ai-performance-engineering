@@ -140,7 +140,7 @@ fi
 if [[ "$INSTALL_PYTHON_STACK" -eq 1 ]]; then
   VENV_DIR="${VENV_DIR:-/opt/cluster-torch2141}"
   CODE_ROOT="$(cd "${ROOT_DIR}/.." && pwd)"
-  STACK_LOCK="${CODE_ROOT}/requirements_torch2141_linux_x86_64.lock"
+  STACK_LOCK="${CODE_ROOT}/requirements_torch2141_linux_x86_64.txt"
   if [[ ! -f "${STACK_LOCK}" ]]; then
     echo "ERROR: Runtime lock is missing: ${STACK_LOCK}" >&2
     exit 1

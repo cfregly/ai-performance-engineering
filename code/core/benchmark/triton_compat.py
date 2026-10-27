@@ -16,6 +16,8 @@ probe D).  The patch is idempotent and can be disabled by setting
 
 from __future__ import annotations
 
+import functools
+import inspect
 import os
 from typing import Any
 
@@ -75,6 +77,15 @@ def _log(message: str) -> None:
         print(message)
 
 
+def _require_parameters(callable_obj: Any, expected: tuple[str, ...], label: str) -> None:
+    """Refuse to patch a private Triton callable after its contract changes."""
+    actual = tuple(inspect.signature(callable_obj).parameters)
+    if actual != expected:
+        raise RuntimeError(
+            f"Unsupported Triton callable signature for {label}: expected {expected}, got {actual}."
+        )
+
+
 def ensure_triton_compat() -> None:
     """Apply the Triton SM-architecture patch if needed."""
     global _TRITON_ARCH_PATCHED
@@ -102,7 +113,9 @@ def ensure_triton_compat() -> None:
             )
             return
     except Exception as exc:  # pragma: no cover - defensive
-        _log(f"WARNING: Triton SM arch patch: Could not check version ({exc}), applying patch anyway")
+        _log(
+            f"WARNING: Triton SM arch patch: Could not check version ({exc}), applying patch anyway"
+        )
 
     if getattr(triton_compiler, "_sm_arch_patch_applied", False):
         _TRITON_ARCH_PATCHED = True
@@ -111,25 +124,41 @@ def ensure_triton_compat() -> None:
 
     original_sm_arch = triton_compiler.sm_arch_from_capability
 
-    def _safe_sm_arch_from_capability(capability: int, _orig=original_sm_arch) -> str:
+    implementation_cls: Any = getattr(triton_compiler, "CUDABackend", None)
+    original_make_ptx = None
+    original_make_cubin = None
+    _require_parameters(
+        original_sm_arch,
+        ("capability",),
+        "sm_arch_from_capability",
+    )
+    if implementation_cls is not None and not hasattr(
+        implementation_cls, "_capability_clamp_patch"
+    ):
+        original_make_ptx = implementation_cls.make_ptx
+        original_make_cubin = implementation_cls.make_cubin
+        expected_backend_parameters = ("self", "src", "metadata", "opt", "capability")
+        _require_parameters(
+            original_make_ptx,
+            expected_backend_parameters,
+            "CUDABackend.make_ptx",
+        )
+        _require_parameters(
+            original_make_cubin,
+            expected_backend_parameters,
+            "CUDABackend.make_cubin",
+        )
+
+    @functools.wraps(original_sm_arch)
+    def _safe_sm_arch_from_capability(capability: int) -> str:
         # Single source of truth with _canonicalize_triton_arch: preserve the 'a'
         # suffix (required for arch-conditional ISA — de-suffixing sm_103a here was
         # the root cause of every "Cannot select: intrinsic
         # %llvm.nvvm.tcgen05.wait.st" abort on GB300) and clamp only GB10's
         # sm_121[a] -> sm_120, which CUDA 13.0's ptxas lacks.
-        return _canonicalize_triton_arch(_orig(capability))
+        return _canonicalize_triton_arch(original_sm_arch(capability))
 
-    try:
-        triton_compiler.sm_arch_from_capability = _safe_sm_arch_from_capability  # type: ignore[assignment]
-        triton_compiler._sm_arch_patch_applied = True  # type: ignore[attr-defined]
-    except Exception as exc:  # pragma: no cover - defensive
-        _log(f"WARNING: Triton SM arch patch: Failed to patch sm_arch_from_capability ({exc})")
-        return
-
-    implementation_cls: Any = getattr(triton_compiler, "CUDABackend", None)
-    if implementation_cls is not None and not hasattr(implementation_cls, "_capability_clamp_patch"):
-        original_make_ptx = implementation_cls.make_ptx
-        original_make_cubin = implementation_cls.make_cubin
+    if original_make_ptx is not None and original_make_cubin is not None:
 
         def _clamp_capability(capability: int) -> int:
             # Triton passes major * 10 + minor here (e.g., 121). Clamp GB10 to 120
@@ -137,18 +166,65 @@ def ensure_triton_compat() -> None:
             # Preserve 100a by leaving 100 untouched.
             return 120 if capability == 121 else capability
 
-        def _make_ptx_with_clamp(self, src, metadata, opt, capability, _orig=original_make_ptx):
-            return _orig(self, src, metadata, opt, _clamp_capability(capability))
+        @functools.wraps(original_make_ptx)
+        def _make_ptx_with_clamp(self, src, metadata, opt, capability):
+            return original_make_ptx(
+                self,
+                src,
+                metadata,
+                opt,
+                _clamp_capability(capability),
+            )
 
-        def _make_cubin_with_clamp(self, src, metadata, opt, capability, _orig=original_make_cubin):
-            return _orig(self, src, metadata, opt, _clamp_capability(capability))
+        @functools.wraps(original_make_cubin)
+        def _make_cubin_with_clamp(self, src, metadata, opt, capability):
+            return original_make_cubin(
+                self,
+                src,
+                metadata,
+                opt,
+                _clamp_capability(capability),
+            )
 
-        try:
-            implementation_cls.make_ptx = _make_ptx_with_clamp  # type: ignore[assignment]
-            implementation_cls.make_cubin = _make_cubin_with_clamp  # type: ignore[assignment]
-            implementation_cls._capability_clamp_patch = True  # type: ignore[attr-defined]
-        except Exception as exc:  # pragma: no cover - defensive
-            _log(f"WARNING: Triton SM arch patch: Failed to patch CUDABackend ({exc})")
+    missing = object()
+    mutations: list[tuple[Any, str, Any]] = []
+
+    def _set_patch_attribute(target: Any, name: str, value: Any) -> None:
+        previous = vars(target).get(name, missing)
+        mutations.append((target, name, previous))
+        setattr(target, name, value)
+
+    try:
+        _set_patch_attribute(
+            triton_compiler,
+            "sm_arch_from_capability",
+            _safe_sm_arch_from_capability,
+        )
+        if original_make_ptx is not None and original_make_cubin is not None:
+            _set_patch_attribute(implementation_cls, "make_ptx", _make_ptx_with_clamp)
+            _set_patch_attribute(implementation_cls, "make_cubin", _make_cubin_with_clamp)
+            _set_patch_attribute(implementation_cls, "_capability_clamp_patch", True)
+        _set_patch_attribute(triton_compiler, "_sm_arch_patch_applied", True)
+    except Exception as exc:
+        rollback_failures: list[str] = []
+        for target, name, previous in reversed(mutations):
+            try:
+                if previous is missing:
+                    if name in vars(target):
+                        delattr(target, name)
+                else:
+                    setattr(target, name, previous)
+            except Exception:
+                rollback_failures.append(name)
+        if rollback_failures:
+            failed_names = ", ".join(rollback_failures)
+            raise RuntimeError(
+                "Failed to install the Triton compatibility patch. "
+                f"Rollback also failed for: {failed_names}."
+            ) from exc
+        raise RuntimeError(
+            "Failed to install the Triton compatibility patch. Changes were rolled back."
+        ) from exc
 
     _TRITON_ARCH_PATCHED = True
     _log("PASSED: Triton SM arch patch: Applied successfully")

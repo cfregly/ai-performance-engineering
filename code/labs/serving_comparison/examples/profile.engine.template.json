@@ -35,7 +35,7 @@
       "architecture": "monolithic",
       "endpoint": "http://127.0.0.1:8000/v1/completions",
       "runtime": {
-        "version": "0.26.0",
+        "version": "0.33.0.dev0+cu130.torch2141",
         "build_id": "REPLACE_WITH_VLLM_BUILD_ID"
       },
       "gpu_ids": [
@@ -56,7 +56,7 @@
           {
             "url": "http://127.0.0.1:8000/version",
             "assertions": {
-              "version": "0.26.0"
+              "version": "0.33.0.dev0+cu130.torch2141"
             },
             "proves": [
               "runtime_version"
@@ -106,7 +106,7 @@
       "architecture": "prefill_decode",
       "endpoint": "http://127.0.0.1:8100/v1/completions",
       "runtime": {
-        "version": "0.26.0",
+        "version": "0.33.0.dev0+cu130.torch2141",
         "build_id": "REPLACE_WITH_VLLM_BUILD_ID"
       },
       "gpu_ids": [
@@ -136,7 +136,7 @@
           {
             "url": "http://127.0.0.1:8101/version",
             "assertions": {
-              "version": "0.26.0"
+              "version": "0.33.0.dev0+cu130.torch2141"
             },
             "proves": [
               "runtime_version"
@@ -145,7 +145,7 @@
           {
             "url": "http://127.0.0.1:8102/version",
             "assertions": {
-              "version": "0.26.0"
+              "version": "0.33.0.dev0+cu130.torch2141"
             },
             "proves": [
               "runtime_version"

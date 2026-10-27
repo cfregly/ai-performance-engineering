@@ -31,7 +31,7 @@ class DiagnosticGateError(RuntimeError):
     """Raised when a required hardware or validity gate is not satisfied."""
 
 
-_LAB_PYTORCH_VERSION = "2.13.0+cu130"
+_LAB_PYTORCH_VERSION = "2.14.1+cu130"
 _LAB_PYTORCH_CUDA_VERSION = "13.0"
 
 

@@ -264,9 +264,9 @@ def test_cute_environment_uses_shared_fa4_stack_and_preserves_separate_fa2_contr
     active_lines = [
         line for line in requirements.splitlines() if line and not line.startswith("#")
     ]
-    assert active_lines == ["-r ../../requirements_torch2141_linux_x86_64.lock"]
+    assert active_lines == ["-r ../../requirements_torch2141_linux_x86_64.txt"]
 
-    lock = (CODE / "requirements_torch2141_linux_x86_64.lock").read_text(encoding="utf-8")
+    lock = (CODE / "requirements_torch2141_linux_x86_64.txt").read_text(encoding="utf-8")
     assert "--extra-index-url https://download.pytorch.org/whl/cu130" in lock
     assert "--find-links vendor/python-wheels" in lock
     for distribution, version in CUTE_ENVIRONMENT_VERSIONS.items():

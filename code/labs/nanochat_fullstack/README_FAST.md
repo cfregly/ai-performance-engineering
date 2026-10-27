@@ -18,11 +18,13 @@ is flag-gated so benchmark rows can identify the backend and execution mode.
 ## Inference compile policy
 
 Engine uses `max-autotune` on supported Blackwell and newer runtimes by
-default. One exact runtime tuple uses `max-autotune-no-cudagraphs`: SM100,
-PyTorch `2.9.1+cu130`, CUDA `13.0`, and Triton `3.5.1`. All other capability
-and version combinations keep the configured default mode. Subclasses that
-set a custom compile mode or backend keep those settings, including on the
-affected runtime tuple.
+default. One exact historical runtime tuple uses
+`max-autotune-no-cudagraphs`: SM100, PyTorch `2.9.1+cu130`, CUDA `13.0`, and
+Triton `3.5.1`. The current PyTorch `2.14.1+cu130`, CUDA `13.0`, and Triton
+`3.8.0` target deliberately keeps `max-autotune` until a B200 cold-cache run
+either validates it or produces evidence for a new exact guard. Subclasses
+that set a custom compile mode or backend keep those settings, including on
+the affected historical tuple.
 
 A cold-cache NVIDIA B200 diagnostic ran the existing real-device `n_layer=1`
 compile-policy test in separate processes with fresh compile caches. Both

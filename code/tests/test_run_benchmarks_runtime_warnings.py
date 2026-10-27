@@ -10,6 +10,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
+import pytest
+
 from core.harness import run_benchmarks
 
 
@@ -38,7 +40,7 @@ def test_benchmark_event_logger_close_warns_when_close_fails(tmp_path, caplog) -
     assert any("close boom" in rec.message for rec in caplog.records)
 
 
-def test_reset_cuda_state_logs_cleanup_failures(caplog) -> None:
+def test_reset_cuda_state_fails_when_triton_cache_clear_fails(caplog) -> None:
     class _ExplodingGenerator:
         def set_offset(self, _value: int) -> None:
             raise RuntimeError("rng reset failed")
@@ -78,7 +80,11 @@ def test_reset_cuda_state_logs_cleanup_failures(caplog) -> None:
 
     caplog.set_level(logging.WARNING)
 
-    with patch.object(run_benchmarks, "torch", fake_torch), patch.dict(sys.modules, {"triton": fake_triton}):
+    with (
+        patch.object(run_benchmarks, "torch", fake_torch),
+        patch.dict(sys.modules, {"triton": fake_triton}),
+        pytest.raises(RuntimeError, match="Failed to clear Triton runtime cache"),
+    ):
         run_benchmarks.reset_cuda_state()
 
     messages = [record.message for record in caplog.records]

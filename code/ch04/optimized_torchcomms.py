@@ -2,21 +2,18 @@
 
 from __future__ import annotations
 
-
 import argparse
 import os
-
 import time
-from typing import Optional
 
 import torch
-import torch.nn as nn
 import torch.distributed as dist
+import torch.nn as nn
 
 from ch04.torchcomms_common import BufferedTorchcommsBlock
-from core.common.device_utils import resolve_local_rank
 from core.benchmark.verification import PrecisionFlags
 from core.benchmark.verification_mixin import VerificationPayloadMixin
+from core.common.device_utils import resolve_local_rank
 from core.harness.benchmark_harness import (
     BaseBenchmark,
     BenchmarkConfig,
@@ -34,14 +31,6 @@ PROFILE_NVTX_RANGE = "compute_kernel:torchcomms_functional"
 _DEFAULT_BATCH = 512
 _DEFAULT_HIDDEN = 4096
 
-try:
-    from torch.distributed._functional_collectives import all_reduce as functional_all_reduce
-except ImportError as exc:  # pragma: no cover - torchcomms required for this benchmark
-    functional_all_reduce = None
-    _TORCHCOMMS_IMPORT_ERROR = exc
-else:
-    _TORCHCOMMS_IMPORT_ERROR = None
-
 
 def _init_distributed() -> tuple[int, int, int]:
     if "RANK" not in os.environ or "WORLD_SIZE" not in os.environ:
@@ -55,11 +44,6 @@ def _init_distributed() -> tuple[int, int, int]:
     return rank, world_size, local_rank
 
 
-def _require_torchcomms() -> None:
-    if functional_all_reduce is None:
-        raise RuntimeError("torchcomms functional collectives are required for optimized_torchcomms")
-
-
 def _resolve_world_size() -> int:
     if not torch.cuda.is_available():
         raise RuntimeError("CUDA required for torchcomms benchmark")
@@ -71,7 +55,6 @@ def _build_block(hidden: int, device: torch.device) -> nn.Module:
 
 
 def _run_worker(iters: int, warmup: int, batch: int, hidden: int, seed: int) -> None:
-    _require_torchcomms()
     rank, world_size, local_rank = _init_distributed()
     if world_size < 1:
         raise RuntimeError("optimized_torchcomms requires >=1 GPU.")
@@ -89,19 +72,20 @@ def _run_worker(iters: int, warmup: int, batch: int, hidden: int, seed: int) -> 
     def _step() -> None:
         with torch.inference_mode():
             comm_out = comm_block.forward_prepared(inputs)
+            reduced = comm_out
             if world_size > 1:
                 current_stream = torch.cuda.current_stream()
                 comm_stream.wait_stream(current_stream)
                 with torch.cuda.stream(comm_stream):
-                    reduced = functional_all_reduce(
-                        comm_out,
-                        reduceOp="avg",
+                    work = dist.all_reduce(
+                        reduced,
+                        op=dist.ReduceOp.AVG,
                         group=dist.group.WORLD,
+                        async_op=True,
                     )
-            else:
-                reduced = comm_out
             aux_out = aux_block.forward_prepared(inputs)
             if world_size > 1:
+                work.wait()
                 current_stream.wait_stream(comm_stream)
             reduced.add_(aux_out)
 
@@ -121,7 +105,7 @@ def _run_worker(iters: int, warmup: int, batch: int, hidden: int, seed: int) -> 
 
     if rank == 0:
         print(f"rank0 tokens/s: {tokens_per_s:.2f} tokens/s")
-        print(f"rank0 time_per_iter_ms: {(elapsed / max(iters,1)) * 1000.0:.3f}")
+        print(f"rank0 time_per_iter_ms: {(elapsed / max(iters, 1)) * 1000.0:.3f}")
 
     dist.barrier()
     dist.destroy_process_group()
@@ -146,11 +130,13 @@ class OptimizedTorchcommsBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def __init__(self) -> None:
         super().__init__()
         tokens = float(_DEFAULT_BATCH * _DEFAULT_HIDDEN)
-        self.register_workload_metadata(requests_per_iteration=float(_DEFAULT_BATCH), tokens_per_iteration=tokens)
-        self._comm_block: Optional[nn.Module] = None
-        self._aux_block: Optional[nn.Module] = None
-        self._input: Optional[torch.Tensor] = None
-        self._output: Optional[torch.Tensor] = None
+        self.register_workload_metadata(
+            requests_per_iteration=float(_DEFAULT_BATCH), tokens_per_iteration=tokens
+        )
+        self._comm_block: nn.Module | None = None
+        self._aux_block: nn.Module | None = None
+        self._input: torch.Tensor | None = None
+        self._output: torch.Tensor | None = None
         self._world_size = _resolve_world_size()
         self._payload_parameter_count = 0
 
@@ -178,7 +164,12 @@ class OptimizedTorchcommsBenchmark(VerificationPayloadMixin, BaseBenchmark):
             self._output = comm_out
 
     def capture_verification_payload(self) -> None:
-        if self._output is None or self._input is None or self._comm_block is None or self._aux_block is None:
+        if (
+            self._output is None
+            or self._input is None
+            or self._comm_block is None
+            or self._aux_block is None
+        ):
             raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
         self._set_verification_payload(
             inputs={"input": self._input},
@@ -213,7 +204,7 @@ class OptimizedTorchcommsBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._output = None
         torch.cuda.empty_cache()
 
-    def validate_result(self) -> Optional[str]:
+    def validate_result(self) -> str | None:
         if self._output is None:
             return "No output captured"
         return None
@@ -231,7 +222,7 @@ class OptimizedTorchcommsBenchmark(VerificationPayloadMixin, BaseBenchmark):
             ncu_replay_mode_override=True,
         )
 
-    def get_torchrun_spec(self, config: Optional[BenchmarkConfig] = None) -> TorchrunLaunchSpec:
+    def get_torchrun_spec(self, config: BenchmarkConfig | None = None) -> TorchrunLaunchSpec:
         self._prepare_verification_payload()
         return TorchrunLaunchSpec(
             timing_source="rank0_time_per_iter_ms",

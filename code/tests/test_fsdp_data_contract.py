@@ -1,6 +1,7 @@
 """Exercise the actual FSDP data producers without launching CUDA training."""
 
 import importlib
+import inspect
 import json
 
 import pytest
@@ -16,6 +17,18 @@ PRODUCERS = [
     "baseline_fsdp2_multigpu",
     "optimized_fsdp2_multigpu",
 ]
+
+
+@pytest.mark.parametrize(
+    "name",
+    [name for name in PRODUCERS if "fsdp2" in name],
+)
+def test_fsdp2_examples_use_public_pytorch_214_api(name: str) -> None:
+    module = importlib.import_module(f"labs.train_distributed.{name}")
+    source = inspect.getsource(module)
+
+    assert "from torch.distributed.fsdp import MixedPrecisionPolicy, fully_shard" in source
+    assert "torch.distributed._composable.fsdp" not in source
 
 
 def build_loader(module, *, rank=0, world_size=2, seed=42):
