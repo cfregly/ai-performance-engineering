@@ -1,0 +1,60 @@
+Browser tab: 888034427, Title: "Typefully", URL: "https://typefully.com/".
+The following is a diff from the previous accessibility tree with ~ and + representing changed and added elements, respectively. Removed elements are summarized by ID range.
++		388 container Modal, ID: radix-_r_8o_
++			389 text Modal
++			390 text Modal content
++			391 heading Publish, Value: 3
++				392 text Publish
++			393 container
++				394 text Publish post to 𝕏  and  LinkedIn .
++			395 button Publish now
++				396 text Publish now
++			397 container
++				398 switch Description: Publish to X, Value: 1
++				399 container
++					400 image Avatar
++				401 text Chris Fregly @ cfregly
++				402 pop up button (collapsed) Everyone, ID: radix-_r_8r_, Secondary Actions: Expand
++					403 text Everyone
++				404 button Preview
++					405 text Preview
++				406 container
++					407 checkbox 1
++					408 button Auto-RT
++						409 image
++						410 text Auto-RT
++				411 container
++					412 checkbox 1
++					413 button Auto-Plug
++						414 image
++						415 text Auto-Plug
++				416 container
++					417 checkbox 0
++					418 button Auto-DM
++						419 image
++						420 text Auto-DM
++				421 switch Description: Publish to LinkedIn, Value: 1
++				422 container
++					423 image Avatar
++				424 text Chris Fregly @ cfregly
++				425 pop up button (collapsed) Anyone, ID: radix-_r_97_, Secondary Actions: Expand
++					426 text Anyone
++				427 button Preview
++					428 text Preview
++				429 switch Description: Publish to Threads, Value: 0
++				430 image
++				431 text Threads
++				432 switch Description: Publish to Mastodon, Value: 0
++				433 image
++				434 text Mastodon
++				435 switch Description: Publish to Bluesky, Value: 0
++				436 image
++				437 text Bluesky
++				438 switch Description: Publish to Substack, Value: 0
++				439 image
++				440 text Substack
++				441 text BETA
++			442 button Close
++				443 image
++				444 text Close
+The focused UI element is 388 container Modal, ID: radix-_r_8o_

@@ -124,3 +124,7 @@ The current Typefully items and native LinkedIn replies use the corrected
 captured GPU time, normalized independently to 100%. The previous record-count
 images remain in the repository as superseded capture diagnostics. Reply
 parents and person tags are unchanged. No new post or reply was sent.
+
+## Final profile layout, October 26
+
+The standalone update now has six X posts. Each illustrated post has one image, so the multi-image grid cannot crop the profiles. Its LinkedIn version has a four-page PDF: Nsys, NCU, Zymtrace without nested graph-break support, then Zymtrace with support. Blank margins keep PDF controls clear of the scientific content. Ming's direct X reply has nine posts, including four single-image profiles. Each of the four LinkedIn copy banks and native unsent replies has one portrait comparison. The full image and capture links remain in the text. These changes are draft-only, and every item remains unscheduled.

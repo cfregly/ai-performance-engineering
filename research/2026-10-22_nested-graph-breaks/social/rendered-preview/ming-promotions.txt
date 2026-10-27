@@ -1,0 +1,36 @@
+container Modal, ID: radix-_r_5h_
+			242 text Modal
+			243 text Modal content
+			244 heading Publish, Value: 3
+				245 text Publish
+			246 container
+				247 text Publish  9 posts  thread  to  𝕏 .
+			248 button Publish now
+				249 text Publish now
+			250 container
+				251 container
+					252 image Avatar
+				253 text Chris Fregly @ cfregly
+				254 pop up button (collapsed) Everyone, ID: radix-_r_5k_, Secondary Actions: Expand
+					255 text Everyone
+				256 button Preview
+					257 text Preview
+				258 text Your draft starts with an @ mention
+				259 text Starting a post with an "@" makes it a reply, visible only to the tagged account and any mutual followers. It won't appear on your followers' timelines unless they also follow the tagged account.
+				260 button Don't show again
+				261 container
+					262 checkbox 1
+					263 button Auto-RT
+						264 image
+						265 text Auto-RT
+				266 button Auto-Plug
+				267 container
+					268 checkbox 0
+					269 button Auto-DM
+						270 image
+						271 text Auto-DM
+			272 button Close
+				273 image
+				274 text Close
+
+The focused UI element is 241 container Modal, ID: radix-_r_5h_

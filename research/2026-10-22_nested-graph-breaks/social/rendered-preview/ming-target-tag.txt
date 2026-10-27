@@ -1,0 +1,304 @@
+Browser tab: 888034427, Title: "Typefully", URL: "https://typefully.com/".
+1 AXWebArea Typefully, URL: typefully.com/
+	2 container
+		4 container
+			5 container
+				6 pop up button (collapsed) Description: Open Typefully menu, ID: radix-_r_1_, Secondary Actions: Expand
+				7 button Search & Commands
+				8 button
+					9 image
+				10 button Toggle Sidebar
+					11 image
+				12 button Write
+					13 text Write
+				14 button Plan
+					15 image
+					16 text Plan
+				17 button Analyze
+					18 text Analyze
+			19 container
+				20 pop up button (collapsed) Description: Change social set (current: Chris Fregly), Secondary Actions: Expand
+					21 container
+						22 image Avatar
+					23 text Chris Fregly
+				24 container
+					25 container Draft status
+						26 button Drafts
+							27 text Drafts
+						28 button Queue
+							29 text Queue
+						30 button Posted
+							31 text Posted
+					32 button Draft filters
+					33 container
+						34 button New draft
+							35 text New draft
+						36 pop up button (collapsed) Description: Choose draft platform, ID: radix-_r_1g_, Secondary Actions: Expand
+					37 text MING REPLY · X · Profiler question · UNSCHEDULED
+					38 text @ming85GG Here are the actual Nsight Systems and Nsight Compute captures with and without nested...
+					39 container 𝕏 reply
+					40 text Reply
+					41 button Edit tags
+					42 text LI REPLY COPY · Fuad Munzerin H. · Training/defaults · NOT A POST
+					43 text This is a synthetic depth-8 compiler microbenchmark with nested Python frames, one explicit graph...
+					44 container LinkedIn post enabled
+					45 button Edit tags
+					46 text LI REPLY COPY · Abhik Sarkar · B200 portability · NOT A POST
+					47 text These measurements are from B200 only. Nested graph-break support changes how TorchDynamo/Inductor...
+					48 container LinkedIn post enabled
+					49 button Edit tags
+					50 text NEW UPDATE · Oct 26 Zymtrace · Standalone X + LinkedIn
+					51 text With nested graph-break support, B200 steady calls were 4.53× faster than without it. An...
+					52 container 𝕏 post enabled
+					53 container LinkedIn post enabled
+					54 button Edit tags
+					55 text Technical accolades and improvements: Managed Agents and plugin packaging
+					56 text Start with what you want to reuse.
+At 24:48, Anthropic MTS Michael Cohen clearly states that...
+					57 container 𝕏 post enabled
+					58 container LinkedIn post enabled
+					59 text Technical accolades and improvements: Browser control and human steering
+					60 text Visible browser control can be a product requirement.
+@AshPrabaker and Andrew Wilson offer useful...
+					61 container 𝕏 post enabled
+					62 container LinkedIn post enabled
+					63 text LI REPLY COPY · Abbas Ali Aloc · Memory · NOT A POST
+					64 text A separate seed-0 B200 pair measured 8 MiB of PyTorch allocated memory after 4,000 calls in both...
+					65 container LinkedIn post enabled
+					66 button Edit tags
+					67 text LI REPLY COPY · Devayush Rout · Break-even · NOT A POST
+					68 text The original steady-state gains were 2.87× at depth 4 and 4.53× at depth 8. In a separate...
+					69 container LinkedIn post enabled
+					70 button Edit tags
+					71 text Technical accolades and improvements: Skills, tools, and APIs
+					72 text A useful distinction from @trq212's Agent SDK workshop: use tools for bounded actions, scripts for...
+					73 container 𝕏 post enabled
+					74 container LinkedIn post enabled
+					75 text Technical accolades and improvements: Ado on Skills and subagents
+					76 text A clear answer from @adocomplete at 20:46: a Skill holds reusable expertise, and a subagent does...
+					77 container 𝕏 post enabled
+					78 container LinkedIn post enabled
+					79 text REFERENCE ONLY · LinkedIn source comment already live
+					80 text Empty draft
+					81 container LinkedIn post enabled
+					82 text Welcome to Typefully
+Here's what you can do with it:
+📝 Write without distractions
+⏰ Schedule...
+					83 container 𝕏 post enabled
+					84 container LinkedIn post enabled
+				85 container
+					86 button Help
+						87 text ?
+					88 button
+						89 image
+		90 container
+			91 container editor-wrapper
+				92 container top-right-ui
+					93 container
+						94 button Schedule draft
+							95 text Schedule
+						96 button Schedule draft in next free slot
+						97 button Review and publish draft
+							98 text Publish
+					99 checkbox Description: Open 𝕏 Realistic Preview, Value: 0
+					100 checkbox Description: Show comments, Value: 0
+						101 image
+					102 button Share & Collaborate
+						103 image
+					104 checkbox Description: Toggle Info Sidebar, Value: 0
+					105 checkbox Description: Toggle Writing Assistant, Value: 0
+						106 image
+				107 container top-left-ui
+					108 image
+					109 text Reply
+				110 container
+					111 container
+						112 container
+							113 image
+							114 text  Replying to:
+						115 button Edit link
+							116 text Edit link
+						117 link Description: Avatar, Value: x.com/ming85GG
+						241 text ming
+						242 text @ming85GG
+						120 link Description: ・4d, Value: x.com/abc/status/2113141199733453183
+						121 container
+							122 link Description: @cfregly, Value: twitter.com/cfregly
+							123 link Description: @verdacloud, Value: twitter.com/verdacloud
+							124 text  Curious how much of that 4.53x comes from fewer host-side gaps versus actual kernel scheduling — did you check the profiler trace?
+						125 container @ming85GG Here are the actual Nsight Systems and Nsight Compute captures with and without nested graph-break support on B200 / PyTorch 2.14.1+cu130. The timeline is rendered from Nsys, with exact event spans and a shared scale.
+
+Edit
+ming
+Generate descriptions
+#1
+
+NCU recorded one fused Triton kernel: 6.400 µs without nested graph-break support and 20.992 µs with it. With support, each launch does more work. These kernel durations do not measure the full-call speedup.
+
+Edit
+Tag People
+Generate descriptions
+
+With nested graph-break support, Nsys shows 2 graph executions instead of 16. Internal nodes are hidden. Unprofiled repeated calls measured the speedup. Profiling adds overhead. NCU used 9 replay passes. This image shows one call after warmup.
+
+With CUDA Graph replay off, nested graph-break support gave 3.29×/3.27× tail speedups (two seeds, last 1,000 calls), versus 4.55×/4.38× with replay on. GPU spans for profiled calls 3–5 were excluded with support. An exact CPU/GPU causal split is unproven.
+
+Download the native reports:
+
+Nsys without nested graph-break support: https://github.com/cfregly/ai-performance-engineering/raw/e57c5bb31ec492094b4fd9f73a615195aceab936/research/2026-10-22_nested-graph-breaks/profiles/fresh022/native/nsys/nsys-nested_break_depth8-seed0-baseline.nsys-rep
+
+Nsys with nested graph-break support: https://github.com/cfregly/ai-performance-engineering/raw/e57c5bb31ec492094b4fd9f73a615195aceab936/research/2026-10-22_nested-graph-breaks/profiles/fresh022/native/nsys/nsys-nested_break_depth8-seed0-candidate.nsys-rep
+
+NCU without nested graph-break support: https://github.com/cfregly/ai-performance-engineering/raw/e57c5bb31ec492094b4fd9f73a615195aceab936/research/2026-10-22_nested-graph-breaks/profiles/fresh022/native/ncu/ncu-nested_break_depth8-seed0-baseline.ncu-rep
+
+NCU with nested graph-break support: https://github.com/cfregly/ai-performance-engineering/raw/e57c5bb31ec492094b4fd9f73a615195aceab936/research/2026-10-22_nested-graph-breaks/profiles/fresh022/native/ncu/ncu-nested_break_depth8-seed0-candidate.ncu-rep
+
+Exports, Chrome traces, hashes and code: https://github.com/cfregly/ai-performance-engineering/tree/e57c5bb31ec492094b4fd9f73a615195aceab936/research/2026-10-22_nested-graph-breaks/profiles
+
+Benchmark: https://github.com/cfregly/ai-performance-engineering/blob/e57c5bb31ec492094b4fd9f73a615195aceab936/research/2026-10-22_nested-graph-breaks/benchmark.py
+
+Profile-view code: https://github.com/cfregly/ai-performance-engineering/blob/e57c5bb31ec492094b4fd9f73a615195aceab936/research/2026-10-22_nested-graph-breaks/profiles/render_profile_views.py
+
+Nsys image: https://github.com/cfregly/ai-performance-engineering/blob/e57c5bb31ec492094b4fd9f73a615195aceab936/research/2026-10-22_nested-graph-breaks/profiles/views/nsys-first-post-warmup-invocation.png
+
+NCU image: https://github.com/cfregly/ai-performance-engineering/blob/e57c5bb31ec492094b4fd9f73a615195aceab936/research/2026-10-22_nested-graph-breaks/profiles/views/ncu-single-kernel-metrics.png
+
+Zymtrace: without nested graph-break support. Bar width is the worker's share of captured GPU time (%). Full profiles now appear one per post, with larger function labels. Includes setup, warmup, timing and correctness.
+
+Edit
+Tag People
+Generate descriptions
+
+Zymtrace: with nested graph-break support. Each worker is normalized separately to 100% of its captured GPU time. These profiles do not establish a CPU/GPU causal percentage. Unprofiled timing remains the source of the speedup measurement.
+
+Edit
+Tag People
+Generate descriptions
+
+Run the example and inspect the captures:
+
+Code: https://github.com/cfregly/ai-performance-engineering/blob/2a4e3fd00dadf2380a5c413af33bb46c4727fce2/research/2026-10-22_nested-graph-breaks/benchmark.py
+
+Capture controller: https://github.com/cfregly/ai-performance-engineering/blob/2a4e3fd00dadf2380a5c413af33bb46c4727fce2/research/2026-10-22_nested-graph-breaks/zymtrace/run_capture.py
+
+Raw events + flamegraphs: https://github.com/cfregly/ai-performance-engineering/tree/7f9e981c45d5448aeacd727eabdcb8a308023732/research/2026-10-22_nested-graph-breaks/zymtrace/captures/torch2141-b200-20261026
+
+Image renderer + PNGs: https://github.com/cfregly/ai-performance-engineering/tree/c807ebb08d06e14575dfa51ffd8180695de2c5cf/research/2026-10-22_nested-graph-breaks/zymtrace/views
+							126 container
+								127 image Avatar
+								243 text Chris Fregly
+								129 image Verified account
+								244 text @cfregly
+								131 text @ming85GG  Here are the actual Nsight Systems and Nsight Compute captures with and without nested graph-break support on B200 / PyTorch 2.14.1+cu130. The timeline is rendered from Nsys, with exact event spans and a shared scale.
+								132 button ming
+									133 image
+									134 text ming
+								135 button Generate descriptions
+									136 image
+									137 text Generate descriptions
+								138 button
+									139 image
+								140 button #1
+									141 text #
+									142 text 1
+								143 button Add post below
+									144 image
+								145 button Audience & disclosures
+								146 button Add media
+								147 button Refine
+									148 image
+								149 button More options
+									150 pop up button (collapsed) Description: More options, ID: radix-_r_2r_, Secondary Actions: Expand
+							151 container
+								152 image Avatar
+								245 text Chris Fregly
+								154 image Verified account
+								246 text @cfregly
+								156 text NCU recorded one fused Triton kernel: 6.400 µs without nested graph-break support and 20.992 µs with it. With support, each launch does more work. These kernel durations do not measure the full-call speedup.
+								157 button Tag People
+									158 image
+									159 text Tag People
+								160 button Generate descriptions
+									161 image
+									162 text Generate descriptions
+							163 container
+								164 image Avatar
+								247 text Chris Fregly
+								166 image Verified account
+								248 text @cfregly
+								168 text With nested graph-break support, Nsys shows 2 graph executions instead of 16. Internal nodes are hidden. Unprofiled repeated calls measured the speedup. Profiling adds overhead. NCU used 9 replay passes. This image shows one call after warmup.
+							169 container
+								170 image Avatar
+								249 text Chris Fregly
+								172 image Verified account
+								250 text @cfregly
+								174 text With CUDA Graph replay off, nested graph-break support gave 3.29×/3.27× tail speedups (two seeds, last 1,000 calls), versus 4.55×/4.38× with replay on. GPU spans for profiled calls 3–5 were excluded with support. An exact CPU/GPU causal split is unproven.
+							175 container
+								176 image Avatar
+								251 text Chris Fregly
+								178 image Verified account
+								252 text @cfregly
+								180 text Download the native reports: Nsys without nested graph-break support:  https://github.com/cfregly/ai-performance-engineering/raw/e57c5bb31ec492094b4fd9f73a615195aceab936/research/2026-10-22_nested-graph-breaks/profiles/fresh022/native/nsys/nsys-nested_break_depth8-seed0-baseline.nsys-rep Nsys with nested graph-break support:  https://github.com/cfregly/ai-performance-engineering/raw/e57c5bb31ec492094b4fd9f73a615195aceab936/research/2026-10-22_nested-graph-breaks/profiles/fresh022/native/nsys/nsys-nested_break_depth8-seed0-candidate.nsys-rep NCU without nested graph-break support:  https://github.com/cfregly/ai-performance-engineering/raw/e57c5bb31ec492094b4fd9f73a615195aceab936/research/2026-10-22_nested-graph-breaks/profiles/fresh022/native/ncu/ncu-nested_break_depth8-seed0-baseline.ncu-rep NCU with nested graph-break support:  https://github.com/cfregly/ai-performance-engineering/raw/e57c5bb31ec492094b4fd9f73a615195aceab936/research/2026-10-22_nested-graph-breaks/profiles/fresh022/native/ncu/ncu-nested_break_depth8-seed0-candidate.ncu-rep Exports, Chrome traces, hashes and code:  https://github.com/cfregly/ai-performance-engineering/tree/e57c5bb31ec492094b4fd9f73a615195aceab936/research/2026-10-22_nested-graph-breaks/profiles
+							181 container
+								182 image Avatar
+								253 text Chris Fregly
+								184 image Verified account
+								254 text @cfregly
+								186 text Benchmark:  https://github.com/cfregly/ai-performance-engineering/blob/e57c5bb31ec492094b4fd9f73a615195aceab936/research/2026-10-22_nested-graph-breaks/benchmark.py Profile-view code:  https://github.com/cfregly/ai-performance-engineering/blob/e57c5bb31ec492094b4fd9f73a615195aceab936/research/2026-10-22_nested-graph-breaks/profiles/render_profile_views.py Nsys image:  https://github.com/cfregly/ai-performance-engineering/blob/e57c5bb31ec492094b4fd9f73a615195aceab936/research/2026-10-22_nested-graph-breaks/profiles/views/nsys-first-post-warmup-invocation.png NCU image:  https://github.com/cfregly/ai-performance-engineering/blob/e57c5bb31ec492094b4fd9f73a615195aceab936/research/2026-10-22_nested-graph-breaks/profiles/views/ncu-single-kernel-metrics.png
+								187 button Hide link preview
+								188 image Preview
+								255 text ai-performance-engineering/research/2026-10-22_nested-graph-breaks/benchmark.py at e57c5bb31ec49209…
+							190 container
+								191 image Avatar
+								256 text Chris Fregly
+								193 image Verified account
+								257 text @cfregly
+								195 text Zymtrace: without nested graph-break support. Bar width is the worker's share of captured GPU time (%). Full profiles now appear one per post, with larger function labels. Includes setup, warmup, timing and correctness.
+								196 button Tag People
+									197 image
+									198 text Tag People
+								199 button Generate descriptions
+									200 image
+									201 text Generate descriptions
+							202 container
+								203 image Avatar
+								258 text Chris Fregly
+								205 image Verified account
+								259 text @cfregly
+								207 text Zymtrace: with nested graph-break support. Each worker is normalized separately to 100% of its captured GPU time. These profiles do not establish a CPU/GPU causal percentage. Unprofiled timing remains the source of the speedup measurement.
+								208 button Tag People
+									209 image
+									210 text Tag People
+								211 button Generate descriptions
+									212 image
+									213 text Generate descriptions
+							214 container
+								215 image Avatar
+								260 text Chris Fregly
+								217 image Verified account
+								261 text @cfregly
+								219 text Run the example and inspect the captures: Code:  https://github.com/cfregly/ai-performance-engineering/blob/2a4e3fd00dadf2380a5c413af33bb46c4727fce2/research/2026-10-22_nested-graph-breaks/benchmark.py Capture controller:  https://github.com/cfregly/ai-performance-engineering/blob/2a4e3fd00dadf2380a5c413af33bb46c4727fce2/research/2026-10-22_nested-graph-breaks/zymtrace/run_capture.py Raw events + flamegraphs:  https://github.com/cfregly/ai-performance-engineering/tree/7f9e981c45d5448aeacd727eabdcb8a308023732/research/2026-10-22_nested-graph-breaks/zymtrace/captures/torch2141-b200-20261026 Image renderer + PNGs:  https://github.com/cfregly/ai-performance-engineering/tree/c807ebb08d06e14575dfa51ffd8180695de2c5cf/research/2026-10-22_nested-graph-breaks/zymtrace/views
+								220 button Hide link preview
+								221 image Preview
+								262 text ai-performance-engineering/research/2026-10-22_nested-graph-breaks/benchmark.py at 2a4e3fd00dadf238…
+						223 button Split automatically
+							224 text Split automatically
+			226 container
+				227 button Add emoji
+					228 image
+				229 button Reply or continue thread
+					230 image
+				231 button Add Thread Finisher
+					232 image
+				233 checkbox Description: Auto-numbering, Value: 0
+					234 image
+				235 button Spread the word
+				236 button Change display mode
+					237 button Change display mode
+						238 image
+				239 button Focus mode
+					240 image
+		3 text Typefully
+
+The focused UI element is 1 AXWebArea Typefully, URL: typefully.com/

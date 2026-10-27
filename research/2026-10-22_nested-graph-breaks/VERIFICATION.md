@@ -137,3 +137,9 @@ renderer passed five tests. Completed benchmark and capture files are unchanged.
 All six existing Typefully drafts and four native LinkedIn composers remain
 unsent and unscheduled, with their reply parents and mentions verified again.
 See [the current draft receipt](social/time-weighted/receipt.json).
+
+## October 26 final rendered profile check
+
+The six active Typefully drafts were read back after the final media edits. All remain drafts with no schedule or publication time. X profile posts each attach one image. The main LinkedIn draft attaches a four-page PDF with 175px margins on all sides of each 1750px square page. Actual preview geometry and visible controls were checked on every page. Four LinkedIn reply copy banks and native unsent composers use one 1400×1750 portrait comparison each. Exact reply parents and real person mentions were rechecked.
+
+[social/profile-preview.json](social/profile-preview.json) binds every final media ID to its committed source hash and saved readback. It records the geometry, full-profile visibility, label review and PDF control clearance. The pipeline checks this receipt and rejects multi-image profile grids, material cropping, distortion, mismatched media and stale draft review. Small stack labels remain available in the linked full-size files and interactive captures. This changes presentation only, with zero GPU calls or changes to completed run evidence.

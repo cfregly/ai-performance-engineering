@@ -1,0 +1,42 @@
+[
+  {
+    "loaded": true,
+    "media_id": "f6c87dce-10e6-4fe7-b41d-426c337207d8",
+    "natural_height": 1176,
+    "natural_width": 1200,
+    "object_fit": "cover",
+    "object_position": "50% 50%",
+    "rendered_height": 509.59375,
+    "rendered_width": 520
+  },
+  {
+    "loaded": true,
+    "media_id": "2f502419-edf5-4752-b5b8-842c04303f5e",
+    "natural_height": 1176,
+    "natural_width": 1200,
+    "object_fit": "cover",
+    "object_position": "50% 50%",
+    "rendered_height": 509.59375,
+    "rendered_width": 520
+  },
+  {
+    "loaded": true,
+    "media_id": "c9bd55dc-787c-4de8-8875-ebe315746e82",
+    "natural_height": 1176,
+    "natural_width": 1200,
+    "object_fit": "cover",
+    "object_position": "50% 50%",
+    "rendered_height": 509.59375,
+    "rendered_width": 520
+  },
+  {
+    "loaded": true,
+    "media_id": "bd008dd0-7af6-4a55-9fee-343fd395d3f7",
+    "natural_height": 1176,
+    "natural_width": 1200,
+    "object_fit": "cover",
+    "object_position": "50% 50%",
+    "rendered_height": 509.59375,
+    "rendered_width": 520
+  }
+]

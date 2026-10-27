@@ -2,7 +2,7 @@
   "files": [
     {
       "path": "tools/check_package.py",
-      "sha256": "50d3c71bfc2e1926a6254ee31d994eb6f0357414acf6970f38751d910007a434"
+      "sha256": "04c2550121a7032ec7268b9049143779c280b3b7ababb49b94aca8aea4cd1299"
     },
     {
       "path": "tools/test_check_package.py",
@@ -15,6 +15,14 @@
     {
       "path": "tools/test_check_profile_conventions.py",
       "sha256": "058e502218f023c599615f03c3c9b6b615505668ecd09b5e7711bbf973484878"
+    },
+    {
+      "path": "tools/check_social_preview.py",
+      "sha256": "70aeaf90c230e6be87a3594683dd63d162ebb7658470539f7fa105e784d81941"
+    },
+    {
+      "path": "tools/test_check_social_preview.py",
+      "sha256": "e8992ad2b3c9bbb89adbac87e62d9991cb28b27b898faa5c99eaed25ceff00a4"
     }
   ]
 }

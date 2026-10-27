@@ -1,0 +1,70 @@
+[
+  {
+    "images": [
+      {
+        "height": 1750,
+        "loaded": true,
+        "width": 1400
+      }
+    ],
+    "mention": "<span data-allow-partial-delete=\"true\" data-type=\"mention\" contenteditable=\"false\"><strong>Fuad Munzerin H.</strong></span>",
+    "name": "Fuad Munzerin H.",
+    "parent": "replaceableComment_urn:li:comment:(ugcPost:7518891357956907008,7519060297219911680)",
+    "profiles": [
+      "https://www.linkedin.com/in/fuadmunzerinhossain/",
+      "https://www.linkedin.com/in/fuadmunzerinhossain/"
+    ],
+    "text": "Fuad Munzerin H. This is a synthetic depth-8 compiler microbenchmark with nested Python frames, one explicit graph break, and the same 64 FP32 operations. It is not a training step or a nested-loop benchmark. Backward passes, optimizers, and representative models were not tested, so the 16-to-2 region change does not justify a general default recommendation. A separate B200 test found a steady-state gain with CUDA Graph replay off, but it does not isolate the remaining causal mechanism.\n\nCode: https://github.com/cfregly/ai-performance-engineering/blob/2a4e3fd00dadf2380a5c413af33bb46c4727fce2/research/2026-10-22_nested-graph-breaks/benchmark.py\n\nZymtrace captures: https://github.com/cfregly/ai-performance-engineering/tree/7f9e981c45d5448aeacd727eabdcb8a308023732/research/2026-10-22_nested-graph-breaks/zymtrace/captures/torch2141-b200-20261026\n\nGPU-time profiles: https://github.com/cfregly/ai-performance-engineering/blob/cd552c71f88f3756bdf60065cfb18d5604f30132/research/2026-10-22_nested-graph-breaks/zymtrace/views/social-layout/zymtrace-nested-graph-breaks-comparison-portrait.png"
+  },
+  {
+    "images": [
+      {
+        "height": 1750,
+        "loaded": true,
+        "width": 1400
+      }
+    ],
+    "mention": "<span data-allow-partial-delete=\"true\" data-type=\"mention\" contenteditable=\"false\"><strong>Abbas Ali Aloc</strong></span>",
+    "name": "Abbas Ali Aloc",
+    "parent": "replaceableComment_urn:li:comment:(ugcPost:7518891357956907008,7519006833911590913)",
+    "profiles": [
+      "https://www.linkedin.com/in/abbasalialoc/",
+      "https://www.linkedin.com/in/abbasalialoc/"
+    ],
+    "text": "Abbas Ali Aloc A separate seed-0 B200 pair measured 8 MiB of PyTorch allocated memory after 4,000 calls in both conditions. Reserved memory was 296 MiB without nested graph-break support and 168 MiB with it. First-call peak allocated memory was 170.5 MiB without support and 146.5 MiB with it. Final host RSS was 1,410.6 MiB without support and 1,416.7 MiB with it. The footprints were not identical. This does not establish a general model-memory improvement.\n\nCode: https://github.com/cfregly/ai-performance-engineering/blob/2a4e3fd00dadf2380a5c413af33bb46c4727fce2/research/2026-10-22_nested-graph-breaks/benchmark.py\n\nZymtrace captures: https://github.com/cfregly/ai-performance-engineering/tree/7f9e981c45d5448aeacd727eabdcb8a308023732/research/2026-10-22_nested-graph-breaks/zymtrace/captures/torch2141-b200-20261026\n\nGPU-time profiles: https://github.com/cfregly/ai-performance-engineering/blob/cd552c71f88f3756bdf60065cfb18d5604f30132/research/2026-10-22_nested-graph-breaks/zymtrace/views/social-layout/zymtrace-nested-graph-breaks-comparison-portrait.png"
+  },
+  {
+    "images": [
+      {
+        "height": 1750,
+        "loaded": true,
+        "width": 1400
+      }
+    ],
+    "mention": "<span data-allow-partial-delete=\"true\" data-type=\"mention\" contenteditable=\"false\"><strong>Devayush Rout</strong></span>",
+    "name": "Devayush Rout",
+    "parent": "replaceableComment_urn:li:comment:(ugcPost:7518891357956907008,7518991000019714048)",
+    "profiles": [
+      "https://www.linkedin.com/in/devayush-rout/",
+      "https://www.linkedin.com/in/devayush-rout/"
+    ],
+    "text": "Devayush Rout The original steady-state gains were 2.87× at depth 4 and 4.53× at depth 8. In a separate 4,000-call depth-8 follow-up, total wall time was ahead from call 1 in seed 0. Seed 1 crossed at call 3,007 and stayed ahead. This includes compilation and between-call time, but excludes imports, input setup, and the eager reference. With CUDA Graph replay off, neither seed broke even within 4,000 calls. These are observed crossovers, not a universal payback point.\n\nCode: https://github.com/cfregly/ai-performance-engineering/blob/2a4e3fd00dadf2380a5c413af33bb46c4727fce2/research/2026-10-22_nested-graph-breaks/benchmark.py\n\nZymtrace captures: https://github.com/cfregly/ai-performance-engineering/tree/7f9e981c45d5448aeacd727eabdcb8a308023732/research/2026-10-22_nested-graph-breaks/zymtrace/captures/torch2141-b200-20261026\n\nGPU-time profiles: https://github.com/cfregly/ai-performance-engineering/blob/cd552c71f88f3756bdf60065cfb18d5604f30132/research/2026-10-22_nested-graph-breaks/zymtrace/views/social-layout/zymtrace-nested-graph-breaks-comparison-portrait.png"
+  },
+  {
+    "images": [
+      {
+        "height": 1750,
+        "loaded": true,
+        "width": 1400
+      }
+    ],
+    "mention": "<span data-allow-partial-delete=\"true\" data-type=\"mention\" contenteditable=\"false\"><strong>Abhik Sarkar</strong></span>",
+    "name": "Abhik Sarkar",
+    "parent": "replaceableComment_urn:li:comment:(ugcPost:7518891357956907008,7518892754291216385)",
+    "profiles": [
+      "https://www.linkedin.com/in/abhiksark/",
+      "https://www.linkedin.com/in/abhiksark/"
+    ],
+    "text": "Abhik Sarkar These measurements are from B200 only. Nested graph-break support changes how TorchDynamo/Inductor compiles this synthetic workload. H100 and A100 were not tested. A separate B200 test still found a steady-state gain with CUDA Graph replay off. That does not establish portability across GPUs.\n\nCode: https://github.com/cfregly/ai-performance-engineering/blob/2a4e3fd00dadf2380a5c413af33bb46c4727fce2/research/2026-10-22_nested-graph-breaks/benchmark.py\n\nZymtrace captures: https://github.com/cfregly/ai-performance-engineering/tree/7f9e981c45d5448aeacd727eabdcb8a308023732/research/2026-10-22_nested-graph-breaks/zymtrace/captures/torch2141-b200-20261026\n\nGPU-time profiles: https://github.com/cfregly/ai-performance-engineering/blob/cd552c71f88f3756bdf60065cfb18d5604f30132/research/2026-10-22_nested-graph-breaks/zymtrace/views/social-layout/zymtrace-nested-graph-breaks-comparison-portrait.png"
+  }
+]

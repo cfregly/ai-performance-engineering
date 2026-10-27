@@ -47,5 +47,6 @@
   "evidence_cohorts": [
     "historical published primary",
     "independent fresh022 repeat"
-  ]
+  ],
+  "scientific_profiles": true
 }

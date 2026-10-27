@@ -1,0 +1,65 @@
+{
+  "id": 11481017,
+  "social_set_id": 337207,
+  "draft_id": 11481017,
+  "status": "draft",
+  "publish_state": null,
+  "created_at": "2026-10-26T03:48:00.983Z",
+  "updated_at": "2026-10-27T01:12:10.784Z",
+  "scheduled_date": null,
+  "published_at": null,
+  "draft_title": "LI REPLY COPY \u00b7 Fuad Munzerin H. \u00b7 Training/defaults \u00b7 NOT A POST",
+  "tags": [
+    "needs-review"
+  ],
+  "preview": "This is a synthetic depth-8 compiler microbenchmark with nested Python frames, one explicit graph...",
+  "share_url": null,
+  "private_url": "https://typefully.com/?d=11481017&a=337207",
+  "platforms": {
+    "x": {
+      "enabled": false
+    },
+    "linkedin": {
+      "enabled": true,
+      "posts": [
+        {
+          "text": "This is a synthetic depth-8 compiler microbenchmark with nested Python frames, one explicit graph break, and the same 64 FP32 operations. It is not a training step or a nested-loop benchmark. Backward passes, optimizers, and representative models were not tested, so the 16-to-2 region change does not justify a general default recommendation. A separate B200 test found a steady-state gain with CUDA Graph replay off, but it does not isolate the remaining causal mechanism.\n\nCode: https://github.com/cfregly/ai-performance-engineering/blob/2a4e3fd00dadf2380a5c413af33bb46c4727fce2/research/2026-10-22_nested-graph-breaks/benchmark.py\nZymtrace captures: https://github.com/cfregly/ai-performance-engineering/tree/7f9e981c45d5448aeacd727eabdcb8a308023732/research/2026-10-22_nested-graph-breaks/zymtrace/captures/torch2141-b200-20261026\nGPU-time profiles: https://github.com/cfregly/ai-performance-engineering/blob/cd552c71f88f3756bdf60065cfb18d5604f30132/research/2026-10-22_nested-graph-breaks/zymtrace/views/social-layout/zymtrace-nested-graph-breaks-comparison-portrait.png",
+          "media_ids": [
+            "bd502668-8317-4684-819a-530bc88f58d3"
+          ],
+          "linkedin_reshare_urn": null,
+          "hide_link_preview": false
+        }
+      ],
+      "settings": null
+    },
+    "mastodon": {
+      "enabled": false
+    },
+    "threads": {
+      "enabled": false
+    },
+    "bluesky": {
+      "enabled": false
+    },
+    "substack": {
+      "enabled": false
+    },
+    "x_article": null
+  },
+  "x_published_url": null,
+  "linkedin_published_url": null,
+  "mastodon_published_url": null,
+  "threads_published_url": null,
+  "bluesky_published_url": null,
+  "substack_published_url": null,
+  "x_article_published_url": null,
+  "x_post_published_at": null,
+  "linkedin_post_published_at": null,
+  "mastodon_post_published_at": null,
+  "threads_post_published_at": null,
+  "bluesky_post_published_at": null,
+  "substack_post_published_at": null,
+  "x_article_published_at": null,
+  "scratchpad_text": "CROP-SAFE MEDIA: one complete scientific image per X post. Main LinkedIn uses a four-page PDF (Nsys, NCU, and both Zymtrace profiles). Reader replies use one fitted comparison image. Verify rendered aspect ratios, labels, targets and dormant promotion settings. Unscheduled.\n\nCURRENT PROFILE VIEW: time-weighted GPU flamegraphs, percentage of captured GPU time. Correct worker/GPU filters, whole-capture scope. Old record-count views superseded. No absolute JSON time-unit conversion.\n\nCOPY BANK FOR A NATIVE LINKEDIN REPLY. Do not use Typefully Publish for this item.\nRecipient: Fuad Munzerin H. \u2014 https://www.linkedin.com/in/fuadmunzerinhossain/\nParent: comment 7519060297219911680 under https://www.linkedin.com/feed/update/urn:li:ugcPost:7518891357956907008/\nThe native Reply composer now contains the resolved person mention, concise reply, and one profile image. Nothing has been sent. Keep the native LinkedIn tab open. These composers may not survive reload. This Typefully copy is the durable backup.\nChronology: https://github.com/cfregly/ai-performance-engineering/blob/main/research/2026-10-22_nested-graph-breaks/social/CHRONOLOGY.md\n\n--- Earlier preparation notes retained ---\nDO NOT PUBLISH OR SCHEDULE. User requested unscheduled drafts only.\nReply to https://www.linkedin.com/feed/update/urn:li:ugcPost:7518891357956907008/\nLinkedIn comment ID: 7519060297219911680. Copy as a native comment under the existing post, not as a new standalone post.\nReader: Fuad Munzerin H.\nOriginal item: The 16-to-2 region collapse is the stat that should make framework teams nervous. It means the default was paying 8x the graph replay launches on exactly the nested-loop pattern that shows up in real training code. Defaults matter more than features.\n\nFresh B200 follow-up: original 8 cells in 61.296598691958934 seconds; no-CUDA-Graph 8 cells in 51.40245714318007 seconds. All 16 workers passed; both allocations released. Independent diagnostics, not a replacement for the original qualified 4.53\u00d7 result.\nEvidence: DRAFT-ANSWER-DATA.json SHA256 e77c4b0260c86fae0883e2f5e860a3d6d9299715e00cb0dbb9faddb8b391323e; compact display SHA256 d7518190c33b30383171cb30649512ac32da63432ba448ba1084290cebf2cbec. Corrected reader SHA256 dbeefdf49794b75364cca7b6aa28d1297062416b17d757d0ac713aaaa24e09f4.\nAll five CPU invocation records per trace retained; three of five geometries excluded in each flag-on candidate trace for signed endpoint boundary violations, six across the original and no-CUDA-Graph variants. No clipping, pooling, or exact CPU/GPU causal percentage.\nOriginal source: https://github.com/cfregly/ai-performance-engineering/tree/260972bfdb0f9e645bc43f03a0a49ec4650d632d/research/2026-10-22_nested-graph-breaks\nPromotion: account defaults Auto-RT ON and Auto-Plug ON within existing Creator plan, no added purchase. X reply Auto-RT ON; Auto-Plug unavailable for replies. Native LinkedIn comments: not applicable. Never arm publication while paused.\n\nREPOSITORY SOURCE OF TRUTH: code and scientific images are committed and pushed to ai-performance-engineering main at f60b45937b7a613ef7bf062bb8f4c465d106c99d. Remote main SHA and GitHub file readbacks verified. Maintained diagnostic and reader successors passed 16 focused tests but have not been GPU-executed. The recorded sources, completed B200 results, original benchmark files, and image bytes are preserved.\n{\"code_and_evidence\": \"https://github.com/cfregly/ai-performance-engineering/tree/f60b45937b7a613ef7bf062bb8f4c465d106c99d/research/2026-10-22_nested-graph-breaks/followup\", \"diagnostic\": \"https://github.com/cfregly/ai-performance-engineering/blob/f60b45937b7a613ef7bf062bb8f4c465d106c99d/research/2026-10-22_nested-graph-breaks/followup/nested_graphs_diagnostic.py\", \"reader\": \"https://github.com/cfregly/ai-performance-engineering/blob/f60b45937b7a613ef7bf062bb8f4c465d106c99d/research/2026-10-22_nested-graph-breaks/followup/retained_trace_reader.py\", \"image\": \"https://github.com/cfregly/ai-performance-engineering/blob/f60b45937b7a613ef7bf062bb8f4c465d106c99d/research/2026-10-22_nested-graph-breaks/graphs/comparison-overview.png\", \"summary\": \"https://github.com/cfregly/ai-performance-engineering/blob/f60b45937b7a613ef7bf062bb8f4c465d106c99d/research/2026-10-22_nested-graph-breaks/followup/results/summary.json\"}\nDo not publish or schedule.\n\nACTUAL PROFILER CAPTURES NOW PUBLIC: e57c5bb31ec492094b4fd9f73a615195aceab936 on ai-performance-engineering main. Both raw .nsys-rep and both .ncu-rep files are byte-exact, with existing SQLite/CSV, all8Chrome traces across3separatecohorts, qualification proofs, manifests, renderer and real profile views.\n{\"commit\": \"e57c5bb31ec492094b4fd9f73a615195aceab936\", \"captures\": \"https://github.com/cfregly/ai-performance-engineering/tree/e57c5bb31ec492094b4fd9f73a615195aceab936/research/2026-10-22_nested-graph-breaks/profiles\", \"benchmark\": \"https://github.com/cfregly/ai-performance-engineering/blob/e57c5bb31ec492094b4fd9f73a615195aceab936/research/2026-10-22_nested-graph-breaks/benchmark.py\", \"renderer\": \"https://github.com/cfregly/ai-performance-engineering/blob/e57c5bb31ec492094b4fd9f73a615195aceab936/research/2026-10-22_nested-graph-breaks/profiles/render_profile_views.py\", \"nsys_image\": \"https://github.com/cfregly/ai-performance-engineering/blob/e57c5bb31ec492094b4fd9f73a615195aceab936/research/2026-10-22_nested-graph-breaks/profiles/views/nsys-first-post-warmup-invocation.png\", \"ncu_image\": \"https://github.com/cfregly/ai-performance-engineering/blob/e57c5bb31ec492094b4fd9f73a615195aceab936/research/2026-10-22_nested-graph-breaks/profiles/views/ncu-single-kernel-metrics.png\", \"nsys_baseline\": \"https://github.com/cfregly/ai-performance-engineering/raw/e57c5bb31ec492094b4fd9f73a615195aceab936/research/2026-10-22_nested-graph-breaks/profiles/fresh022/native/nsys/nsys-nested_break_depth8-seed0-baseline.nsys-rep\", \"nsys_candidate\": \"https://github.com/cfregly/ai-performance-engineering/raw/e57c5bb31ec492094b4fd9f73a615195aceab936/research/2026-10-22_nested-graph-breaks/profiles/fresh022/native/nsys/nsys-nested_break_depth8-seed0-candidate.nsys-rep\", \"ncu_baseline\": \"https://github.com/cfregly/ai-performance-engineering/raw/e57c5bb31ec492094b4fd9f73a615195aceab936/research/2026-10-22_nested-graph-breaks/profiles/fresh022/native/ncu/ncu-nested_break_depth8-seed0-baseline.ncu-rep\", \"ncu_candidate\": \"https://github.com/cfregly/ai-performance-engineering/raw/e57c5bb31ec492094b4fd9f73a615195aceab936/research/2026-10-22_nested-graph-breaks/profiles/fresh022/native/ncu/ncu-nested_break_depth8-seed0-candidate.ncu-rep\"}\nAttached images are rendered from successful fresh022 Nsys SQLite and NCU raw-page CSV. They are not native GUI screenshots or the old structural diagram. Nsys graph-level spans are separate from standalone copy kernels. NCU has one matching fused kernel per arm. The later replay-off diagnostic and original published cohort remain separate. No exact causal percentage, clipping, new timing, profiler run or export. Social drafts must remain unscheduled.\n\nPERSON TAG REQUIRED WHEN PUBLISHING: Open Reply on Fuad Munzerin H.\u2019s exact comment ID above. Native LinkedIn Reply inserts a real person mention. Confirm the chip links to https://www.linkedin.com/in/fuadmunzerinhossain/ before submitting. Typefully personal mentions are limited to connected/accessible accounts, so plain @name text is not a substitute. Do not publish this draft as a standalone post. No notification has been sent while this is a draft.\n"
+}

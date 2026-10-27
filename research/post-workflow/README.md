@@ -29,3 +29,7 @@ The wording check covers public article, social copy, and image captions. It
 leaves code examples, raw measurements, profiler exports, and archived sources
 intact. The local posts workspace uses this same byte-identical validator.
 Update this snapshot and tests whenever that validator changes.
+
+## Scientific profile previews
+
+Declare `scientific_profiles: true` in a package manifest and follow [PROFILE_CONVENTIONS.md](PROFILE_CONVENTIONS.md). Run `python3 research/post-workflow/tools/check_package.py /absolute/package/path`. The preview gate binds every media ID to its source file, checks all document pages and rejects crop or overlay failures. Review the final Typefully editor and phone-width preview after upload. Keep source, final draft, schedule and publication as separate states.

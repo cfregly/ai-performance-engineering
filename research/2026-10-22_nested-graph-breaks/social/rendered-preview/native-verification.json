@@ -1,0 +1,38 @@
+{
+  "checked_at": "2026-10-27T01:30:32.954696+00:00",
+  "sent": false,
+  "checks": [
+    {
+      "draft_id": 11481014,
+      "person": "Abhik Sarkar",
+      "parent_verified": true,
+      "native_mention_verified": true,
+      "image_loaded": true,
+      "text_matches_copy_bank": true
+    },
+    {
+      "draft_id": 11481015,
+      "person": "Devayush Rout",
+      "parent_verified": true,
+      "native_mention_verified": true,
+      "image_loaded": true,
+      "text_matches_copy_bank": true
+    },
+    {
+      "draft_id": 11481016,
+      "person": "Abbas Ali Aloc",
+      "parent_verified": true,
+      "native_mention_verified": true,
+      "image_loaded": true,
+      "text_matches_copy_bank": true
+    },
+    {
+      "draft_id": 11481017,
+      "person": "Fuad Munzerin H.",
+      "parent_verified": true,
+      "native_mention_verified": true,
+      "image_loaded": true,
+      "text_matches_copy_bank": true
+    }
+  ]
+}

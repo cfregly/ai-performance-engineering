@@ -1,0 +1,671 @@
+{
+  "schema_version": 1,
+  "verified": true,
+  "checked_at": "2026-10-27T01:30:32.954696+00:00",
+  "scope": "Final draft media and rendered Typefully previews. No publication or schedule. Tiny stack labels remain available in the linked full-resolution images and interactive captures.",
+  "platforms": {
+    "x": {
+      "draft_id": 11497664,
+      "platform": "x",
+      "view": "editor",
+      "raw_readback": {
+        "path": "social/rendered-preview/11497664.json",
+        "sha256": "7e73f7358ddaf0d843871533244570775416236e487629a3d0b27d53d32047b7"
+      },
+      "images": [
+        {
+          "media_id": "5c6b9fc6-c22a-4473-a766-d737a3d02f6a",
+          "natural_height": 675,
+          "natural_width": 1200,
+          "object_fit": "cover",
+          "object_position": "50% 50%",
+          "rendered_height": 292.5,
+          "rendered_width": 520,
+          "source_path": "image.png",
+          "source_sha256": "80224ffc4fbbe69a7baea869b6b1aa5e3ff19a0ee892235682f10e914dd7a4f7",
+          "preview_group_size": 1,
+          "visual_review": {
+            "complete_profile": true,
+            "headings_visible": true,
+            "key_labels_readable": true,
+            "reviewer": "Codex: actual Typefully editor and realistic previews, plus full-size and feed-size image review"
+          }
+        },
+        {
+          "media_id": "f6c87dce-10e6-4fe7-b41d-426c337207d8",
+          "natural_height": 1176,
+          "natural_width": 1200,
+          "object_fit": "cover",
+          "object_position": "50% 50%",
+          "rendered_height": 509.59375,
+          "rendered_width": 520,
+          "source_path": "zymtrace/views/social-layout/nsys-profile-x.png",
+          "source_sha256": "4efa3b6ae3d502a49b4e234b9c8a68e1f6866d4ebedee5ae2d11ec1fb42ab13b",
+          "preview_group_size": 1,
+          "visual_review": {
+            "complete_profile": true,
+            "headings_visible": true,
+            "key_labels_readable": true,
+            "reviewer": "Codex: actual Typefully editor and realistic previews, plus full-size and feed-size image review"
+          }
+        },
+        {
+          "media_id": "2f502419-edf5-4752-b5b8-842c04303f5e",
+          "natural_height": 1176,
+          "natural_width": 1200,
+          "object_fit": "cover",
+          "object_position": "50% 50%",
+          "rendered_height": 509.59375,
+          "rendered_width": 520,
+          "source_path": "zymtrace/views/social-layout/ncu-profile-x.png",
+          "source_sha256": "13a0054a46f95baaa7106cb6a003ecff742840cd633f206ae1dfde313ce2ede4",
+          "preview_group_size": 1,
+          "visual_review": {
+            "complete_profile": true,
+            "headings_visible": true,
+            "key_labels_readable": true,
+            "reviewer": "Codex: actual Typefully editor and realistic previews, plus full-size and feed-size image review"
+          }
+        },
+        {
+          "media_id": "c9bd55dc-787c-4de8-8875-ebe315746e82",
+          "natural_height": 1176,
+          "natural_width": 1200,
+          "object_fit": "cover",
+          "object_position": "50% 50%",
+          "rendered_height": 509.59375,
+          "rendered_width": 520,
+          "source_path": "zymtrace/views/social-layout/zymtrace-without-nested-graph-breaks-x.png",
+          "source_sha256": "80d5ac799296e99365fa1ccb13316804f4501e31aef4edb5d1887e40b4227a2b",
+          "preview_group_size": 1,
+          "visual_review": {
+            "complete_profile": true,
+            "headings_visible": true,
+            "key_labels_readable": true,
+            "reviewer": "Codex: actual Typefully editor and realistic previews, plus full-size and feed-size image review"
+          }
+        },
+        {
+          "media_id": "bd008dd0-7af6-4a55-9fee-343fd395d3f7",
+          "natural_height": 1176,
+          "natural_width": 1200,
+          "object_fit": "cover",
+          "object_position": "50% 50%",
+          "rendered_height": 509.59375,
+          "rendered_width": 520,
+          "source_path": "zymtrace/views/social-layout/zymtrace-with-nested-graph-breaks-x.png",
+          "source_sha256": "00a5f359ecfbde45f44456d52a081bf6f6b32bbddfcc8500dc70671c70a6780e",
+          "preview_group_size": 1,
+          "visual_review": {
+            "complete_profile": true,
+            "headings_visible": true,
+            "key_labels_readable": true,
+            "reviewer": "Codex: actual Typefully editor and realistic previews, plus full-size and feed-size image review"
+          }
+        }
+      ],
+      "attachment_sources": {
+        "5c6b9fc6-c22a-4473-a766-d737a3d02f6a": {
+          "path": "image.png",
+          "sha256": "80224ffc4fbbe69a7baea869b6b1aa5e3ff19a0ee892235682f10e914dd7a4f7",
+          "media_type": "image"
+        },
+        "f6c87dce-10e6-4fe7-b41d-426c337207d8": {
+          "path": "zymtrace/views/social-layout/nsys-profile-x.png",
+          "sha256": "4efa3b6ae3d502a49b4e234b9c8a68e1f6866d4ebedee5ae2d11ec1fb42ab13b",
+          "media_type": "image"
+        },
+        "2f502419-edf5-4752-b5b8-842c04303f5e": {
+          "path": "zymtrace/views/social-layout/ncu-profile-x.png",
+          "sha256": "13a0054a46f95baaa7106cb6a003ecff742840cd633f206ae1dfde313ce2ede4",
+          "media_type": "image"
+        },
+        "c9bd55dc-787c-4de8-8875-ebe315746e82": {
+          "path": "zymtrace/views/social-layout/zymtrace-without-nested-graph-breaks-x.png",
+          "sha256": "80d5ac799296e99365fa1ccb13316804f4501e31aef4edb5d1887e40b4227a2b",
+          "media_type": "image"
+        },
+        "bd008dd0-7af6-4a55-9fee-343fd395d3f7": {
+          "path": "zymtrace/views/social-layout/zymtrace-with-nested-graph-breaks-x.png",
+          "sha256": "00a5f359ecfbde45f44456d52a081bf6f6b32bbddfcc8500dc70671c70a6780e",
+          "media_type": "image"
+        }
+      }
+    },
+    "linkedin": {
+      "draft_id": 11497664,
+      "platform": "linkedin",
+      "view": "editor",
+      "raw_readback": {
+        "path": "social/rendered-preview/11497664.json",
+        "sha256": "7e73f7358ddaf0d843871533244570775416236e487629a3d0b27d53d32047b7"
+      },
+      "images": [
+        {
+          "page_index": 1,
+          "natural_height": 2625,
+          "natural_width": 2625,
+          "object_fit": "contain",
+          "object_position": "50% 50%",
+          "overlay_insets": {
+            "bottom": 44,
+            "left": 0,
+            "right": 44,
+            "top": 45.75
+          },
+          "rendered_height": 554,
+          "rendered_width": 554,
+          "media_id": "545829b2-a578-43b5-8362-029d70a7c1cc",
+          "source_path": "zymtrace/views/social-layout/linkedin-page-01.png",
+          "source_sha256": "c15f5229c51fae7a01bb2df8f28ea13d22bec1832556f93eda22a64d3ab448dc",
+          "document_source_path": "zymtrace/views/social-layout/linkedin-profiles.pdf",
+          "document_sha256": "13f3daf0e1ae2278725943cc6079cbbc91dd9ca22f020f217c4a40f3cc8f4a72",
+          "safe_content_box": [
+            175,
+            175,
+            1400,
+            1400
+          ],
+          "preview_group_size": 1,
+          "visual_review": {
+            "complete_profile": true,
+            "headings_visible": true,
+            "key_labels_readable": true,
+            "reviewer": "Codex: actual Typefully editor and realistic previews, plus full-size and feed-size image review",
+            "controls_clear": true
+          }
+        },
+        {
+          "page_index": 2,
+          "natural_height": 2625,
+          "natural_width": 2625,
+          "object_fit": "contain",
+          "object_position": "50% 50%",
+          "overlay_insets": {
+            "bottom": 44,
+            "left": 44,
+            "right": 44,
+            "top": 45.75
+          },
+          "rendered_height": 554,
+          "rendered_width": 554,
+          "media_id": "545829b2-a578-43b5-8362-029d70a7c1cc",
+          "source_path": "zymtrace/views/social-layout/linkedin-page-02.png",
+          "source_sha256": "ef2ba905f3ece5c2506a5f90bc769928efc34690e1020c68c870f7017a642a63",
+          "document_source_path": "zymtrace/views/social-layout/linkedin-profiles.pdf",
+          "document_sha256": "13f3daf0e1ae2278725943cc6079cbbc91dd9ca22f020f217c4a40f3cc8f4a72",
+          "safe_content_box": [
+            175,
+            175,
+            1400,
+            1400
+          ],
+          "preview_group_size": 1,
+          "visual_review": {
+            "complete_profile": true,
+            "headings_visible": true,
+            "key_labels_readable": true,
+            "reviewer": "Codex: actual Typefully editor and realistic previews, plus full-size and feed-size image review",
+            "controls_clear": true
+          }
+        },
+        {
+          "page_index": 3,
+          "natural_height": 2625,
+          "natural_width": 2625,
+          "object_fit": "contain",
+          "object_position": "50% 50%",
+          "overlay_insets": {
+            "bottom": 44,
+            "left": 44,
+            "right": 44,
+            "top": 45.75
+          },
+          "rendered_height": 554,
+          "rendered_width": 554,
+          "media_id": "545829b2-a578-43b5-8362-029d70a7c1cc",
+          "source_path": "zymtrace/views/social-layout/linkedin-page-03.png",
+          "source_sha256": "d79550e14f2ce9805b894644d1b279ab0635c1defdd9b25736a544d40b66cba4",
+          "document_source_path": "zymtrace/views/social-layout/linkedin-profiles.pdf",
+          "document_sha256": "13f3daf0e1ae2278725943cc6079cbbc91dd9ca22f020f217c4a40f3cc8f4a72",
+          "safe_content_box": [
+            175,
+            175,
+            1400,
+            1400
+          ],
+          "preview_group_size": 1,
+          "visual_review": {
+            "complete_profile": true,
+            "headings_visible": true,
+            "key_labels_readable": true,
+            "reviewer": "Codex: actual Typefully editor and realistic previews, plus full-size and feed-size image review",
+            "controls_clear": true
+          }
+        },
+        {
+          "page_index": 4,
+          "natural_height": 2625,
+          "natural_width": 2625,
+          "object_fit": "contain",
+          "object_position": "50% 50%",
+          "overlay_insets": {
+            "bottom": 44,
+            "left": 44,
+            "right": 0,
+            "top": 45.75
+          },
+          "rendered_height": 554,
+          "rendered_width": 554,
+          "media_id": "545829b2-a578-43b5-8362-029d70a7c1cc",
+          "source_path": "zymtrace/views/social-layout/linkedin-page-04.png",
+          "source_sha256": "b8dfb4a54fafca6763cbab0440ff87f110b5405c5850483944df7aed846e0c5a",
+          "document_source_path": "zymtrace/views/social-layout/linkedin-profiles.pdf",
+          "document_sha256": "13f3daf0e1ae2278725943cc6079cbbc91dd9ca22f020f217c4a40f3cc8f4a72",
+          "safe_content_box": [
+            175,
+            175,
+            1400,
+            1400
+          ],
+          "preview_group_size": 1,
+          "visual_review": {
+            "complete_profile": true,
+            "headings_visible": true,
+            "key_labels_readable": true,
+            "reviewer": "Codex: actual Typefully editor and realistic previews, plus full-size and feed-size image review",
+            "controls_clear": true
+          }
+        }
+      ],
+      "attachment_sources": {
+        "545829b2-a578-43b5-8362-029d70a7c1cc": {
+          "path": "zymtrace/views/social-layout/linkedin-profiles.pdf",
+          "sha256": "13f3daf0e1ae2278725943cc6079cbbc91dd9ca22f020f217c4a40f3cc8f4a72",
+          "media_type": "pdf",
+          "page_count": 4
+        }
+      }
+    }
+  },
+  "additional_drafts": [
+    {
+      "draft_id": 11481018,
+      "platform": "x",
+      "view": "editor",
+      "raw_readback": {
+        "path": "social/rendered-preview/11481018.json",
+        "sha256": "a3a466130c67759cbe52bfa56790909c68006fea632ba7cbd6d82f84a5dcf2f7"
+      },
+      "images": [
+        {
+          "media_id": "f6c87dce-10e6-4fe7-b41d-426c337207d8",
+          "natural_height": 1176,
+          "natural_width": 1200,
+          "object_fit": "cover",
+          "object_position": "50% 50%",
+          "rendered_height": 509.59375,
+          "rendered_width": 520,
+          "source_path": "zymtrace/views/social-layout/nsys-profile-x.png",
+          "source_sha256": "4efa3b6ae3d502a49b4e234b9c8a68e1f6866d4ebedee5ae2d11ec1fb42ab13b",
+          "preview_group_size": 1,
+          "visual_review": {
+            "complete_profile": true,
+            "headings_visible": true,
+            "key_labels_readable": true,
+            "reviewer": "Codex: actual Typefully editor and realistic previews, plus full-size and feed-size image review"
+          }
+        },
+        {
+          "media_id": "2f502419-edf5-4752-b5b8-842c04303f5e",
+          "natural_height": 1176,
+          "natural_width": 1200,
+          "object_fit": "cover",
+          "object_position": "50% 50%",
+          "rendered_height": 509.59375,
+          "rendered_width": 520,
+          "source_path": "zymtrace/views/social-layout/ncu-profile-x.png",
+          "source_sha256": "13a0054a46f95baaa7106cb6a003ecff742840cd633f206ae1dfde313ce2ede4",
+          "preview_group_size": 1,
+          "visual_review": {
+            "complete_profile": true,
+            "headings_visible": true,
+            "key_labels_readable": true,
+            "reviewer": "Codex: actual Typefully editor and realistic previews, plus full-size and feed-size image review"
+          }
+        },
+        {
+          "media_id": "c9bd55dc-787c-4de8-8875-ebe315746e82",
+          "natural_height": 1176,
+          "natural_width": 1200,
+          "object_fit": "cover",
+          "object_position": "50% 50%",
+          "rendered_height": 509.59375,
+          "rendered_width": 520,
+          "source_path": "zymtrace/views/social-layout/zymtrace-without-nested-graph-breaks-x.png",
+          "source_sha256": "80d5ac799296e99365fa1ccb13316804f4501e31aef4edb5d1887e40b4227a2b",
+          "preview_group_size": 1,
+          "visual_review": {
+            "complete_profile": true,
+            "headings_visible": true,
+            "key_labels_readable": true,
+            "reviewer": "Codex: actual Typefully editor and realistic previews, plus full-size and feed-size image review"
+          }
+        },
+        {
+          "media_id": "bd008dd0-7af6-4a55-9fee-343fd395d3f7",
+          "natural_height": 1176,
+          "natural_width": 1200,
+          "object_fit": "cover",
+          "object_position": "50% 50%",
+          "rendered_height": 509.59375,
+          "rendered_width": 520,
+          "source_path": "zymtrace/views/social-layout/zymtrace-with-nested-graph-breaks-x.png",
+          "source_sha256": "00a5f359ecfbde45f44456d52a081bf6f6b32bbddfcc8500dc70671c70a6780e",
+          "preview_group_size": 1,
+          "visual_review": {
+            "complete_profile": true,
+            "headings_visible": true,
+            "key_labels_readable": true,
+            "reviewer": "Codex: actual Typefully editor and realistic previews, plus full-size and feed-size image review"
+          }
+        }
+      ],
+      "attachment_sources": {
+        "f6c87dce-10e6-4fe7-b41d-426c337207d8": {
+          "path": "zymtrace/views/social-layout/nsys-profile-x.png",
+          "sha256": "4efa3b6ae3d502a49b4e234b9c8a68e1f6866d4ebedee5ae2d11ec1fb42ab13b",
+          "media_type": "image"
+        },
+        "2f502419-edf5-4752-b5b8-842c04303f5e": {
+          "path": "zymtrace/views/social-layout/ncu-profile-x.png",
+          "sha256": "13a0054a46f95baaa7106cb6a003ecff742840cd633f206ae1dfde313ce2ede4",
+          "media_type": "image"
+        },
+        "c9bd55dc-787c-4de8-8875-ebe315746e82": {
+          "path": "zymtrace/views/social-layout/zymtrace-without-nested-graph-breaks-x.png",
+          "sha256": "80d5ac799296e99365fa1ccb13316804f4501e31aef4edb5d1887e40b4227a2b",
+          "media_type": "image"
+        },
+        "bd008dd0-7af6-4a55-9fee-343fd395d3f7": {
+          "path": "zymtrace/views/social-layout/zymtrace-with-nested-graph-breaks-x.png",
+          "sha256": "00a5f359ecfbde45f44456d52a081bf6f6b32bbddfcc8500dc70671c70a6780e",
+          "media_type": "image"
+        }
+      }
+    },
+    {
+      "draft_id": 11481014,
+      "platform": "linkedin",
+      "view": "editor",
+      "raw_readback": {
+        "path": "social/rendered-preview/11481014.json",
+        "sha256": "d1d247a6f2ed132417b57c0a9c4c739252cde474dae9ed0b42bc66cdb2bef8bf"
+      },
+      "images": [
+        {
+          "media_id": "bd502668-8317-4684-819a-530bc88f58d3",
+          "natural_height": 1500,
+          "natural_width": 1200,
+          "object_fit": "cover",
+          "object_position": "50% 50%",
+          "rendered_height": 635.9921875,
+          "rendered_width": 508.796875,
+          "source_path": "zymtrace/views/social-layout/zymtrace-nested-graph-breaks-comparison-portrait.png",
+          "source_sha256": "6031543582f04270b4c4c4da60fdbc61b78ffa6450022b74a9116160b5b4def9",
+          "preview_group_size": 1,
+          "visual_review": {
+            "complete_profile": true,
+            "headings_visible": true,
+            "key_labels_readable": true,
+            "reviewer": "Codex: actual Typefully editor and realistic previews, plus full-size and feed-size image review"
+          }
+        }
+      ],
+      "attachment_sources": {
+        "bd502668-8317-4684-819a-530bc88f58d3": {
+          "path": "zymtrace/views/social-layout/zymtrace-nested-graph-breaks-comparison-portrait.png",
+          "sha256": "6031543582f04270b4c4c4da60fdbc61b78ffa6450022b74a9116160b5b4def9",
+          "media_type": "image"
+        }
+      }
+    },
+    {
+      "draft_id": 11481015,
+      "platform": "linkedin",
+      "view": "editor",
+      "raw_readback": {
+        "path": "social/rendered-preview/11481015.json",
+        "sha256": "04976885cb949c307c3bd7fb62dd1453264dbb511500897c8222b874e580109d"
+      },
+      "images": [
+        {
+          "media_id": "bd502668-8317-4684-819a-530bc88f58d3",
+          "natural_height": 1500,
+          "natural_width": 1200,
+          "object_fit": "cover",
+          "object_position": "50% 50%",
+          "rendered_height": 635.9921875,
+          "rendered_width": 508.796875,
+          "source_path": "zymtrace/views/social-layout/zymtrace-nested-graph-breaks-comparison-portrait.png",
+          "source_sha256": "6031543582f04270b4c4c4da60fdbc61b78ffa6450022b74a9116160b5b4def9",
+          "preview_group_size": 1,
+          "visual_review": {
+            "complete_profile": true,
+            "headings_visible": true,
+            "key_labels_readable": true,
+            "reviewer": "Codex: actual Typefully editor and realistic previews, plus full-size and feed-size image review"
+          }
+        }
+      ],
+      "attachment_sources": {
+        "bd502668-8317-4684-819a-530bc88f58d3": {
+          "path": "zymtrace/views/social-layout/zymtrace-nested-graph-breaks-comparison-portrait.png",
+          "sha256": "6031543582f04270b4c4c4da60fdbc61b78ffa6450022b74a9116160b5b4def9",
+          "media_type": "image"
+        }
+      }
+    },
+    {
+      "draft_id": 11481016,
+      "platform": "linkedin",
+      "view": "editor",
+      "raw_readback": {
+        "path": "social/rendered-preview/11481016.json",
+        "sha256": "6d09f790126c0d7e843cf19a61b86f375dc0101425b9bf701bc0aa4638e61345"
+      },
+      "images": [
+        {
+          "media_id": "bd502668-8317-4684-819a-530bc88f58d3",
+          "natural_height": 1500,
+          "natural_width": 1200,
+          "object_fit": "cover",
+          "object_position": "50% 50%",
+          "rendered_height": 635.9921875,
+          "rendered_width": 508.796875,
+          "source_path": "zymtrace/views/social-layout/zymtrace-nested-graph-breaks-comparison-portrait.png",
+          "source_sha256": "6031543582f04270b4c4c4da60fdbc61b78ffa6450022b74a9116160b5b4def9",
+          "preview_group_size": 1,
+          "visual_review": {
+            "complete_profile": true,
+            "headings_visible": true,
+            "key_labels_readable": true,
+            "reviewer": "Codex: actual Typefully editor and realistic previews, plus full-size and feed-size image review"
+          }
+        }
+      ],
+      "attachment_sources": {
+        "bd502668-8317-4684-819a-530bc88f58d3": {
+          "path": "zymtrace/views/social-layout/zymtrace-nested-graph-breaks-comparison-portrait.png",
+          "sha256": "6031543582f04270b4c4c4da60fdbc61b78ffa6450022b74a9116160b5b4def9",
+          "media_type": "image"
+        }
+      }
+    },
+    {
+      "draft_id": 11481017,
+      "platform": "linkedin",
+      "view": "editor",
+      "raw_readback": {
+        "path": "social/rendered-preview/11481017.json",
+        "sha256": "324453ce8119f8044f8a81949fb6c69bbaec244f69b396520f424e9cef621c66"
+      },
+      "images": [
+        {
+          "media_id": "bd502668-8317-4684-819a-530bc88f58d3",
+          "natural_height": 1500,
+          "natural_width": 1200,
+          "object_fit": "cover",
+          "object_position": "50% 50%",
+          "rendered_height": 635.9921875,
+          "rendered_width": 508.796875,
+          "source_path": "zymtrace/views/social-layout/zymtrace-nested-graph-breaks-comparison-portrait.png",
+          "source_sha256": "6031543582f04270b4c4c4da60fdbc61b78ffa6450022b74a9116160b5b4def9",
+          "preview_group_size": 1,
+          "visual_review": {
+            "complete_profile": true,
+            "headings_visible": true,
+            "key_labels_readable": true,
+            "reviewer": "Codex: actual Typefully editor and realistic previews, plus full-size and feed-size image review"
+          }
+        }
+      ],
+      "attachment_sources": {
+        "bd502668-8317-4684-819a-530bc88f58d3": {
+          "path": "zymtrace/views/social-layout/zymtrace-nested-graph-breaks-comparison-portrait.png",
+          "sha256": "6031543582f04270b4c4c4da60fdbc61b78ffa6450022b74a9116160b5b4def9",
+          "media_type": "image"
+        }
+      }
+    },
+    {
+      "draft_id": 11497664,
+      "platform": "x",
+      "view": "realistic-mobile",
+      "raw_readback": {
+        "path": "social/rendered-preview/11497664.json",
+        "sha256": "7e73f7358ddaf0d843871533244570775416236e487629a3d0b27d53d32047b7"
+      },
+      "images": [
+        {
+          "media_id": "5c6b9fc6-c22a-4473-a766-d737a3d02f6a",
+          "natural_height": 675,
+          "natural_width": 1200,
+          "object_fit": "cover",
+          "object_position": "50% 50%",
+          "rendered_height": 166.0623779296875,
+          "rendered_width": 295.2220458984375,
+          "source_path": "image.png",
+          "source_sha256": "80224ffc4fbbe69a7baea869b6b1aa5e3ff19a0ee892235682f10e914dd7a4f7",
+          "preview_group_size": 1,
+          "visual_review": {
+            "complete_profile": true,
+            "headings_visible": true,
+            "key_labels_readable": true,
+            "reviewer": "Codex: actual Typefully editor and realistic previews, plus full-size and feed-size image review"
+          }
+        },
+        {
+          "media_id": "f6c87dce-10e6-4fe7-b41d-426c337207d8",
+          "natural_height": 1176,
+          "natural_width": 1200,
+          "object_fit": "cover",
+          "object_position": "50% 50%",
+          "rendered_height": 289.316650390625,
+          "rendered_width": 295.2220458984375,
+          "source_path": "zymtrace/views/social-layout/nsys-profile-x.png",
+          "source_sha256": "4efa3b6ae3d502a49b4e234b9c8a68e1f6866d4ebedee5ae2d11ec1fb42ab13b",
+          "preview_group_size": 1,
+          "visual_review": {
+            "complete_profile": true,
+            "headings_visible": true,
+            "key_labels_readable": true,
+            "reviewer": "Codex: actual Typefully editor and realistic previews, plus full-size and feed-size image review"
+          }
+        },
+        {
+          "media_id": "2f502419-edf5-4752-b5b8-842c04303f5e",
+          "natural_height": 1176,
+          "natural_width": 1200,
+          "object_fit": "cover",
+          "object_position": "50% 50%",
+          "rendered_height": 289.31671142578125,
+          "rendered_width": 295.2220458984375,
+          "source_path": "zymtrace/views/social-layout/ncu-profile-x.png",
+          "source_sha256": "13a0054a46f95baaa7106cb6a003ecff742840cd633f206ae1dfde313ce2ede4",
+          "preview_group_size": 1,
+          "visual_review": {
+            "complete_profile": true,
+            "headings_visible": true,
+            "key_labels_readable": true,
+            "reviewer": "Codex: actual Typefully editor and realistic previews, plus full-size and feed-size image review"
+          }
+        },
+        {
+          "media_id": "c9bd55dc-787c-4de8-8875-ebe315746e82",
+          "natural_height": 1176,
+          "natural_width": 1200,
+          "object_fit": "cover",
+          "object_position": "50% 50%",
+          "rendered_height": 289.31671142578125,
+          "rendered_width": 295.2220458984375,
+          "source_path": "zymtrace/views/social-layout/zymtrace-without-nested-graph-breaks-x.png",
+          "source_sha256": "80d5ac799296e99365fa1ccb13316804f4501e31aef4edb5d1887e40b4227a2b",
+          "preview_group_size": 1,
+          "visual_review": {
+            "complete_profile": true,
+            "headings_visible": true,
+            "key_labels_readable": true,
+            "reviewer": "Codex: actual Typefully editor and realistic previews, plus full-size and feed-size image review"
+          }
+        },
+        {
+          "media_id": "bd008dd0-7af6-4a55-9fee-343fd395d3f7",
+          "natural_height": 1176,
+          "natural_width": 1200,
+          "object_fit": "cover",
+          "object_position": "50% 50%",
+          "rendered_height": 289.31671142578125,
+          "rendered_width": 295.2220458984375,
+          "source_path": "zymtrace/views/social-layout/zymtrace-with-nested-graph-breaks-x.png",
+          "source_sha256": "00a5f359ecfbde45f44456d52a081bf6f6b32bbddfcc8500dc70671c70a6780e",
+          "preview_group_size": 1,
+          "visual_review": {
+            "complete_profile": true,
+            "headings_visible": true,
+            "key_labels_readable": true,
+            "reviewer": "Codex: actual Typefully editor and realistic previews, plus full-size and feed-size image review"
+          }
+        }
+      ],
+      "attachment_sources": {
+        "5c6b9fc6-c22a-4473-a766-d737a3d02f6a": {
+          "path": "image.png",
+          "sha256": "80224ffc4fbbe69a7baea869b6b1aa5e3ff19a0ee892235682f10e914dd7a4f7",
+          "media_type": "image"
+        },
+        "f6c87dce-10e6-4fe7-b41d-426c337207d8": {
+          "path": "zymtrace/views/social-layout/nsys-profile-x.png",
+          "sha256": "4efa3b6ae3d502a49b4e234b9c8a68e1f6866d4ebedee5ae2d11ec1fb42ab13b",
+          "media_type": "image"
+        },
+        "2f502419-edf5-4752-b5b8-842c04303f5e": {
+          "path": "zymtrace/views/social-layout/ncu-profile-x.png",
+          "sha256": "13a0054a46f95baaa7106cb6a003ecff742840cd633f206ae1dfde313ce2ede4",
+          "media_type": "image"
+        },
+        "c9bd55dc-787c-4de8-8875-ebe315746e82": {
+          "path": "zymtrace/views/social-layout/zymtrace-without-nested-graph-breaks-x.png",
+          "sha256": "80d5ac799296e99365fa1ccb13316804f4501e31aef4edb5d1887e40b4227a2b",
+          "media_type": "image"
+        },
+        "bd008dd0-7af6-4a55-9fee-343fd395d3f7": {
+          "path": "zymtrace/views/social-layout/zymtrace-with-nested-graph-breaks-x.png",
+          "sha256": "00a5f359ecfbde45f44456d52a081bf6f6b32bbddfcc8500dc70671c70a6780e",
+          "media_type": "image"
+        }
+      }
+    }
+  ],
+  "publication_hold": true
+}

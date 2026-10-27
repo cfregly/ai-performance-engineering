@@ -1,0 +1,150 @@
+[
+  {
+    "page_index": 1,
+    "bars": [
+      {
+        "height": 45.75,
+        "y": 0
+      },
+      {
+        "height": 44,
+        "y": 510
+      }
+    ],
+    "buttons": [
+      {
+        "height": 32,
+        "width": 32,
+        "x": 510,
+        "y": 261
+      }
+    ],
+    "loaded": true,
+    "natural_height": 2625,
+    "natural_width": 2625,
+    "object_fit": "contain",
+    "object_position": "50% 50%",
+    "overlay_insets": {
+      "bottom": 44,
+      "left": 0,
+      "right": 44,
+      "top": 45.75
+    },
+    "rendered_height": 554,
+    "rendered_width": 554
+  },
+  {
+    "page_index": 2,
+    "bars": [
+      {
+        "height": 45.75,
+        "y": 0
+      },
+      {
+        "height": 44,
+        "y": 510
+      }
+    ],
+    "buttons": [
+      {
+        "height": 32,
+        "width": 32,
+        "x": 12,
+        "y": 261
+      },
+      {
+        "height": 32,
+        "width": 32,
+        "x": 510,
+        "y": 261
+      }
+    ],
+    "loaded": true,
+    "natural_height": 2625,
+    "natural_width": 2625,
+    "object_fit": "contain",
+    "object_position": "50% 50%",
+    "overlay_insets": {
+      "bottom": 44,
+      "left": 44,
+      "right": 44,
+      "top": 45.75
+    },
+    "rendered_height": 554,
+    "rendered_width": 554
+  },
+  {
+    "page_index": 3,
+    "bars": [
+      {
+        "height": 45.75,
+        "y": 0
+      },
+      {
+        "height": 44,
+        "y": 510
+      }
+    ],
+    "buttons": [
+      {
+        "height": 32,
+        "width": 32,
+        "x": 12,
+        "y": 261
+      },
+      {
+        "height": 32,
+        "width": 32,
+        "x": 510,
+        "y": 261
+      }
+    ],
+    "loaded": true,
+    "natural_height": 2625,
+    "natural_width": 2625,
+    "object_fit": "contain",
+    "object_position": "50% 50%",
+    "overlay_insets": {
+      "bottom": 44,
+      "left": 44,
+      "right": 44,
+      "top": 45.75
+    },
+    "rendered_height": 554,
+    "rendered_width": 554
+  },
+  {
+    "page_index": 4,
+    "bars": [
+      {
+        "height": 45.75,
+        "y": 0
+      },
+      {
+        "height": 44,
+        "y": 510
+      }
+    ],
+    "buttons": [
+      {
+        "height": 32,
+        "width": 32,
+        "x": 12,
+        "y": 261
+      }
+    ],
+    "loaded": true,
+    "natural_height": 2625,
+    "natural_width": 2625,
+    "object_fit": "contain",
+    "object_position": "50% 50%",
+    "overlay_insets": {
+      "bottom": 44,
+      "left": 44,
+      "right": 0,
+      "top": 45.75
+    },
+    "rendered_height": 554,
+    "rendered_width": 554
+  }
+]

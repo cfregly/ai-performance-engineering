@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "observed_at": "2026-10-26T23:28:05.878323+00:00",
+  "observed_at": "2026-10-27T01:30:32.954696+00:00",
   "timezone": "America/Los_Angeles",
   "purpose": "Distinguish published posts, self-replies, reader replies, reference copies, and unsent native composers.",
   "publication_hold": true,
@@ -13,7 +13,7 @@
       "question_url": "https://x.com/ming85GG/status/2113141199733453183",
       "topic": "CPU gaps versus GPU kernel scheduling",
       "draft_id": 11481018,
-      "tag_verification": "Native question author/profile verified, exact Typefully reply parent and body @mention retained, image tag retained.",
+      "tag_verification": "Exact question URL restored after API update and read back in Typefully. Body @mention and ming image tag verified on the new single Nsys image. Four single-image profile posts reviewed.",
       "sent": false
     },
     {
@@ -24,7 +24,7 @@
       "parent_comment_id": "7518892754291216385",
       "topic": "B200 versus other GPUs",
       "draft_id": 11481014,
-      "tag_verification": "Exact parent and profile verified again. Native noneditable person mention, answer text, committed GPU-time flamegraph link and loaded time-weighted image are prepared and unsent.",
+      "tag_verification": "Exact parent comment and profile verified. Native person mention, final answer text and one loaded 1400×1750 portrait comparison are prepared and unsent.",
       "native_comment_backup": "social/native-linkedin-replies/11481014.txt",
       "sent": false
     },
@@ -36,7 +36,7 @@
       "parent_comment_id": "7518991000019714048",
       "topic": "Compilation break-even",
       "draft_id": 11481015,
-      "tag_verification": "Exact parent and profile verified again. Native noneditable person mention, answer text, committed GPU-time flamegraph link and loaded time-weighted image are prepared and unsent.",
+      "tag_verification": "Exact parent comment and profile verified. Native person mention, final answer text and one loaded 1400×1750 portrait comparison are prepared and unsent.",
       "native_comment_backup": "social/native-linkedin-replies/11481015.txt",
       "sent": false
     },
@@ -48,7 +48,7 @@
       "parent_comment_id": "7519006833911590913",
       "topic": "Memory footprint",
       "draft_id": 11481016,
-      "tag_verification": "Exact parent and profile verified again. Native noneditable person mention, answer text, committed GPU-time flamegraph link and loaded time-weighted image are prepared and unsent.",
+      "tag_verification": "Exact parent comment and profile verified. Native person mention, final answer text and one loaded 1400×1750 portrait comparison are prepared and unsent.",
       "native_comment_backup": "social/native-linkedin-replies/11481016.txt",
       "sent": false
     },
@@ -60,7 +60,7 @@
       "parent_comment_id": "7519060297219911680",
       "topic": "Training and defaults claim",
       "draft_id": 11481017,
-      "tag_verification": "Exact parent and profile verified again. Native noneditable person mention, answer text, committed GPU-time flamegraph link and loaded time-weighted image are prepared and unsent.",
+      "tag_verification": "Exact parent comment and profile verified. Native person mention, final answer text and one loaded 1400×1750 portrait comparison are prepared and unsent.",
       "native_comment_backup": "social/native-linkedin-replies/11481017.txt",
       "sent": false
     }
@@ -84,7 +84,7 @@
     }
   ],
   "additional_relevant_comment": {
-    "name": "En\u00e9ias Brum",
+    "name": "Enéias Brum",
     "profile": "https://www.linkedin.com/in/eneiasbrumjr/",
     "comment_id": "7520526551713538048",
     "topic": "Including compilation in readiness checks for autoscaled services",
