@@ -1,5 +1,7 @@
 INFERENCE / OUTPUT HEAD
 CHOOSE FIRST.
 Multiply less.
+Score only allowed tokens.
 Skip scores you will discard.
-Existing Fregly’s take portrait upright at 0 degrees.
+Fregly’s take
+@cfregly
