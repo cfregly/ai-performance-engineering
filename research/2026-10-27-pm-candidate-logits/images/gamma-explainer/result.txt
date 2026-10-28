@@ -3,8 +3,8 @@ Not a whole-model speedup.
 12.84× faster output head.
 5.399 → 0.421 ms per warm 16-step block.
 Full + filter versus Allowed only.
-Selection included.
-Synthetic B200. FP32, TF32 off.
+Weight gathering included.
+Synthetic test on B200. FP32, TF32 off.
 B8 / H2048 / V131072.
 64 shared allowed tokens, changed each step.
 Median 3 pairs, 1 process.
