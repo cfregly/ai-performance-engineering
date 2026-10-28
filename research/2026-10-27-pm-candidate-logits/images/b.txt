@@ -1,0 +1,40 @@
+Six warm-block comparisons
+
+All six medians are milliseconds per warm block of 16 projection/filter/argmax steps. Bars show medians and whiskers show the minimum to maximum of the three paired blocks in each cell. These are three blocks in one process, not independent processes or seeds. Changing mode includes each gather; static mode reuses gathered rows after setup. Static one-time row setup is 0.034720 ms for 16 IDs, 3.252477 ms for 64 IDs, and 0.022130 ms for 256 IDs. These setup costs are outside the displayed warm-block times. The synthetic strict-FP32 stage uses batch 8, hidden width 2048, vocabulary 131072, one shared device-resident legal set, and TF32 disabled.
+
+Less output work, shorter warm blocks
+Synthetic strict-FP32 output-head stage
+Full head → filter
+Legal rows first
+0
+2
+4
+6
+16 static
+0.334
+5.489
+16 changing
+0.560
+5.494
+64 static
+0.349
+5.409
+64 changing
+0.421
+5.399
+256 static
+0.350
+5.466
+256 changing
+5.471
+Milliseconds per 16-step block
+Median bars · min–max whiskers · 3 paired blocks / cell · one process
+Batch 8 · hidden 2048 · vocab 131072 · shared IDs · TF32 off
+Changing includes gather. Static reuses rows; 64-ID setup: 3.252 ms, excluded.
+Less work, shorter
+warm blocks
+Median bars · min–max whiskers
+3 paired blocks / cell · one process
+Batch 8 · hidden 2048 · vocab 131072
+Shared IDs · TF32 off · changing includes gather
+Static reuses rows; 64-ID setup 3.252 ms excluded

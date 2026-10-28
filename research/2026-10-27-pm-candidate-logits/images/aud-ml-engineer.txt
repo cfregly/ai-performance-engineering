@@ -1,0 +1,24 @@
+Gather the rows, then multiply
+
+For the 64-ID case, H has shape 8 by 2048, W[ids].T has shape 2048 by 64, and the result has shape 8 by 64. One legal set is shared across the batch. Compute H @ W[ids].T, take the legal argmax and map the selected position to the token ID. Preserve legal-ID ordering and tie rules. Check logit tolerance and exact selected-token agreement. The tested stage is strict FP32 with TF32 disabled.
+
+Gather the rows, then multiply
+One shared legal set across the batch
+H @ W[ids].T
+H (8 × 2048)
+×
+W[ids].T: 2048 × 64
+Logits: 8 × 64
+Legal argmax → map back to token IDs
+Preserve ID order + tie rules
+64 legal IDs · strict FP32 · TF32 off · check logit tolerance and exact token agreement
+Gather the rows,
+then multiply
+H
+8 × 2048
+W[ids].T
+2048 × 64
+Logits
+8 × 64
+64 legal IDs · strict FP32 · TF32 off
+Check logit tolerance and exact token agreement

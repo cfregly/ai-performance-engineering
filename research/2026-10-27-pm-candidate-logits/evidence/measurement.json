@@ -1,0 +1,151 @@
+{
+  "schema_version": 1,
+  "state": "measured",
+  "workload_scope": "Synthetic output-head projection/filter/legal argmax, one shared legal set across batch8, hidden2048, vocabulary131072, strictFP32/TF32off; 16steps per timed block, three paired blocks per cell in one process",
+  "runtime_identifier": "Python3.12.3, PyTorch2.14.1+cu130, CUDA13.0, NVIDIA driver580.173.02",
+  "source_artifacts": [
+    {
+      "path": "code/screen.py",
+      "sha256": "9a3e3bfe796ab582d6a9972a37659ce5de0bcf2e1105dd199b047e91d8c4e4b5"
+    },
+    {
+      "path": "code/plan.json",
+      "sha256": "9cfc32a85183c7f7c0993c444847ff49f33944299609a875989d8950a06cbc49"
+    },
+    {
+      "path": "code/analyze.py",
+      "sha256": "797634284e64ffde7f71f971195f7be3e8400917e890cbf5b6fe33565a1b736e"
+    }
+  ],
+  "accepted_repeats": [
+    {
+      "id": "paired-block-0",
+      "accepted": true,
+      "raw_result": {
+        "path": "evidence/paired-block-0.json",
+        "sha256": "3d24e1aa3c25d62ce7e6afe7fdb22e984b7e991a8adea4d9f5563e8bde09ff41"
+      },
+      "scope": "Paired block repeat within one process, not independent-process replication"
+    },
+    {
+      "id": "paired-block-1",
+      "accepted": true,
+      "raw_result": {
+        "path": "evidence/paired-block-1.json",
+        "sha256": "8280238c1767b6ac3fca26b19e7c79a9701a62477c587550bc8e16f46276a911"
+      },
+      "scope": "Paired block repeat within one process, not independent-process replication"
+    },
+    {
+      "id": "paired-block-2",
+      "accepted": true,
+      "raw_result": {
+        "path": "evidence/paired-block-2.json",
+        "sha256": "9e697d3cbed810661921a68ece04e48eb9c17d1dc83233cdf8c0415c7c345827"
+      },
+      "scope": "Paired block repeat within one process, not independent-process replication"
+    }
+  ],
+  "correctness": {
+    "accepted": true,
+    "path": "evidence/correctness.json",
+    "sha256": "7aecc53542e4607985d8fc1a2ea2d84226b66c325b8c1d1bd912830116dc4e51"
+  },
+  "claims": [
+    {
+      "id": "legal-16-static",
+      "source": {
+        "path": "evidence/recomputed-results.json",
+        "sha256": "36f62648e08b479817ef72fcf98f8a6a99e5f965c51081d2c39a5b6f619fc22e"
+      },
+      "accepted_repeat_ids": [
+        "paired-block-0",
+        "paired-block-1",
+        "paired-block-2"
+      ]
+    },
+    {
+      "id": "legal-16-changing",
+      "source": {
+        "path": "evidence/recomputed-results.json",
+        "sha256": "36f62648e08b479817ef72fcf98f8a6a99e5f965c51081d2c39a5b6f619fc22e"
+      },
+      "accepted_repeat_ids": [
+        "paired-block-0",
+        "paired-block-1",
+        "paired-block-2"
+      ]
+    },
+    {
+      "id": "legal-64-static",
+      "source": {
+        "path": "evidence/recomputed-results.json",
+        "sha256": "36f62648e08b479817ef72fcf98f8a6a99e5f965c51081d2c39a5b6f619fc22e"
+      },
+      "accepted_repeat_ids": [
+        "paired-block-0",
+        "paired-block-1",
+        "paired-block-2"
+      ]
+    },
+    {
+      "id": "legal-64-changing",
+      "source": {
+        "path": "evidence/recomputed-results.json",
+        "sha256": "36f62648e08b479817ef72fcf98f8a6a99e5f965c51081d2c39a5b6f619fc22e"
+      },
+      "accepted_repeat_ids": [
+        "paired-block-0",
+        "paired-block-1",
+        "paired-block-2"
+      ]
+    },
+    {
+      "id": "legal-256-static",
+      "source": {
+        "path": "evidence/recomputed-results.json",
+        "sha256": "36f62648e08b479817ef72fcf98f8a6a99e5f965c51081d2c39a5b6f619fc22e"
+      },
+      "accepted_repeat_ids": [
+        "paired-block-0",
+        "paired-block-1",
+        "paired-block-2"
+      ]
+    },
+    {
+      "id": "legal-256-changing",
+      "source": {
+        "path": "evidence/recomputed-results.json",
+        "sha256": "36f62648e08b479817ef72fcf98f8a6a99e5f965c51081d2c39a5b6f619fc22e"
+      },
+      "accepted_repeat_ids": [
+        "paired-block-0",
+        "paired-block-1",
+        "paired-block-2"
+      ]
+    }
+  ],
+  "limitations": [
+    "All repeats share one process and fixed seed",
+    "Three-sample nearest-rank p95 equals the maximum block sample, not request-tail latency",
+    "No profiler capture, measured memory peak, real model or serving comparison",
+    "Actual backend kernel selection not profiled"
+  ],
+  "hardware_identifier": "One NVIDIA B200 SM100; observed 1000 W power limit before and after the run",
+  "timing": {
+    "mode": "unprofiled",
+    "primary": "perf_counter wall time around 16 submissions plus final CUDA synchronization",
+    "auxiliary": "CUDA event elapsed time per block",
+    "path": "evidence/timing-mode.json",
+    "sha256": "1883be4cbcb2ea91329b6e2541b921992c78301089171d81713178b83cb8fed2"
+  },
+  "conditions": {
+    "power_limit_w": 1000,
+    "clocks_changed": false,
+    "power_settings_changed": false,
+    "locked_clock_qualification": false,
+    "measured_memory_peak": false,
+    "model_measured": false,
+    "serving_measured": false
+  }
+}

@@ -1,0 +1,74 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900">
+<rect width="100%" height="100%" fill="#FBFBF8"/>
+<defs><marker id="arrow" viewBox="0 0 12 12" refX="9" refY="6" markerWidth="5" markerHeight="5" orient="auto"><path d="M1 1 L10 6 L1 11" fill="none" stroke="context-stroke" stroke-width="2"/></marker>
+<pattern id="hatch" width="18" height="18" patternUnits="userSpaceOnUse"><path d="M-4 18 L18 -4 M8 26 L26 8" stroke="#E87823" stroke-width="2" opacity=".35"/></pattern></defs>
+<text x="85" y="93" font-family="Bradley Hand" font-size="72" fill="#202326" text-anchor="start" font-weight="normal">
+<tspan x="85" dy="0">Select rows before projection</tspan>
+</text>
+<text x="89" y="154" font-family="Arial, Helvetica, sans-serif" font-size="43" fill="#202326" text-anchor="start" font-weight="normal">
+<tspan x="89" dy="0">Keep only the legal output scores</tspan>
+</text>
+<path d="M89 174.0 Q480 168.0 1080 176.0" fill="none" stroke="#202326" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="90" y="280" font-family="Bradley Hand" font-size="50" fill="#E87823" text-anchor="start" font-weight="normal">
+<tspan x="90" dy="0">Full head, then filter</tspan>
+</text>
+<rect x="100" y="325" width="235" height="180" rx="8" fill="#FBFBF8" stroke="#E87823" stroke-width="4"/>
+<path d="M112 328 Q205.75 323 323 328" fill="none" stroke="#E87823" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M103 350.7142857142857 Q219.5 348.7142857142857 332 350.7142857142857" fill="none" stroke="#E87823" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M103 376.42857142857144 Q219.5 374.42857142857144 332 376.42857142857144" fill="none" stroke="#E87823" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M103 402.1428571428571 Q219.5 400.1428571428571 332 402.1428571428571" fill="none" stroke="#E87823" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M103 427.8571428571429 Q219.5 425.8571428571429 332 427.8571428571429" fill="none" stroke="#E87823" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M103 453.57142857142856 Q219.5 451.57142857142856 332 453.57142857142856" fill="none" stroke="#E87823" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M103 479.2857142857143 Q219.5 477.2857142857143 332 479.2857142857143" fill="none" stroke="#E87823" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M129.375 328 Q131.375 413.0 129.375 502" fill="none" stroke="#E87823" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M158.75 328 Q160.75 413.0 158.75 502" fill="none" stroke="#E87823" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M188.125 328 Q190.125 413.0 188.125 502" fill="none" stroke="#E87823" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M217.5 328 Q219.5 413.0 217.5 502" fill="none" stroke="#E87823" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M246.875 328 Q248.875 413.0 246.875 502" fill="none" stroke="#E87823" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M276.25 328 Q278.25 413.0 276.25 502" fill="none" stroke="#E87823" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M305.625 328 Q307.625 413.0 305.625 502" fill="none" stroke="#E87823" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="215" y="557" font-family="Arial, Helvetica, sans-serif" font-size="41" fill="#202326" text-anchor="middle" font-weight="normal">
+<tspan x="215" dy="0">All weight rows</tspan>
+</text>
+<path d="M375 414 Q438.5 412.0 498 414" fill="none" stroke="#E87823" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<rect x="535" y="345" width="410" height="135" rx="16" fill="#FCF1E8" stroke="#E87823" stroke-width="4"/>
+<path d="M547 348 Q719.5 343 933 348" fill="none" stroke="#E87823" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="740" y="425" font-family="Arial, Helvetica, sans-serif" font-size="47" fill="#202326" text-anchor="middle" font-weight="normal">
+<tspan x="740" dy="0">Project every token</tspan>
+</text>
+<path d="M980 414 Q1039.5 412.0 1095 414" fill="none" stroke="#E87823" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<text x="1290" y="403" font-family="Arial, Helvetica, sans-serif" font-size="45" fill="#202326" text-anchor="middle" font-weight="normal">
+<tspan x="1290" dy="0">Filter scores</tspan>
+<tspan x="1290" dy="54.0">+ legal argmax</tspan>
+</text>
+<text x="90" y="650" font-family="Bradley Hand" font-size="50" fill="#3478BA" text-anchor="start" font-weight="normal">
+<tspan x="90" dy="0">Select rows, then project</tspan>
+</text>
+<rect x="100" y="685" width="235" height="85" rx="8" fill="#EFF5FA" stroke="#3478BA" stroke-width="4"/>
+<path d="M112 688 Q205.75 683 323 688" fill="none" stroke="#3478BA" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M103 713.3333333333334 Q219.5 711.3333333333334 332 713.3333333333334" fill="none" stroke="#3478BA" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M103 741.6666666666666 Q219.5 739.6666666666666 332 741.6666666666666" fill="none" stroke="#3478BA" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M129.375 688 Q131.375 725.5 129.375 767" fill="none" stroke="#3478BA" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M158.75 688 Q160.75 725.5 158.75 767" fill="none" stroke="#3478BA" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M188.125 688 Q190.125 725.5 188.125 767" fill="none" stroke="#3478BA" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M217.5 688 Q219.5 725.5 217.5 767" fill="none" stroke="#3478BA" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M246.875 688 Q248.875 725.5 246.875 767" fill="none" stroke="#3478BA" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M276.25 688 Q278.25 725.5 276.25 767" fill="none" stroke="#3478BA" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M305.625 688 Q307.625 725.5 305.625 767" fill="none" stroke="#3478BA" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="215" y="821" font-family="Arial, Helvetica, sans-serif" font-size="39" fill="#202326" text-anchor="middle" font-weight="normal">
+<tspan x="215" dy="0">Legal rows only</tspan>
+</text>
+<path d="M375 725 Q438.5 723.0 498 725" fill="none" stroke="#3478BA" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<rect x="535" y="662" width="410" height="135" rx="16" fill="#EFF5FA" stroke="#3478BA" stroke-width="4"/>
+<path d="M547 665 Q719.5 660 933 665" fill="none" stroke="#3478BA" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="740" y="742" font-family="Arial, Helvetica, sans-serif" font-size="46" fill="#202326" text-anchor="middle" font-weight="normal">
+<tspan x="740" dy="0">Project legal tokens</tspan>
+</text>
+<path d="M980 725 Q1039.5 723.0 1095 725" fill="none" stroke="#3478BA" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<text x="1290" y="742" font-family="Arial, Helvetica, sans-serif" font-size="48" fill="#202326" text-anchor="middle" font-weight="normal">
+<tspan x="1290" dy="0">Legal argmax</tspan>
+</text>
+<text x="89" y="865.0" font-family="Arial, Helvetica, sans-serif" font-size="36" fill="#202326" text-anchor="start" font-weight="normal">
+<tspan x="89" dy="0">Shared legal set across batch 8 · strict FP32 output-head stage · TF32 off</tspan>
+</text>
+</svg>

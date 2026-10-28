@@ -1,0 +1,159 @@
+{
+  "scope": "B200 FP32 constrained lm_head stage screen, not model inference or serving",
+  "source_raw_sha256": "eca4fcb7e280baebb2dbc223fb9f55584144e797dcae419957e66fd91f7e4a4f",
+  "plan_canonical_json_sha256": "216c3dfade5a92eeb8bb350eeb58dee3ba8cbd6f460c268b6d632f8383ae9fe5",
+  "counts": {
+    "explicit_ties": 2,
+    "cell_config": 6,
+    "correctness": 96,
+    "path_sample": 36,
+    "pair": 18
+  },
+  "checked_logits_per_path": 86016,
+  "checked_token_rows_per_path": 768,
+  "max_abs_error_baseline": 2.4408457898195124e-06,
+  "max_abs_error_optimized": 1.0137944705945756e-06,
+  "cells": [
+    {
+      "legal_tokens": 16,
+      "set_mode": "changing",
+      "baseline_median_block_ms": 5.4939978290349245,
+      "optimized_median_block_ms": 0.5599220748990774,
+      "speedup": 9.812075778625418,
+      "median_reduction": 0.8980847658985273,
+      "baseline_samples_ms": [
+        5.4939978290349245,
+        5.49841788597405,
+        5.473177181556821
+      ],
+      "optimized_samples_ms": [
+        0.5632019601762295,
+        0.4762730095535517,
+        0.5599220748990774
+      ],
+      "row_setup_ms": 0.014699064195156097,
+      "every_pair_faster": true,
+      "screen_pass": true,
+      "block_steps": 16,
+      "pairs": 3
+    },
+    {
+      "legal_tokens": 16,
+      "set_mode": "static",
+      "baseline_median_block_ms": 5.488966824486852,
+      "optimized_median_block_ms": 0.3341161645948887,
+      "speedup": 16.42831866917349,
+      "median_reduction": 0.9391294982683513,
+      "baseline_samples_ms": [
+        5.492937983945012,
+        5.488966824486852,
+        5.485248053446412
+      ],
+      "optimized_samples_ms": [
+        0.3432761877775192,
+        0.33215503208339214,
+        0.3341161645948887
+      ],
+      "row_setup_ms": 0.03471993841230869,
+      "every_pair_faster": true,
+      "screen_pass": true,
+      "block_steps": 16,
+      "pairs": 3
+    },
+    {
+      "legal_tokens": 64,
+      "set_mode": "changing",
+      "baseline_median_block_ms": 5.399248795583844,
+      "optimized_median_block_ms": 0.4205747973173857,
+      "speedup": 12.837784931533392,
+      "median_reduction": 0.9221049421428066,
+      "baseline_samples_ms": [
+        5.399248795583844,
+        5.4084789007902145,
+        5.392929073423147
+      ],
+      "optimized_samples_ms": [
+        0.4205747973173857,
+        0.41459291242063046,
+        0.4210940096527338
+      ],
+      "row_setup_ms": 0.004060100764036179,
+      "every_pair_faster": true,
+      "screen_pass": true,
+      "block_steps": 16,
+      "pairs": 3
+    },
+    {
+      "legal_tokens": 64,
+      "set_mode": "static",
+      "baseline_median_block_ms": 5.408759228885174,
+      "optimized_median_block_ms": 0.3493248950690031,
+      "speedup": 15.483463403937376,
+      "median_reduction": 0.9354149666704605,
+      "baseline_samples_ms": [
+        5.409058183431625,
+        5.408759228885174,
+        5.400309106335044
+      ],
+      "optimized_samples_ms": [
+        0.3493248950690031,
+        0.34818495623767376,
+        0.372905982658267
+      ],
+      "row_setup_ms": 3.2524769194424152,
+      "every_pair_faster": true,
+      "screen_pass": true,
+      "block_steps": 16,
+      "pairs": 3
+    },
+    {
+      "legal_tokens": 256,
+      "set_mode": "changing",
+      "baseline_median_block_ms": 5.470886826515198,
+      "optimized_median_block_ms": 0.4210949409753084,
+      "speedup": 12.99205070914398,
+      "median_reduction": 0.9230298570728186,
+      "baseline_samples_ms": [
+        5.475728074088693,
+        5.470886826515198,
+        5.461476976051927
+      ],
+      "optimized_samples_ms": [
+        0.42410497553646564,
+        0.4179638344794512,
+        0.4210949409753084
+      ],
+      "row_setup_ms": 0.00409991480410099,
+      "every_pair_faster": true,
+      "screen_pass": true,
+      "block_steps": 16,
+      "pairs": 3
+    },
+    {
+      "legal_tokens": 256,
+      "set_mode": "static",
+      "baseline_median_block_ms": 5.465978058055043,
+      "optimized_median_block_ms": 0.34957495518028736,
+      "speedup": 15.636068823168575,
+      "median_reduction": 0.9360453058048541,
+      "baseline_samples_ms": [
+        5.465978058055043,
+        5.463937995955348,
+        5.467018112540245
+      ],
+      "optimized_samples_ms": [
+        0.34957495518028736,
+        0.3475360572338104,
+        0.3538751043379307
+      ],
+      "row_setup_ms": 0.022130087018013,
+      "every_pair_faster": true,
+      "screen_pass": true,
+      "block_steps": 16,
+      "pairs": 3
+    }
+  ],
+  "all_cells_pass": true,
+  "interpretation": "Observed synthetic strict-FP32 output-head stage timing. Three paired blocks in one process. No model, serving or request-tail measurement.",
+  "plan_file_sha256": "9cfc32a85183c7f7c0993c444847ff49f33944299609a875989d8950a06cbc49"
+}

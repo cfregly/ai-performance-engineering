@@ -1,0 +1,186 @@
+{
+  "repeat_id": "paired-block-1",
+  "independence": "Matched blocks within one process, not independent process trials",
+  "rows": [
+    {
+      "cuda_ms": 0.3195199966430664,
+      "kind": "path_sample",
+      "mode": "static",
+      "pair": 1,
+      "path": "B",
+      "size": 16,
+      "wall_ms": 0.33215503208339214
+    },
+    {
+      "cuda_ms": 5.476799964904785,
+      "kind": "path_sample",
+      "mode": "static",
+      "pair": 1,
+      "path": "A",
+      "size": 16,
+      "wall_ms": 5.488966824486852
+    },
+    {
+      "baseline_cuda_ms": 5.476799964904785,
+      "baseline_wall_ms": 5.488966824486852,
+      "candidate_cuda_ms": 0.3195199966430664,
+      "candidate_wall_ms": 0.33215503208339214,
+      "kind": "pair",
+      "mode": "static",
+      "order": "BA",
+      "pair": 1,
+      "size": 16,
+      "steps": 16
+    },
+    {
+      "cuda_ms": 0.4640960097312927,
+      "kind": "path_sample",
+      "mode": "changing",
+      "pair": 1,
+      "path": "B",
+      "size": 16,
+      "wall_ms": 0.4762730095535517
+    },
+    {
+      "cuda_ms": 5.486527919769287,
+      "kind": "path_sample",
+      "mode": "changing",
+      "pair": 1,
+      "path": "A",
+      "size": 16,
+      "wall_ms": 5.49841788597405
+    },
+    {
+      "baseline_cuda_ms": 5.486527919769287,
+      "baseline_wall_ms": 5.49841788597405,
+      "candidate_cuda_ms": 0.4640960097312927,
+      "candidate_wall_ms": 0.4762730095535517,
+      "kind": "pair",
+      "mode": "changing",
+      "order": "BA",
+      "pair": 1,
+      "size": 16,
+      "steps": 16
+    },
+    {
+      "cuda_ms": 0.3367680013179779,
+      "kind": "path_sample",
+      "mode": "static",
+      "pair": 1,
+      "path": "B",
+      "size": 64,
+      "wall_ms": 0.34818495623767376
+    },
+    {
+      "cuda_ms": 5.39686393737793,
+      "kind": "path_sample",
+      "mode": "static",
+      "pair": 1,
+      "path": "A",
+      "size": 64,
+      "wall_ms": 5.408759228885174
+    },
+    {
+      "baseline_cuda_ms": 5.39686393737793,
+      "baseline_wall_ms": 5.408759228885174,
+      "candidate_cuda_ms": 0.3367680013179779,
+      "candidate_wall_ms": 0.34818495623767376,
+      "kind": "pair",
+      "mode": "static",
+      "order": "BA",
+      "pair": 1,
+      "size": 64,
+      "steps": 16
+    },
+    {
+      "cuda_ms": 0.4025920033454895,
+      "kind": "path_sample",
+      "mode": "changing",
+      "pair": 1,
+      "path": "B",
+      "size": 64,
+      "wall_ms": 0.41459291242063046
+    },
+    {
+      "cuda_ms": 5.396128177642822,
+      "kind": "path_sample",
+      "mode": "changing",
+      "pair": 1,
+      "path": "A",
+      "size": 64,
+      "wall_ms": 5.4084789007902145
+    },
+    {
+      "baseline_cuda_ms": 5.396128177642822,
+      "baseline_wall_ms": 5.4084789007902145,
+      "candidate_cuda_ms": 0.4025920033454895,
+      "candidate_wall_ms": 0.41459291242063046,
+      "kind": "pair",
+      "mode": "changing",
+      "order": "BA",
+      "pair": 1,
+      "size": 64,
+      "steps": 16
+    },
+    {
+      "cuda_ms": 0.3354879915714264,
+      "kind": "path_sample",
+      "mode": "static",
+      "pair": 1,
+      "path": "B",
+      "size": 256,
+      "wall_ms": 0.3475360572338104
+    },
+    {
+      "cuda_ms": 5.451839923858643,
+      "kind": "path_sample",
+      "mode": "static",
+      "pair": 1,
+      "path": "A",
+      "size": 256,
+      "wall_ms": 5.463937995955348
+    },
+    {
+      "baseline_cuda_ms": 5.451839923858643,
+      "baseline_wall_ms": 5.463937995955348,
+      "candidate_cuda_ms": 0.3354879915714264,
+      "candidate_wall_ms": 0.3475360572338104,
+      "kind": "pair",
+      "mode": "static",
+      "order": "BA",
+      "pair": 1,
+      "size": 256,
+      "steps": 16
+    },
+    {
+      "cuda_ms": 0.40585601329803467,
+      "kind": "path_sample",
+      "mode": "changing",
+      "pair": 1,
+      "path": "B",
+      "size": 256,
+      "wall_ms": 0.4179638344794512
+    },
+    {
+      "cuda_ms": 5.458367824554443,
+      "kind": "path_sample",
+      "mode": "changing",
+      "pair": 1,
+      "path": "A",
+      "size": 256,
+      "wall_ms": 5.470886826515198
+    },
+    {
+      "baseline_cuda_ms": 5.458367824554443,
+      "baseline_wall_ms": 5.470886826515198,
+      "candidate_cuda_ms": 0.40585601329803467,
+      "candidate_wall_ms": 0.4179638344794512,
+      "kind": "pair",
+      "mode": "changing",
+      "order": "BA",
+      "pair": 1,
+      "size": 256,
+      "steps": 16
+    }
+  ]
+}

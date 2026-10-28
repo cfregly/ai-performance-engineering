@@ -1,0 +1,334 @@
+{
+  "status": "ACCEPTED",
+  "mode": "unprofiled",
+  "wall_clock": "perf_counter around16 submissions plus final CUDA synchronize",
+  "device_clock": "CUDA Event start/end per block, retained as auxiliary timing",
+  "profile_capture": "none",
+  "profiler_claims": false,
+  "rows": [
+    {
+      "cuda_ms": 5.48089599609375,
+      "kind": "path_sample",
+      "mode": "static",
+      "pair": 0,
+      "path": "A",
+      "size": 16,
+      "wall_ms": 5.492937983945012
+    },
+    {
+      "cuda_ms": 0.3301759958267212,
+      "kind": "path_sample",
+      "mode": "static",
+      "pair": 0,
+      "path": "B",
+      "size": 16,
+      "wall_ms": 0.3432761877775192
+    },
+    {
+      "cuda_ms": 0.3195199966430664,
+      "kind": "path_sample",
+      "mode": "static",
+      "pair": 1,
+      "path": "B",
+      "size": 16,
+      "wall_ms": 0.33215503208339214
+    },
+    {
+      "cuda_ms": 5.476799964904785,
+      "kind": "path_sample",
+      "mode": "static",
+      "pair": 1,
+      "path": "A",
+      "size": 16,
+      "wall_ms": 5.488966824486852
+    },
+    {
+      "cuda_ms": 5.472544193267822,
+      "kind": "path_sample",
+      "mode": "static",
+      "pair": 2,
+      "path": "A",
+      "size": 16,
+      "wall_ms": 5.485248053446412
+    },
+    {
+      "cuda_ms": 0.3213759958744049,
+      "kind": "path_sample",
+      "mode": "static",
+      "pair": 2,
+      "path": "B",
+      "size": 16,
+      "wall_ms": 0.3341161645948887
+    },
+    {
+      "cuda_ms": 5.48195219039917,
+      "kind": "path_sample",
+      "mode": "changing",
+      "pair": 0,
+      "path": "A",
+      "size": 16,
+      "wall_ms": 5.4939978290349245
+    },
+    {
+      "cuda_ms": 0.5502399802207947,
+      "kind": "path_sample",
+      "mode": "changing",
+      "pair": 0,
+      "path": "B",
+      "size": 16,
+      "wall_ms": 0.5632019601762295
+    },
+    {
+      "cuda_ms": 0.4640960097312927,
+      "kind": "path_sample",
+      "mode": "changing",
+      "pair": 1,
+      "path": "B",
+      "size": 16,
+      "wall_ms": 0.4762730095535517
+    },
+    {
+      "cuda_ms": 5.486527919769287,
+      "kind": "path_sample",
+      "mode": "changing",
+      "pair": 1,
+      "path": "A",
+      "size": 16,
+      "wall_ms": 5.49841788597405
+    },
+    {
+      "cuda_ms": 5.460576057434082,
+      "kind": "path_sample",
+      "mode": "changing",
+      "pair": 2,
+      "path": "A",
+      "size": 16,
+      "wall_ms": 5.473177181556821
+    },
+    {
+      "cuda_ms": 0.5479360222816467,
+      "kind": "path_sample",
+      "mode": "changing",
+      "pair": 2,
+      "path": "B",
+      "size": 16,
+      "wall_ms": 0.5599220748990774
+    },
+    {
+      "cuda_ms": 5.397600173950195,
+      "kind": "path_sample",
+      "mode": "static",
+      "pair": 0,
+      "path": "A",
+      "size": 64,
+      "wall_ms": 5.409058183431625
+    },
+    {
+      "cuda_ms": 0.3375360071659088,
+      "kind": "path_sample",
+      "mode": "static",
+      "pair": 0,
+      "path": "B",
+      "size": 64,
+      "wall_ms": 0.3493248950690031
+    },
+    {
+      "cuda_ms": 0.3367680013179779,
+      "kind": "path_sample",
+      "mode": "static",
+      "pair": 1,
+      "path": "B",
+      "size": 64,
+      "wall_ms": 0.34818495623767376
+    },
+    {
+      "cuda_ms": 5.39686393737793,
+      "kind": "path_sample",
+      "mode": "static",
+      "pair": 1,
+      "path": "A",
+      "size": 64,
+      "wall_ms": 5.408759228885174
+    },
+    {
+      "cuda_ms": 5.3858561515808105,
+      "kind": "path_sample",
+      "mode": "static",
+      "pair": 2,
+      "path": "A",
+      "size": 64,
+      "wall_ms": 5.400309106335044
+    },
+    {
+      "cuda_ms": 0.3563840091228485,
+      "kind": "path_sample",
+      "mode": "static",
+      "pair": 2,
+      "path": "B",
+      "size": 64,
+      "wall_ms": 0.372905982658267
+    },
+    {
+      "cuda_ms": 5.3878397941589355,
+      "kind": "path_sample",
+      "mode": "changing",
+      "pair": 0,
+      "path": "A",
+      "size": 64,
+      "wall_ms": 5.399248795583844
+    },
+    {
+      "cuda_ms": 0.4074240028858185,
+      "kind": "path_sample",
+      "mode": "changing",
+      "pair": 0,
+      "path": "B",
+      "size": 64,
+      "wall_ms": 0.4205747973173857
+    },
+    {
+      "cuda_ms": 0.4025920033454895,
+      "kind": "path_sample",
+      "mode": "changing",
+      "pair": 1,
+      "path": "B",
+      "size": 64,
+      "wall_ms": 0.41459291242063046
+    },
+    {
+      "cuda_ms": 5.396128177642822,
+      "kind": "path_sample",
+      "mode": "changing",
+      "pair": 1,
+      "path": "A",
+      "size": 64,
+      "wall_ms": 5.4084789007902145
+    },
+    {
+      "cuda_ms": 5.380288124084473,
+      "kind": "path_sample",
+      "mode": "changing",
+      "pair": 2,
+      "path": "A",
+      "size": 64,
+      "wall_ms": 5.392929073423147
+    },
+    {
+      "cuda_ms": 0.4086720049381256,
+      "kind": "path_sample",
+      "mode": "changing",
+      "pair": 2,
+      "path": "B",
+      "size": 64,
+      "wall_ms": 0.4210940096527338
+    },
+    {
+      "cuda_ms": 5.451168060302734,
+      "kind": "path_sample",
+      "mode": "static",
+      "pair": 0,
+      "path": "A",
+      "size": 256,
+      "wall_ms": 5.465978058055043
+    },
+    {
+      "cuda_ms": 0.3365119993686676,
+      "kind": "path_sample",
+      "mode": "static",
+      "pair": 0,
+      "path": "B",
+      "size": 256,
+      "wall_ms": 0.34957495518028736
+    },
+    {
+      "cuda_ms": 0.3354879915714264,
+      "kind": "path_sample",
+      "mode": "static",
+      "pair": 1,
+      "path": "B",
+      "size": 256,
+      "wall_ms": 0.3475360572338104
+    },
+    {
+      "cuda_ms": 5.451839923858643,
+      "kind": "path_sample",
+      "mode": "static",
+      "pair": 1,
+      "path": "A",
+      "size": 256,
+      "wall_ms": 5.463937995955348
+    },
+    {
+      "cuda_ms": 5.453567981719971,
+      "kind": "path_sample",
+      "mode": "static",
+      "pair": 2,
+      "path": "A",
+      "size": 256,
+      "wall_ms": 5.467018112540245
+    },
+    {
+      "cuda_ms": 0.3412480056285858,
+      "kind": "path_sample",
+      "mode": "static",
+      "pair": 2,
+      "path": "B",
+      "size": 256,
+      "wall_ms": 0.3538751043379307
+    },
+    {
+      "cuda_ms": 5.463583946228027,
+      "kind": "path_sample",
+      "mode": "changing",
+      "pair": 0,
+      "path": "A",
+      "size": 256,
+      "wall_ms": 5.475728074088693
+    },
+    {
+      "cuda_ms": 0.41152000427246094,
+      "kind": "path_sample",
+      "mode": "changing",
+      "pair": 0,
+      "path": "B",
+      "size": 256,
+      "wall_ms": 0.42410497553646564
+    },
+    {
+      "cuda_ms": 0.40585601329803467,
+      "kind": "path_sample",
+      "mode": "changing",
+      "pair": 1,
+      "path": "B",
+      "size": 256,
+      "wall_ms": 0.4179638344794512
+    },
+    {
+      "cuda_ms": 5.458367824554443,
+      "kind": "path_sample",
+      "mode": "changing",
+      "pair": 1,
+      "path": "A",
+      "size": 256,
+      "wall_ms": 5.470886826515198
+    },
+    {
+      "cuda_ms": 5.448448181152344,
+      "kind": "path_sample",
+      "mode": "changing",
+      "pair": 2,
+      "path": "A",
+      "size": 256,
+      "wall_ms": 5.461476976051927
+    },
+    {
+      "cuda_ms": 0.4085119962692261,
+      "kind": "path_sample",
+      "mode": "changing",
+      "pair": 2,
+      "path": "B",
+      "size": 256,
+      "wall_ms": 0.4210949409753084
+    }
+  ]
+}

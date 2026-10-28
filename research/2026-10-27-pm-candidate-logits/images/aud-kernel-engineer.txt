@@ -1,0 +1,17 @@
+Shrink the output dimension
+
+The full matrix multiply has shapes 8 by 2048 times 2048 by 131072. With 64 legal IDs, the candidate uses 8 by 2048 times 2048 by 64. At 4 bytes per FP32 element, full weight tensor storage is 131072 × 2048 × 4 = 1073741824 bytes, or 1 GiB. The 64 selected rows occupy 64 × 2048 × 4 = 524288 bytes, or 512 KiB. These are derived tensor-storage sizes, not measured memory traffic. Shape sketches are schematic.
+
+Shrink the output dimension first
+Batch 8 · hidden 2048 · strict FP32
+Full output projection
+×
+8 × 2048  ×  2048 × 131072
+64 legal outputs
+8 × 2048  ×  2048 × 64
+FP32 weights: 1 GiB → 512 KiB
+Derived tensor storage; not measured memory traffic · shape sketches are schematic
+Shrink the output
+dimension first
+FP32 weight storage: 1 GiB → 512 KiB
+Derived tensor storage; not measured memory traffic

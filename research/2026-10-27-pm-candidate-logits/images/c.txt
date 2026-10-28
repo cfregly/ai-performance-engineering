@@ -1,0 +1,22 @@
+Spot an early legal set
+
+Find whether legal IDs are available before output projection. Gather the legal rows before the multiply and time gather, projection, and legal argmax together. Include each gather when the set changes. Report one-time setup separately when a static set is reused.
+
+Are legal IDs ready early?
+How to spot a smaller projection
+1
+Find the boundary
+Are legal IDs known
+before the output head?
+2
+Move the selection
+Gather legal rows
+before the multiply
+3
+Time the whole path
+Gather + projection
++ legal argmax
+Changing sets: include each gather
+Static sets: report one-time setup separately
+Are legal IDs
+ready early?

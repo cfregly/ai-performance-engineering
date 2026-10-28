@@ -1,0 +1,22 @@
+Check the constraint boundary
+
+Legal IDs must be available before output projection. The measured implementation uses one shared device-resident legal set across batch 8. Independent per-request ID sets require a separate implementation and measurement before applying this stage gain.
+
+Check when constraints become available
+Legal IDs must arrive before projection
+One shared legal set
+Batch 8
+Gather legal rows → output head
+Different IDs per request?
+IDs A
+IDs B
+IDs C
+IDs D
+Validate that implementation
+before using this stage gain
+This comparison uses one device-resident legal set across the batch
+Check when constraints
+become available
+Gather rows
+→ output head
+This comparison uses one device-resident set
