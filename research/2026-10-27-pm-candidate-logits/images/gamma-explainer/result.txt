@@ -1,0 +1,7 @@
+Output-head stage only, not whole-model speedup.
+12.84× faster.
+5.399 → 0.421 ms per warm 16-step block.
+Full scoring + filtering versus select first + score.
+Row selection included.
+Synthetic B200; 64 allowed tokens changing each step, shared across batch; median 3 pairs in one process.
+FP32, TF32 off; B8/H2048/V131072.

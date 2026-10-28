@@ -162,3 +162,19 @@ The cover illustration is conceptual. Tile counts and drawn proportions do not e
 ![Changing legal sets: the observed stage gain — square](images/comparison-detail-square.png)
 
 </details>
+
+## Visual walkthrough
+
+These figures explain the illustrative allowed-choice example and the retained output-head measurements. Model and serving performance were not measured.
+
+![Illustrative allowed choices](images/gamma-explainer/example.png)
+
+![Final scoring paths](images/gamma-explainer/mechanism.png)
+
+![Measured stage comparison](images/gamma-explainer/result.png)
+
+![All six measured cases](images/gamma-explainer/matrix.png)
+
+![Static selection setup](images/gamma-explainer/setup.png)
+
+![Applicability and limits](images/gamma-explainer/boundaries.png)
