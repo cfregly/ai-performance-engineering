@@ -1,0 +1,17 @@
+{
+  "experiment_id": "synthetic-cpu-query-contract-example",
+  "run_ids": [
+    "synthetic-run"
+  ],
+  "synthetic_fixture": true,
+  "rows": [
+    [
+      "a",
+      1
+    ],
+    [
+      "b",
+      2
+    ]
+  ]
+}

@@ -3,6 +3,7 @@ from __future__ import annotations
 import binascii
 import hashlib
 import json
+import shutil
 import struct
 import subprocess
 import sys
@@ -12,6 +13,7 @@ import zlib
 from pathlib import Path
 
 from tools.check_package import validate_package
+from tools.test_qualified_cpu_study import build_cpu_fixture
 
 
 CONCEPTS = ["images/a", "images/b", "images/c"]
@@ -189,6 +191,198 @@ class PackageGateTests(unittest.TestCase):
         errors = validate_package(self.package)
         self.assertTrue(any(phrase in error for error in errors), f"{phrase!r} absent from {errors!r}")
 
+    def make_cpu_measured(self, *, declare_envelope: bool = True) -> dict:
+        receipt = build_cpu_fixture(self.package)
+        self.write_json("evidence/measurement-receipt.json", receipt)
+        manifest = self.read_json("manifest.json")
+        manifest.update(content_state="measured", measurement_receipt="evidence/measurement-receipt.json")
+        if declare_envelope:
+            manifest["piq_experiment_evidence"] = receipt["piq_envelopes"][0]["path"]
+        self.write_json("manifest.json", manifest)
+        (self.package / "VERIFICATION.md").write_text(
+            "# Verification\n\n## CPU stage\n\nMeasured CPU study with retained qualification evidence.\n",
+            encoding="utf-8",
+        )
+        return receipt
+
+    def test_valid_qualified_cpu_v2_does_not_require_gpu_placeholders(self) -> None:
+        receipt = self.make_cpu_measured(declare_envelope=False)
+        self.assertNotIn("power_limit_w", receipt)
+        self.assertNotIn("expected_power_limit_w", receipt)
+        self.assertEqual(validate_package(self.package), [])
+
+    def test_valid_qualified_cpu_v2_binds_declared_piq_diagnostic(self) -> None:
+        self.make_cpu_measured()
+        self.assertEqual(validate_package(self.package), [])
+
+    def test_invalid_cpu_v2_cannot_remove_diagnostic_block(self) -> None:
+        receipt = self.make_cpu_measured()
+        receipt["execution_class"] = "gpu"
+        self.write_json("evidence/measurement-receipt.json", receipt)
+        self.assert_problem("cpu execution")
+        self.assert_problem("PIQ diagnostic evidence cannot establish package readiness")
+
+    def test_cpu_v2_requires_cpu_execution_verification(self) -> None:
+        self.make_cpu_measured()
+        (self.package / "VERIFICATION.md").write_text("# Verification\n\n## GPU stage\n\nMeasured GPU study.\n")
+        self.assert_problem("nonempty '## CPU stage'")
+        (self.package / "VERIFICATION.md").write_text("# Verification\n\n## CPU stage\n\nNot run.\n")
+        self.assert_problem("CPU stage must explicitly describe itself as measured")
+
+    def test_cpu_v2_wrong_envelope_hash_keeps_diagnostic_block(self) -> None:
+        receipt = self.make_cpu_measured()
+        receipt["piq_envelopes"][0]["sha256"] = "0" * 64
+        self.write_json("evidence/measurement-receipt.json", receipt)
+        self.assert_problem("PIQ diagnostic evidence cannot establish package readiness")
+
+    def test_unqualified_cpu_report_keeps_diagnostic_block(self) -> None:
+        receipt = self.make_cpu_measured()
+        reference = receipt["qualification_report"]
+        report = self.read_json(reference["path"])
+        report["verdict"] = "INCONCLUSIVE"
+        self.write_json(reference["path"], report)
+        reference["sha256"] = hashlib.sha256((self.package / reference["path"]).read_bytes()).hexdigest()
+        self.write_json("evidence/measurement-receipt.json", receipt)
+        errors = validate_package(self.package)
+        self.assertTrue(any("report" in error.lower() for error in errors), errors)
+        self.assertTrue(any("PIQ diagnostic evidence cannot establish package readiness" in error for error in errors), errors)
+
+    def test_unrelated_diagnostic_cannot_use_valid_cpu_v2_qualification(self) -> None:
+        self.make_cpu_measured()
+        example = Path(__file__).resolve().parents[1] / "examples/piq-diagnostic"
+        shutil.copytree(example, self.package / "evidence/unrelated-diagnostic")
+        manifest = self.read_json("manifest.json")
+        manifest["piq_experiment_evidence"] = "evidence/unrelated-diagnostic/envelope.json"
+        self.write_json("manifest.json", manifest)
+        self.assert_problem("PIQ diagnostic evidence cannot establish package readiness")
+
+    def test_cpu_label_does_not_waive_legacy_gpu_v1_requirements(self) -> None:
+        self.make_measured()
+        receipt = self.read_json("evidence/measurement-receipt.json")
+        receipt["execution_class"] = "cpu"
+        receipt.pop("power_limit_w")
+        receipt["profile_evidence"] = []
+        self.write_json("evidence/measurement-receipt.json", receipt)
+        self.assert_problem("power_limit_w must be a positive finite number")
+        self.assert_problem("profile_evidence must be a nonempty list")
+
+    def selected_copy(self, text: str) -> None:
+        selected = self.read_json("manifest.json")["selected_image_stem"]
+        (self.package / f"{selected}.txt").write_text(text, encoding="utf-8")
+        (self.package / "image.txt").write_text(text, encoding="utf-8")
+
+    def source_explanation_basis(self) -> dict:
+        self.selected_copy("Choose a cache-miss policy. Valid cached code stays usable.\n")
+        self.write_json("sources.json", {"sources": [{
+            "id": "compiler-reference", "authors": ["Compiler Contributors"],
+            "url": "https://example.org/compiler-reference",
+        }]})
+        manifest = self.read_json("manifest.json")
+        basis = {
+            "kind": "source_explanation", "image_stem": COVER,
+            "sidecar_sha256": hashlib.sha256((self.package / f"{COVER}.txt").read_bytes()).hexdigest(),
+            "sources": {"path": "sources.json", "sha256": hashlib.sha256((self.package / "sources.json").read_bytes()).hexdigest()},
+            "source_ids": ["compiler-reference"],
+            "scope": "Compiler control flow after representative warmup.",
+        }
+        manifest["selected_image_basis"] = basis
+        self.write_json("manifest.json", manifest)
+        return basis
+
+    def test_nonnumeric_source_explanation_cover_uses_private_basis(self) -> None:
+        self.source_explanation_basis()
+        self.assertNotRegex((self.package / "image.txt").read_text(), r"hypothetical|illustrative")
+        self.assertEqual(validate_package(self.package), [])
+
+    def test_source_explanation_cover_needs_private_basis(self) -> None:
+        self.selected_copy("Choose a cache-miss policy. Valid cached code stays usable.\n")
+        self.assert_problem("manifest.selected_image_basis")
+
+    def test_natural_example_must_state_its_assumptions(self) -> None:
+        for text in (
+            "Example: assume A is cached and B requires recompilation. Each call is attempted.\n",
+            "Example with two workers. Assumptions: BF16 inputs and equal batch sizes.\n",
+        ):
+            with self.subTest(text=text):
+                self.selected_copy(text)
+                self.assertEqual(validate_package(self.package), [])
+        for text in ("Example: four requests are twice as fast.\n", "Example with no assumptions stated.\n", "Example: assume\n"):
+            with self.subTest(text=text):
+                self.selected_copy(text)
+                self.assert_problem("must identify an example and its assumptions")
+
+    def test_malformed_source_explanation_basis_fails_closed(self) -> None:
+        for field, value in (
+            ("kind", "measured"), ("image_stem", "images/a"), ("scope", ""),
+            ("sidecar_sha256", "bad"), ("sources", {"path": "other.json", "sha256": "0" * 64}),
+            ("source_ids", []), ("source_ids", ["unknown"]), ("source_ids", [42]),
+        ):
+            with self.subTest(field=field, value=value):
+                basis = self.source_explanation_basis()
+                basis[field] = value
+                manifest = self.read_json("manifest.json")
+                manifest["selected_image_basis"] = basis
+                self.write_json("manifest.json", manifest)
+                self.assert_problem("manifest.selected_image_basis")
+        for value in (None, "source_explanation", [], 42):
+            with self.subTest(value=value):
+                self.source_explanation_basis()
+                manifest = self.read_json("manifest.json")
+                manifest["selected_image_basis"] = value
+                self.write_json("manifest.json", manifest)
+                self.assert_problem("manifest.selected_image_basis")
+
+    def test_source_explanation_basis_binds_current_sidecar_and_sources(self) -> None:
+        self.source_explanation_basis()
+        self.selected_copy("Choose how cache misses are handled.\n")
+        self.assert_problem("sidecar_sha256 does not match")
+        self.source_explanation_basis()
+        self.write_json("sources.json", {"sources": []})
+        self.assert_problem("sources.sha256 does not match")
+
+    def test_source_explanation_basis_requires_attributed_sources(self) -> None:
+        for field, value in (("url", "file:///private/source"), ("authors", [])):
+            with self.subTest(field=field):
+                self.source_explanation_basis()
+                sources = self.read_json("sources.json")
+                sources["sources"][0][field] = value
+                self.write_json("sources.json", sources)
+                manifest = self.read_json("manifest.json")
+                manifest["selected_image_basis"]["sources"]["sha256"] = hashlib.sha256((self.package / "sources.json").read_bytes()).hexdigest()
+                self.write_json("manifest.json", manifest)
+                self.assert_problem("valid HTTPS URL and named attribution")
+
+    def test_source_explanation_exception_does_not_admit_quantitative_covers(self) -> None:
+        for text in ("Compile twice as fast at 4 ms.\n", "Faster serving.\n", "Two requests.\n"):
+            with self.subTest(text=text):
+                self.source_explanation_basis()
+                self.selected_copy(text)
+                manifest = self.read_json("manifest.json")
+                manifest["selected_image_basis"]["sidecar_sha256"] = hashlib.sha256((self.package / f"{COVER}.txt").read_bytes()).hexdigest()
+                self.write_json("manifest.json", manifest)
+                self.assert_problem("must be nonnumeric and contain no performance claim")
+
+    def test_source_explanation_basis_cannot_replace_private_execution_status(self) -> None:
+        self.source_explanation_basis()
+        (self.package / "VERIFICATION.md").write_text("# Verification\n\n## GPU stage\n\nNo GPU workload launched.\n")
+        self.assert_problem("VERIFICATION.md must state that status explicitly")
+        (self.package / "VERIFICATION.md").write_text("# Verification\nHypothetical.\n\n## GPU stage\n\nNot recorded.\n")
+        self.assert_problem("GPU stage must explicitly state that no GPU workload or measurement was run")
+
+    def test_source_explanation_basis_cannot_replace_measurement_receipt(self) -> None:
+        self.source_explanation_basis()
+        self.make_measured()
+        self.assertEqual(validate_package(self.package), [])
+        (self.package / "evidence/measurement-receipt.json").unlink()
+        self.assert_problem("missing measurement receipt")
+
+    def test_source_explanation_basis_cannot_replace_source_reported_receipt(self) -> None:
+        self.source_explanation_basis()
+        self.make_source_reported()
+        self.assertEqual(validate_package(self.package), [])
+        (self.package / "evidence/source-reported-receipt.json").unlink()
+        self.assert_problem("missing source-reported receipt")
+
     def test_explicit_review_block_prevents_readiness(self) -> None:
         path = self.package / "manifest.json"
         manifest = json.loads(path.read_text())
@@ -365,6 +559,25 @@ note = "with False, with True, Raw metrics and units are retained."
     def test_stale_image_review_fails(self) -> None:
         (self.package / "images/a.png").write_bytes(png_bytes(1600, 900, (201, 11, 77)))
         self.assert_problem("stale review hash for images/a")
+
+    def test_piq_diagnostic_cannot_replace_measured_receipt_or_package_gate(self) -> None:
+        self.make_measured()
+        example = Path(__file__).resolve().parents[1] / "examples/piq-diagnostic"
+        shutil.copytree(example, self.package / "evidence/piq-experiment")
+        manifest = self.read_json("manifest.json")
+        manifest["piq_experiment_evidence"] = "evidence/piq-experiment/envelope.json"
+        self.write_json("manifest.json", manifest)
+        self.assert_problem("PIQ diagnostic evidence cannot establish package readiness")
+        (self.package / "evidence/measurement-receipt.json").unlink()
+        self.assert_problem("measurement receipt")
+
+    def test_piq_import_does_not_enable_hypothetical_package_promotion(self) -> None:
+        example = Path(__file__).resolve().parents[1] / "examples/piq-diagnostic"
+        shutil.copytree(example, self.package / "evidence/piq-experiment")
+        manifest = self.read_json("manifest.json")
+        manifest["piq_experiment_evidence"] = "evidence/piq-experiment/envelope.json"
+        self.write_json("manifest.json", manifest)
+        self.assert_problem("PIQ diagnostic evidence cannot establish package readiness")
 
     def test_missing_typefully_receipt_fails(self) -> None:
         (self.package / "social/typefully-receipt.json").unlink()

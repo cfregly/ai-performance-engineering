@@ -1,0 +1,143 @@
+{
+  "schema_version": 1,
+  "kind": "piq_experiment_evidence",
+  "scope": "diagnostic",
+  "workload_family": "cpu_data_query",
+  "experiment": {
+    "id": "synthetic-cpu-query-contract-example",
+    "question": "Does the fixture demonstrate the evidence contract?",
+    "hypothesis": "Every retained artifact and run identity can be checked without GPU fields.",
+    "workload_scope": "Synthetic CPU query schema fixture, no workload executed.",
+    "design": {
+      "path": "evidence/design.json",
+      "sha256": "670580de4fc30c42b8e7744159dba015ea44a029439b0338676b975b1b8faf6f"
+    },
+    "source_artifacts": [
+      {
+        "path": "source/query.sql",
+        "sha256": "c52198e5dd81c962e87cb84f97b6c0a256e4e7b6757e307912345734b1c05557"
+      }
+    ]
+  },
+  "stack": {
+    "piq_revision": "0000000000000000000000000000000000000000",
+    "runtime_identifier": "synthetic-example/no-runtime",
+    "hardware_identifier": "synthetic-example/no-hardware",
+    "layers": [
+      {
+        "name": "host",
+        "identifier": "synthetic-example/host"
+      },
+      {
+        "name": "storage",
+        "identifier": "synthetic-example/storage"
+      },
+      {
+        "name": "runtime",
+        "identifier": "synthetic-example/runtime"
+      },
+      {
+        "name": "workload",
+        "identifier": "synthetic-example/workload"
+      }
+    ]
+  },
+  "objective": {
+    "metric": "query_elapsed",
+    "unit": "ms",
+    "direction": "minimize",
+    "window": {
+      "start": "2026-10-27T12:00:00Z",
+      "end": "2026-10-27T12:00:01Z"
+    }
+  },
+  "attempts": [
+    {
+      "id": "baseline-01",
+      "run_id": "synthetic-run",
+      "role": "baseline",
+      "status": "succeeded",
+      "accepted": true,
+      "raw_result": {
+        "path": "evidence/baseline-01.json",
+        "sha256": "7b06736e361d3aed01841799cdc13159d9501571e746dfd6fb83d233c511c37a"
+      },
+      "failure_reason": null
+    },
+    {
+      "id": "candidate-01",
+      "run_id": "synthetic-run",
+      "role": "candidate",
+      "status": "succeeded",
+      "accepted": true,
+      "raw_result": {
+        "path": "evidence/candidate-01.json",
+        "sha256": "3318708e601d01eba485005c5e395dcff599751c21127ff45fb98227b7b02abe"
+      },
+      "failure_reason": null
+    }
+  ],
+  "comparison": {
+    "baseline_attempt_ids": [
+      "baseline-01"
+    ],
+    "candidate_attempt_ids": [
+      "candidate-01"
+    ],
+    "scientific_disposition": "DIAGNOSTIC_ONLY",
+    "reason": "Synthetic contract example, no timing or speedup measured."
+  },
+  "correctness": {
+    "accepted": true,
+    "path": "evidence/correctness.json",
+    "sha256": "9e79cb7ae3252d82cecc17a12432f422c1f19310ad70a3388f7118ff06a76913"
+  },
+  "workload_evidence": {
+    "input": {
+      "path": "evidence/input.csv",
+      "sha256": "9bc77127795c1c3725bf09fdcc615f286c6fd235154802f20f55928446c5a683"
+    },
+    "output": {
+      "path": "evidence/output.json",
+      "sha256": "3837c1434328b83a1aacb1c063ab6389a72604542cf7eeeacc4f1a48a7576fdc"
+    },
+    "query_plan": {
+      "path": "evidence/query-plan.json",
+      "sha256": "fef19b2aed74f7363e3b6e9ba79f8305c6e341e503ae5ace62c1a224d5d17706"
+    }
+  },
+  "artifacts": [
+    {
+      "path": "source/query.sql",
+      "sha256": "c52198e5dd81c962e87cb84f97b6c0a256e4e7b6757e307912345734b1c05557"
+    },
+    {
+      "path": "evidence/input.csv",
+      "sha256": "9bc77127795c1c3725bf09fdcc615f286c6fd235154802f20f55928446c5a683"
+    },
+    {
+      "path": "evidence/design.json",
+      "sha256": "670580de4fc30c42b8e7744159dba015ea44a029439b0338676b975b1b8faf6f"
+    },
+    {
+      "path": "evidence/baseline-01.json",
+      "sha256": "7b06736e361d3aed01841799cdc13159d9501571e746dfd6fb83d233c511c37a"
+    },
+    {
+      "path": "evidence/candidate-01.json",
+      "sha256": "3318708e601d01eba485005c5e395dcff599751c21127ff45fb98227b7b02abe"
+    },
+    {
+      "path": "evidence/output.json",
+      "sha256": "3837c1434328b83a1aacb1c063ab6389a72604542cf7eeeacc4f1a48a7576fdc"
+    },
+    {
+      "path": "evidence/query-plan.json",
+      "sha256": "fef19b2aed74f7363e3b6e9ba79f8305c6e341e503ae5ace62c1a224d5d17706"
+    },
+    {
+      "path": "evidence/correctness.json",
+      "sha256": "9e79cb7ae3252d82cecc17a12432f422c1f19310ad70a3388f7118ff06a76913"
+    }
+  ]
+}

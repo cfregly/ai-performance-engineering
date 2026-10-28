@@ -2,7 +2,8 @@
 """Fail-closed artifact gate for a post package.
 
 This checks retained files, hashes, review/readback receipts, and declared state.
-It does not judge visual quality or prove that a GPU experiment was qualified.
+CPU v2 recomputes its fixed protocol from retained evidence. This does not prove
+external execution, judge visual quality, or qualify a GPU experiment.
 """
 
 from __future__ import annotations
@@ -21,10 +22,16 @@ if __package__:
     from .check_profile_conventions import validate_profile_conventions
     from .check_social_preview import validate_social_preview
     from .check_public_projection import validate_public_projection
+    from .check_reader_copy import validate_reader_copy
+    from .piq_experiment_evidence import validate_bundle as validate_piq_bundle
+    from .qualified_cpu_study import cpu_receipt_binds_envelope, validate_cpu_receipt
 else:
     from check_profile_conventions import validate_profile_conventions
     from check_social_preview import validate_social_preview
     from check_public_projection import validate_public_projection
+    from check_reader_copy import validate_reader_copy
+    from piq_experiment_evidence import validate_bundle as validate_piq_bundle
+    from qualified_cpu_study import cpu_receipt_binds_envelope, validate_cpu_receipt
 
 
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
@@ -369,15 +376,24 @@ def validate_typefully(package: Path, errors: list[str]) -> None:
                 errors.append(f"Typefully receipt texts.{platform} does not exactly match {relative}")
 
 
-def validate_measurement(package: Path, errors: list[str]) -> None:
+def validate_measurement(package: Path, errors: list[str]) -> dict[str, Any] | None:
+    """Return a CPU receipt only after its complete v2 contract passes.
+
+    The legacy GPU v1 checks below retain their existing requirements. A CPU
+    label alone never skips those checks or admits diagnostic-only evidence.
+    """
     data = load_json(package / MEASUREMENT_RECEIPT_PATH, errors, "measurement receipt")
     if data is None:
         return
     if not isinstance(data, dict):
         errors.append("measurement receipt must be a JSON object")
         return
+    if data.get("schema_version") == 2:
+        cpu_errors = validate_cpu_receipt(package, data)
+        errors.extend(cpu_errors)
+        return data if not cpu_errors else None
     if data.get("schema_version") != 1:
-        errors.append("measurement receipt schema_version must equal 1")
+        errors.append("measurement receipt schema_version must equal 1 (GPU) or 2 (qualified CPU)")
     if data.get("state") != "measured":
         errors.append("measurement receipt state must be 'measured'")
     if not isinstance(data.get("workload_scope"), str) or not data["workload_scope"].strip():
@@ -630,11 +646,70 @@ def validate_source_reported(package: Path, errors: list[str]) -> None:
             errors.append("source-claim review does not bind the current attributed results")
 
 
-def validate_state(package: Path, state: str | None, selected: str | None, errors: list[str]) -> None:
+def validate_source_explanation_basis(
+    package: Path, selected: str, sidecar_text: str, basis: Any, errors: list[str],
+) -> None:
+    """Bind an unmeasured, nonnumeric cover explanation to its private sources."""
+    label = "manifest.selected_image_basis"
+    if not isinstance(basis, dict):
+        errors.append(f"{label} must be an object for a source-explanation cover")
+        return
+    if basis.get("kind") != "source_explanation":
+        errors.append(f"{label}.kind must equal 'source_explanation'")
+    if selected != COVER or basis.get("image_stem") != selected:
+        errors.append(f"{label}.image_stem must bind the selected cover {COVER}")
+    if not isinstance(basis.get("scope"), str) or not basis["scope"].strip():
+        errors.append(f"{label}.scope must describe the source explanation")
+    expected = basis.get("sidecar_sha256")
+    sidecar = package / f"{selected}.txt"
+    if not isinstance(expected, str) or not SHA256_RE.fullmatch(expected):
+        errors.append(f"{label}.sidecar_sha256 must be a lowercase SHA-256 hex digest")
+    elif not sidecar.is_file() or sha256(sidecar) != expected:
+        errors.append(f"{label}.sidecar_sha256 does not match {selected}.txt")
+
+    source_ref = basis.get("sources")
+    if not isinstance(source_ref, dict) or source_ref.get("path") != "sources.json":
+        errors.append(f"{label}.sources must bind sources.json")
+    else:
+        validate_hashed_file(package, source_ref, f"{label}.sources", errors)
+    definitions = load_json(package / "sources.json", errors, "source-explanation sources")
+    definitions = definitions.get("sources") if isinstance(definitions, dict) else definitions
+    ids = basis.get("source_ids")
+    if not isinstance(ids, list) or not ids or not all(isinstance(item, str) and item.strip() for item in ids):
+        errors.append(f"{label}.source_ids must contain named source IDs")
+    elif len(set(ids)) != len(ids):
+        errors.append(f"{label}.source_ids must be distinct")
+    else:
+        for source_id in ids:
+            matches = [item for item in definitions if isinstance(item, dict) and item.get("id") == source_id] if isinstance(definitions, list) else []
+            if len(matches) != 1:
+                errors.append(f"{label}.source_ids must identify distinct retained sources: {source_id}")
+            elif not valid_https_url(matches[0].get("url")) or not has_named_author(matches[0]):
+                errors.append(f"{label} source {source_id} must have a valid HTTPS URL and named attribution")
+    if re.search(
+        r"\d|\b(?:zero|one|two|three|four|five|six|seven|eight|nine|ten|hundred|thousand|"
+        r"speedups?|faster|slower|latency|throughput|capacity|costs?|performance gains?)\b",
+        sidecar_text,
+        re.I,
+    ):
+        errors.append("source-explanation selected cover must be nonnumeric and contain no performance claim; use an explicit example or the applicable evidence state")
+
+
+def validate_state(
+    package: Path, state: str | None, selected: str | None, errors: list[str], image_basis: Any = None,
+    *, qualified_cpu: bool = False,
+) -> None:
     verification = require_file(package, "VERIFICATION.md", errors)
     if not verification.is_file():
         return
     text = verification.read_text(encoding="utf-8")
+    if state == "measured" and qualified_cpu:
+        match = re.search(r"(?ims)^##\s+CPU stage\s*$\n(.*?)(?=^##\s+|\Z)", text)
+        if not match or not match.group(1).strip():
+            errors.append("qualified CPU package VERIFICATION.md must contain a nonempty '## CPU stage' section")
+        elif "measured" not in match.group(1).lower():
+            errors.append("qualified CPU package CPU stage must explicitly describe itself as measured")
+        return
     match = re.search(r"(?ims)^##\s+GPU stage\s*$\n(.*?)(?=^##\s+|\Z)", text)
     if not match:
         errors.append("VERIFICATION.md must contain a nonempty '## GPU stage' section")
@@ -646,8 +721,17 @@ def validate_state(package: Path, state: str | None, selected: str | None, error
     if state == "hypothetical":
         if selected:
             sidecar = package / f"{selected}.txt"
-            if sidecar.is_file() and not re.search(r"hypothetical|illustrative", sidecar.read_text(encoding="utf-8"), re.I):
-                errors.append("hypothetical selected-image sidecar must say 'hypothetical' or 'illustrative'")
+            if sidecar.is_file():
+                sidecar_text = sidecar.read_text(encoding="utf-8")
+                labelled = re.search(r"\b(?:hypothetical|illustrative)\b", sidecar_text, re.I)
+                example = re.search(r"\bexample\b", sidecar_text, re.I) and re.search(
+                    r"\b(?:assume|assumes|assuming|suppose|given)\s+\w|\bassumptions?:\s*\w",
+                    sidecar_text, re.I,
+                )
+                if image_basis is not None:
+                    validate_source_explanation_basis(package, selected, sidecar_text, image_basis, errors)
+                elif not labelled and not example:
+                    errors.append("hypothetical selected-image sidecar must identify an example and its assumptions, or bind a private source-explanation basis in manifest.selected_image_basis")
         if "hypothetical" not in text.lower():
             errors.append("hypothetical package VERIFICATION.md must state that status explicitly")
         nonmeasurement = re.search(
@@ -683,6 +767,7 @@ def validate_package(package: Path) -> list[str]:
         errors.append("required technical review is " + manifest["review_status"] + "; private preview only")
     stems = [*CONCEPTS, COVER, *audience_stems]
     validate_public_copy(package, stems, errors)
+    errors.extend(validate_reader_copy(package))
     hashes: dict[str, str] = {}
     for stem in stems:
         value = validate_variant(package, stem, errors)
@@ -705,16 +790,41 @@ def validate_package(package: Path) -> list[str]:
 
     validate_review(package, stems, hashes, errors)
     validate_typefully(package, errors)
+    qualified_cpu_receipt: dict[str, Any] | None = None
     if state == "measured":
-        validate_measurement(package, errors)
+        qualified_cpu_receipt = validate_measurement(package, errors)
     elif state == "source_reported":
         validate_source_reported(package, errors)
+    if isinstance(manifest, dict) and "piq_experiment_evidence" in manifest:
+        relative = manifest["piq_experiment_evidence"]
+        bound_qualified_cpu = False
+        if not safe_relative(relative) or not relative.startswith("evidence/") or Path(relative).name != "envelope.json":
+            errors.append("manifest.piq_experiment_evidence must name evidence/<bundle>/envelope.json")
+        else:
+            envelope = package / relative
+            try:
+                envelope.resolve().relative_to(package)
+                if any(parent.is_symlink() for parent in (envelope, *envelope.parents) if parent != package):
+                    errors.append("manifest.piq_experiment_evidence must not use symlinks")
+                else:
+                    bundle_errors = validate_piq_bundle(envelope.parent)
+                    errors.extend(bundle_errors)
+                    bound_qualified_cpu = (
+                        not bundle_errors
+                        and qualified_cpu_receipt is not None
+                        and cpu_receipt_binds_envelope(package, qualified_cpu_receipt, envelope)
+                    )
+            except ValueError:
+                errors.append("manifest.piq_experiment_evidence escapes the package")
+        if not bound_qualified_cpu:
+            errors.append("PIQ diagnostic evidence cannot establish package readiness or replace the measured/scientific qualification gate; a valid qualified CPU v2 receipt must bind this exact envelope and its full study/run/attempt census")
     if "claim_scope_review" in manifest:
         if manifest["claim_scope_review"] != "claim-scope-review.md":
             errors.append("manifest claim_scope_review must equal claim-scope-review.md")
         else:
             require_file(package, "claim-scope-review.md", errors)
-    validate_state(package, state, selected, errors)
+    image_basis = manifest.get("selected_image_basis") if isinstance(manifest, dict) else None
+    validate_state(package, state, selected, errors, image_basis, qualified_cpu=qualified_cpu_receipt is not None)
     errors.extend(validate_profile_conventions(package))
     errors.extend(validate_social_preview(package))
     errors.extend(validate_public_projection(package))

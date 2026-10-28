@@ -1,0 +1,12 @@
+{
+  "experiment_id": "synthetic-cpu-query-contract-example",
+  "attempt_id": "candidate-01",
+  "run_id": "synthetic-run",
+  "role": "candidate",
+  "design_sha256": "670580de4fc30c42b8e7744159dba015ea44a029439b0338676b975b1b8faf6f",
+  "input_sha256": "9bc77127795c1c3725bf09fdcc615f286c6fd235154802f20f55928446c5a683",
+  "synthetic_fixture": true,
+  "metrics": {
+    "query_elapsed_ms": null
+  }
+}

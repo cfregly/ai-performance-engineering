@@ -1,0 +1,11 @@
+{
+  "state": "PASS",
+  "scope": "input-byte audit only, no compression experiment",
+  "source_commit": "03ff53d63b5ff91e6ddf556619400c6d277a7d29",
+  "source_files_verified": 1024,
+  "tar_members_verified": 1025,
+  "corpus_sha256": "814bc3e4f10ffab1137a48d0eba10ed1307a15a12b2a68bea0ae529502877abd",
+  "corpus_bytes": 43253760,
+  "all_git_blob_ids_and_sha256_verified": true,
+  "all_distinct_content": true
+}
