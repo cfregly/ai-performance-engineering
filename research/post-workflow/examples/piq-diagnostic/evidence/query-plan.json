@@ -1,0 +1,5 @@
+{
+  "experiment_id": "synthetic-cpu-query-contract-example",
+  "synthetic_fixture": true,
+  "plan": "Example only: scan samples; group by category. No engine executed."
+}

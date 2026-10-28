@@ -16,6 +16,13 @@ X and LinkedIn copy against that claim. Check these failure modes:
 - A framework example naming the wrong runner, backend, kernel or version.
 - A ratio without its actual baseline and measured population.
 - Commands that fail from a clean checkout or silently skip required GPU work.
+- A compute or link floor using the wrong instruction rate or bandwidth direction.
+- Byte counts omitting metadata, scales or replicas, or assuming unattainable bandwidth.
+- Scaling results that mix fixed total load with fixed load per GPU, or omit either per-GPU or total results.
+- A fitted or subtracted component presented as directly measured, without checking all available points and residuals.
+- A decision rule whose own numbers do not support its stated recommendation or objective.
+- Communication counts that conflate one copy per pick with one per destination or omit the local share.
+- Speculative-decoding steps conflated with tokens checked or emitted.
 
 Explain what the reader will learn or decide before introducing the mechanism.
 Carry one introduced example through difficult steps and say where the analogy

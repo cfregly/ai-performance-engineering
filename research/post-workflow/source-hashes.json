@@ -1,52 +1,132 @@
 {
   "files": [
     {
-      "path": "tools/check_package.py",
-      "sha256": "cb06a6793293228bdb3055e206e16a6c1492cb35d58864f6c6af7aebc595ef21"
+      "path": "PIQ_EXPERIMENT_EVIDENCE.md",
+      "sha256": "0ceaf0810bba9c1d893aa80e42b1c3690c9e9fc19d934f528662174d8fe17868"
     },
     {
-      "path": "tools/test_check_package.py",
-      "sha256": "f3c15ba656e374be5039f92dd5b09cdaf4dbca87d03b02b6da5c31ee65922be6"
+      "path": "PROFILE_CONVENTIONS.md",
+      "sha256": "123df75fdaec4a81921b4e636008a231edd8f308def2b50dbf8d258ea0848dd2"
     },
     {
-      "path": "tools/check_profile_conventions.py",
-      "sha256": "e02b066f5b1c671f2f9f8613e5d90fe547b4d5aa8ea0c936f6ee78241243734f"
+      "path": "QUALIFIED_CPU_EVIDENCE.md",
+      "sha256": "47fe1b1f385f9068355c0c2bd1133601208fc4eeb5436779d45b9ed9051ae188"
     },
     {
-      "path": "tools/test_check_profile_conventions.py",
-      "sha256": "058e502218f023c599615f03c3c9b6b615505668ecd09b5e7711bbf973484878"
+      "path": "examples/piq-diagnostic/envelope.json",
+      "sha256": "792cc8ffd972c312d21a094012412cf314f69858e0cbefe1176c195410a917a7"
     },
     {
-      "path": "tools/check_social_preview.py",
-      "sha256": "b4c94a5a83423c804443fe021bebfa5155bef42c5114810aee2e2a88dcea77d4"
+      "path": "examples/piq-diagnostic/evidence/baseline-01.json",
+      "sha256": "7b06736e361d3aed01841799cdc13159d9501571e746dfd6fb83d233c511c37a"
     },
     {
-      "path": "tools/test_check_social_preview.py",
-      "sha256": "bd9c4e2ea33eba49903fa904f67b5d63bfc0626877a391c615efbcad9ec85172"
+      "path": "examples/piq-diagnostic/evidence/candidate-01.json",
+      "sha256": "3318708e601d01eba485005c5e395dcff599751c21127ff45fb98227b7b02abe"
     },
     {
-      "path": "tools/check_public_projection.py",
-      "sha256": "bef384b9b28b9b4ca44b5efdb270944915a9884a97fbacd7f5e5ff332fb2bdea"
+      "path": "examples/piq-diagnostic/evidence/correctness.json",
+      "sha256": "9e79cb7ae3252d82cecc17a12432f422c1f19310ad70a3388f7118ff06a76913"
     },
     {
-      "path": "tools/test_check_public_projection.py",
-      "sha256": "6c1b2b3135701c21af4b4e16b9d09a0ce432c7658d084c50b16ae22ff8af2662"
+      "path": "examples/piq-diagnostic/evidence/design.json",
+      "sha256": "670580de4fc30c42b8e7744159dba015ea44a029439b0338676b975b1b8faf6f"
     },
     {
-      "path": "tools/pipeline_config.py",
-      "sha256": "7e950591beb204a6a346298d5431c91278a8d797e6097bea35a431d9a090f63d"
+      "path": "examples/piq-diagnostic/evidence/input.csv",
+      "sha256": "9bc77127795c1c3725bf09fdcc615f286c6fd235154802f20f55928446c5a683"
     },
     {
-      "path": "tools/test_pipeline_config.py",
-      "sha256": "aa2f123536cc3e66a585c3e58b3514c1107f658db916eaa46864a2684bedadd2"
+      "path": "examples/piq-diagnostic/evidence/output.json",
+      "sha256": "3837c1434328b83a1aacb1c063ab6389a72604542cf7eeeacc4f1a48a7576fdc"
+    },
+    {
+      "path": "examples/piq-diagnostic/evidence/query-plan.json",
+      "sha256": "fef19b2aed74f7363e3b6e9ba79f8305c6e341e503ae5ace62c1a224d5d17706"
+    },
+    {
+      "path": "examples/piq-diagnostic/source/query.sql",
+      "sha256": "c52198e5dd81c962e87cb84f97b6c0a256e4e7b6757e307912345734b1c05557"
     },
     {
       "path": "pipeline.example.json",
       "sha256": "e6a1b5e85178b2100e9fef41aa6a21694a039f33dda0f4a643cc9e4c4980cf25"
     },
     {
+      "path": "schemas/measurement-receipt-v2.schema.json",
+      "sha256": "8638943cccf8024792927e72b53d60e6bd712816129deb6d6d63a23aee41f3b8"
+    },
+    {
+      "path": "schemas/piq-experiment-evidence-v1.schema.json",
+      "sha256": "490fcf5f7fa31773c2446e0964a36045ed053f1d67491db0413074b9529a3652"
+    },
+    {
       "path": "templates/claim-scope-review.md",
-      "sha256": "b3591a9394bd889af84325465876383e6305b7433cd24b4b9e3f2b7a1642faf4"
+      "sha256": "2b41165a8f88d1236091ec488a6588390cf0b07c46c2aefd576c0553a6b883d6"
+    },
+    {
+      "path": "tools/check_package.py",
+      "sha256": "f914fad21bddad70fbd9566a351e0976c5bee433154c59ef0a90f7b39b00f743"
+    },
+    {
+      "path": "tools/check_profile_conventions.py",
+      "sha256": "e02b066f5b1c671f2f9f8613e5d90fe547b4d5aa8ea0c936f6ee78241243734f"
+    },
+    {
+      "path": "tools/check_public_projection.py",
+      "sha256": "bef384b9b28b9b4ca44b5efdb270944915a9884a97fbacd7f5e5ff332fb2bdea"
+    },
+    {
+      "path": "tools/check_reader_copy.py",
+      "sha256": "8b5b9fa8ae32e04a1adb995753ac087219197f4512a982e558780ace342449db"
+    },
+    {
+      "path": "tools/check_social_preview.py",
+      "sha256": "b4c94a5a83423c804443fe021bebfa5155bef42c5114810aee2e2a88dcea77d4"
+    },
+    {
+      "path": "tools/pipeline_config.py",
+      "sha256": "7e950591beb204a6a346298d5431c91278a8d797e6097bea35a431d9a090f63d"
+    },
+    {
+      "path": "tools/piq_experiment_evidence.py",
+      "sha256": "bb1953fa8d3cc5264cac4763b85f74a851c9d737936240a9f0c8afc9667cf7a6"
+    },
+    {
+      "path": "tools/qualified_cpu_study.py",
+      "sha256": "4a833f24acc0c5c88644da66aa3a879250f400fb24879289cbb36946f06655ba"
+    },
+    {
+      "path": "tools/test_check_package.py",
+      "sha256": "f9b98c99371f2b2d235ed00837917d52fd14929463b1b80543091f1cc3c29bf4"
+    },
+    {
+      "path": "tools/test_check_profile_conventions.py",
+      "sha256": "058e502218f023c599615f03c3c9b6b615505668ecd09b5e7711bbf973484878"
+    },
+    {
+      "path": "tools/test_check_public_projection.py",
+      "sha256": "6c1b2b3135701c21af4b4e16b9d09a0ce432c7658d084c50b16ae22ff8af2662"
+    },
+    {
+      "path": "tools/test_check_reader_copy.py",
+      "sha256": "70632ec2aade29f3336c450074b8e7ee2181e520353f3ad6742c076c9c82dcb3"
+    },
+    {
+      "path": "tools/test_check_social_preview.py",
+      "sha256": "bd9c4e2ea33eba49903fa904f67b5d63bfc0626877a391c615efbcad9ec85172"
+    },
+    {
+      "path": "tools/test_pipeline_config.py",
+      "sha256": "aa2f123536cc3e66a585c3e58b3514c1107f658db916eaa46864a2684bedadd2"
+    },
+    {
+      "path": "tools/test_piq_experiment_evidence.py",
+      "sha256": "db8c11e5e066a3fb1b1f569132582a175c1fc7e111dd34d3bea5ade2eb75c117"
+    },
+    {
+      "path": "tools/test_qualified_cpu_study.py",
+      "sha256": "38ee904b6ff7e2b1a2aa78dd72b6183d5265dcdc25c3c8ecd776353cf7f289ca"
     }
   ]
 }

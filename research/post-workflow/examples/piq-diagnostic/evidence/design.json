@@ -1,0 +1,26 @@
+{
+  "experiment_id": "synthetic-cpu-query-contract-example",
+  "workload_family": "cpu_data_query",
+  "source_artifacts": [
+    {
+      "path": "source/query.sql",
+      "sha256": "c52198e5dd81c962e87cb84f97b6c0a256e4e7b6757e307912345734b1c05557"
+    }
+  ],
+  "input": {
+    "path": "evidence/input.csv",
+    "sha256": "9bc77127795c1c3725bf09fdcc615f286c6fd235154802f20f55928446c5a683"
+  },
+  "objective": {
+    "metric": "query_elapsed",
+    "unit": "ms",
+    "direction": "minimize"
+  },
+  "required_evidence_roles": [
+    "input",
+    "output",
+    "query_plan"
+  ],
+  "purpose": "Synthetic schema example only; not a measured experiment.",
+  "acceptance_criteria": "No scientific acceptance: diagnostic contract fixture only."
+}
