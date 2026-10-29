@@ -71,7 +71,7 @@ def summary(r):
         "alternative_DP_schedule": {
             "order":"RS -> disjoint norm terms on both replicas -> clip -> allgather granted optimistic overlap with same optimizer",
             "norm_elements_each_replica":r["alternative_reduce_scatter_first"]["norm_ownership"]["elements_by_replica"],
-            "phase_and_floor_ms": {placement:{key:round(f[key]*1000,9) for key in
+            "phase_and_floor_ms": {placement:{key.removesuffix("_seconds"):round(f[key]*1000,9) for key in
                                                ("pre_clipping_phase_seconds","post_clipping_phase_seconds","necessary_step_floor_seconds")}
                                   for placement,f in r["alternative_reduce_scatter_first"]["resource_floors"]["by_placement"].items()},
             "limit":"Same total bytes/math. Norm service omitted. At 150 ms only A excluded; B not certified feasible. Actual DAG can raise floors. Alternative does not replace primary."},

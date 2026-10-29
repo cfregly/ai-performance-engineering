@@ -4,6 +4,7 @@ import math
 from collections import Counter, defaultdict
 import unittest
 
+from reader_summary import summary
 from system_budget import (Inputs, Traffic, TRAFFIC_PHASE, build_traffic, capacity,
                            chunk_routes, companion_mapping, compute, gid,
                            identity, ns_work, parameters, rack_of, routes,
@@ -388,6 +389,19 @@ class SystemBudgetTests(unittest.TestCase):
         self.assertTrue(alt["resource_floors"]["full_step_payload_screens_omit_norm_service"])
         self.assertEqual({p: v["status"] for p, v in alt["hypothetical_budget_screen"]["by_placement"].items()},
                          {"A": "ruled_out", "B": "not_ruled_out"})
+
+    def test_reader_summary_millisecond_floor_keys_match_units(self):
+        labels = summary(self.w)
+        alternative = labels["alternative_DP_schedule"]["phase_and_floor_ms"]
+        expected_keys = {"pre_clipping_phase", "post_clipping_phase", "necessary_step_floor"}
+        for placement in ("A", "B"):
+            self.assertEqual(set(alternative[placement]), expected_keys)
+            self.assertTrue(all(not key.endswith("_seconds") for key in
+                                labels["traffic_and_screens"][placement]["floors_ms"]))
+            source = self.w["alternative_reduce_scatter_first"]["resource_floors"]["by_placement"][placement]
+            for key in expected_keys:
+                self.assertEqual(alternative[placement][key], round(source[key + "_seconds"] * 1000, 9))
+        self.assertEqual(alternative["B"]["necessary_step_floor"], 113.892310221)
 
     def test_alternative_phase_partition_moves_only_DP_allgather(self):
         alt = self.w["alternative_reduce_scatter_first"]
