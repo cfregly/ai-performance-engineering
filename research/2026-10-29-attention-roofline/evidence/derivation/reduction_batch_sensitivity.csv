@@ -1,0 +1,7 @@
+query_tiles_per_batch,producer_then_reducer_batches,changes_original_phase_contract,maximum_partial_scratch_bytes,maximum_partial_scratch_mib,partial_hbm_traffic_floor_bytes_at_128_mib_retention,logical_final_dk_dv_bytes_residency_unspecified
+1,32,True,67108864,64,0,4194304
+2,16,True,132120576,126,0,4194304
+4,8,True,255852544,244,570425344,4194304
+8,4,True,478150656,456,1258291200,4194304
+16,2,True,822083584,784,1677721600,4194304
+32,1,False,1107296256,1056,1946157056,4194304
