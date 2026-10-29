@@ -43,6 +43,14 @@ def png_bytes(width: int, height: int, rgb: tuple[int, int, int]) -> bytes:
 
 
 class PackageGateTests(unittest.TestCase):
+    def test_required_reader_visual_declaration_cannot_be_omitted(self) -> None:
+        manifest_path = self.package / "manifest.json"
+        manifest = json.loads(manifest_path.read_text())
+        manifest["reader_visuals_required"] = True
+        manifest.pop("reader_visuals", None)
+        manifest_path.write_text(json.dumps(manifest))
+        self.assertTrue(any("reader_visuals_required" in error for error in validate_package(self.package)))
+
     def setUp(self) -> None:
         self.temp = tempfile.TemporaryDirectory()
         self.package = Path(self.temp.name) / "posts" / "fixture"

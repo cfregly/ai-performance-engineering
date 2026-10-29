@@ -23,6 +23,7 @@ if __package__:
     from .check_social_preview import validate_social_preview
     from .check_public_projection import validate_public_projection
     from .check_reader_copy import validate_reader_copy
+    from .check_reader_visuals import validate_reader_visuals
     from .piq_experiment_evidence import validate_bundle as validate_piq_bundle
     from .qualified_cpu_study import cpu_receipt_binds_envelope, validate_cpu_receipt
 else:
@@ -30,6 +31,7 @@ else:
     from check_social_preview import validate_social_preview
     from check_public_projection import validate_public_projection
     from check_reader_copy import validate_reader_copy
+    from check_reader_visuals import validate_reader_visuals
     from piq_experiment_evidence import validate_bundle as validate_piq_bundle
     from qualified_cpu_study import cpu_receipt_binds_envelope, validate_cpu_receipt
 
@@ -827,6 +829,9 @@ def validate_package(package: Path) -> list[str]:
     validate_state(package, state, selected, errors, image_basis, qualified_cpu=qualified_cpu_receipt is not None)
     errors.extend(validate_profile_conventions(package))
     errors.extend(validate_social_preview(package))
+    if isinstance(manifest, dict) and manifest.get("reader_visuals_required") is True and not isinstance(manifest.get("reader_visuals"), dict):
+        errors.append("manifest.reader_visuals_required needs a current reader_visuals declaration and review")
+    errors.extend(validate_reader_visuals(package))
     errors.extend(validate_public_projection(package))
     return errors
 

@@ -909,6 +909,191 @@ def import_bundle(source: Path, destination: Path) -> Path:
     return destination
 
 
+
+# Indexed originals are a separate bounded data-transport contract. They never
+# enter finite scientific validation or grant execution/qualification authority.
+ORIGINALS_TOTAL_BYTES = 128 * 1024 * 1024
+ORIGINALS_FILE_BYTES = 64 * 1024 * 1024
+ORIGINALS_INDEX_BYTES = 8 * 1024 * 1024
+ORIGINALS_FILES = 4096
+ORIGINALS_RECEIPT = "originals-import-receipt.json"
+
+
+def _originals_name(value):
+    if not isinstance(value, str) or not value or len(value) > 4096:
+        raise ValueError("bounded portable relative originals path required")
+    parts = value.split("/")
+    reserved = {"con", "prn", "aux", "nul"} | {f"{p}{i}" for p in ("com", "lpt") for i in range(1, 10)}
+    if any(not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,254}", p)
+           or p.endswith(".") or p.split(".")[0].casefold() in reserved for p in parts):
+        raise ValueError("portable relative originals path required")
+    return parts
+
+
+def _originals_read(root, name, maximum):
+    import os
+    import stat
+    root = Path(root).absolute()
+    parts = _originals_name(name)
+    descriptor = os.open("/", os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        for part in [*root.parts[1:], *parts[:-1]]:
+            child = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=descriptor)
+            os.close(descriptor)
+            descriptor = child
+        fd = os.open(parts[-1], os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=descriptor)
+        try:
+            before = os.fstat(fd)
+            if not stat.S_ISREG(before.st_mode) or not 0 <= before.st_size <= maximum:
+                raise ValueError("bounded regular originals file required")
+            chunks, count = [], 0
+            while True:
+                block = os.read(fd, min(1024 * 1024, maximum + 1 - count))
+                if not block:
+                    break
+                chunks.append(block)
+                count += len(block)
+                if count > maximum:
+                    raise ValueError("originals file exceeds byte limit")
+            after = os.fstat(fd)
+            if (before.st_dev, before.st_ino, before.st_size, before.st_mtime_ns) != (
+                    after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns) or count != before.st_size:
+                raise ValueError("originals file changed during read")
+            return b"".join(chunks)
+        finally:
+            os.close(fd)
+    finally:
+        os.close(descriptor)
+
+
+def _originals_json(raw):
+    def unique(pairs):
+        result = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError("duplicate originals JSON field")
+            result[key] = value
+        return result
+    return json.loads(raw, object_pairs_hook=unique,
+                      parse_constant=lambda value: (_ for _ in ()).throw(ValueError("nonfinite JSON")))
+
+
+def validate_originals(source, index_name):
+    """Verify indexed retained bytes only, never native identity or science."""
+    import os
+    import stat
+    source = Path(source).absolute()
+    _originals_name(index_name)
+    if index_name == ORIGINALS_RECEIPT:
+        raise ValueError("index collides with reserved import receipt")
+    raw_index = _originals_read(source, index_name, ORIGINALS_INDEX_BYTES)
+    index = _originals_json(raw_index)
+    if not isinstance(index, dict) or not isinstance(index.get("kind"), str) or not re.fullmatch(
+            r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}", index["kind"]):
+        raise ValueError("explicit retained-originals source kind required")
+    artifacts = index.get("artifacts")
+    if not isinstance(artifacts, list) or not 1 <= len(artifacts) <= ORIGINALS_FILES:
+        raise ValueError("indexed originals count must be 1..4096")
+    names, folded, total = {}, set(), 0
+    for item in artifacts:
+        if not isinstance(item, dict):
+            raise ValueError("originals artifact object required")
+        name = item.get("path")
+        _originals_name(name)
+        if name in (index_name, ORIGINALS_RECEIPT) or name.casefold() in folded:
+            raise ValueError("duplicate/colliding originals artifact path")
+        size = item.get("sizeBytes")
+        if type(size) is not int or not 0 <= size <= ORIGINALS_FILE_BYTES or not isinstance(
+                item.get("sha256"), str) or not SHA256.fullmatch(item["sha256"]):
+            raise ValueError("explicit bounded originals size and sha256 required")
+        total += size
+        if total > ORIGINALS_TOTAL_BYTES:
+            raise ValueError("originals indexed bytes exceed128MiB")
+        names[name] = item
+        folded.add(name.casefold())
+    observed, directory_count = set(), 0
+    for base, directories, files in os.walk(source, followlinks=False):
+        directory_count += 1
+        if directory_count > ORIGINALS_FILES + 1:
+            raise ValueError("originals directory count exceeds bound")
+        for name in directories:
+            mode = (Path(base) / name).lstat().st_mode
+            if not stat.S_ISDIR(mode):
+                raise ValueError("originals symlink/special directory refused")
+        for name in files:
+            path = Path(base) / name
+            if not stat.S_ISREG(path.lstat().st_mode):
+                raise ValueError("originals symlink/special file refused")
+            observed.add(path.relative_to(source).as_posix())
+            if len(observed) > ORIGINALS_FILES + 2:
+                raise ValueError("originals file census exceeds bound")
+    allowed = {index_name, *names}
+    if ORIGINALS_RECEIPT in observed:
+        receipt = _originals_json(_originals_read(source, ORIGINALS_RECEIPT, 65536))
+        expected = {"state": "indexed_originals_imported", "source_kind": index["kind"],
+                    "index_sha256": hashlib.sha256(raw_index).hexdigest(),
+                    "scientifically_verified": False, "qualification": "not_established",
+                    "publishable": False, "indexed_files": len(names), "indexed_bytes": total}
+        if not isinstance(receipt, dict) or any(type(receipt.get(k)) is not type(v) or receipt.get(k) != v
+                                                for k, v in expected.items()):
+            raise ValueError("originals import receipt does not match data-only scope")
+        allowed.add(ORIGINALS_RECEIPT)
+    if observed != allowed:
+        raise ValueError("originals exact file set differs from declared index")
+    for name, item in names.items():
+        data = _originals_read(source, name, ORIGINALS_FILE_BYTES)
+        if len(data) != item["sizeBytes"] or hashlib.sha256(data).hexdigest() != item["sha256"]:
+            raise ValueError("originals indexed hash/size drift: " + name)
+    return {"index_bytes": raw_index, "source_kind": index["kind"],
+            "index_sha256": hashlib.sha256(raw_index).hexdigest(),
+            "artifacts": names, "indexed_files": len(names), "indexed_bytes": total}
+
+
+def import_originals(source, destination, index_name):
+    """Copy validated raw transport data atomically; keep partial staging on failure."""
+    source, destination = Path(source).absolute(), Path(destination).absolute()
+    before = validate_originals(source, index_name)
+    if destination.exists() or destination.is_symlink():
+        raise ValueError("destination already exists; preserving it")
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    stage = Path(tempfile.mkdtemp(prefix=".piq-originals-", dir=destination.parent))
+    bundle = stage / "bundle"
+    bundle.mkdir()
+    try:
+        for name in [index_name, *before["artifacts"]]:
+            data = _originals_read(source, name, ORIGINALS_INDEX_BYTES if name == index_name else ORIGINALS_FILE_BYTES)
+            target = bundle / name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            with target.open("xb") as stream:
+                stream.write(data)
+                stream.flush()
+                import os
+                os.fsync(stream.fileno())
+        copied = validate_originals(bundle, index_name)
+        after = validate_originals(source, index_name)
+        if copied != before or after != before:
+            raise ValueError("originals changed during import")
+        receipt = {"state": "indexed_originals_imported", "source_kind": before["source_kind"],
+                   "index_sha256": before["index_sha256"], "scientifically_verified": False,
+                   "qualification": "not_established", "publishable": False,
+                   "indexed_files": before["indexed_files"], "indexed_bytes": before["indexed_bytes"],
+                   "imported_at": datetime.now(timezone.utc).isoformat()}
+        (bundle / ORIGINALS_RECEIPT).write_text(json.dumps(receipt, indent=2) + "\n")
+        validate_originals(bundle, index_name)
+        if destination.exists() or destination.is_symlink():
+            raise ValueError("destination appeared during import; preserving it")
+        bundle.rename(destination)
+        stage.rmdir()
+        return destination
+    except BaseException as exc:
+        (stage / "PARTIAL-IMPORT.json").write_text(json.dumps({
+            "state": "PARTIAL", "source": str(source), "destination": str(destination),
+            "index_sha256": before["index_sha256"], "error": type(exc).__name__ + ": " + str(exc),
+            "scientifically_verified": False, "qualification": "not_established",
+            "publishable": False}, indent=2) + "\n")
+        raise ValueError(f"originals import failed; partial evidence retained at {stage}: {exc}") from exc
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
@@ -917,18 +1102,32 @@ def main(argv: list[str] | None = None) -> int:
     ingest = commands.add_parser("import")
     ingest.add_argument("bundle", type=Path)
     ingest.add_argument("destination", type=Path)
+    originals_check = commands.add_parser("check-originals")
+    originals_check.add_argument("bundle", type=Path)
+    originals_check.add_argument("--index", required=True)
+    originals_import = commands.add_parser("import-originals")
+    originals_import.add_argument("bundle", type=Path)
+    originals_import.add_argument("destination", type=Path)
+    originals_import.add_argument("--index", required=True)
     args = parser.parse_args(argv)
     try:
         if args.command == "check":
             errors = validate_bundle(args.bundle)
             if errors:
                 raise ValueError("\n".join(errors))
-        else:
+        elif args.command == "import":
             import_bundle(args.bundle, args.destination)
+        elif args.command == "check-originals":
+            validate_originals(args.bundle, args.index)
+        else:
+            import_originals(args.bundle, args.destination, args.index)
     except (OSError, ValueError) as exc:
         print(f"FAIL: {exc}", file=sys.stderr)
         return 1
-    print("PASS: retained PIQ diagnostic evidence; qualification and publication remain unestablished")
+    if args.command in ("check-originals", "import-originals"):
+        print("PASS: indexed retained original bytes only; scientifically_verified=false; qualification not established; publishable=false")
+    else:
+        print("PASS: retained PIQ diagnostic evidence; qualification and publication remain unestablished")
     return 0
 
 
