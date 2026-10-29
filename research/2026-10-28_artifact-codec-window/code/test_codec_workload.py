@@ -27,7 +27,12 @@ class CodecWorkloadTests(unittest.TestCase):
         self.inputs.mkdir()
         self.output = self.root / "output"
         self.output.mkdir()
-        self.parts = [b"synthetic alpha bytes\x00\xff\n", b"different synthetic beta bytes\n"]
+        self.parts = [
+            b"synthetic alpha bytes\x00\xff\n",
+            b"different synthetic beta bytes\n",
+            b"synthetic gamma bytes\n",
+            b"synthetic delta bytes\n",
+        ]
         refs = []
         for number, raw in enumerate(self.parts):
             name = f"part-{number:03d}.bin"
@@ -39,7 +44,7 @@ class CodecWorkloadTests(unittest.TestCase):
         self.index.write_bytes(workload._bytes({
             "schemaVersion": "piq.artifact-compression-chunks.v1",
             "corpusSha256": workload._sha(b"".join(self.parts)),
-            "corpusBytes": sum(map(len, self.parts)), "sourceFileCount": 2,
+            "corpusBytes": sum(map(len, self.parts)), "sourceFileCount": 4,
             "ledger": {"artifactName": "inputs/corpus-ledger.json", "sha256": workload._sha(ledger), "sizeBytes": len(ledger)},
             "chunks": refs,
         }))
@@ -76,7 +81,7 @@ class CodecWorkloadTests(unittest.TestCase):
         evidence = json.loads((self.output / "native-evidence.json").read_bytes())
         self.assertEqual(result["input_sha256"], workload._sha(b"".join(self.parts)))
         self.assertEqual(result["input_sha256"], result["roundtrip_sha256"])
-        self.assertEqual(result["chunk_count"], 2)
+        self.assertEqual(result["chunk_count"], 4)
         self.assertEqual(payload["observation_mode"], "standalone_workload")
         self.assertEqual(payload["qualification"], "not_assessed")
         self.assertEqual(payload["timing_scope"], "adapter_local_workload_window")
@@ -129,6 +134,47 @@ class CodecWorkloadTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 workload._load_request(path)
 
+    def test_sealed_input_caps_are_narrow_and_fail_closed(self):
+        self.assertEqual(workload.MAX_CORPUS_BYTES, 128 * 1024 * 1024)
+        self.assertEqual(workload.MAX_PARTS, 4)
+        self.assertEqual(workload.MAX_PART_BYTES, 30 * 1024 * 1024)
+        self.assertEqual(workload.MAX_LEDGER_BYTES, 2 * 1024 * 1024)
+        self.assertEqual(workload.MAX_OUTPUT_BYTES, 32 * 1024 * 1024)
+
+        def encoded(part_sizes, *, ledger_size=1, corpus_bytes=None):
+            parts = [
+                {"artifactName": f"inputs/part-{number:03d}.bin",
+                 "sha256": f"{number + 1:064x}", "sizeBytes": size}
+                for number, size in enumerate(part_sizes)
+            ]
+            total = sum(part_sizes) if corpus_bytes is None else corpus_bytes
+            return workload._bytes({
+                "schemaVersion": "piq.artifact-compression-chunks.v1",
+                "corpusSha256": "f" * 64,
+                "corpusBytes": total,
+                "sourceFileCount": 4096,
+                "ledger": {"artifactName": "inputs/corpus-ledger.json",
+                           "sha256": "e" * 64, "sizeBytes": ledger_size},
+                "chunks": parts,
+            })
+
+        valid = [workload.MAX_PART_BYTES] * 4
+        self.assertEqual(len(workload._index(encoded(valid))["chunks"]), 4)
+        for sealed in (
+            encoded(valid[:3]),
+            encoded([1] * 5),
+            encoded([workload.MAX_PART_BYTES + 1, 1, 1, 1]),
+            encoded([1] * 4, ledger_size=workload.MAX_LEDGER_BYTES + 1),
+            encoded([1] * 4, corpus_bytes=workload.MAX_CORPUS_BYTES + 1),
+        ):
+            with self.assertRaises(ValueError):
+                workload._index(sealed)
+
+        with mock.patch.object(workload, "MAX_OUTPUT_BYTES", 4):
+            with self.assertRaisesRegex(ValueError, "output exceeds"):
+                workload._write(self.output / "too-large.bin", b"12345")
+        self.assertFalse((self.output / "too-large.bin").exists())
+
     def test_existing_output_is_preserved(self):
         path = self.output / "native-evidence.json"
         path.write_bytes(b"existing owner bytes")
@@ -169,7 +215,7 @@ class CodecWorkloadTests(unittest.TestCase):
         evidence = json.loads((self.output / "native-evidence.json").read_bytes())
         self.assertEqual(len(evidence["host"]["cpu_affinity"]), 2)
         self.assertTrue(all(0 < value <= 512 * 1024**2 for value in evidence["runtime"]["rlimits"]["address_space"]))
-        self.assertTrue(all(0 < value <= 8 * 1024**2 for value in evidence["runtime"]["rlimits"]["file_size"]))
+        self.assertTrue(all(0 < value <= 32 * 1024**2 for value in evidence["runtime"]["rlimits"]["file_size"]))
 
 
 if __name__ == "__main__":

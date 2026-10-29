@@ -81,6 +81,8 @@ class PairTests(unittest.TestCase):
         result = self.run_fixture(execute, "BA")
         self.assertEqual(result["state"], "COMPLETE")
         self.assertEqual(calls, ["zstd", "pigz-gzip"])
+        self.assertEqual(driver.FILE_CAP, 32 * 1024 * 1024)
+        self.assertEqual(result["limits"]["file_bytes"], driver.FILE_CAP)
         self.assertEqual(result["qualification"], "not_assessed")
         self.assertEqual(json.loads((self.root / "output/handback.json").read_text()), result)
 
