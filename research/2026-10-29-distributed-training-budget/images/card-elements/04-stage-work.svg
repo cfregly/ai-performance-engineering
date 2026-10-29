@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="1000" viewBox="0 0 1000 1000" role="img" aria-labelledby="title desc">
+<title id="title">The full head adds work</title>
+<desc id="desc">Hypothetical forward/backward dense GEMM work for both data replicas. Stage 3 has the complete output head. Work is not elapsed time.</desc>
+<defs><marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto" markerUnits="userSpaceOnUse"><path d="M1 1L9 5L1 9" fill="none" stroke="#202326" stroke-width="2"/></marker></defs>
+<rect width="1000" height="1000" fill="#FBFBF8"/>
+<g font-family="Inter" font-weight="400" fill="#202326">
+<text x="500" y="140" font-size="54" text-anchor="middle" fill="#202326">The full head adds work</text>
+<text x="500" y="198" font-size="36" text-anchor="middle" fill="#202326">Hypothetical F/B GEMM · both replicas</text>
+<text x="80" y="270" font-size="36" text-anchor="start" fill="#202326">TFLOP / update</text>
+<line x1="140" y1="720" x2="900" y2="720" stroke="#202326" stroke-width="2"/>
+<text x="130" y="732" font-size="36" text-anchor="end" fill="#202326">0</text>
+<line x1="140" y1="552" x2="900" y2="552" stroke="#202326" stroke-width="2"/>
+<text x="130" y="564" font-size="36" text-anchor="end" fill="#202326">20</text>
+<line x1="140" y1="384" x2="900" y2="384" stroke="#202326" stroke-width="2"/>
+<text x="130" y="396" font-size="36" text-anchor="end" fill="#202326">40</text>
+<line x1="140" y1="300" x2="140" y2="720" stroke="#202326" stroke-width="2"/>
+<rect x="180" y="480.849" width="120" height="239.151" fill="#3478BA" stroke="#3478BA" stroke-width="0"/>
+<text x="240" y="455.849" font-size="48" text-anchor="middle" fill="#202326">28.47</text>
+<text x="240" y="780" font-size="42" text-anchor="middle" fill="#202326">S0</text>
+<rect x="360" y="480.849" width="120" height="239.151" fill="#3478BA" stroke="#3478BA" stroke-width="0"/>
+<text x="420" y="455.849" font-size="48" text-anchor="middle" fill="#202326">28.47</text>
+<text x="420" y="780" font-size="42" text-anchor="middle" fill="#202326">S1</text>
+<rect x="540" y="480.849" width="120" height="239.151" fill="#3478BA" stroke="#3478BA" stroke-width="0"/>
+<text x="600" y="455.849" font-size="48" text-anchor="middle" fill="#202326">28.47</text>
+<text x="600" y="780" font-size="42" text-anchor="middle" fill="#202326">S2</text>
+<rect x="720" y="370.018" width="120" height="349.982" fill="#E87823" stroke="#E87823" stroke-width="0"/>
+<text x="780" y="345.018" font-size="48" text-anchor="middle" fill="#202326">41.66</text>
+<text x="780" y="780" font-size="42" text-anchor="middle" fill="#202326">S3</text>
+<text x="500" y="850" font-size="48" text-anchor="middle" fill="#202326">Full head: +46.34% work</text>
+<text x="500" y="904" font-size="36" text-anchor="middle" fill="#202326">Work count, not elapsed time.</text>
+</g></svg>
