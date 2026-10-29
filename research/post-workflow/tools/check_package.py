@@ -26,6 +26,7 @@ if __package__:
     from .check_reader_visuals import validate_reader_visuals
     from .piq_experiment_evidence import validate_bundle as validate_piq_bundle
     from .qualified_cpu_study import cpu_receipt_binds_envelope, validate_cpu_receipt
+    from .typefully_workflow import WORKFLOW_PATH, validate_workflow
 else:
     from check_profile_conventions import validate_profile_conventions
     from check_social_preview import validate_social_preview
@@ -34,6 +35,7 @@ else:
     from check_reader_visuals import validate_reader_visuals
     from piq_experiment_evidence import validate_bundle as validate_piq_bundle
     from qualified_cpu_study import cpu_receipt_binds_envelope, validate_cpu_receipt
+    from typefully_workflow import WORKFLOW_PATH, validate_workflow
 
 
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
@@ -41,6 +43,7 @@ CONCEPTS = ["images/a", "images/b", "images/c"]
 COVER = "images/fun"
 REVIEW_PATH = "images/review.json"
 TYPEFULLY_PATH = "social/typefully-receipt.json"
+SOURCE_COMMENT_PATH = "source-comment.md"
 MEASUREMENT_RECEIPT_PATH = "evidence/measurement-receipt.json"
 SOURCE_REPORTED_RECEIPT_PATH = "evidence/source-reported-receipt.json"
 SOCIAL_FILES = {"x": "social/x.txt", "linkedin": "social/linkedin.txt"}
@@ -54,7 +57,7 @@ REQUIRED_FILES = [
     "images/README.md",
     "images/audiences.md",
 ]
-PUBLIC_COPY_ROOT_FILES = ("README.md", "tweets.md")
+PUBLIC_COPY_ROOT_FILES = ("README.md", "tweets.md", SOURCE_COMMENT_PATH)
 PUBLIC_COPY_PATTERNS = (
     (re.compile(r"\bwith\s+False\b", re.I), "contextless comparison 'with False'"),
     (re.compile(r"\bwith\s+True\b", re.I), "contextless comparison 'with True'"),
@@ -218,12 +221,14 @@ def validate_hashed_file(
     return relative
 
 
-def validate_manifest(data: Any, errors: list[str]) -> tuple[list[str], str | None, str | None]:
+def validate_manifest(data: Any, errors: list[str]) -> tuple[list[str], str | None, str | None, int | None]:
     if not isinstance(data, dict):
         errors.append("manifest must be a JSON object")
-        return [], None, None
-    if data.get("schema_version") != 1:
-        errors.append("manifest.schema_version must equal 1")
+        return [], None, None, None
+    schema_version = data.get("schema_version")
+    if type(schema_version) is not int or schema_version not in {1, 2}:
+        errors.append("manifest.schema_version must equal 1 or 2")
+        schema_version = None
     if data.get("content_state") not in {"hypothetical", "measured", "source_reported"}:
         errors.append("manifest.content_state must be 'hypothetical', 'measured', or 'source_reported'")
     if data.get("concepts") != CONCEPTS:
@@ -234,6 +239,17 @@ def validate_manifest(data: Any, errors: list[str]) -> tuple[list[str], str | No
         errors.append(f"manifest.review_receipt must equal {REVIEW_PATH!r}")
     if data.get("typefully_receipt") != TYPEFULLY_PATH:
         errors.append(f"manifest.typefully_receipt must equal {TYPEFULLY_PATH!r}")
+    if schema_version == 2:
+        if data.get("typefully_workflow_receipt") != WORKFLOW_PATH:
+            errors.append(f"schema-2 manifest.typefully_workflow_receipt must equal {WORKFLOW_PATH!r}")
+        if data.get("source_comment") != SOURCE_COMMENT_PATH:
+            errors.append(f"schema-2 manifest.source_comment must equal {SOURCE_COMMENT_PATH!r}")
+    elif schema_version == 1:
+        for field in ("typefully_workflow_receipt", "source_comment"):
+            if field in data:
+                errors.append(
+                    f"schema-1 manifest must not declare {field}; migrate to schema 2 with the complete workflow contract"
+                )
     state = data.get("content_state")
     if state == "measured" and data.get("measurement_receipt") != MEASUREMENT_RECEIPT_PATH:
         errors.append(f"measured manifest.measurement_receipt must equal {MEASUREMENT_RECEIPT_PATH!r}")
@@ -286,7 +302,7 @@ def validate_manifest(data: Any, errors: list[str]) -> tuple[list[str], str | No
     if selected not in allowed:
         errors.append("manifest.selected_image_stem must name one declared concept, cover, or audience stem")
         selected = None
-    return audience_stems, selected, data.get("content_state")
+    return audience_stems, selected, data.get("content_state"), schema_version
 
 
 def validate_variant(package: Path, stem: str, errors: list[str]) -> str | None:
@@ -339,7 +355,7 @@ def validate_review(package: Path, stems: list[str], hashes: dict[str, str], err
             errors.append(f"stale review hash for {stem}: expected {expected}")
 
 
-def validate_typefully(package: Path, errors: list[str]) -> None:
+def validate_typefully(package: Path, errors: list[str], *, extended_workflow: bool) -> None:
     data = load_json(package / TYPEFULLY_PATH, errors, "Typefully receipt")
     if data is None:
         return
@@ -350,6 +366,11 @@ def validate_typefully(package: Path, errors: list[str]) -> None:
         errors.append("Typefully receipt status must be 'draft'")
     if data.get("scheduled_at") is not None:
         errors.append("Typefully receipt scheduled_at must be null")
+    if extended_workflow:
+        if "published_at" not in data or data["published_at"] is not None:
+            errors.append("Typefully receipt published_at must be null and present")
+        if data.get("publication_authorized") is not False:
+            errors.append("Typefully receipt publication_authorized must be false")
     if data.get("platforms") != ["x", "linkedin"]:
         errors.append("Typefully receipt platforms must equal ['x', 'linkedin']")
     if data.get("content_files") != SOCIAL_FILES:
@@ -359,9 +380,22 @@ def validate_typefully(package: Path, errors: list[str]) -> None:
     draft_id = data.get("draft_id")
     if isinstance(draft_id, bool) or not isinstance(draft_id, (str, int)) or str(draft_id).strip() == "":
         errors.append("Typefully receipt draft_id must be a nonempty string or integer")
+    if extended_workflow:
+        social_set_id = data.get("social_set_id")
+        if isinstance(social_set_id, bool) or not isinstance(social_set_id, (str, int)) or str(social_set_id).strip() == "":
+            errors.append("Typefully receipt social_set_id must be a nonempty string or integer")
     editor_url = data.get("editor_url")
     if not isinstance(editor_url, str) or not re.match(r"^https://", editor_url):
         errors.append("Typefully receipt editor_url must be a nonempty https URL")
+    if extended_workflow:
+        media_ids = data.get("media_ids")
+        if not isinstance(media_ids, list) or not media_ids or any(
+            isinstance(item, bool) or not isinstance(item, (str, int)) or not str(item).strip()
+            for item in media_ids
+        ):
+            errors.append("Typefully receipt media_ids must be a nonempty list of media IDs")
+        elif len({str(item) for item in media_ids}) != len(media_ids):
+            errors.append("Typefully receipt media_ids must not contain duplicates")
 
     shipping = package / "image.png"
     if shipping.is_file() and data.get("image_sha256") != sha256(shipping):
@@ -376,6 +410,29 @@ def validate_typefully(package: Path, errors: list[str]) -> None:
             exact = path.read_text(encoding="utf-8")
             if texts.get(platform) != exact:
                 errors.append(f"Typefully receipt texts.{platform} does not exactly match {relative}")
+
+
+def validate_source_comment(package: Path, errors: list[str]) -> None:
+    path = package / SOURCE_COMMENT_PATH
+    if not path.is_file():
+        return
+    try:
+        body = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeError) as exc:
+        errors.append(f"invalid source-native comment: {exc}")
+        return
+    template = Path(__file__).resolve().parents[1] / "templates/source-comment.md"
+    try:
+        if template.is_file() and path.read_bytes() == template.read_bytes():
+            errors.append("source-comment.md still matches the unfilled template")
+    except OSError as exc:
+        errors.append(f"cannot compare source-comment.md with its template: {exc}")
+    if re.search(r"(?im)^Status:\s*draft\s*(?:,|—|-)\s*unsent\s*$", body) is None:
+        errors.append("source-comment.md must declare 'Status: draft, unsent'")
+    for heading in ("Source context", "Comment draft"):
+        match = re.search(rf"(?ims)^##\s+{re.escape(heading)}\s*$\n(.*?)(?=^##\s+|\Z)", body)
+        if match is None or not match.group(1).strip():
+            errors.append(f"source-comment.md must contain a nonempty '## {heading}' section")
 
 
 def validate_measurement(package: Path, errors: list[str]) -> dict[str, Any] | None:
@@ -764,11 +821,17 @@ def validate_package(package: Path) -> list[str]:
     manifest = load_json(package / "manifest.json", errors, "manifest")
     if manifest is None:
         return errors
-    audience_stems, selected, state = validate_manifest(manifest, errors)
+    audience_stems, selected, state, schema_version = validate_manifest(manifest, errors)
+    extended_workflow = schema_version == 2
+    source_comment_required = schema_version == 2
+    if source_comment_required:
+        require_file(package, SOURCE_COMMENT_PATH, errors)
     if isinstance(manifest, dict) and manifest.get("review_status") in {"PENDING", "REVIEW_BLOCKED"}:
         errors.append("required technical review is " + manifest["review_status"] + "; private preview only")
     stems = [*CONCEPTS, COVER, *audience_stems]
     validate_public_copy(package, stems, errors)
+    if source_comment_required:
+        validate_source_comment(package, errors)
     errors.extend(validate_reader_copy(package))
     hashes: dict[str, str] = {}
     for stem in stems:
@@ -791,7 +854,9 @@ def validate_package(package: Path) -> list[str]:
                 errors.append(f"image{suffix} does not byte-match selected variant {selected}{suffix}")
 
     validate_review(package, stems, hashes, errors)
-    validate_typefully(package, errors)
+    validate_typefully(package, errors, extended_workflow=extended_workflow)
+    if extended_workflow:
+        validate_workflow(package, WORKFLOW_PATH, errors)
     qualified_cpu_receipt: dict[str, Any] | None = None
     if state == "measured":
         qualified_cpu_receipt = validate_measurement(package, errors)

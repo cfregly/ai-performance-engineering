@@ -262,6 +262,24 @@ retained `{kind: "cpu_profile", capture_performed: true, study_id,
 design_sha256, artifact: {path, sha256}}` entry. GPU/power placeholders are
 forbidden. This CPU receipt cannot cover a CUDA rank or substitute for GPU v1.
 
+## Capture-first product workflow
+
+`tools/run_cpu_study.py` has three explicit stages: `prepare`, `capture`, and
+`retain`. All three bind the same source, runtime, corpus, method, API origin,
+review records, CPU affinity, and immutable registration. `capture` is the only
+stage that launches scientific children. It refuses PIQ API credentials, makes
+no PIQ client or network call, and writes the canonical local submission through
+`piq_sdk.capture_manifest`. Its successful handback remains explicitly
+`UNRETAINED` and does not evaluate qualification.
+
+After the native process and its cleanup have ended, `retain` uses the configured
+PIQ API. A fresh exact run readback of 404 selects `resume_capture`. An existing
+run selects `complete_capture_custody`, which performs no run POST. Any other
+read outcome is unknown and stops before a retention write. Retention never
+launches or measures a child, and a prior retention start is reconciled from its
+original handback instead of repeated. Only eight successfully retained,
+correct, method-matching group envelopes may reach the unchanged evaluator.
+
 ## Limits and checks
 
 These checks establish retained-byte consistency and fixed-rule arithmetic.
@@ -273,7 +291,7 @@ No CPU qualification bypasses the complete content, repository, review, preview
 or unscheduled Typefully gates. Publication still requires authorization.
 
 ```sh
-python3 -m unittest -v tools.test_qualified_cpu_study tools.test_check_package tools.test_piq_experiment_evidence
+python3 -m unittest -v tools.test_run_cpu_study tools.test_qualified_cpu_study tools.test_check_package tools.test_piq_experiment_evidence
 ```
 
 `build_cpu_fixture(package)` in the test module creates only small, explicitly

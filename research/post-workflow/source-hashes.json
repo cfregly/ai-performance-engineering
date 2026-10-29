@@ -18,7 +18,7 @@
     },
     {
       "path": "QUALIFIED_CPU_EVIDENCE.md",
-      "sha256": "47fe1b1f385f9068355c0c2bd1133601208fc4eeb5436779d45b9ed9051ae188",
+      "sha256": "9875df5d68957eb87baa6a99055dad3907a14a718a7d4ea204342e6ae8d39b87",
       "origin": "pipeline_source"
     },
     {
@@ -28,8 +28,15 @@
     },
     {
       "path": "README.md",
-      "sha256": "6579f07d9c42ce46aedfa75e6e772c241d32e80613a5009c13e515d1aca4f123",
+      "sha256": "0fc764d35d357ad9ba965fed7bbaf1a3fbffa9cc3b0761c975da366c91d1d8eb",
       "origin": "snapshot_documentation"
+    },
+    {
+      "path": "TYPEFULLY_WORKFLOW.md",
+      "origin": "generic_source_adaptation",
+      "source_sha256": "31754d511d93d33566f59102ca1be3e1e327166ff3a0b183208f3e1f3425ddd9",
+      "changes": "Replace private pipeline links with the public guide and use a generic author. Preserve workflow requirements.",
+      "sha256": "9500e5fca4266f998019d2bd6c666476090e73ecef87281c188f4152b2c09b9c"
     },
     {
       "path": "examples/piq-diagnostic/envelope.json",
@@ -97,8 +104,35 @@
       "origin": "pipeline_source"
     },
     {
+      "path": "templates/package-manifest.json",
+      "origin": "pipeline_source",
+      "sha256": "bd17307e7746d8f43630bd9449e41671fbb55c1f52de61080d8450d38a481b76"
+    },
+    {
+      "path": "templates/source-comment.md",
+      "origin": "generic_source_adaptation",
+      "source_sha256": "cbb652357da92c0c78887643c1d8306ac2895ceee3ffaa48445ca296992d4db7",
+      "changes": "Use a generic author in the blank source-comment template.",
+      "sha256": "a96b68f7bea78c1cc2823b2a23cd65df21c20f047d62864b1af558c3279fa21d"
+    },
+    {
+      "path": "templates/typefully-analytics-review.md",
+      "origin": "pipeline_source",
+      "sha256": "927be0e86648ae90368094373469acb4ba29049ca67e2b648379fbd1d2a38833"
+    },
+    {
+      "path": "templates/typefully-people-review.md",
+      "origin": "pipeline_source",
+      "sha256": "787781dd08d348c4aa4d114b84ae6656fffc1d4b8f41c693ed087573023d8456"
+    },
+    {
+      "path": "templates/typefully-workflow.json",
+      "origin": "pipeline_source",
+      "sha256": "c85de69b5210384dae2c9c8bab4e5cf1c236e26d0499439c9239f65ea9f2384b"
+    },
+    {
       "path": "tools/check_package.py",
-      "sha256": "97cf5e753ae753365fb018c82004f1de471dbc62f3eb19362096c4e2d47288f2",
+      "sha256": "fb0f9a1743b3b24c50343af4430eea5246e2e624d8072d3a587caabdad76cd22",
       "origin": "pipeline_source"
     },
     {
@@ -142,9 +176,18 @@
       "origin": "pipeline_source"
     },
     {
+      "path": "tools/run_cpu_study.py",
+      "origin": "generic_source_adaptation",
+      "source_sha256": "5ec8e3d68eae1b3e636a6e60d7ba7dd8abaf27e2cd812b914040135e8f369a95",
+      "changes": "Replace the owner-specific CLI default with a generic execution owner. No capture, retention or scientific method changes.",
+      "sha256": "a32d38ac4933d44e5b1327e436cee90519d9e2897eddf2924778bd1fb1140298"
+    },
+    {
       "path": "tools/test_check_package.py",
-      "sha256": "6ab136185cbdda661a2d3baf5866edcd8660f8014b9f424265a950c5a0b749b2",
-      "origin": "pipeline_source"
+      "sha256": "161e5c342b896a97a10d3ee592a8bb2cc14b11a6167cf5b71b44bf4ba12fd77d",
+      "origin": "generic_source_adaptation",
+      "source_sha256": "7ceacc75ddf31251877a27f85531cee40ef9fd6e3cf5f0f787238e616818eac0",
+      "changes": "Replace the account identifier in synthetic Typefully fixtures with an explicit synthetic value. Preserve every test and assertion."
     },
     {
       "path": "tools/test_check_profile_conventions.py",
@@ -190,7 +233,36 @@
       "path": "tools/test_qualified_cpu_study.py",
       "sha256": "38ee904b6ff7e2b1a2aa78dd72b6183d5265dcdc25c3c8ecd776353cf7f289ca",
       "origin": "pipeline_source"
+    },
+    {
+      "path": "tools/test_run_cpu_study.py",
+      "origin": "pipeline_source",
+      "sha256": "02f4e57852227ae4e3ccb57b551e6ed7549a52ebdba5e2bd798b06b6133b8a6f"
+    },
+    {
+      "path": "tools/test_typefully_draft_guard.py",
+      "origin": "generic_source_adaptation",
+      "source_sha256": "7c9468159c6a7eb3917b477d25df289cbf34f258cd120959c55427f3d9ef2391",
+      "changes": "Replace all captured account fields, local artifact paths and public copy with explicit synthetic in-memory response fixtures. Preserve every test and assertion, including previously file-dependent cases.",
+      "sha256": "b767e6abf187166a1837e877e7f2eaccfad4b16fd618a2e6bd390af8c6e5551b"
+    },
+    {
+      "path": "tools/test_typefully_workflow.py",
+      "origin": "generic_source_adaptation",
+      "source_sha256": "d2507b68377468a34e327b8a08d3843abf03fbc2cb1e09b6c10420dfb012d5f7",
+      "changes": "Replace the account identifier and reviewer-name fixture prose with explicit synthetic values. Keep all tests and assertions.",
+      "sha256": "b2bad83e0209531266b281e3af386a4f6140eb9683db4cf6fc98193e48e18d13"
+    },
+    {
+      "path": "tools/typefully_draft_guard.py",
+      "origin": "pipeline_source",
+      "sha256": "4048158291ce4afa86c3b96758b97f9a77c30bcceccebb77e3a1f89df2778625"
+    },
+    {
+      "path": "tools/typefully_workflow.py",
+      "origin": "pipeline_source",
+      "sha256": "0238cdc85b5bcf0f1118680e1f9739b2995f45248f918a59d6dc6f5d146f4920"
     }
   ],
-  "scope": "Validator code, generic contracts and synthetic fixtures only. No package evidence, authorization records, account data or measured results."
+  "scope": "Validator code, generic contracts and synthetic fixtures only. No package evidence, authorization records, account data or measured results. Generic source adaptations record the authoritative source hash and their exact scope."
 }

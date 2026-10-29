@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import binascii
+import copy
 import hashlib
 import json
 import shutil
@@ -14,6 +15,7 @@ from pathlib import Path
 
 from tools.check_package import validate_package
 from tools.test_qualified_cpu_study import build_cpu_fixture
+from tools.typefully_draft_guard import decide
 
 
 CONCEPTS = ["images/a", "images/b", "images/c"]
@@ -58,6 +60,7 @@ class PackageGateTests(unittest.TestCase):
         for relative, text in {
             "README.md": "# Article\nHypothetical example.\n",
             "tweets.md": "# Social\n",
+            "source-comment.md": "# Source-native comment\n\nStatus: draft, unsent\n\n## Source context\n\nFixture source context.\n\n## Comment draft\n\nA useful unsent fixture comment.\n",
             "claims-allow.txt": "100 ms | illustrative\n",
             "VERIFICATION.md": "# Verification\n\nHypothetical package.\n\n## GPU stage\n\nNo GPU workload launched.\n",
             "images/README.md": "# Images\n",
@@ -80,7 +83,7 @@ class PackageGateTests(unittest.TestCase):
             (self.package / f"{stem}.txt").write_text("Illustrative fixture.\n", encoding="utf-8")
 
         manifest = {
-            "schema_version": 1,
+            "schema_version": 2,
             "content_state": "hypothetical",
             "concepts": CONCEPTS,
             "cover_stem": COVER,
@@ -88,6 +91,8 @@ class PackageGateTests(unittest.TestCase):
             "audiences": AUDIENCES,
             "review_receipt": "images/review.json",
             "typefully_receipt": "social/typefully-receipt.json",
+            "typefully_workflow_receipt": "social/typefully-workflow.json",
+            "source_comment": "source-comment.md",
         }
         self.write_json("manifest.json", manifest)
         selected = self.package / f"{COVER}.png"
@@ -96,6 +101,7 @@ class PackageGateTests(unittest.TestCase):
         (self.package / "image.txt").write_bytes((self.package / f"{COVER}.txt").read_bytes())
         self.write_review()
         self.write_typefully()
+        self.write_typefully_workflow()
 
     def tearDown(self) -> None:
         self.temp.cleanup()
@@ -121,6 +127,8 @@ class PackageGateTests(unittest.TestCase):
             {
                 "status": "draft",
                 "scheduled_at": None,
+                "published_at": None,
+                "publication_authorized": False,
                 "platforms": ["x", "linkedin"],
                 "image_sha256": hashlib.sha256((self.package / "image.png").read_bytes()).hexdigest(),
                 "texts": {
@@ -129,8 +137,159 @@ class PackageGateTests(unittest.TestCase):
                 },
                 "content_files": {"x": "social/x.txt", "linkedin": "social/linkedin.txt"},
                 "draft_id": "draft-123",
+                "social_set_id": 17,
+                "media_ids": ["media-x", "media-linkedin"],
                 "editor_url": "https://typefully.example/draft-123",
                 "readback_verified": True,
+            },
+        )
+
+    def artifact_ref(self, relative: str) -> dict[str, str]:
+        path = self.package / relative
+        return {"path": relative, "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
+
+    def write_typefully_workflow(self) -> None:
+        raw = {
+            "id": "draft-123",
+            "draft_id": "draft-123",
+            "social_set_id": 17,
+            "status": "draft",
+            "publish_state": None,
+            "created_at": "2026-10-26T11:00:00Z",
+            "updated_at": "2026-10-26T12:00:00Z",
+            "scheduled_date": None,
+            "published_at": None,
+            "share_url": None,
+            "private_url": "https://typefully.example/draft-123",
+            "x_published_url": None,
+            "linkedin_published_url": None,
+            "mastodon_published_url": None,
+            "threads_published_url": None,
+            "bluesky_published_url": None,
+            "substack_published_url": None,
+            "x_article_published_url": None,
+            "x_post_published_at": None,
+            "linkedin_post_published_at": None,
+            "mastodon_post_published_at": None,
+            "threads_post_published_at": None,
+            "bluesky_post_published_at": None,
+            "substack_post_published_at": None,
+            "x_article_published_at": None,
+            "draft_title": "Fixture draft",
+            "tags": ["needs-review"],
+            "scratchpad_text": "Fixture notes.",
+            "platforms": {
+                "x": {
+                    "enabled": True,
+                    "posts": [{
+                        "text": (self.package / "social/x.txt").read_text(encoding="utf-8"),
+                        "media_ids": ["media-x"],
+                    }],
+                    "settings": None,
+                },
+                "linkedin": {
+                    "enabled": True,
+                    "posts": [{
+                        "text": (self.package / "social/linkedin.txt").read_text(encoding="utf-8"),
+                        "media_ids": ["media-linkedin"],
+                    }],
+                    "settings": None,
+                },
+                "mastodon": {"enabled": False},
+                "threads": {"enabled": False},
+                "bluesky": {"enabled": False},
+                "substack": {"enabled": False},
+                "x_article": None,
+            },
+        }
+        target = {"social_set_id": 17}
+        payload = {
+            key: copy.deepcopy(raw[key])
+            for key in ("draft_title", "tags", "scratchpad_text", "platforms")
+        }
+        guard = decide({
+            "desired": {"target": target, "payload": payload},
+            "readback_target": target,
+            "list_readback": {"results": [copy.deepcopy(raw)]},
+            "detail_readback": copy.deepcopy(raw),
+            "prior_receipt": None,
+        })
+        self.assertEqual(guard["decision"], "UNCHANGED")
+        self.write_json("social/typefully-readback.json", raw)
+        self.write_json("social/final-guard.json", guard)
+        analytics = self.hashed_file(
+            "social/typefully-analytics-review.md",
+            """# Typefully analytics review
+
+Status: completed
+
+- Observed at: 2026-10-26T11:50:00Z
+- Reviewer: Fixture analytics reviewer
+- Sources checked: Retained Typefully X export and native LinkedIn availability view.
+- Evidence limits: One small fixture cohort; associations are descriptive and no causal result is claimed.
+- Access blocker: Native LinkedIn metrics were unavailable in this fixture.
+- Decision summary: Keep the direct technical hook and record LinkedIn analytics as unavailable.
+""",
+        )
+        people = self.hashed_file(
+            "social/typefully-people-review.md",
+            """# Relevant people and conversation review
+
+Status: completed
+
+- Observed at: 2026-10-26T11:51:00Z
+- Reviewer: Fixture people reviewer
+- Sources checked: Package source list, named maintainers, and directly relevant native conversations.
+- Evidence limits: Fixture identities are illustrative; no live mention or relationship is established.
+- Access blocker: No additional blocker affected the bounded fixture review.
+- Decision summary: Use no native mention and retain no conversation target because none was verified.
+""",
+        )
+        promotion = self.hashed_file(
+            "social/promotion-readback.txt", "Observed after final edit and reload.\n"
+        )
+        self.write_json(
+            "social/typefully-workflow.json",
+            {
+                "schema_version": 1,
+                "operation": "create",
+                "prior_readback": None,
+                "draft_id": "draft-123",
+                "social_set_id": 17,
+                "verified_at": "2026-10-26T12:05:00Z",
+                "status": "draft",
+                "scheduled_at": None,
+                "published_at": None,
+                "publication_authorized": False,
+                "platforms": ["x", "linkedin"],
+                "lifecycle_tag": "needs-review",
+                "tags": ["needs-review"],
+                "approval": None,
+                "raw_readback": self.artifact_ref("social/typefully-readback.json"),
+                "guard_receipt": self.artifact_ref("social/final-guard.json"),
+                "media_ids": {"x": [["media-x"]], "linkedin": [["media-linkedin"]]},
+                "analytics": {
+                    "review": analytics,
+                    "x": {"status": "reviewed", "reason": ""},
+                    "linkedin": {"status": "unavailable", "reason": "No native fixture analytics."},
+                },
+                "people": {
+                    "review": people,
+                    "mentions": {"state": "none", "reason": "No native mention selected.", "verified": []},
+                    "opportunities": {"state": "none", "reason": "No native parent selected."},
+                },
+                "promotion": {
+                    name: {
+                        "state": "off",
+                        "trigger": "",
+                        "reason": "Observed off in fixture.",
+                        "evidence": promotion,
+                        "checked_at": "2026-10-26T12:01:00Z",
+                        "dormant": True,
+                    }
+                    for name in ("auto_retweet", "auto_plug")
+                },
+                "reviewer": "fixture-reviewer",
             },
         )
 
@@ -198,6 +357,20 @@ class PackageGateTests(unittest.TestCase):
     def assert_problem(self, phrase: str) -> None:
         errors = validate_package(self.package)
         self.assertTrue(any(phrase in error for error in errors), f"{phrase!r} absent from {errors!r}")
+
+    def make_legacy_schema_v1(self) -> None:
+        manifest = self.read_json("manifest.json")
+        manifest["schema_version"] = 1
+        manifest.pop("typefully_workflow_receipt", None)
+        manifest.pop("source_comment", None)
+        self.write_json("manifest.json", manifest)
+        (self.package / "source-comment.md").unlink(missing_ok=True)
+        (self.package / "social/typefully-workflow.json").unlink(missing_ok=True)
+
+        receipt = self.read_json("social/typefully-receipt.json")
+        for field in ("published_at", "publication_authorized", "social_set_id", "media_ids"):
+            receipt.pop(field, None)
+        self.write_json("social/typefully-receipt.json", receipt)
 
     def make_cpu_measured(self, *, declare_envelope: bool = True) -> dict:
         receipt = build_cpu_fixture(self.package)
@@ -406,6 +579,39 @@ class PackageGateTests(unittest.TestCase):
         self.assertNotIn("measurement_receipt", self.read_json("manifest.json"))
         self.assertEqual(validate_package(self.package), [])
 
+    def test_retained_schema_v1_package_keeps_legacy_contract(self) -> None:
+        self.make_legacy_schema_v1()
+        self.assertEqual(validate_package(self.package), [])
+
+    def test_schema_v2_upgrade_requires_every_extended_artifact(self) -> None:
+        self.make_legacy_schema_v1()
+        manifest = self.read_json("manifest.json")
+        manifest["schema_version"] = 2
+        self.write_json("manifest.json", manifest)
+        errors = "\n".join(validate_package(self.package))
+        self.assertIn("schema-2 manifest.typefully_workflow_receipt", errors)
+        self.assertIn("schema-2 manifest.source_comment", errors)
+        self.assertIn("Typefully receipt publication_authorized must be false", errors)
+
+    def test_schema_v1_cannot_partially_adopt_schema_v2_fields(self) -> None:
+        self.make_legacy_schema_v1()
+        manifest = self.read_json("manifest.json")
+        manifest["typefully_workflow_receipt"] = "social/typefully-workflow.json"
+        self.write_json("manifest.json", manifest)
+        self.assert_problem("schema-1 manifest must not declare typefully_workflow_receipt")
+
+    def test_manifest_schema_version_is_explicit_and_bounded(self) -> None:
+        manifest = self.read_json("manifest.json")
+        for version in (0, 3, True, "2"):
+            with self.subTest(version=version):
+                manifest["schema_version"] = version
+                self.write_json("manifest.json", manifest)
+                self.assert_problem("manifest.schema_version must equal 1 or 2")
+        template = json.loads(
+            (Path(__file__).resolve().parents[1] / "templates/package-manifest.json").read_text(encoding="utf-8")
+        )
+        self.assertEqual(template["schema_version"], 2)
+
     def test_public_copy_rejects_contextless_boolean_comparisons(self) -> None:
         for phrase in ("with False", "with True"):
             with self.subTest(phrase=phrase):
@@ -591,6 +797,33 @@ note = "with False, with True, Raw metrics and units are retained."
         (self.package / "social/typefully-receipt.json").unlink()
         self.assert_problem("missing Typefully receipt")
 
+    def test_typefully_workflow_manifest_contract_is_mandatory(self) -> None:
+        manifest = self.read_json("manifest.json")
+        manifest.pop("typefully_workflow_receipt")
+        self.write_json("manifest.json", manifest)
+        self.assert_problem("manifest.typefully_workflow_receipt must equal")
+
+    def test_missing_typefully_workflow_receipt_fails(self) -> None:
+        (self.package / "social/typefully-workflow.json").unlink()
+        self.assert_problem("Typefully workflow: cannot read receipt")
+
+    def test_source_comment_manifest_and_file_are_mandatory(self) -> None:
+        manifest = self.read_json("manifest.json")
+        manifest.pop("source_comment")
+        self.write_json("manifest.json", manifest)
+        self.assert_problem("manifest.source_comment must equal")
+        (self.package / "source-comment.md").unlink()
+        self.assert_problem("missing required file: source-comment.md")
+
+    def test_unfilled_or_sent_source_comment_fails(self) -> None:
+        template = Path(__file__).resolve().parents[1] / "templates/source-comment.md"
+        (self.package / "source-comment.md").write_bytes(template.read_bytes())
+        self.assert_problem("still matches the unfilled template")
+        (self.package / "source-comment.md").write_text(
+            "# Source-native comment\n\nStatus: sent\n\n## Source context\n\nFixture.\n\n## Comment draft\n\nFixture.\n"
+        )
+        self.assert_problem("must declare 'Status: draft, unsent'")
+
     def test_missing_independent_review_receipt_fails(self) -> None:
         (self.package / "images/review.json").unlink()
         self.assert_problem("missing independent review receipt")
@@ -603,6 +836,14 @@ note = "with False, with True, Raw metrics and units are retained."
         errors = validate_package(self.package)
         self.assertTrue(any("status must be 'draft'" in e for e in errors))
         self.assertTrue(any("scheduled_at must be null" in e for e in errors))
+
+    def test_typefully_publication_authorization_fails(self) -> None:
+        receipt = self.read_json("social/typefully-receipt.json")
+        receipt["publication_authorized"] = True
+        receipt["published_at"] = "2030-01-01T00:00:00Z"
+        self.write_json("social/typefully-receipt.json", receipt)
+        self.assert_problem("publication_authorized must be false")
+        self.assert_problem("published_at must be")
 
     def test_typefully_text_mismatch_fails(self) -> None:
         receipt = self.read_json("social/typefully-receipt.json")

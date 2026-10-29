@@ -4,6 +4,8 @@ This directory contains the post-package validator, its local dependencies and
 focused tests. It checks content, six audience variants, image and evidence
 hashes, reader-visual declarations, review receipts, exact Typefully readback,
 and unscheduled draft state.
+The Typefully workflow gate checks a retained final readback against the same
+normalized fingerprint as the draft guard.
 CPU receipt v2 also recomputes a fixed prospective codec study and verifies its
 required telemetry. This snapshot contains no measured study results.
 
@@ -35,6 +37,41 @@ synthetic and describe no actual execution.
 A passing receipt cannot authenticate execution or reviewer independence, prove
 GPU qualification, or publish content. The complete package and platform-preview
 requirements still apply.
+
+## Typefully draft workflow
+
+[The Typefully workflow](TYPEFULLY_WORKFLOW.md) and its blank templates cover
+analytics limits, verified people and conversation targets, lifecycle tags,
+exact unscheduled readback, dormant promotion settings and hashed evidence.
+Schema-2 packages require this receipt. The validator and draft guard share
+`readback_fingerprint`, including normalization of an empty response scratchpad.
+Manual edits to text, media, platform settings, targets or notes remain visible
+to the guard. These local tools make no account calls. A passing synthetic test
+is not a verified account state, permission to send, or publication.
+
+All Typefully test identities, URLs and copy in this snapshot are synthetic.
+The guard tests construct native-shaped responses in memory rather than reading
+private account exports. Source adaptation details are recorded in the hash
+manifest.
+
+## Capture-first CPU producer
+
+The CPU producer has separate `prepare`, `capture` and `retain` commands.
+Only `capture` launches the bounded scientific children. It rejects API
+credentials and performs no account or API retention call. After cleanup,
+`retain` handles existing capture custody. It does not execute the workload
+again and it refuses unknown read outcomes. The control-plane tests use fakes
+and source inspection. Their method AST pins require Python 3.14, whose AST
+representation produced those retained pins. They launch no study and contact no API.
+
+The producer is an integration source example, not a standalone installed
+runtime. Actual execution requires the separately admitted PIQ SDK checkout,
+its finite experiment and capture APIs, the source codec adapter, exact Python
+runtime, corpus, toolchain, advance design, reviews and telemetry admission.
+Those external inputs and credentials are not included here. Select an actual
+execution owner explicitly. The public helper uses a generic owner default.
+No workload, execution, capture, retention or qualification is established by
+copying the helper or passing its local tests.
 
 ## Analytical and reader-visual contracts
 
@@ -69,7 +106,7 @@ files. If the default temporary path contains a symlink, use a canonical parent
 for the test fixtures. This changes only where the unchanged tests create their
 temporary files. It leaves the importer's symlink checks and negative tests in
 place. The following command runs the package, reader-visual, diagnostic and
-indexed-originals suites together:
+indexed-originals, Typefully and CPU control-plane suites together:
 
 ```bash
 python3 -B - <<'PYTEST'
@@ -83,6 +120,10 @@ suite = unittest.defaultTestLoader.loadTestsFromNames([
     "tools.test_check_reader_visuals",
     "tools.test_piq_experiment_evidence",
     "tools.test_indexed_originals_import",
+    "tools.test_typefully_draft_guard",
+    "tools.test_typefully_workflow",
+    "tools.test_qualified_cpu_study",
+    "tools.test_run_cpu_study",
 ])
 result = unittest.TextTestRunner(verbosity=1).run(suite)
 raise SystemExit(not result.wasSuccessful())
@@ -94,7 +135,10 @@ PYTEST
 `source-hashes.json` lists the tools, tests, schemas, synthetic examples and
 supporting contracts. Entries marked `pipeline_source` match the current
 pipeline source byte for byte. The generic README and reader guide are marked
-`snapshot_documentation` and maintained here. The hash manifest does not hash
+`snapshot_documentation` and maintained here. Entries marked
+`generic_source_adaptation` retain the upstream source hash and explain the
+limited privacy or author-name changes. The production package and Typefully
+validators match their pipeline sources exactly. The hash manifest does not hash
 itself. Verify every listed snapshot file from this directory:
 
 ```bash
