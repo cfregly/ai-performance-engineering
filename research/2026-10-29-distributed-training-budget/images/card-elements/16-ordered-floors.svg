@@ -34,6 +34,6 @@
 <text x="500" y="743" font-size="36" text-anchor="middle" fill="#202326">FP32 Muon, one attention owner</text>
 <text x="500" y="783" font-size="36" text-anchor="middle" fill="#202326">Assumed 100 TFLOP/s/GPU,</text>
 <text x="500" y="823" font-size="36" text-anchor="middle" fill="#202326">rack 80 GB/s / node 40 GB/s</text>
-<text x="500" y="863" font-size="36" text-anchor="middle" fill="#202326">Balanced routing.</text>
+<text x="500" y="863" font-size="36" text-anchor="middle" fill="#202326">Each direction. Balanced routing.</text>
 <text x="500" y="903" font-size="36" text-anchor="middle" fill="#202326">Lower bounds, not runtimes.</text>
 </g></svg>

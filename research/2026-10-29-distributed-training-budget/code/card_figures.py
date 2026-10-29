@@ -178,7 +178,7 @@ def ordered_floors(source):
     c.text(500, 743, "FP32 Muon, one attention owner", 36, "middle")
     c.text(500, 783, f"Assumed {caps['Muon_FP32_TF_s_GPU']} TFLOP/s/GPU,", 36, "middle")
     c.text(500, 823, f"rack {caps['rack_uplink_GB_s_each_direction']} GB/s / node {caps['node_NIC_GB_s_each_direction']} GB/s", 36, "middle")
-    c.text(500, 863, "Balanced routing.", 36, "middle")
+    c.text(500, 863, "Each direction. Balanced routing.", 36, "middle")
     c.text(500, 903, "Lower bounds, not runtimes.", 36, "middle")
     return c
 
