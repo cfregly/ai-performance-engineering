@@ -19,22 +19,22 @@ import time
 from pathlib import Path, PurePosixPath
 
 
-MAX_PART_BYTES = 7 * 1024 * 1024
+MAX_PART_BYTES = 30 * 1024 * 1024
 
 
-MAX_OUTPUT_BYTES = 8 * 1024 * 1024
+MAX_OUTPUT_BYTES = 32 * 1024 * 1024
 
 
-MAX_CORPUS_BYTES = 64 * 1024 * 1024
+MAX_CORPUS_BYTES = 128 * 1024 * 1024
 
 
 MAX_INDEX_BYTES = 64 * 1024
 
 
-MAX_LEDGER_BYTES = 512 * 1024
+MAX_LEDGER_BYTES = 2 * 1024 * 1024
 
 
-MAX_PARTS = 16
+MAX_PARTS = 4
 
 
 TIMED_STEPS = [
@@ -164,8 +164,8 @@ def _index(data: bytes) -> dict:
     if ledger["artifactName"] != "inputs/corpus-ledger.json":
         raise ValueError("source ledger must be inputs/corpus-ledger.json")
     parts = value["chunks"]
-    if not isinstance(parts, list) or not 1 <= len(parts) <= MAX_PARTS:
-        raise ValueError("part count exceeds its cap")
+    if not isinstance(parts, list) or len(parts) != MAX_PARTS:
+        raise ValueError("sealed corpus must contain exactly four parts")
     for part in parts:
         _chunk_ref(part, MAX_PART_BYTES)
     if (

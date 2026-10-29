@@ -15,7 +15,7 @@ import subprocess
 import sys
 import time
 
-FILE_CAP = 8 * 1024 * 1024
+FILE_CAP = 32 * 1024 * 1024
 ADDRESS_CAP = 512 * 1024 * 1024
 METADATA_CAP = 64 * 1024
 CODECS = {"A": "pigz-gzip", "B": "zstd"}
