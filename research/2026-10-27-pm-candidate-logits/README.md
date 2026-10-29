@@ -38,6 +38,16 @@ The baseline is eager PyTorch CUDA `torch.mm` with preallocated buffers. The obs
 
 API contracts: [PyTorch matrix product](https://docs.pytorch.org/docs/2.14/generated/torch.mm.html), [linear projection](https://docs.pytorch.org/docs/2.14/generated/torch.nn.functional.linear.html). The [vLLM structured-output interface](https://docs.vllm.ai/en/latest/features/structured_outputs/) provides integration context; this test did not run vLLM.
 
+## Prior work
+
+[Underpinning study by Murali Manohar](https://gitlostmurali.com/blog/structured-generation-optimizations/) explains allowed-token weight slicing and batching limitations. The [GSP working paper](https://github.com/StealthEyeLLC/grammar-sparse-projection/blob/30a9d0ed82f26dc53ec74b4f0985e1d213a18625/paper/draft.md) develops packed-mask projection, heterogeneous batching and an end-to-end evaluation. Those authors’ results are separate from this controlled B200 reproduction. The core mechanism is established.
+
+## Concise stage comparison
+
+The complete configuration and methods are above. This figure summarizes the same measured changing-set case.
+
+![Output-head stage comparison with weight gathering included](images/gamma-explainer/result-social.png)
+
 ## Figures
 
 The cover illustration is conceptual. Tile counts and drawn proportions do not encode the benchmark dimensions. Numerical figures state their conditions and describe observed block timings.
