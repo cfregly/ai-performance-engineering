@@ -1,7 +1,7 @@
 {
   "schema_version": 2,
-  "source_revision": "0114c3af6692e9407df667ee9805d1c9aa96d84e",
-  "public_base_revision": "b8531a6779775640087649b9914b16bef4620e6d",
+  "source_revision": "78a532f564e7e80cd22b08248e6d3c3cadc7d46d",
+  "public_base_revision": "38b3f2237c0634dd33f1f131c263f7ee5aa61374",
   "validation_scope": "retained_bytes_only",
   "production_admissions": "empty",
   "identity_rule": "All snapshot files are hashed except this manifest. The enclosing Git commit and tree identify the manifest. Source hashes name bytes at source_revision. Retained public files stay bound to public_base_revision.",
@@ -32,7 +32,7 @@
     },
     {
       "path": "README.md",
-      "sha256": "ea56867e0d9733e76e3bd392cb3f59ab3a8337857101cc84dc35d731762c4036",
+      "sha256": "acdec6cd5d9f13ffd598128b7404f15d648f340d4813e597e5cfa41f537f6c3c",
       "provenance": "public_documentation"
     },
     {
@@ -244,8 +244,8 @@
     },
     {
       "path": "tools/check_package.py",
-      "sha256": "13141f3cda7f5b4d1262291ad207d4b13c829ff295198bef4cef4f5e68fb4722",
-      "source_sha256": "4b56cd50014b19499ca5e1a74f8bf965234f8a06949ebdc546c33e0b56b745f0",
+      "sha256": "5c31503d6aeb357020bb378efa387615c3bc14255e36237a65e624857ab8459c",
+      "source_sha256": "e2e21dbe2139adf68632914cc88e07ee7776b9545fa16f5dec09b23e71b46286",
       "provenance": "public_policy_adaptation",
       "adaptations": [
         "plain_language",
@@ -353,8 +353,8 @@
     },
     {
       "path": "tools/test_check_package.py",
-      "sha256": "7d0d514c0e80497059e6cf1718489c9f69983f6e7d0a9928e2cb8bfaae904e93",
-      "source_sha256": "d719f3f86789e77c96c7728b9317b42da311d1f180126fbf7598032581c8f9f5",
+      "sha256": "eeaf6a492d0795e079fe3f473ddeb1bf673490011f9ceb25e84b343e83a37531",
+      "source_sha256": "496d511d6b64a4be735d62a37813c4aacae0c9ba1f1f4c3a5d9130882ffe3a19",
       "provenance": "public_policy_and_synthetic_test_adaptation",
       "adaptations": [
         "self_contained_synthetic_fixtures",
@@ -469,5 +469,5 @@
       "provenance": "verbatim_source"
     }
   ],
-  "source_tree": "ac7db2a57c18ff2e7929f95c08830351ccb75d48"
+  "source_tree": "77d055f4fe6f1ebc077b9d01ea350685272b0de5"
 }

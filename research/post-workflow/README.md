@@ -39,8 +39,8 @@ The functional checker distinguishes an absent declaration, producer consistency
 and an admitted owner receipt. Producer-only success exits zero while retaining
 its package-readiness block. A declared invalid or unadmitted owner receipt
 fails. The full package gate also requires the other content, scientific,
-review, image and draft-readback evidence. Its manifest loader rejects identical
-and conflicting duplicate JSON keys at every depth before schema dispatch.
+review, image and draft-readback evidence. Its JSON loader rejects identical and
+conflicting duplicate keys at every depth in every package document it reads.
 
 ## Two-host evidence and builders
 
@@ -70,8 +70,9 @@ snapshot until separately reviewed for release.
 ## Source identity and citations
 
 The projected source revision is
-`0114c3af6692e9407df667ee9805d1c9aa96d84e`. The public base revision is
-`b8531a6779775640087649b9914b16bef4620e6d`.
+`78a532f564e7e80cd22b08248e6d3c3cadc7d46d`. Its source tree is
+`77d055f4fe6f1ebc077b9d01ea350685272b0de5`. The public base revision is
+`38b3f2237c0634dd33f1f131c263f7ee5aa61374`.
 [source-hashes.json](source-hashes.json) records every snapshot file's SHA-256,
 its exact source SHA-256 when available and its public SHA-256. Each entry
 identifies unchanged source bytes, retained public files or a public adaptation.
@@ -94,9 +95,10 @@ PY
 
 Entries marked `verbatim_source` match the pinned source bytes. Public
 adaptations narrow evidence wording, add CLI help, apply plain-language policy
-and sanitize private test fixtures. The duplicate-key loader and its source
-regressions match the merged source. Additional public tests cover nested
-duplicates, clean CLI errors, help and the owner-assertion output boundary.
+and sanitize private test fixtures. The package JSON loader and the source
+regressions for the manifest, sources, Typefully receipt, independent review and
+measurement receipt match the merged source. Additional public tests cover
+nested duplicates, clean CLI errors, help and the owner-assertion output boundary.
 Three test modules replace private artifact paths or account identifiers with
 synthetic values. A package marker enables standard test discovery. The hash
 manifest records each adaptation while preserving the original source digest.
