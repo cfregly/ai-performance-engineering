@@ -11,6 +11,15 @@ It accepts the closed, case-normalized text extension set in `build_corpus.py`,
 deduplicates by Git blob, sorts by descending byte size and ascending path, and
 takes the first 4,096 objects. Dirty working-tree bytes are never inputs.
 
+The frozen ledger's `selection` field uses the historical phrase "regular
+committed blobs." The exact implementation admits only Git mode `100644`.
+Mode `100755` blobs are excluded even though Git also represents them as
+regular files. When one blob appears at multiple paths, the builder retains the
+first path in `git ls-tree` traversal order before applying the final size and
+path sort. The retained ledger enumerates the exact selected path and object ID
+for every entry. Do not broaden or reinterpret this closed rule when
+reconstructing the corpus.
+
 The builder fails unless it reproduces all of these preregistered values:
 
 - 4,096 source files and 107,929,355 source bytes
@@ -34,8 +43,10 @@ This maintained successor does not alter or relabel that closed cohort.
 
 ## No-compression reconstruction and audit
 
-Run from this directory with an existing Python interpreter and a checkout that
-contains the source commit. Use absolute paths and a new output directory.
+Run from this directory with Python 3.10 or newer and a checkout that contains
+the source commit. The source-only suite is verified on Python 3.12, 3.13, and
+3.14. Python 3.9 is unsupported because the code uses `zip(..., strict=True)`
+and modern union type syntax. Use absolute paths and a new output directory.
 
 ```bash
 python3 -I -B -X pycache_prefix=/var/empty/piq-python-cache build_corpus.py \
