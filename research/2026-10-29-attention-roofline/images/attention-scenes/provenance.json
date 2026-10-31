@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "inputs": [
+    {
+      "input": "images/attention-scenes/visual-tokens.json",
+      "sha256": "677886666cf02f359a6ae23ff762185985e34c655f9335dfc969e38265a87b33"
+    },
+    {
+      "input": "images/attention-scenes/Inter.ttf",
+      "sha256": "29160a80ff49ddcab2c97711247e08b1fab27a484a329ce8b813d820dc559031"
+    },
+    {
+      "input": "images/attention-scenes/OFL.txt",
+      "sha256": "5b9321a4298cfeb6b34354164a1c3afc3db114569984c502b9b35d988fd58c57"
+    },
+    {
+      "input": "evidence/derivation/RESULTS.json",
+      "sha256": "d1439661b3fb845fa556338b2779cdaa2a34da46b3ccf62b1d26fec87d667557"
+    },
+    {
+      "input": "images/attention-scenes/warehouse-source.png",
+      "sha256": "2f72258aee3b09d624c0ed7ead4df9fdf67f291c4367ce138c33c0501eb77eef"
+    },
+    {
+      "input": "images/attention-scenes/factory-source.png",
+      "sha256": "8a65558caaefa9f31d679735881f65593722a6a7e0e930b3960a06e400f9cd5f"
+    }
+  ],
+  "font_license": "SIL Open Font License 1.1, retained in images/attention-scenes/OFL.txt.",
+  "artwork": "Conceptual illustrations. Drawn dimensions do not encode measured or analytical quantities.",
+  "analytical_data": "Synthetic analytical example, not runtime measurements."
+}
