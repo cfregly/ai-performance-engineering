@@ -17,6 +17,17 @@ from pathlib import Path, PurePosixPath
 import re
 from urllib.parse import unquote, urlsplit
 
+if __package__:
+    from .qualified_gpu_training import (
+        build_gpu_public_summary, canonical_json, strict_load_json,
+        validate_gpu_receipt,
+    )
+else:
+    from qualified_gpu_training import (
+        build_gpu_public_summary, canonical_json, strict_load_json,
+        validate_gpu_receipt,
+    )
+
 
 PUBLIC_DIRECTORIES = {"images", "code", "captures", "evidence"}
 PRIVATE_NAMES = {"_internal", "__internal"}
@@ -45,6 +56,146 @@ MARKDOWN_IMAGE = re.compile(r"!\[[^\]]*\]\(\s*(?:<([^>]+)>|([^\s)]+))(?:\s+[^)]*
 HTML_IMAGE = re.compile(r"<img\b[^>]*\bsrc\s*=\s*([\"'])(.*?)\1", re.I | re.S)
 REFERENCE_IMAGE = re.compile(r"!\[([^\]]*)\]\[([^\]]*)\]")
 REFERENCE_DEFINITION = re.compile(r"^\s{0,3}\[([^\]]+)\]:\s*<?([^\s>]+)>?", re.M)
+_PRIVATE_IDENTITY_SCAN_CHUNK_BYTES = 64 * 1024
+_MAX_PRIVATE_IDENTITY_BYTES = 16 * 1024
+
+
+def _duplicates(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    result: dict[str, object] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"duplicate JSON key: {key}")
+        result[key] = value
+    return result
+
+
+def _constant(value: str) -> None:
+    raise ValueError(f"nonfinite JSON constant: {value}")
+
+
+def _strict_json(path: Path) -> object:
+    return json.loads(
+        path.read_text(encoding="utf-8"),
+        object_pairs_hook=_duplicates,
+        parse_constant=_constant,
+    )
+
+
+def _gpu_v3_projection_errors(package: Path, manifest: dict,
+                              sources: object) -> tuple[list[str], set[str]]:
+    """Validate only the deterministic public summary and private redaction."""
+    if (manifest.get("content_state") == "measured"
+            and manifest.get("measurement_contract") != "qualified_gpu_training_v3"):
+        return [
+            "measured public projection uses an unsupported measurement contract. "
+            "only qualified_gpu_training_v3 is active"
+        ], set()
+    if manifest.get("measurement_contract") != "qualified_gpu_training_v3":
+        return [], set()
+    errors: list[str] = []
+    receipt_relative = manifest.get("measurement_receipt")
+    if not _relative(receipt_relative):
+        return ["GPU v3 public projection requires a safe measurement receipt path"], set()
+    receipt_path = _member(package, receipt_relative, "GPU v3 measurement receipt", errors)
+    if receipt_path is None or not receipt_path.is_file():
+        return errors, set()
+    try:
+        receipt = strict_load_json(receipt_path, "GPU v3 measurement receipt")
+    except ValueError as exc:
+        return [f"GPU v3 public projection has invalid receipt: {exc}"], set()
+    if not isinstance(receipt, dict):
+        return ["GPU v3 public projection receipt must be an object"], set()
+    receipt_errors = validate_gpu_receipt(package, receipt)
+    if receipt_errors:
+        return [
+            "GPU v3 public projection requires a qualified receipt: "
+            + ". ".join(receipt_errors)
+        ], set()
+    summary_relative = manifest.get("gpu_training_public_summary")
+    if not _relative(summary_relative) or not str(summary_relative).startswith("evidence/"):
+        errors.append("GPU v3 manifest.gpu_training_public_summary must be a safe evidence/ path")
+        return errors, set()
+    summary_path = _member(package, summary_relative, "GPU v3 public summary", errors)
+    if summary_path is None or not summary_path.is_file():
+        return errors, set()
+    try:
+        summary = strict_load_json(summary_path, "GPU public summary")
+        expected = build_gpu_public_summary(package, receipt)
+    except ValueError as exc:
+        errors.append(f"GPU v3 public summary is invalid: {exc}")
+        return errors, set()
+    if summary != expected or summary_path.read_bytes() != canonical_json(expected):
+        errors.append("GPU v3 public summary must equal canonical deterministic projection")
+    if not isinstance(sources, dict) or summary_relative not in sources.values():
+        errors.append("GPU v3 public_projection.sources must map the deterministic public summary")
+
+    forbidden = {str(receipt_relative)}
+    for field in (
+        "design", "registration", "raw_census", "correctness_quality",
+        "qualification_report", "baseline_review", "telemetry_review",
+        "scientific_review", "piq_envelope", "checkpoint_restart",
+        "telemetry_coverage", "custody_readback_cleanup", "source_import_closure",
+    ):
+        ref = receipt.get(field)
+        if isinstance(ref, dict) and isinstance(ref.get("path"), str):
+            forbidden.add(ref["path"])
+    for collection in ("accepted_repeats", "profile_evidence"):
+        for item in receipt.get(collection, []):
+            if not isinstance(item, dict):
+                continue
+            ref = item.get("raw_result" if collection == "accepted_repeats" else "artifact")
+            if isinstance(ref, dict) and isinstance(ref.get("path"), str):
+                forbidden.add(ref["path"])
+    envelope_ref = receipt.get("piq_envelope")
+    envelope = None
+    if isinstance(envelope_ref, dict):
+        try:
+            envelope = strict_load_json(package / envelope_ref["path"], "PIQ v2 envelope")
+        except ValueError as exc:
+            errors.append(f"GPU v3 private envelope cannot be read for redaction: {exc}")
+    private_values: set[str] = set()
+    if isinstance(envelope, dict):
+        for attempt in envelope.get("attempts", []):
+            if isinstance(attempt, dict):
+                private_values.update(str(attempt.get(field)) for field in ("id", "run_id") if attempt.get(field))
+        for execution in envelope.get("executions", []):
+            if not isinstance(execution, dict):
+                continue
+            observed = execution.get("observed_resources", {})
+            if isinstance(observed, dict):
+                if observed.get("host"):
+                    private_values.add(str(observed["host"]))
+                private_values.update(str(value) for value in observed.get("device_uuids", []))
+            assignment = execution.get("assignment_evidence", {})
+            if isinstance(assignment, dict) and isinstance(assignment.get("path"), str):
+                bundle = (package / envelope_ref["path"]).parent
+                try:
+                    document = strict_load_json(bundle / assignment["path"], "GPU assignment")
+                except ValueError:
+                    document = None
+                if isinstance(document, dict):
+                    for field in ("scheduler_job_id", "owner", "node", "session_id", "cgroup"):
+                        if document.get(field):
+                            private_values.add(str(document[field]))
+        bundle_prefix = PurePosixPath(envelope_ref["path"]).parent
+        for artifact in envelope.get("artifacts", []):
+            if not isinstance(artifact, dict) or not isinstance(artifact.get("path"), str):
+                continue
+            relative = artifact["path"]
+            if any(token in relative for token in (
+                "attempts/", "assignments/", "rank-outputs/", "telemetry/",
+                "custody/", "checkpoint", "raw-census", "cleanup", "readback",
+            )):
+                forbidden.add((bundle_prefix / relative).as_posix())
+    if isinstance(sources, dict):
+        for public, source in sources.items():
+            if source in forbidden:
+                errors.append(f"{public}: GPU v3 public projection maps forbidden private evidence {source}")
+    summary_text = json.dumps(summary, sort_keys=True, ensure_ascii=False)
+    for value in sorted(private_values):
+        if value and value in summary_text:
+            errors.append(f"GPU v3 public summary leaks a private execution identity: {value}")
+    return errors, private_values
 
 
 def _relative(value: object) -> bool:
@@ -94,6 +245,45 @@ def _digest(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _staged_private_identity_errors(
+        files: dict[str, Path], private_values: set[str]) -> list[str]:
+    """Scan every staged file as bytes with bounded memory and fail closed."""
+    errors: list[str] = []
+    needles: set[bytes] = set()
+    for value in private_values:
+        try:
+            needle = value.encode("utf-8")
+        except UnicodeError:
+            errors.append("GPU v3 private execution identity is not valid UTF-8")
+            continue
+        if len(needle) > _MAX_PRIVATE_IDENTITY_BYTES:
+            errors.append("GPU v3 private execution identity exceeds the safe scan limit")
+            continue
+        if needle:
+            needles.add(needle)
+    if not needles:
+        return errors
+
+    overlap = max(len(needle) for needle in needles) - 1
+    for relative, path in sorted(files.items()):
+        try:
+            carry = b""
+            with path.open("rb") as stream:
+                while chunk := stream.read(_PRIVATE_IDENTITY_SCAN_CHUNK_BYTES):
+                    window = carry + chunk
+                    if any(needle in window for needle in needles):
+                        errors.append(
+                            f"{relative}: staged public file leaks a private execution identity"
+                        )
+                        break
+                    carry = window[-overlap:] if overlap else b""
+        except OSError as exc:
+            errors.append(
+                f"{relative}: cannot scan staged file for private execution identities: {exc}"
+            )
+    return errors
+
+
 def _image_paths(text: str) -> list[str]:
     definitions = {key.casefold(): value for key, value in REFERENCE_DEFINITION.findall(text)}
     urls = [left or right for left, right in MARKDOWN_IMAGE.findall(text)]
@@ -114,8 +304,8 @@ def validate_public_projection(package: Path) -> list[str]:
     if manifest.is_symlink():
         return ["public projection: manifest.json must not be a symlink"]
     try:
-        data = json.loads(manifest.read_text(encoding="utf-8"))
-    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        data = _strict_json(manifest)
+    except (OSError, UnicodeError, ValueError) as exc:
         return [f"public projection: invalid manifest.json: {exc}"]
     if not isinstance(data, dict):
         return ["public projection: manifest.json must be an object"]
@@ -132,6 +322,8 @@ def validate_public_projection(package: Path) -> list[str]:
     if not isinstance(sources, dict) or not sources:
         errors.append("public_projection.sources must be a nonempty public-path to source-path mapping")
         return errors
+    gpu_errors, private_values = _gpu_v3_projection_errors(package, data, sources)
+    errors.extend(gpu_errors)
     if output is None:
         return errors
     if not output.is_dir():
@@ -192,6 +384,8 @@ def validate_public_projection(package: Path) -> list[str]:
                 errors.append(f"{relative}: sha256 mismatch with retained source")
         except OSError as exc:
             errors.append(f"{relative}: cannot compare retained source: {exc}")
+
+    errors.extend(_staged_private_identity_errors(safe_files, private_values))
 
     readme = ""
     for relative, path in sorted(safe_files.items()):

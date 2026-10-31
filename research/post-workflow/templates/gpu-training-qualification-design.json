@@ -1,0 +1,527 @@
+{
+  "schema_version": 1,
+  "kind": "qualified_gpu_training_design",
+  "contract_id": "te_mxfp8_bf16_two_b200_v1",
+  "study_id": "UNFILLED_STUDY_ID",
+  "workload_scope": "UNFILLED_WORKLOAD_SCOPE",
+  "created_at": "UNFILLED_UTC_TIMESTAMP",
+  "execution_owner": "UNFILLED_EXECUTION_OWNER",
+  "execution_class": "gpu",
+  "accelerator_count": 2,
+  "synthetic_fixture": false,
+  "model": {
+    "blocks": 24,
+    "hidden_width": 2048,
+    "mlp_width": 8192,
+    "attention_heads": 16,
+    "head_dimension": 128,
+    "sequence_length": 2048,
+    "rank_local_microbatch": 4,
+    "gradient_accumulation": 4,
+    "global_batch": 32,
+    "optimizer_updates": 192,
+    "attention_backend": "te_fused_attention",
+    "activation": "gelu",
+    "normalization": "rmsnorm",
+    "parameter_dtype": "bf16",
+    "dropout": "0",
+    "bias": false,
+    "activation_recomputation": false,
+    "compile": false,
+    "cuda_graphs": false,
+    "parameter_manifest_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "optimizer": {
+      "name": "Transformer Engine FusedAdam",
+      "lr_peak": "0.0002",
+      "betas": [
+        "0.9",
+        "0.95"
+      ],
+      "eps": "0.00000001",
+      "weight_decay": "0.1",
+      "master_weights": "float32",
+      "moments": "float32",
+      "gradient_clip_norm": "1.0",
+      "schedule": "16-update linear warmup then cosine to 0.00002"
+    }
+  },
+  "data": {
+    "dataset_revision": "b08601e04326c79dfdd32d625aee71d232d685c3",
+    "remote_files": [
+      {
+        "path": "train-00000-of-00002.parquet",
+        "sha256": "74da360f23826045b3e6ac6375411fdb15f003030aa74f2596ed08b857cb9212"
+      },
+      {
+        "path": "train-00001-of-00002.parquet",
+        "sha256": "ba090ac30dbf5461e8dcbdd1a1b8e6f3cf9c2c756d64f0c1220450acd514f720"
+      },
+      {
+        "path": "validation-00000-of-00001.parquet",
+        "sha256": "204929b7ff9d6184953f867dedb860e40aa69c078fc1e54b3baaa8fb28511c4c"
+      }
+    ],
+    "converter_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "train_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "validation_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "sampler_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "validation_oracle_windows": 512,
+    "seed": 1701,
+    "cache_policy": "shared_staged_preread_once"
+  },
+  "arms": {
+    "baseline": {
+      "id": "bf16",
+      "configuration": "te.autocast(enabled=False)",
+      "configuration_sha256": "a46b5a48b3d4098c5faec4493fe336326f5316cd649f27e8c42e4758df7c74ee"
+    },
+    "candidate": {
+      "id": "mxfp8",
+      "configuration": "te.autocast(enabled=True, recipe=MXFP8BlockScaling(fp8_format=Format.E4M3))",
+      "configuration_sha256": "2346b5d30320e015cbee350fd59890b0db8e9705f04c91164cf36bde02fd8f2a"
+    },
+    "sole_changed_variable": "transformer_engine_forward_autocast_recipe"
+  },
+  "runtime": {
+    "pytorch": "2.15.0",
+    "transformer_engine": "2.20.2",
+    "transformer_engine_commit": "6ea2a74a9e98c99e6d7b164a33775cc457520027",
+    "cuda_toolkit": "13.4.3",
+    "cublas": "13.8.2",
+    "cudnn": "UNFILLED_CUDNN",
+    "nccl": "UNFILLED_NCCL",
+    "driver": "UNFILLED_DRIVER",
+    "image_digest": "UNFILLED_IMAGE_DIGEST",
+    "python": "UNFILLED_PYTHON",
+    "compiler_extensions": "UNFILLED_COMPILER_EXTENSIONS",
+    "attention_backend": "UNFILLED_ATTENTION_BACKEND",
+    "runtime_identifier": "UNFILLED_RUNTIME_IDENTIFIER"
+  },
+  "topology": {
+    "node_count": 1,
+    "accelerator_count": 2,
+    "process_count": 2,
+    "ranks": [
+      0,
+      1
+    ],
+    "local_ranks": [
+      0,
+      1
+    ],
+    "compute_capability": [
+      10,
+      0
+    ],
+    "launcher": "torchrun --standalone --nnodes=1 --nproc-per-node=2",
+    "backend": "nccl",
+    "parallelism": "ddp_only",
+    "device_uuids": [
+      "UNFILLED_DEVICE_UUID_0",
+      "UNFILLED_DEVICE_UUID_1"
+    ],
+    "topology_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+  },
+  "determinism": {
+    "seed": 1701,
+    "nvte_allow_nondeterministic_algo": "0",
+    "torch_deterministic_errors": true,
+    "cudnn_benchmark": false
+  },
+  "schedule": [
+    {
+      "id": "admission-01",
+      "kind": "admission",
+      "order": [
+        "baseline",
+        "candidate"
+      ]
+    },
+    {
+      "id": "pair-01",
+      "kind": "pair",
+      "order": [
+        "baseline",
+        "candidate"
+      ]
+    },
+    {
+      "id": "pair-02",
+      "kind": "pair",
+      "order": [
+        "candidate",
+        "baseline"
+      ]
+    },
+    {
+      "id": "pair-03",
+      "kind": "pair",
+      "order": [
+        "candidate",
+        "baseline"
+      ]
+    },
+    {
+      "id": "pair-04",
+      "kind": "pair",
+      "order": [
+        "baseline",
+        "candidate"
+      ]
+    }
+  ],
+  "criteria": {
+    "criteria_version": "te-mxfp8-bf16-two-b200-v1",
+    "accepted_pair_count": 4,
+    "attempt_count": 10,
+    "minimum_each_pair_gain": "1.05",
+    "minimum_median_gain": "1.10",
+    "maximum_gain_spread": "0.10",
+    "maximum_within_arm_population_cv": "0.05",
+    "maximum_median_candidate_to_baseline_p95": "0.95",
+    "maximum_each_candidate_to_baseline_p95": "1.02",
+    "minimum_absolute_nll_improvement_nats_per_byte": "0.10",
+    "maximum_each_candidate_nll_gap_nats_per_byte": "0.03",
+    "maximum_median_candidate_nll_gap_nats_per_byte": "0.02",
+    "maximum_each_candidate_accuracy_gap_percentage_points": "0.75",
+    "maximum_median_candidate_accuracy_gap_percentage_points": "0.50",
+    "phase_candidate_multiplier": "1.10",
+    "phase_candidate_slack_nanoseconds": 2000000000,
+    "updates_per_full_attempt": 192,
+    "accumulation_rounds_per_full_attempt": 768,
+    "rank_local_microbatches_per_full_attempt": 1536,
+    "target_bytes_per_full_attempt": 12582912,
+    "oracle_target_bytes": 1048576,
+    "checkpoint_update": 96,
+    "first_resumed_update": 97,
+    "dry_forward_tolerance_nanonats": 1000,
+    "no_failed_missing_retried_or_unaccepted_attempts": true
+  },
+  "measurement_semantics": {
+    "version": "gpu-training-machine-semantics-v1",
+    "p95": {
+      "estimator": "nearest_rank_ceiling",
+      "eligible_update_indices": [
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20,
+        21,
+        22,
+        23,
+        24,
+        25,
+        26,
+        27,
+        28,
+        29,
+        30,
+        31,
+        32,
+        33,
+        34,
+        35,
+        36,
+        37,
+        38,
+        39,
+        40,
+        41,
+        42,
+        43,
+        44,
+        45,
+        46,
+        47,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        56,
+        57,
+        58,
+        59,
+        60,
+        61,
+        62,
+        63,
+        64,
+        65,
+        66,
+        67,
+        68,
+        69,
+        70,
+        71,
+        72,
+        73,
+        74,
+        75,
+        76,
+        77,
+        78,
+        79,
+        80,
+        81,
+        82,
+        83,
+        84,
+        85,
+        86,
+        87,
+        88,
+        89,
+        90,
+        91,
+        92,
+        93,
+        94,
+        95,
+        98,
+        99,
+        100,
+        101,
+        102,
+        103,
+        104,
+        105,
+        106,
+        107,
+        108,
+        109,
+        110,
+        111,
+        112,
+        113,
+        114,
+        115,
+        116,
+        117,
+        118,
+        119,
+        120,
+        121,
+        122,
+        123,
+        124,
+        125,
+        126,
+        127,
+        128,
+        129,
+        130,
+        131,
+        132,
+        133,
+        134,
+        135,
+        136,
+        137,
+        138,
+        139,
+        140,
+        141,
+        142,
+        143,
+        144,
+        145,
+        146,
+        147,
+        148,
+        149,
+        150,
+        151,
+        152,
+        153,
+        154,
+        155,
+        156,
+        157,
+        158,
+        159,
+        160,
+        161,
+        162,
+        163,
+        164,
+        165,
+        166,
+        167,
+        168,
+        169,
+        170,
+        171,
+        172,
+        173,
+        174,
+        175,
+        176,
+        177,
+        178,
+        179,
+        180,
+        181,
+        182,
+        183,
+        184,
+        185,
+        186,
+        187,
+        188,
+        189,
+        190,
+        191,
+        192
+      ],
+      "rank_formula": "ceil(95*n/100), one_based",
+      "excluded_update_indices": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        96,
+        97
+      ]
+    },
+    "coefficient_of_variation": {
+      "standard_deviation": "population",
+      "rounding": "none_for_gate",
+      "gate_formula": "400*sum((n*x_i-sum_x)^2)<=n*sum_x^2",
+      "display_decimal_places": 6,
+      "display_rounding": "half_even"
+    },
+    "intervals": {
+      "model": "half_open_monotonic_nanoseconds",
+      "phase_duration": "union_across_ranks_no_clipping",
+      "touching_intervals_merge": true,
+      "coverage_rule": "each_rank_union_equals_primary_clock",
+      "unexplained_gap": "any_positive_uncovered_nanosecond",
+      "cross_phase_overlap": "allowed_and_not_summed"
+    },
+    "quality": {
+      "nll_representation": "integer_total_nanonats_and_integer_target_bytes",
+      "nll_gate_rounding": "none_rational_cross_multiplication",
+      "nll_display_decimal_places": 9,
+      "accuracy_representation": "integer_correct_bytes_and_integer_target_bytes",
+      "accuracy_gate_rounding": "none_rational_cross_multiplication",
+      "accuracy_display_decimal_places": 6,
+      "display_rounding": "half_even"
+    },
+    "power": {
+      "source": "nvidia_smi_power_limit_milliwatts",
+      "observations_per_device_per_attempt": 2,
+      "observation_labels": [
+        "start",
+        "end"
+      ],
+      "absolute_tolerance_mw": 1000,
+      "mutation_allowed": false
+    }
+  },
+  "required_phases": [
+    "data_open",
+    "nccl_init",
+    "periodic_save",
+    "checkpoint_load",
+    "restart_to_first_update",
+    "final_save",
+    "validation",
+    "evidence_flush",
+    "cleanup"
+  ],
+  "budgets": {
+    "gpu_count": 2,
+    "gpu_hours": 2,
+    "additional_spend_usd": 0,
+    "hard_spend_cap_usd": 50,
+    "hard_wall_minutes": 60
+  },
+  "retention": {
+    "initial_checkpoint_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "keep_raw_evidence": true,
+    "keep_restartable_final_checkpoint_per_arm": true,
+    "deletions_recorded": true
+  },
+  "power_policy": {
+    "source": "nvidia_smi_power_limit_milliwatts",
+    "expected_limit_mw_by_device": {
+      "UNFILLED_DEVICE_UUID_0": 0,
+      "UNFILLED_DEVICE_UUID_1": 0
+    },
+    "tolerance_mw": 1000,
+    "observations_per_attempt_per_device": 2,
+    "observation_labels": [
+      "start",
+      "end"
+    ],
+    "mutation_allowed": false
+  },
+  "source_imports": [
+    {
+      "role": "runner",
+      "expected_absolute_path": "/UNFILLED/RUNNER.py",
+      "expected_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "resolved_absolute_path": "/UNFILLED/RUNNER.py",
+      "resolved_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "role": "adapter",
+      "expected_absolute_path": "/UNFILLED/ADAPTER.py",
+      "expected_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "resolved_absolute_path": "/UNFILLED/ADAPTER.py",
+      "resolved_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "role": "verifier",
+      "expected_absolute_path": "/UNFILLED/VERIFIER.py",
+      "expected_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "resolved_absolute_path": "/UNFILLED/VERIFIER.py",
+      "resolved_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "role": "evaluator",
+      "expected_absolute_path": "/UNFILLED/EVALUATOR.py",
+      "expected_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "resolved_absolute_path": "/UNFILLED/EVALUATOR.py",
+      "resolved_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "role": "checkpoint",
+      "expected_absolute_path": "/UNFILLED/CHECKPOINT.py",
+      "expected_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "resolved_absolute_path": "/UNFILLED/CHECKPOINT.py",
+      "resolved_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "role": "telemetry",
+      "expected_absolute_path": "/UNFILLED/TELEMETRY.py",
+      "expected_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "resolved_absolute_path": "/UNFILLED/TELEMETRY.py",
+      "resolved_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "role": "helper",
+      "expected_absolute_path": "/UNFILLED/HELPER.py",
+      "expected_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "resolved_absolute_path": "/UNFILLED/HELPER.py",
+      "resolved_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+  ],
+  "primary_clock_boundary": "before_initial_checkpoint_open_through_post_cleanup_evidence_readback"
+}

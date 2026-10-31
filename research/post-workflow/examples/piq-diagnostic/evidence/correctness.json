@@ -1,6 +1,0 @@
-{
-  "experiment_id": "synthetic-cpu-query-contract-example",
-  "accepted": true,
-  "synthetic_fixture": true,
-  "reason": "Expected fixture rows only; not runtime correctness evidence."
-}

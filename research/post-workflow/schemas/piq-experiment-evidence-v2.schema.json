@@ -1,0 +1,440 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:piq:experiment-evidence:v2",
+  "title": "PIQ current diagnostic experiment envelope v2",
+  "description": "Closed diagnostic-only variants for Stage 0, two-host CPU functional evidence, and the fixed TE GPU-training study.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "kind", "scope", "scientific_disposition",
+    "experiment_kind", "workload_family", "study_id", "experiment", "stack",
+    "objective", "executions", "attempts", "comparison", "correctness",
+    "workload_evidence", "detached_objects", "artifacts"
+  ],
+  "properties": {
+    "schema_version": {"const": 2},
+    "kind": {"const": "piq_experiment_evidence"},
+    "scope": {"const": "diagnostic"},
+    "scientific_disposition": {"enum": ["DIAGNOSTIC_ONLY", "INCONCLUSIVE", "REJECTED"]},
+    "experiment_kind": {
+      "enum": [
+        "checkpoint_write_batching_stage0",
+        "cpu_two_host_functional",
+        "te_mxfp8_gpu_training"
+      ]
+    },
+    "workload_family": {
+      "enum": ["checkpoint_write_batching", "cpu_two_host_functional", "gpu_training"]
+    },
+    "study_id": {"type": "string", "minLength": 1},
+    "experiment": {},
+    "stack": {"$ref": "#/$defs/stack"},
+    "objective": {"$ref": "#/$defs/objective"},
+    "executions": {"type": "array"},
+    "attempts": {"type": "array"},
+    "comparison": {},
+    "correctness": {},
+    "workload_evidence": {},
+    "detached_objects": {"type": "array", "items": {"$ref": "#/$defs/detached"}},
+    "artifacts": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/artifact"}}
+  },
+  "oneOf": [
+    {
+      "properties": {
+        "experiment_kind": {"const": "checkpoint_write_batching_stage0"},
+        "workload_family": {"const": "checkpoint_write_batching"},
+        "scientific_disposition": {"const": "DIAGNOSTIC_ONLY"},
+        "experiment": {"$ref": "#/$defs/diagnosticExperiment"},
+        "executions": {"type": "array", "minItems": 1, "maxItems": 1, "items": {"$ref": "#/$defs/stage0Execution"}},
+        "attempts": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"$ref": "#/$defs/stage0Attempt"}},
+        "comparison": {"$ref": "#/$defs/stage0Comparison"},
+        "correctness": {"$ref": "#/$defs/stage0Correctness"},
+        "workload_evidence": {"$ref": "#/$defs/stage0WorkloadEvidence"},
+        "detached_objects": {"type": "array", "maxItems": 0}
+      }
+    },
+    {
+      "properties": {
+        "experiment_kind": {"const": "cpu_two_host_functional"},
+        "workload_family": {"const": "cpu_two_host_functional"},
+        "scientific_disposition": {"const": "DIAGNOSTIC_ONLY"},
+        "experiment": {"$ref": "#/$defs/diagnosticExperiment"},
+        "executions": {"type": "array", "minItems": 1, "maxItems": 1, "items": {"$ref": "#/$defs/twoHostExecution"}},
+        "attempts": {"type": "array", "minItems": 1, "maxItems": 1, "items": {"$ref": "#/$defs/twoHostAttempt"}},
+        "comparison": {"$ref": "#/$defs/diagnosticComparison"},
+        "correctness": {"$ref": "#/$defs/basicCorrectness"},
+        "workload_evidence": {"$ref": "#/$defs/twoHostWorkloadEvidence"},
+        "detached_objects": {"type": "array", "maxItems": 0}
+      }
+    },
+    {
+      "properties": {
+        "experiment_kind": {"const": "te_mxfp8_gpu_training"},
+        "workload_family": {"const": "gpu_training"},
+        "experiment": {"$ref": "#/$defs/teExperiment"},
+        "executions": {"type": "array", "minItems": 5, "maxItems": 5, "items": {"$ref": "#/$defs/teExecution"}},
+        "attempts": {"type": "array", "minItems": 10, "maxItems": 10, "items": {"$ref": "#/$defs/teAttempt"}},
+        "comparison": {"$ref": "#/$defs/teComparison"},
+        "correctness": {"$ref": "#/$defs/basicCorrectness"},
+        "workload_evidence": {"$ref": "#/$defs/teWorkloadEvidence"},
+        "detached_objects": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/detached"}}
+      }
+    }
+  ],
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256"],
+      "properties": {
+        "path": {"type": "string", "minLength": 1},
+        "sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "stack": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["piq_revision", "runtime_identifier", "hardware_identifier", "layers"],
+      "properties": {
+        "piq_revision": {"type": "string", "pattern": "^(?:[0-9a-f]{40}|[0-9a-f]{64})$"},
+        "runtime_identifier": {"type": "string", "minLength": 1},
+        "hardware_identifier": {"type": "string", "minLength": 1},
+        "layers": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "state"],
+            "properties": {
+              "name": {"type": "string", "minLength": 1},
+              "state": {"const": "observed"}
+            }
+          }
+        }
+      }
+    },
+    "objective": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["metric", "unit", "direction", "started_at", "ended_at"],
+      "properties": {
+        "metric": {"type": "string", "minLength": 1},
+        "unit": {"const": "nanoseconds"},
+        "direction": {"const": "minimize"},
+        "started_at": {"type": "string", "minLength": 1},
+        "ended_at": {"type": "string", "minLength": 1}
+      }
+    },
+    "diagnosticExperiment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "question", "hypothesis", "workload_scope", "design", "source_artifacts", "input"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "question": {"type": "string", "minLength": 1},
+        "hypothesis": {"type": "string", "minLength": 1},
+        "workload_scope": {"type": "string", "minLength": 1},
+        "design": {"$ref": "#/$defs/ref"},
+        "source_artifacts": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/ref"}},
+        "input": {"$ref": "#/$defs/ref"}
+      }
+    },
+    "stage0Execution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["run_id", "order", "attempt_ids"],
+      "properties": {
+        "run_id": {"type": "string", "minLength": 1},
+        "order": {"const": ["baseline", "candidate"]},
+        "attempt_ids": {
+          "type": "array", "minItems": 2, "maxItems": 2,
+          "items": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "stage0Attempt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "run_id", "role", "status", "accepted", "failure_reason", "raw_result"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "run_id": {"type": "string", "minLength": 1},
+        "role": {"enum": ["baseline", "candidate"]},
+        "status": {"const": "succeeded"},
+        "accepted": {"const": true},
+        "failure_reason": {"type": "null"},
+        "raw_result": {"$ref": "#/$defs/ref"}
+      }
+    },
+    "stage0Comparison": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["baseline_attempt_id", "candidate_attempt_id", "scientific_disposition", "reason"],
+      "properties": {
+        "baseline_attempt_id": {"type": "string", "minLength": 1},
+        "candidate_attempt_id": {"type": "string", "minLength": 1},
+        "scientific_disposition": {"const": "DIAGNOSTIC_ONLY"},
+        "reason": {"type": "string", "minLength": 1}
+      }
+    },
+    "stage0Correctness": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["accepted", "oracle", "baseline", "candidate"],
+      "properties": {
+        "accepted": {"const": true},
+        "oracle": {"$ref": "#/$defs/ref"},
+        "baseline": {"$ref": "#/$defs/ref"},
+        "candidate": {"$ref": "#/$defs/ref"}
+      }
+    },
+    "stage0WorkloadEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["correctness", "cleanup", "custody", "readback", "export"],
+      "properties": {
+        "correctness": {"$ref": "#/$defs/ref"},
+        "cleanup": {"$ref": "#/$defs/ref"},
+        "custody": {"$ref": "#/$defs/ref"},
+        "readback": {"$ref": "#/$defs/ref"},
+        "export": {"$ref": "#/$defs/ref"}
+      }
+    },
+    "twoHostExecution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["run_id", "attempt_ids", "owner_attestation", "current_admission"],
+      "properties": {
+        "run_id": {"type": "string", "minLength": 1},
+        "attempt_ids": {"type": "array", "minItems": 1, "maxItems": 1, "items": {"type": "string", "minLength": 1}},
+        "owner_attestation": {"$ref": "#/$defs/ref"},
+        "current_admission": {"$ref": "#/$defs/ref"}
+      }
+    },
+    "rank": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rank", "local_rank", "pid", "physical_host_sha256", "boot_id_sha256", "output_ref"],
+      "properties": {
+        "rank": {"type": "integer", "minimum": 0, "maximum": 1},
+        "local_rank": {"const": 0},
+        "pid": {"type": "integer", "minimum": 1},
+        "physical_host_sha256": {"$ref": "#/$defs/sha256"},
+        "boot_id_sha256": {"$ref": "#/$defs/sha256"},
+        "output_ref": {"$ref": "#/$defs/ref"}
+      }
+    },
+    "partitionRehash": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["input_records", "partition_records", "rehashed_records", "output_records", "artifact"],
+      "properties": {
+        "input_records": {"type": "integer", "minimum": 1},
+        "partition_records": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"type": "integer", "minimum": 1}},
+        "rehashed_records": {"type": "integer", "minimum": 1},
+        "output_records": {"type": "integer", "minimum": 1},
+        "artifact": {"$ref": "#/$defs/ref"}
+      }
+    },
+    "transport": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["family", "source_rank", "target_rank", "source_pid", "target_pid", "bytes_sent", "artifact"],
+      "properties": {
+        "family": {"const": "tcp"},
+        "source_rank": {"type": "integer", "minimum": 0, "maximum": 1},
+        "target_rank": {"type": "integer", "minimum": 0, "maximum": 1},
+        "source_pid": {"type": "integer", "minimum": 1},
+        "target_pid": {"type": "integer", "minimum": 1},
+        "bytes_sent": {"type": "integer", "minimum": 1},
+        "artifact": {"$ref": "#/$defs/ref"}
+      }
+    },
+    "twoHostAttempt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "run_id", "status", "accepted", "failure_reason", "raw_result", "ranks", "partition_rehash", "transport"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "run_id": {"type": "string", "minLength": 1},
+        "status": {"const": "succeeded"},
+        "accepted": {"const": true},
+        "failure_reason": {"type": "null"},
+        "raw_result": {"$ref": "#/$defs/ref"},
+        "ranks": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"$ref": "#/$defs/rank"}},
+        "partition_rehash": {"$ref": "#/$defs/partitionRehash"},
+        "transport": {"$ref": "#/$defs/transport"}
+      }
+    },
+    "diagnosticComparison": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scientific_disposition", "reason"],
+      "properties": {
+        "scientific_disposition": {"const": "DIAGNOSTIC_ONLY"},
+        "reason": {"type": "string", "minLength": 1}
+      }
+    },
+    "basicCorrectness": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["accepted", "artifact"],
+      "properties": {
+        "accepted": {"type": "boolean"},
+        "artifact": {"$ref": "#/$defs/ref"}
+      }
+    },
+    "twoHostWorkloadEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["execution", "correctness", "partition_rehash", "transport", "cleanup", "custody", "readback", "export", "owner_attestation", "current_admission"],
+      "properties": {
+        "execution": {"$ref": "#/$defs/ref"},
+        "correctness": {"$ref": "#/$defs/ref"},
+        "partition_rehash": {"$ref": "#/$defs/ref"},
+        "transport": {"$ref": "#/$defs/ref"},
+        "cleanup": {"$ref": "#/$defs/ref"},
+        "custody": {"$ref": "#/$defs/ref"},
+        "readback": {"$ref": "#/$defs/ref"},
+        "export": {"$ref": "#/$defs/ref"},
+        "owner_attestation": {"$ref": "#/$defs/ref"},
+        "current_admission": {"$ref": "#/$defs/ref"}
+      }
+    },
+    "teExperiment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "question", "hypothesis", "workload_scope", "design", "source_artifacts", "data", "initial_checkpoint"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "question": {"type": "string", "minLength": 1},
+        "hypothesis": {"type": "string", "minLength": 1},
+        "workload_scope": {"type": "string", "minLength": 1},
+        "design": {"$ref": "#/$defs/ref"},
+        "source_artifacts": {"type": "array", "minItems": 7, "maxItems": 7, "items": {"$ref": "#/$defs/ref"}},
+        "data": {"$ref": "#/$defs/ref"},
+        "initial_checkpoint": {"$ref": "#/$defs/detachedIdentity"}
+      }
+    },
+    "requestedResources": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["executor", "node_count", "accelerator_count", "process_count", "timeout_seconds"],
+      "properties": {
+        "executor": {"const": "assigned-gpu-host"},
+        "node_count": {"const": 1},
+        "accelerator_count": {"const": 2},
+        "process_count": {"const": 2},
+        "timeout_seconds": {"type": "integer", "minimum": 1}
+      }
+    },
+    "observedResources": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["node_count", "accelerator_count", "process_count", "host", "device_uuids"],
+      "properties": {
+        "node_count": {"const": 1},
+        "accelerator_count": {"const": 2},
+        "process_count": {"const": 2},
+        "host": {"type": "string", "minLength": 1},
+        "device_uuids": {"type": "array", "minItems": 2, "maxItems": 2, "uniqueItems": true, "items": {"type": "string", "minLength": 1}}
+      }
+    },
+    "teExecution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["group_id", "run_id", "order", "attempt_ids", "requested_resources", "observed_resources", "assignment_evidence"],
+      "properties": {
+        "group_id": {"enum": ["admission-01", "pair-01", "pair-02", "pair-03", "pair-04"]},
+        "run_id": {"type": "string", "minLength": 1},
+        "order": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"enum": ["baseline", "candidate"]}},
+        "attempt_ids": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"type": "string", "minLength": 1}},
+        "requested_resources": {"$ref": "#/$defs/requestedResources"},
+        "observed_resources": {"$ref": "#/$defs/observedResources"},
+        "assignment_evidence": {"$ref": "#/$defs/ref"}
+      }
+    },
+    "teAttempt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "run_id", "group_id", "role", "status", "accepted", "failure_reason", "raw_result", "assignment_evidence"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "run_id": {"type": "string", "minLength": 1},
+        "group_id": {"enum": ["admission-01", "pair-01", "pair-02", "pair-03", "pair-04"]},
+        "role": {"enum": ["baseline", "candidate"]},
+        "status": {"enum": ["succeeded", "failed"]},
+        "accepted": {"type": "boolean"},
+        "failure_reason": {"type": ["string", "null"]},
+        "raw_result": {"$ref": "#/$defs/ref"},
+        "assignment_evidence": {"$ref": "#/$defs/ref"}
+      }
+    },
+    "teComparison": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["baseline_attempt_ids", "candidate_attempt_ids", "scientific_disposition", "reason"],
+      "properties": {
+        "baseline_attempt_ids": {"type": "array", "minItems": 5, "maxItems": 5, "items": {"type": "string", "minLength": 1}},
+        "candidate_attempt_ids": {"type": "array", "minItems": 5, "maxItems": 5, "items": {"type": "string", "minLength": 1}},
+        "scientific_disposition": {"enum": ["DIAGNOSTIC_ONLY", "INCONCLUSIVE", "REJECTED"]},
+        "reason": {"type": "string", "minLength": 1}
+      }
+    },
+    "teWorkloadEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["execution", "quality", "checkpoint_restart", "telemetry_summary", "telemetry_raw_custody_index", "cleanup", "readback", "export"],
+      "properties": {
+        "execution": {"$ref": "#/$defs/ref"},
+        "quality": {"$ref": "#/$defs/ref"},
+        "checkpoint_restart": {"$ref": "#/$defs/ref"},
+        "telemetry_summary": {"$ref": "#/$defs/ref"},
+        "telemetry_raw_custody_index": {"$ref": "#/$defs/ref"},
+        "cleanup": {"$ref": "#/$defs/ref"},
+        "readback": {"$ref": "#/$defs/ref"},
+        "export": {"$ref": "#/$defs/ref"}
+      }
+    },
+    "detachedIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["object_id", "sha256", "size_bytes"],
+      "properties": {
+        "object_id": {"type": "string", "minLength": 1},
+        "sha256": {"$ref": "#/$defs/sha256"},
+        "size_bytes": {"type": "integer", "minimum": 1}
+      }
+    },
+    "detached": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "role", "sha256", "size_bytes", "media_type", "custody_record", "local_readback", "piq_readback", "export_readback", "availability"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "role": {"type": "string", "minLength": 1},
+        "sha256": {"$ref": "#/$defs/sha256"},
+        "size_bytes": {"type": "integer", "minimum": 1},
+        "media_type": {"type": "string", "minLength": 1},
+        "custody_record": {"$ref": "#/$defs/ref"},
+        "local_readback": {"$ref": "#/$defs/ref"},
+        "piq_readback": {"$ref": "#/$defs/ref"},
+        "export_readback": {"$ref": "#/$defs/ref"},
+        "availability": {"const": "retained"}
+      }
+    },
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256", "size_bytes", "role"],
+      "properties": {
+        "path": {"type": "string", "minLength": 1},
+        "sha256": {"$ref": "#/$defs/sha256"},
+        "size_bytes": {"type": "integer", "minimum": 1},
+        "role": {"type": "string", "minLength": 1}
+      }
+    }
+  }
+}

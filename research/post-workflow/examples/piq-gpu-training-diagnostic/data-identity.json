@@ -1,0 +1,8 @@
+{
+  "dataset_revision": "b08601e04326c79dfdd32d625aee71d232d685c3",
+  "sampler_sha256": "8a20fc32f02ddbdb840bda5fcb469c2f9bec444f904c493f8b5d27d732d7807d",
+  "schema": "synthetic-data-identity.v1",
+  "synthetic_fixture": true,
+  "train_sha256": "3a23ec9bd6eb8190629262cf4cb6730ac0131ef1d168d64e9b17ea041c47c3ec",
+  "validation_sha256": "f89eaebc359db92511a5ab374bfa2fb0f176fc2be9500dbfe1569b4ba6c7ad7f"
+}

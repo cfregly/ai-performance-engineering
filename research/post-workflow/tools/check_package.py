@@ -2,8 +2,8 @@
 """Fail-closed artifact gate for a post package.
 
 This checks retained files, hashes, review/readback receipts, and declared state.
-CPU v2 recomputes its fixed protocol from retained evidence. This does not prove
-external execution, judge visual quality, or qualify a GPU experiment.
+Measured packages use only GPU-training receipt v3 and PIQ envelope v2. This
+does not prove external execution, judge visual quality, or launch a workload.
 """
 
 from __future__ import annotations
@@ -21,24 +21,22 @@ from urllib.parse import urlsplit
 if __package__:
     from .check_diagnostic_finding import validate_declared_diagnostic_finding
     from .check_profile_conventions import validate_profile_conventions
-    from .check_piq_two_host_functional import validate_declared_two_host_functional
     from .check_social_preview import validate_social_preview
     from .check_public_projection import validate_public_projection
     from .check_reader_copy import validate_reader_copy
     from .check_reader_visuals import validate_reader_visuals
-    from .piq_experiment_evidence import validate_bundle as validate_piq_bundle
-    from .qualified_cpu_study import cpu_receipt_binds_envelope, validate_cpu_receipt
+    from .piq_gpu_training_evidence import validate_bundle as validate_gpu_piq_bundle
+    from .qualified_gpu_training import gpu_receipt_binds_envelope, validate_gpu_receipt
     from .typefully_workflow import WORKFLOW_PATH, validate_workflow
 else:
     from check_diagnostic_finding import validate_declared_diagnostic_finding
     from check_profile_conventions import validate_profile_conventions
-    from check_piq_two_host_functional import validate_declared_two_host_functional
     from check_social_preview import validate_social_preview
     from check_public_projection import validate_public_projection
     from check_reader_copy import validate_reader_copy
     from check_reader_visuals import validate_reader_visuals
-    from piq_experiment_evidence import validate_bundle as validate_piq_bundle
-    from qualified_cpu_study import cpu_receipt_binds_envelope, validate_cpu_receipt
+    from piq_gpu_training_evidence import validate_bundle as validate_gpu_piq_bundle
+    from qualified_gpu_training import gpu_receipt_binds_envelope, validate_gpu_receipt
     from typefully_workflow import WORKFLOW_PATH, validate_workflow
 
 
@@ -133,6 +131,10 @@ def reject_duplicate_json_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
     return value
 
 
+def reject_nonfinite_json_constant(value: str) -> None:
+    raise ValueError(f"nonfinite JSON constant: {value}")
+
+
 def load_json(
     path: Path,
     errors: list[str],
@@ -143,7 +145,11 @@ def load_json(
         return None
     try:
         raw = path.read_text(encoding="utf-8")
-        return json.loads(raw, object_pairs_hook=reject_duplicate_json_keys)
+        return json.loads(
+            raw,
+            object_pairs_hook=reject_duplicate_json_keys,
+            parse_constant=reject_nonfinite_json_constant,
+        )
     except (OSError, UnicodeError, ValueError) as exc:
         errors.append(f"invalid {label} {path}: {exc}")
         return None
@@ -279,6 +285,14 @@ def validate_manifest(data: Any, errors: list[str]) -> tuple[list[str], str | No
         errors.append("only a source-reported manifest may declare source_reported_receipt")
     if state != "measured" and state != "source_reported" and "measurement_receipt" in data:
         errors.append("only a measured manifest may declare measurement_receipt")
+    for field in (
+        "piq_two_host_functional_receipt",
+        "piq_two_host_owner_authority_receipt",
+    ):
+        if field in data:
+            errors.append(
+                f"manifest.{field} is unsupported by the current PIQ v2 contract"
+            )
 
     audiences = data.get("audiences")
     audience_stems: list[str] = []
@@ -535,188 +549,31 @@ def validate_source_comment(package: Path, errors: list[str]) -> None:
 
 
 def validate_measurement(package: Path, errors: list[str]) -> dict[str, Any] | None:
-    """Return a CPU receipt only after its complete v2 contract passes.
-
-    The legacy GPU v1 checks below retain their existing requirements. A CPU
-    label alone never skips those checks or admits diagnostic-only evidence.
-    """
+    """Accept only the current GPU-training receipt-v3 qualification."""
     data = load_json(package / MEASUREMENT_RECEIPT_PATH, errors, "measurement receipt")
     if data is None:
-        return
+        return None
     if not isinstance(data, dict):
         errors.append("measurement receipt must be a JSON object")
-        return
-    if data.get("schema_version") == 2:
-        cpu_errors = validate_cpu_receipt(package, data)
-        errors.extend(cpu_errors)
-        return data if not cpu_errors else None
-    if data.get("schema_version") != 1:
-        errors.append("measurement receipt schema_version must equal 1 (GPU) or 2 (qualified CPU)")
-    if data.get("state") != "measured":
-        errors.append("measurement receipt state must be 'measured'")
-    if not isinstance(data.get("workload_scope"), str) or not data["workload_scope"].strip():
-        errors.append("measurement receipt workload_scope must be a nonempty string")
-    for field in ("runtime_identifier", "hardware_identifier"):
-        if not isinstance(data.get(field), str) or not data[field].strip():
-            errors.append(f"measurement receipt {field} must be a nonempty string")
-
-    source_artifacts = data.get("source_artifacts")
-    if not isinstance(source_artifacts, list) or not source_artifacts:
-        errors.append("measurement receipt source_artifacts must be a nonempty list")
-    else:
-        source_paths: set[str] = set()
-        for index, artifact in enumerate(source_artifacts):
-            label = f"measurement receipt source_artifacts[{index}]"
-            relative = validate_hashed_file(package, artifact, label, errors)
-            if relative in source_paths:
-                errors.append(f"measurement receipt source_artifacts paths must be distinct: {relative}")
-            elif relative:
-                source_paths.add(relative)
-
-    accepted_repeats = data.get("accepted_repeats")
-    repeat_ids: set[str] = set()
-    repeat_paths: set[str] = set()
-    if not isinstance(accepted_repeats, list) or len(accepted_repeats) < 2:
-        errors.append("measurement receipt accepted_repeats must contain at least 2 entries")
-    else:
-        for index, repeat in enumerate(accepted_repeats):
-            label = f"measurement receipt accepted_repeats[{index}]"
-            if not isinstance(repeat, dict):
-                errors.append(f"{label} must be an object")
-                continue
-            repeat_id = repeat.get("id")
-            if not isinstance(repeat_id, str) or not repeat_id.strip():
-                errors.append(f"{label}.id must be a nonempty string")
-            elif repeat_id in repeat_ids:
-                errors.append(f"measurement receipt accepted repeat IDs must be distinct: {repeat_id}")
-            else:
-                repeat_ids.add(repeat_id)
-            if repeat.get("accepted") is not True:
-                errors.append(f"{label}.accepted must be true")
-            relative = validate_hashed_file(
-                package,
-                repeat.get("raw_result"),
-                f"{label}.raw_result",
-                errors,
-                prefix="evidence/",
-            )
-            if relative in repeat_paths:
-                errors.append(f"measurement receipt accepted repeat raw-result paths must be distinct: {relative}")
-            elif relative:
-                repeat_paths.add(relative)
-
-    failed_attempts = data.get("failed_attempts")
-    failed_ids: set[str] = set()
-    failed_paths: set[str] = set()
-    if not isinstance(failed_attempts, list):
-        errors.append("measurement receipt failed_attempts must be a list, which may be empty")
-    else:
-        for index, attempt in enumerate(failed_attempts):
-            label = f"measurement receipt failed_attempts[{index}]"
-            if not isinstance(attempt, dict):
-                errors.append(f"{label} must be an object")
-                continue
-            attempt_id = attempt.get("id")
-            if not isinstance(attempt_id, str) or not attempt_id.strip():
-                errors.append(f"{label}.id must be a nonempty string")
-            elif attempt_id in failed_ids or attempt_id in repeat_ids:
-                errors.append(f"measurement receipt attempt IDs must be distinct across accepted and failed attempts: {attempt_id}")
-            else:
-                failed_ids.add(attempt_id)
-            if attempt.get("accepted") is not False:
-                errors.append(f"{label}.accepted must be false")
-            if not isinstance(attempt.get("failure_reason"), str) or not attempt["failure_reason"].strip():
-                errors.append(f"{label}.failure_reason must be a nonempty string")
-            relative = validate_hashed_file(
-                package,
-                attempt.get("raw_result"),
-                f"{label}.raw_result",
-                errors,
-                prefix="evidence/",
-            )
-            if relative in failed_paths or relative in repeat_paths:
-                errors.append(f"measurement receipt raw-result paths must be distinct across accepted and failed attempts: {relative}")
-            elif relative:
-                failed_paths.add(relative)
-
-    for field in ("guard_receipts", "profile_evidence"):
-        entries = data.get(field)
-        if not isinstance(entries, list) or not entries:
-            errors.append(f"measurement receipt {field} must be a nonempty list")
-            continue
-        names: set[str] = set()
-        for index, entry in enumerate(entries):
-            label = f"measurement receipt {field}[{index}]"
-            if not isinstance(entry, dict):
-                errors.append(f"{label} must be an object")
-                continue
-            name = entry.get("name")
-            if not isinstance(name, str) or not name.strip():
-                errors.append(f"{label}.name must be a nonempty string")
-            elif name in names:
-                errors.append(f"measurement receipt {field} names must be distinct: {name}")
-            else:
-                names.add(name)
-            if entry.get("accepted") is not True:
-                errors.append(f"{label}.accepted must be true")
-            validate_hashed_file(package, entry, label, errors, prefix="evidence/")
-
-    correctness = data.get("correctness")
-    if not isinstance(correctness, dict):
-        errors.append("measurement receipt correctness must be an object")
-    else:
-        if correctness.get("accepted") is not True:
-            errors.append("measurement receipt correctness.accepted must be true")
-        validate_hashed_file(package, correctness, "measurement receipt correctness", errors, prefix="evidence/")
-
-    expected_power = data.get("expected_power_limit_w")
-    actual_power = data.get("power_limit_w")
-    expected_valid = (
-        not isinstance(expected_power, bool)
-        and isinstance(expected_power, (int, float))
-        and math.isfinite(expected_power)
-        and expected_power > 0
-    )
-    actual_valid = (
-        not isinstance(actual_power, bool)
-        and isinstance(actual_power, (int, float))
-        and math.isfinite(actual_power)
-        and actual_power > 0
-    )
-    if not expected_valid:
-        errors.append("measurement receipt expected_power_limit_w must be a positive finite number")
-    if not actual_valid:
-        errors.append("measurement receipt power_limit_w must be a positive finite number")
-    elif expected_valid and actual_power != expected_power:
-        errors.append("measurement receipt power_limit_w must equal declared expected_power_limit_w")
-
-    claims = data.get("claims")
-    if not isinstance(claims, list) or not claims:
-        errors.append("measurement receipt claims must be a nonempty list")
-    else:
-        claim_ids: set[str] = set()
-        for index, claim in enumerate(claims):
-            label = f"measurement receipt claims[{index}]"
-            if not isinstance(claim, dict):
-                errors.append(f"{label} must be an object")
-                continue
-            claim_id = claim.get("id")
-            if not isinstance(claim_id, str) or not claim_id.strip():
-                errors.append(f"{label}.id must be a nonempty string")
-            elif claim_id in claim_ids:
-                errors.append(f"measurement receipt claim IDs must be distinct: {claim_id}")
-            else:
-                claim_ids.add(claim_id)
-            validate_hashed_file(package, claim.get("source"), f"{label}.source", errors)
-            linked = claim.get("accepted_repeat_ids")
-            if not isinstance(linked, list) or len(linked) < 2 or any(not isinstance(item, str) for item in linked):
-                errors.append(f"{label}.accepted_repeat_ids must contain at least 2 repeat IDs")
-            elif len(set(linked)) != len(linked):
-                errors.append(f"{label}.accepted_repeat_ids must be distinct")
-            else:
-                unknown = set(linked) - repeat_ids
-                if unknown:
-                    errors.append(f"{label}.accepted_repeat_ids references unknown repeats: {', '.join(sorted(unknown))}")
+        return None
+    before = len(errors)
+    version = data.get("schema_version")
+    if type(version) is not int or version != 3:
+        errors.append(
+            f"measurement receipt schema_version {version!r} is unsupported. Only version 3 is active"
+        )
+        return None
+    errors.extend(validate_gpu_receipt(package, data))
+    if len(errors) == before:
+        design = load_json(
+            package / data["design"]["path"], errors, "GPU training design"
+        )
+        if (isinstance(design, dict)
+                and design.get("synthetic_fixture") is not False):
+            errors.append("synthetic GPU fixture cannot establish package readiness")
+    if len(errors) != before:
+        return None
+    return {"kind": "qualified_gpu_training_v3", "receipt": data}
 
 
 def validate_source_reported(package: Path, errors: list[str]) -> None:
@@ -850,24 +707,16 @@ def validate_source_explanation_basis(
         sidecar_text,
         re.I,
     ):
-        errors.append("source-explanation selected cover must be nonnumeric and contain no performance claim; use an explicit example or the applicable evidence state")
+        errors.append("source-explanation selected cover must be nonnumeric and contain no performance claim. Use an explicit example or the applicable evidence state")
 
 
 def validate_state(
     package: Path, state: str | None, selected: str | None, errors: list[str], image_basis: Any = None,
-    *, qualified_cpu: bool = False,
 ) -> None:
     verification = require_file(package, "VERIFICATION.md", errors)
     if not verification.is_file():
         return
     text = verification.read_text(encoding="utf-8")
-    if state == "measured" and qualified_cpu:
-        match = re.search(r"(?ims)^##\s+CPU stage\s*$\n(.*?)(?=^##\s+|\Z)", text)
-        if not match or not match.group(1).strip():
-            errors.append("qualified CPU package VERIFICATION.md must contain a nonempty '## CPU stage' section")
-        elif "measured" not in match.group(1).lower():
-            errors.append("qualified CPU package CPU stage must explicitly describe itself as measured")
-        return
     match = re.search(r"(?ims)^##\s+GPU stage\s*$\n(.*?)(?=^##\s+|\Z)", text)
     if not match:
         errors.append("VERIFICATION.md must contain a nonempty '## GPU stage' section")
@@ -922,13 +771,12 @@ def validate_package(package: Path) -> list[str]:
         return errors
     audience_stems, selected, state, schema_version = validate_manifest(manifest, errors)
     errors.extend(validate_declared_diagnostic_finding(package, manifest))
-    errors.extend(validate_declared_two_host_functional(package, manifest))
     extended_workflow = schema_version == 2
     source_comment_required = schema_version == 2
     if source_comment_required:
         require_file(package, SOURCE_COMMENT_PATH, errors)
     if isinstance(manifest, dict) and manifest.get("review_status") in {"PENDING", "REVIEW_BLOCKED"}:
-        errors.append("required technical review is " + manifest["review_status"] + "; private preview only")
+        errors.append("required technical review is " + manifest["review_status"] + ". Private preview only")
     stems = [*CONCEPTS, COVER, *audience_stems]
     validate_public_copy(package, stems, errors)
     if source_comment_required:
@@ -945,7 +793,7 @@ def validate_package(package: Path) -> list[str]:
         by_hash.setdefault(digest, []).append(stem)
     for duplicates in by_hash.values():
         if len(duplicates) > 1:
-            errors.append(f"main variant PNGs must be distinct; identical hash: {', '.join(duplicates)}")
+            errors.append(f"main variant PNGs must be distinct. Identical hash: {', '.join(duplicates)}")
 
     if selected:
         for suffix in (".png", "-square.png", ".txt"):
@@ -959,14 +807,36 @@ def validate_package(package: Path) -> list[str]:
     validate_typefully(package, errors, extended_workflow=extended_workflow)
     if extended_workflow:
         validate_workflow(package, WORKFLOW_PATH, errors)
-    qualified_cpu_receipt: dict[str, Any] | None = None
+    qualification: dict[str, Any] | None = None
     if state == "measured":
-        qualified_cpu_receipt = validate_measurement(package, errors)
+        qualification = validate_measurement(package, errors)
     elif state == "source_reported":
         validate_source_reported(package, errors)
+    qualification_kind = qualification.get("kind") if isinstance(qualification, dict) else None
+    qualified_receipt = qualification.get("receipt") if isinstance(qualification, dict) else None
+    measurement_contract = manifest.get("measurement_contract") if isinstance(manifest, dict) else None
+    if qualification_kind == "qualified_gpu_training_v3":
+        if measurement_contract != "qualified_gpu_training_v3":
+            errors.append("GPU receipt v3 requires manifest.measurement_contract 'qualified_gpu_training_v3'")
+        if manifest.get("piq_experiment_evidence") != qualified_receipt["piq_envelope"]["path"]:
+            errors.append(
+                "GPU receipt v3 requires manifest.piq_experiment_evidence to equal "
+                "the receipt's exact PIQ v2 envelope path"
+            )
+        if manifest.get("diagnostic_finding_required") is not True:
+            errors.append(
+                "GPU receipt v3 requires manifest.diagnostic_finding_required true"
+            )
+        if manifest.get("diagnostic_finding") != "evidence/diagnostic-finding.json":
+            errors.append(
+                "GPU receipt v3 requires manifest.diagnostic_finding "
+                "'evidence/diagnostic-finding.json'"
+            )
+    elif measurement_contract == "qualified_gpu_training_v3":
+        errors.append("only a valid GPU receipt v3 may declare manifest.measurement_contract 'qualified_gpu_training_v3'")
     if isinstance(manifest, dict) and "piq_experiment_evidence" in manifest:
         relative = manifest["piq_experiment_evidence"]
-        bound_qualified_cpu = False
+        bound_qualification = False
         if not safe_relative(relative) or not relative.startswith("evidence/") or Path(relative).name != "envelope.json":
             errors.append("manifest.piq_experiment_evidence must name evidence/<bundle>/envelope.json")
         else:
@@ -976,24 +846,46 @@ def validate_package(package: Path) -> list[str]:
                 if any(parent.is_symlink() for parent in (envelope, *envelope.parents) if parent != package):
                     errors.append("manifest.piq_experiment_evidence must not use symlinks")
                 else:
-                    bundle_errors = validate_piq_bundle(envelope.parent)
-                    errors.extend(bundle_errors)
-                    bound_qualified_cpu = (
-                        not bundle_errors
-                        and qualified_cpu_receipt is not None
-                        and cpu_receipt_binds_envelope(package, qualified_cpu_receipt, envelope)
+                    envelope_data = load_json(envelope, errors, "PIQ experiment envelope")
+                    envelope_version = (
+                        envelope_data.get("schema_version")
+                        if isinstance(envelope_data, dict)
+                        else None
                     )
+                    if type(envelope_version) is not int or envelope_version != 2:
+                        errors.append(
+                            f"PIQ envelope schema_version {envelope_version!r} is unsupported. Only version 2 is active"
+                        )
+                    else:
+                        bundle_errors = validate_gpu_piq_bundle(envelope.parent)
+                        errors.extend(bundle_errors)
+                        experiment_kind = (
+                            envelope_data.get("experiment_kind")
+                            if isinstance(envelope_data, dict)
+                            else None
+                        )
+                        if (not bundle_errors
+                                and experiment_kind != "te_mxfp8_gpu_training"):
+                            errors.append(
+                                "PIQ v2 diagnostic variant cannot establish package readiness. Only te_mxfp8_gpu_training may bind measurement receipt v3"
+                            )
+                        if (not bundle_errors
+                                and experiment_kind == "te_mxfp8_gpu_training"
+                                and isinstance(qualified_receipt, dict)):
+                            bound_qualification = gpu_receipt_binds_envelope(
+                                package, qualified_receipt, envelope
+                            )
             except ValueError:
                 errors.append("manifest.piq_experiment_evidence escapes the package")
-        if not bound_qualified_cpu:
-            errors.append("PIQ diagnostic evidence cannot establish package readiness or replace the measured/scientific qualification gate; a valid qualified CPU v2 receipt must bind this exact envelope and its full study/run/attempt census")
+        if not bound_qualification:
+            errors.append("PIQ diagnostic evidence cannot establish package readiness or replace the measured/scientific qualification gate. A valid matching GPU-training v3 receipt must bind this exact PIQ v2 envelope and its full study/run/attempt census")
     if "claim_scope_review" in manifest:
         if manifest["claim_scope_review"] != "claim-scope-review.md":
             errors.append("manifest claim_scope_review must equal claim-scope-review.md")
         else:
             require_file(package, "claim-scope-review.md", errors)
     image_basis = manifest.get("selected_image_basis") if isinstance(manifest, dict) else None
-    validate_state(package, state, selected, errors, image_basis, qualified_cpu=qualified_cpu_receipt is not None)
+    validate_state(package, state, selected, errors, image_basis)
     errors.extend(validate_profile_conventions(package))
     errors.extend(validate_social_preview(package))
     if isinstance(manifest, dict) and manifest.get("reader_visuals_required") is True and not isinstance(manifest.get("reader_visuals"), dict):

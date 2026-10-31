@@ -1,0 +1,145 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:research-drafts:gpu-training-public-summary:v1",
+  "title": "Public-safe qualified GPU training summary v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "kind", "contract_id", "qualification", "method",
+    "results", "evidence", "scope_and_limits"
+  ],
+  "properties": {
+    "schema_version": {"const": 1},
+    "kind": {"const": "gpu_training_public_summary"},
+    "contract_id": {"const": "te_mxfp8_bf16_two_b200_v1"},
+    "qualification": {"const": "QUALIFIED"},
+    "method": {
+      "type": "object", "additionalProperties": false,
+      "required": [
+        "workload_family", "workload_scope", "baseline", "candidate",
+        "sole_changed_variable", "complete_boundary", "balanced_pair_count"
+      ],
+      "properties": {
+        "workload_family": {"const": "gpu_training"},
+        "workload_scope": {"type": "string", "minLength": 1},
+        "baseline": {"type": "string", "minLength": 1},
+        "candidate": {"type": "string", "minLength": 1},
+        "sole_changed_variable": {"type": "string", "minLength": 1},
+        "complete_boundary": {"type": "string", "minLength": 1},
+        "balanced_pair_count": {"const": 4}
+      }
+    },
+    "results": {
+      "type": "object", "additionalProperties": false,
+      "required": [
+        "median_complete_job_gain_ratio", "gain_spread",
+        "within_arm_population_cv", "median_candidate_to_baseline_p95_ratio",
+        "median_candidate_nll_gap_nats_per_byte",
+        "median_candidate_accuracy_gap_percentage_points",
+        "correctness_quality_passed", "checkpoint_restart_passed",
+        "telemetry_passed", "repeats"
+      ],
+      "properties": {
+        "median_complete_job_gain_ratio": {"$ref": "#/$defs/decimal"},
+        "gain_spread": {"$ref": "#/$defs/decimal"},
+        "within_arm_population_cv": {"$ref": "#/$defs/withinArmCv"},
+        "median_candidate_to_baseline_p95_ratio": {"$ref": "#/$defs/decimal"},
+        "median_candidate_nll_gap_nats_per_byte": {"$ref": "#/$defs/decimal"},
+        "median_candidate_accuracy_gap_percentage_points": {"$ref": "#/$defs/decimal"},
+        "correctness_quality_passed": {"const": true},
+        "checkpoint_restart_passed": {"const": true},
+        "telemetry_passed": {"const": true},
+        "repeats": {
+          "type": "array", "minItems": 4, "maxItems": 4,
+          "prefixItems": [
+            {"allOf": [{"$ref": "#/$defs/repeat"}, {"properties": {"ordinal": {"const": 1}}}]},
+            {"allOf": [{"$ref": "#/$defs/repeat"}, {"properties": {"ordinal": {"const": 2}}}]},
+            {"allOf": [{"$ref": "#/$defs/repeat"}, {"properties": {"ordinal": {"const": 3}}}]},
+            {"allOf": [{"$ref": "#/$defs/repeat"}, {"properties": {"ordinal": {"const": 4}}}]}
+          ],
+          "items": false
+        }
+      }
+    },
+    "evidence": {
+      "type": "object", "additionalProperties": false,
+      "required": ["private_qualification_report_sha256", "private_design_sha256"],
+      "properties": {
+        "private_qualification_report_sha256": {"$ref": "#/$defs/sha256"},
+        "private_design_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "scope_and_limits": {
+      "type": "object", "additionalProperties": false,
+      "required": ["scope", "exclusions", "tradeoff", "simpler_option", "unmeasured"],
+      "properties": {
+        "scope": {"type": "string", "minLength": 1},
+        "exclusions": {
+          "type": "array", "minItems": 1, "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        },
+        "tradeoff": {"type": "string", "minLength": 1},
+        "simpler_option": {"type": "string", "minLength": 1},
+        "unmeasured": {
+          "type": "array", "minItems": 1, "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        }
+      }
+    }
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "decimal": {"type": "string", "pattern": "^-?(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?$"},
+    "cvArm": {
+      "type": "object", "additionalProperties": false,
+      "required": ["cv_squared", "passed"],
+      "properties": {
+        "cv_squared": {"$ref": "#/$defs/decimal"},
+        "passed": {"const": true}
+      }
+    },
+    "withinArmCv": {
+      "type": "object", "additionalProperties": false,
+      "required": ["baseline", "candidate"],
+      "properties": {
+        "baseline": {"$ref": "#/$defs/cvArm"},
+        "candidate": {"$ref": "#/$defs/cvArm"}
+      }
+    },
+    "phaseVerdicts": {
+      "type": "object", "additionalProperties": false,
+      "required": [
+        "data_open", "nccl_init", "periodic_save", "checkpoint_load",
+        "restart_to_first_update", "validation", "final_save",
+        "evidence_flush", "cleanup"
+      ],
+      "properties": {
+        "data_open": {"const": true},
+        "nccl_init": {"const": true},
+        "periodic_save": {"const": true},
+        "checkpoint_load": {"const": true},
+        "restart_to_first_update": {"const": true},
+        "validation": {"const": true},
+        "final_save": {"const": true},
+        "evidence_flush": {"const": true},
+        "cleanup": {"const": true}
+      }
+    },
+    "repeat": {
+      "type": "object", "additionalProperties": false,
+      "required": [
+        "ordinal", "gain_ratio", "candidate_to_baseline_p95_ratio",
+        "candidate_nll_gap_nats_per_byte",
+        "candidate_accuracy_gap_percentage_points", "phase_verdicts"
+      ],
+      "properties": {
+        "ordinal": {"type": "integer", "minimum": 1, "maximum": 4},
+        "gain_ratio": {"$ref": "#/$defs/decimal"},
+        "candidate_to_baseline_p95_ratio": {"$ref": "#/$defs/decimal"},
+        "candidate_nll_gap_nats_per_byte": {"$ref": "#/$defs/decimal"},
+        "candidate_accuracy_gap_percentage_points": {"$ref": "#/$defs/decimal"},
+        "phase_verdicts": {"$ref": "#/$defs/phaseVerdicts"}
+      }
+    }
+  }
+}

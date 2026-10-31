@@ -8,7 +8,12 @@ import sys
 import tempfile
 import unittest
 
-from tools.check_public_projection import validate_public_projection
+from tools.check_public_projection import (
+    _PRIVATE_IDENTITY_SCAN_CHUNK_BYTES,
+    validate_public_projection,
+)
+from tools.qualified_gpu_training import build_gpu_public_summary, canonical_json
+from tools.test_qualified_gpu_training import build_gpu_fixture
 
 
 class PublicProjectionTests(unittest.TestCase):
@@ -53,11 +58,130 @@ class PublicProjectionTests(unittest.TestCase):
     def errors(self) -> list[str]:
         return validate_public_projection(self.package)
 
+    def make_gpu_v3_projection(self) -> dict:
+        receipt = build_gpu_fixture(self.package, synthetic=False)
+        summary_path = self.package / "evidence/gpu-training-public-summary.json"
+        summary_path.write_bytes(canonical_json(build_gpu_public_summary(self.package, receipt)))
+        self.sources["evidence/gpu-training-summary.json"] = "evidence/gpu-training-public-summary.json"
+        self.stage()
+        manifest = {
+            "content_state": "measured",
+            "measurement_receipt": "evidence/measurement-receipt.json",
+            "measurement_contract": "qualified_gpu_training_v3",
+            "gpu_training_public_summary": "evidence/gpu-training-public-summary.json",
+            "public_projection": {"directory": "public", "sources": self.sources},
+        }
+        self.write("manifest.json", json.dumps(manifest, indent=2) + "\n")
+        return receipt
+
     def assert_error(self, text: str) -> None:
         self.assertTrue(any(text in error for error in self.errors()), self.errors())
 
     def test_clean_projection_with_native_captures_and_evidence(self) -> None:
         self.assertEqual(self.errors(), [])
+
+    def test_gpu_v3_allows_only_deterministic_public_summary(self) -> None:
+        self.make_gpu_v3_projection()
+        self.assertEqual([], self.errors())
+
+    def test_legacy_measured_projection_contracts_are_unsupported(self) -> None:
+        for version, contract in ((1, None), (2, "qualified_cpu_v2")):
+            with self.subTest(version=version):
+                manifest = {
+                    "content_state": "measured",
+                    "measurement_receipt": "evidence/measurement-receipt.json",
+                    "public_projection": {"directory": "public", "sources": self.sources},
+                }
+                if contract is not None:
+                    manifest["measurement_contract"] = contract
+                self.write("evidence/measurement-receipt.json", json.dumps({"schema_version": version}))
+                self.write("manifest.json", json.dumps(manifest))
+                self.assert_error("only qualified_gpu_training_v3 is active")
+
+    def test_gpu_v3_rejects_private_evidence_mapping(self) -> None:
+        receipt = self.make_gpu_v3_projection()
+        private_sources = {
+            "receipt": "evidence/measurement-receipt.json",
+            "design": receipt["design"]["path"],
+            "qualification-report": receipt["qualification_report"]["path"],
+            "raw-census": receipt["raw_census"]["path"],
+        }
+        for name, source in private_sources.items():
+            with self.subTest(name=name):
+                public = f"evidence/private-{name}.json"
+                self.sources[public] = source
+                self.stage()
+                manifest = {
+                    "content_state": "measured",
+                    "measurement_receipt": "evidence/measurement-receipt.json",
+                    "measurement_contract": "qualified_gpu_training_v3",
+                    "gpu_training_public_summary": "evidence/gpu-training-public-summary.json",
+                    "public_projection": {"directory": "public", "sources": self.sources},
+                }
+                self.write("manifest.json", json.dumps(manifest))
+                self.assert_error("forbidden private evidence")
+                del self.sources[public]
+                (self.package / "public" / public).unlink()
+
+    def test_gpu_v3_rejects_private_identifier_leak(self) -> None:
+        receipt = self.make_gpu_v3_projection()
+        summary_path = self.package / "evidence/gpu-training-public-summary.json"
+        summary = json.loads(summary_path.read_text())
+        envelope = json.loads((self.package / receipt["piq_envelope"]["path"]).read_text())
+        summary["scope_and_limits"]["scope"] += " " + envelope["attempts"][0]["run_id"]
+        summary_path.write_bytes(canonical_json(summary))
+        shutil.copyfile(summary_path, self.package / "public/evidence/gpu-training-summary.json")
+        self.assert_error("leaks a private execution identity")
+
+    def test_gpu_v3_rejects_private_run_id_in_readme(self) -> None:
+        receipt = self.make_gpu_v3_projection()
+        envelope = json.loads((self.package / receipt["piq_envelope"]["path"]).read_text())
+        run_id = envelope["attempts"][0]["run_id"]
+        article = f"# One mechanism\n\nRun: {run_id}\n\n![Mechanism](images/mechanism.png)\n"
+        self.write("article.md", article)
+        self.write("public/README.md", article)
+        self.assert_error("README.md: staged public file leaks a private execution identity")
+
+    def test_gpu_v3_rejects_private_assignment_id_in_staged_text(self) -> None:
+        receipt = self.make_gpu_v3_projection()
+        envelope_path = self.package / receipt["piq_envelope"]["path"]
+        envelope = json.loads(envelope_path.read_text())
+        assignment_ref = envelope["executions"][0]["assignment_evidence"]["path"]
+        assignment = json.loads((envelope_path.parent / assignment_ref).read_text())
+        text = f"retained capture job: {assignment['scheduler_job_id']}\n"
+        self.write("evidence/hashes.txt", text)
+        self.write("public/evidence/hashes.txt", text)
+        self.assert_error(
+            "evidence/hashes.txt: staged public file leaks a private execution identity"
+        )
+
+    def test_gpu_v3_scans_binary_metadata_across_chunk_boundaries(self) -> None:
+        receipt = self.make_gpu_v3_projection()
+        envelope = json.loads((self.package / receipt["piq_envelope"]["path"]).read_text())
+        run_id = envelope["attempts"][0]["run_id"].encode()
+        prefix = b"\x00" + b"x" * (
+            _PRIVATE_IDENTITY_SCAN_CHUNK_BYTES - len(run_id) // 2 - 1
+        )
+        capture = prefix + run_id + b"\xff"
+        self.write("captures/run.nsys-rep", capture)
+        self.write("public/captures/run.nsys-rep", capture)
+        self.assert_error(
+            "captures/run.nsys-rep: staged public file leaks a private execution identity"
+        )
+
+    def test_gpu_v3_wrong_private_report_hash_and_nonqualified_summary_fail(self) -> None:
+        receipt = self.make_gpu_v3_projection()
+        receipt["qualification_report"]["sha256"] = "0" * 64
+        self.write("evidence/measurement-receipt.json", json.dumps(receipt, indent=2) + "\n")
+        self.assert_error("requires a qualified receipt")
+
+    def test_manifest_duplicate_key_is_rejected_strictly(self) -> None:
+        self.write(
+            "manifest.json",
+            '{"public_projection": {"directory": "public", "sources": {"README.md": "article.md"}}, '
+            '"public_projection": {"directory": "public", "sources": {"README.md": "article.md"}}}',
+        )
+        self.assert_error("duplicate JSON key")
 
     def test_historical_package_is_unchanged(self) -> None:
         self.write("manifest.json", '{"content_state": "hypothetical"}')
