@@ -1,0 +1,149 @@
+{
+  "schema_version": 1,
+  "kind": "lossless_square_image_pdf_composition",
+  "created_at": "2026-10-31T06:37:19.737372+00:00",
+  "document": {
+    "path": "images/Attention-three-cards.pdf",
+    "sha256": "bd79a7fdcab7761b2bd419bb6e29ed580fddcce469bd1ad3195128c5bf42fc22",
+    "page_count": 3
+  },
+  "asset_index": {
+    "path": "images/reader-card-index.json",
+    "sha256": "56d442b2aea4abc6deff1475500c812ff125497d52cd6a6f3b04c0144aa7e23b"
+  },
+  "composition_receipt": "images/Attention-three-cards.composition.json",
+  "page_size_points": {
+    "width": 540.0,
+    "height": 604.8
+  },
+  "image_scale": 0.78,
+  "extra_top_clearance_ratio": 0.12,
+  "extra_top_clearance_points": 64.8,
+  "top_clearance_source": "style/visual-tokens.json:spacing.pdf_extra_top_clearance_ratio",
+  "shared_visual_tokens": {
+    "path": "style/visual-tokens.json",
+    "sha256": "677886666cf02f359a6ae23ff762185985e34c655f9335dfc969e38265a87b33"
+  },
+  "outer_band_points": {
+    "top": 124.2,
+    "bottom": 59.400000000000006,
+    "left": 59.400000000000006,
+    "right": 59.400000000000006
+  },
+  "background_rgb": [
+    1,
+    1,
+    1
+  ],
+  "pages": [
+    {
+      "page_index": 1,
+      "asset_index": 1,
+      "title": "A floor can reject a target",
+      "source_png": {
+        "path": "images/scientific/04-target-rejection.png",
+        "sha256": "6d8852a1e870cd0476fd652ffa9271c22101f5ac33b3c5310b75bb602f3b5f82",
+        "width": 2400,
+        "height": 2400
+      },
+      "decoded_rgb_sha256": "03f74b3689a0047e03cf2158ee839429ab7fde002552d04c8e2e0385a9495c7b",
+      "page_box_points": [
+        0,
+        0,
+        540.0,
+        604.8
+      ],
+      "image_box_points": [
+        59.400000000000006,
+        59.400000000000006,
+        421.2,
+        421.2
+      ],
+      "image_transform": [
+        421.2,
+        0,
+        0,
+        421.2,
+        59.400000000000006,
+        59.400000000000006
+      ],
+      "embedded_rgb_pixels_verified": true
+    },
+    {
+      "page_index": 2,
+      "asset_index": 2,
+      "title": "Scratch can become the bottleneck",
+      "source_png": {
+        "path": "images/scientific/03-scratch-traffic.png",
+        "sha256": "2f72258aee3b09d624c0ed7ead4df9fdf67f291c4367ce138c33c0501eb77eef",
+        "width": 2400,
+        "height": 2400
+      },
+      "decoded_rgb_sha256": "f40a8b87876f0969b3c0c5cbfc936c216dca803768784d9da00df750d5848102",
+      "page_box_points": [
+        0,
+        0,
+        540.0,
+        604.8
+      ],
+      "image_box_points": [
+        59.400000000000006,
+        59.400000000000006,
+        421.2,
+        421.2
+      ],
+      "image_transform": [
+        421.2,
+        0,
+        0,
+        421.2,
+        59.400000000000006,
+        59.400000000000006
+      ],
+      "embedded_rgb_pixels_verified": true
+    },
+    {
+      "page_index": 3,
+      "asset_index": 3,
+      "title": "Compare the complete path",
+      "source_png": {
+        "path": "images/scientific/06-reduction-comparison.png",
+        "sha256": "ea1f7354dad06387cb67308b8337f4a2981841c7c379172169f789d9dca43fc0",
+        "width": 2400,
+        "height": 2400
+      },
+      "decoded_rgb_sha256": "6ed29b220fe16644e18309c3a13a1e9f3312d79080123bd590a62ef70fb29318",
+      "page_box_points": [
+        0,
+        0,
+        540.0,
+        604.8
+      ],
+      "image_box_points": [
+        59.400000000000006,
+        59.400000000000006,
+        421.2,
+        421.2
+      ],
+      "image_transform": [
+        421.2,
+        0,
+        0,
+        421.2,
+        59.400000000000006,
+        59.400000000000006
+      ],
+      "embedded_rgb_pixels_verified": true
+    }
+  ],
+  "validation": {
+    "actual_pdf_page_count": 3,
+    "all_embedded_rgb_pixels_identical": true,
+    "all_image_transforms_centered": false,
+    "all_image_transforms_horizontally_centered": true,
+    "all_image_placements_verified": true,
+    "crop_or_raster_resampling": "none",
+    "preview_source_note": "source_png is the canonical image actually embedded inside the page, not a full-page raster. Use image_box_points to map its actual preview geometry.",
+    "limits": "This verifies composition and source-pixel identity only. Actual uploaded pages, overlay controls and phone readability still require platform inspection."
+  }
+}

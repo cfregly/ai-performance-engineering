@@ -1,0 +1,149 @@
+{
+  "schema_version": 1,
+  "kind": "lossless_square_image_pdf_composition",
+  "created_at": "2026-10-31T06:37:19.294788+00:00",
+  "document": {
+    "path": "images/Placement-three-cards.pdf",
+    "sha256": "cf2545c93607fca22bc8089a131d20e7ffb0d9464f28f56820affa9ea9a776c1",
+    "page_count": 3
+  },
+  "asset_index": {
+    "path": "images/reader-card-index.json",
+    "sha256": "b3e742030f1d2f8d658d30037a62fe7468cc9d42bf082ebff636ef6acc02118e"
+  },
+  "composition_receipt": "images/Placement-three-cards.composition.json",
+  "page_size_points": {
+    "width": 540.0,
+    "height": 604.8
+  },
+  "image_scale": 0.78,
+  "extra_top_clearance_ratio": 0.12,
+  "extra_top_clearance_points": 64.8,
+  "top_clearance_source": "style/visual-tokens.json:spacing.pdf_extra_top_clearance_ratio",
+  "shared_visual_tokens": {
+    "path": "style/visual-tokens.json",
+    "sha256": "677886666cf02f359a6ae23ff762185985e34c655f9335dfc969e38265a87b33"
+  },
+  "outer_band_points": {
+    "top": 124.2,
+    "bottom": 59.400000000000006,
+    "left": 59.400000000000006,
+    "right": 59.400000000000006
+  },
+  "background_rgb": [
+    1,
+    1,
+    1
+  ],
+  "pages": [
+    {
+      "page_index": 1,
+      "asset_index": 1,
+      "title": "Placement moves rack traffic",
+      "source_png": {
+        "path": "images/scientific/15-tier-traffic.png",
+        "sha256": "3af13f95996e0230108b25d385b2166df20c4213468cebc42a03c8550e5cc56c",
+        "width": 2400,
+        "height": 2400
+      },
+      "decoded_rgb_sha256": "ba810ad5dc52201b14cbb7ff519da118f3b0dd3bd6d63d36e4f77809fbdf4b0e",
+      "page_box_points": [
+        0,
+        0,
+        540.0,
+        604.8
+      ],
+      "image_box_points": [
+        59.400000000000006,
+        59.400000000000006,
+        421.2,
+        421.2
+      ],
+      "image_transform": [
+        421.2,
+        0,
+        0,
+        421.2,
+        59.400000000000006,
+        59.400000000000006
+      ],
+      "embedded_rgb_pixels_verified": true
+    },
+    {
+      "page_index": 2,
+      "asset_index": 2,
+      "title": "Two ordered lower bounds",
+      "source_png": {
+        "path": "images/scientific/16-ordered-floors.png",
+        "sha256": "ec50d60bcb534eb520010f7d5009349fb5e902167b500c98af4b14d4c0696084",
+        "width": 2400,
+        "height": 2400
+      },
+      "decoded_rgb_sha256": "40c2f4a6dbc2a1e4e1368e8e4d79f73c700fb1edbef73dc62197fdc601a8e585",
+      "page_box_points": [
+        0,
+        0,
+        540.0,
+        604.8
+      ],
+      "image_box_points": [
+        59.400000000000006,
+        59.400000000000006,
+        421.2,
+        421.2
+      ],
+      "image_transform": [
+        421.2,
+        0,
+        0,
+        421.2,
+        59.400000000000006,
+        59.400000000000006
+      ],
+      "embedded_rgb_pixels_verified": true
+    },
+    {
+      "page_index": 3,
+      "asset_index": 3,
+      "title": "Placement B: pair replicas within each rack",
+      "source_png": {
+        "path": "images/scientific/14-topology-b.png",
+        "sha256": "bf03d63505a534261a84f210c899e4d4c5abd4d340b6cb8d4c35b7be38a4e617",
+        "width": 2400,
+        "height": 2400
+      },
+      "decoded_rgb_sha256": "902a502ea7acf33031f0dde0ff6ee105a1590bf3af12545b6ea46683776faba4",
+      "page_box_points": [
+        0,
+        0,
+        540.0,
+        604.8
+      ],
+      "image_box_points": [
+        59.400000000000006,
+        59.400000000000006,
+        421.2,
+        421.2
+      ],
+      "image_transform": [
+        421.2,
+        0,
+        0,
+        421.2,
+        59.400000000000006,
+        59.400000000000006
+      ],
+      "embedded_rgb_pixels_verified": true
+    }
+  ],
+  "validation": {
+    "actual_pdf_page_count": 3,
+    "all_embedded_rgb_pixels_identical": true,
+    "all_image_transforms_centered": false,
+    "all_image_transforms_horizontally_centered": true,
+    "all_image_placements_verified": true,
+    "crop_or_raster_resampling": "none",
+    "preview_source_note": "source_png is the canonical image actually embedded inside the page, not a full-page raster. Use image_box_points to map its actual preview geometry.",
+    "limits": "This verifies composition and source-pixel identity only. Actual uploaded pages, overlay controls and phone readability still require platform inspection."
+  }
+}

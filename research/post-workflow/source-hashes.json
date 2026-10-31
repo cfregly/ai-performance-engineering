@@ -61,6 +61,10 @@
       "sha256": "490fcf5f7fa31773c2446e0964a36045ed053f1d67491db0413074b9529a3652"
     },
     {
+      "path": "style/visual-tokens.json",
+      "sha256": "677886666cf02f359a6ae23ff762185985e34c655f9335dfc969e38265a87b33"
+    },
+    {
       "path": "templates/claim-scope-review.md",
       "sha256": "2b41165a8f88d1236091ec488a6588390cf0b07c46c2aefd576c0553a6b883d6"
     },
@@ -83,6 +87,10 @@
     {
       "path": "tools/check_social_preview.py",
       "sha256": "b4c94a5a83423c804443fe021bebfa5155bef42c5114810aee2e2a88dcea77d4"
+    },
+    {
+      "path": "tools/compose_social_document.py",
+      "sha256": "d9d7f3254dbeece7e41b30d054f9974ec9d6561ded6a127373c5c1e61e04633c"
     },
     {
       "path": "tools/pipeline_config.py",
@@ -115,6 +123,10 @@
     {
       "path": "tools/test_check_social_preview.py",
       "sha256": "bd9c4e2ea33eba49903fa904f67b5d63bfc0626877a391c615efbcad9ec85172"
+    },
+    {
+      "path": "tools/test_compose_social_document.py",
+      "sha256": "27bbf54fc437d9915d41c978d99083dfeaedf6629bdf07b7e19f7e8e6facfef7"
     },
     {
       "path": "tools/test_pipeline_config.py",

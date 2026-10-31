@@ -1,0 +1,115 @@
+{
+  "schema_version": 1,
+  "version": "1.1.0",
+  "name": "Whiteboard Engineering Sketchbook",
+  "gamma_theme_name": "Whiteboard",
+  "authority": "style/whiteboard.md",
+  "colors": {
+    "background": "#FBFBF8",
+    "ink": "#202326",
+    "blue": "#3478BA",
+    "orange": "#E87823"
+  },
+  "typography": {
+    "font_family": "Inter",
+    "font_file": "style/fonts/Inter.ttf",
+    "allowed_weights": [400, 500, 600, 700],
+    "allow_mixed_families": false,
+    "allow_handwritten": false,
+    "reference_canvas_px": 1200,
+    "roles_px": {
+      "heading": 64,
+      "body": 42,
+      "chart_label": 36,
+      "caption": 36,
+      "key_value": 72
+    },
+    "minimum_phone_px": {
+      "essential_label": 12,
+      "material_condition": 12
+    },
+    "keep_value_with_unit": true
+  },
+  "spacing": {
+    "reference_canvas_px": 1200,
+    "scale_px": [12, 18, 24, 36, 48, 72, 96],
+    "safe_margin_px": 84,
+    "region_gap_px": 36,
+    "label_gap_px": 18,
+    "scale_with_canvas": true,
+    "platform_viewer_margins_required": true,
+    "pdf_extra_top_clearance_ratio": 0.12
+  },
+  "composition_families": [
+    {
+      "id": "scene_evidence_split",
+      "name": "Scene plus evidence split",
+      "structure": "Substantial mechanism illustration beside or above a distinct precise evidence region",
+      "allow_horizontal_or_vertical": true
+    },
+    {
+      "id": "full_canvas_mechanism",
+      "name": "Full-canvas mechanism with embedded comparison",
+      "structure": "Dominant mechanism illustration with a quiet, complete comparison inset",
+      "inset_requires_complete_labels_and_units": true
+    }
+  ],
+  "illustration": {
+    "style": "expressive illustrated engineering sketchbook",
+    "purpose": "show what moves, waits, grows, disappears or gets reused",
+    "generate_text": false,
+    "generate_numbers": false,
+    "generate_chart_marks": false,
+    "generate_portraits": false,
+    "programmatic_geometry_counts_as_editorial_illustration": false,
+    "texture_allowed_in_scene_only": true,
+    "forbidden_defaults": [
+      "box_grid",
+      "giant_metric_and_bare_bar",
+      "placeholder_icons",
+      "clipart",
+      "stock_technology_art",
+      "decorative_pseudo_data"
+    ]
+  },
+  "chart_requirements": {
+    "native_editable_geometry": true,
+    "dimensions": 2,
+    "preserve_source_values": true,
+    "preserve_series_identity": true,
+    "preserve_source_scale": true,
+    "preserve_units": true,
+    "preserve_uncertainty": true,
+    "magnitude_bar_zero_baseline": true,
+    "readable_axes_and_units": true,
+    "editable_inter_labels": true,
+    "error_bars_require_evidence": true,
+    "color_alone_encodes_state": false,
+    "sketch_effect": false,
+    "jitter": false,
+    "perspective": false,
+    "texture_on_data_marks": false,
+    "unknown_quantity_has_quantitative_length": false,
+    "scope_and_analytical_conditions_visible": true,
+    "independent_constraints_are_not_additive": true
+  },
+  "commentary_stamp": {
+    "asset_reference": "assets/commentary-stamp-v2/fregly-take-stamp.png",
+    "source": "existing retained asset",
+    "label": "Fregly's take",
+    "rotation_degrees": 0,
+    "mirror": false,
+    "skew_degrees": 0,
+    "regenerate": false,
+    "avoid_faces_titles_credit_and_data": true
+  },
+  "review": {
+    "phone_preview_width_px": 400,
+    "verify_exported_dimensions": true,
+    "actual_platform_preview_required": true,
+    "show_viewer_controls": true,
+    "changed_visual_invalidates_review_binding": true,
+    "visual_refresh_authorizes_publication": false,
+    "visual_refresh_authorizes_scheduling": false
+  }
+}
