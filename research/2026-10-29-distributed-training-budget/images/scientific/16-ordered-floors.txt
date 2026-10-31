@@ -1,0 +1,21 @@
+Two ordered lower bounds
+Hypothetical plan · ms per update
+Before clip
+After clip
+Illustrative 150 ms budget
+A
+173.46
+67.17
+240.63
+B
+91.76
+67.17
+158.93
+0
+150
+300
+Full DP all-reduce before norm
+FP32 Muon · one attention owner
+Assumed 100 TFLOP/s per GPU
+Rack 80 / node 40 GB/s per direction
+Balanced routing · not runtimes

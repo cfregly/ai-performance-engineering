@@ -175,3 +175,22 @@ Regenerate the four quantitative and schedule cards with `python3 code/card_figu
 - [16 ordered floors](images/card-elements/16-ordered-floors.svg)
 - [15 tier traffic](images/card-elements/15-tier-traffic.svg)
 - [12 norm schedules](images/card-elements/12-norm-schedules.svg)
+
+## Rebuild the selected figures
+
+A keeps each data replica in one rack. B pairs corresponding stages within racks. In the ordered-floor chart, blue is before clipping and orange after clipping.
+
+With librsvg already installed, validate the selected SVG and PNG exports:
+
+```sh
+python3 code/scientific_figures.py --check
+```
+
+The renderer reads retained calculations, artwork and Inter font assets. It performs no GPU experiment.
+
+<details>
+<summary>Retained barrier illustration used by the selected chart</summary>
+
+![Gradient-barrier conveyor illustration](images/scientific/ordered-barrier-scene.png)
+
+</details>

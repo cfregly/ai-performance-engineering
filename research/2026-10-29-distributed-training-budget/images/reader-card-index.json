@@ -16,7 +16,7 @@
       "title": "Two ordered lower bounds",
       "selected": {
         "path": "images/scientific/16-ordered-floors.png",
-        "sha256": "ec50d60bcb534eb520010f7d5009349fb5e902167b500c98af4b14d4c0696084",
+        "sha256": "fde85c822fdc209d7315908ec07c520002b9dfe790a8facf3776e65ef789f0b2",
         "width": 2400,
         "height": 2400
       }
@@ -26,7 +26,7 @@
       "title": "Placement B: pair replicas within each rack",
       "selected": {
         "path": "images/scientific/14-topology-b.png",
-        "sha256": "bf03d63505a534261a84f210c899e4d4c5abd4d340b6cb8d4c35b7be38a4e617",
+        "sha256": "84a85e1450419a39a01b50dad0091f916548fabbf8dc7c6ab4da63577b48a046",
         "width": 2400,
         "height": 2400
       }

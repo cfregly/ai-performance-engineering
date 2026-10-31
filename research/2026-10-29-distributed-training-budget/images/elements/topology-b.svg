@@ -9,8 +9,8 @@
 <rect x="0" y="0" width="1000" height="1100" fill="#FBFBF8"/>
 <rect x="30" y="40" width="440" height="920" fill="#FBFBF8" stroke="#202326" stroke-width="3"/>
 <text x="250" y="120" font-family="Inter" font-size="60" font-weight="600" text-anchor="middle" fill="#202326">Rack 0</text>
-<text x="250" y="220" font-family="Inter" font-size="60" font-weight="600" text-anchor="middle" fill="#202326">R0</text>
-<text x="250" y="680" font-family="Inter" font-size="60" font-weight="600" text-anchor="middle" fill="#202326">R1</text>
+<text x="250" y="220" font-family="Inter" font-size="52" font-weight="600" text-anchor="middle" fill="#202326">Replica 0</text>
+<text x="250" y="680" font-family="Inter" font-size="52" font-weight="600" text-anchor="middle" fill="#202326">Replica 1</text>
 <rect x="50" y="280" width="160" height="140" fill="#FBFBF8" stroke="#202326" stroke-width="3"/>
 <text x="130" y="372" font-family="Inter" font-size="64" font-weight="600" text-anchor="middle" fill="#202326">P0</text>
 <rect x="290" y="280" width="160" height="140" fill="#FBFBF8" stroke="#202326" stroke-width="3"/>
@@ -23,8 +23,8 @@
 <polyline points="370,420 370,740" fill="none" stroke="#E87823" stroke-width="4" stroke-linejoin="miter" marker-end="url(#arrow-orange)" marker-start="url(#arrow-orange)"/>
 <rect x="530" y="40" width="440" height="920" fill="#FBFBF8" stroke="#202326" stroke-width="3"/>
 <text x="750" y="120" font-family="Inter" font-size="60" font-weight="600" text-anchor="middle" fill="#202326">Rack 1</text>
-<text x="750" y="220" font-family="Inter" font-size="60" font-weight="600" text-anchor="middle" fill="#202326">R0</text>
-<text x="750" y="680" font-family="Inter" font-size="60" font-weight="600" text-anchor="middle" fill="#202326">R1</text>
+<text x="750" y="220" font-family="Inter" font-size="52" font-weight="600" text-anchor="middle" fill="#202326">Replica 0</text>
+<text x="750" y="680" font-family="Inter" font-size="52" font-weight="600" text-anchor="middle" fill="#202326">Replica 1</text>
 <rect x="550" y="280" width="160" height="140" fill="#FBFBF8" stroke="#202326" stroke-width="3"/>
 <text x="630" y="372" font-family="Inter" font-size="64" font-weight="600" text-anchor="middle" fill="#202326">P2</text>
 <rect x="790" y="280" width="160" height="140" fill="#FBFBF8" stroke="#202326" stroke-width="3"/>
@@ -42,8 +42,8 @@
 <polyline points="450,810 550,810" fill="none" stroke="#3478BA" stroke-width="4" stroke-linejoin="miter" marker-end="url(#arrow-blue)"/>
 <polyline points="710,810 790,810" fill="none" stroke="#3478BA" stroke-width="4" stroke-linejoin="miter" marker-end="url(#arrow-blue)"/>
 <polyline points="50,1020 110,1020" fill="none" stroke="#3478BA" stroke-width="4" stroke-linejoin="miter" marker-end="url(#arrow-blue)"/>
-<text x="130" y="1036" font-family="Inter" font-size="48" font-weight="400" text-anchor="start" fill="#3478BA">PP</text>
+<text x="130" y="1036" font-family="Inter" font-size="54" font-weight="400" text-anchor="start" fill="#3478BA">PP</text>
 <polyline points="300,1020 360,1020" fill="none" stroke="#E87823" stroke-width="4" stroke-linejoin="miter" marker-end="url(#arrow-orange)" marker-start="url(#arrow-orange)"/>
-<text x="380" y="1036" font-family="Inter" font-size="48" font-weight="400" text-anchor="start" fill="#E87823">DP</text>
-<text x="575" y="1036" font-family="Inter" font-size="48" font-weight="400" text-anchor="start" fill="#202326">8 GPUs/node</text>
+<text x="380" y="1036" font-family="Inter" font-size="54" font-weight="400" text-anchor="start" fill="#E87823">DP</text>
+<text x="575" y="1036" font-family="Inter" font-size="54" font-weight="400" text-anchor="start" fill="#202326">8 GPUs/node</text>
 </svg>

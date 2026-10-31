@@ -99,3 +99,7 @@ These diagrams follow the same synthetic workload, phase contract and analytical
 ![Validate the whole training step](images/aud-platform-operations-square.png)
 
 ![Check the budget before building](images/aud-business-capacity-square.png)
+
+## Source snapshot checksums
+
+`evidence/derivation/SHA256SUMS` retains the historical October 29 snapshot. For the maintained tree, run `shasum -a 256 -c evidence/derivation/SHA256SUMS-current`. Its scope excludes both checksum ledgers and the validation note to avoid self-reference.

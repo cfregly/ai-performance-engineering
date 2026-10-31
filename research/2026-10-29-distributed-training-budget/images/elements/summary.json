@@ -1,0 +1,262 @@
+{
+  "schema_version": 1,
+  "handoff": {
+    "objective": "Six reproducible native SVG scientific diagram elements for Gamma composition",
+    "completed": "Six elements generated; exact regeneration, XML parsing and geometry bounds pass",
+    "blockers": [],
+    "next_step": "Insert into Gamma and inspect actual exported and platform rendering",
+    "boundary": "These source elements do not establish Gamma insertion or platform preview completion"
+  },
+  "source": {
+    "path": "evidence/reader-summary.json",
+    "sha256": "8ea8bdd624dea6a28e13c507e52bf4e9d9b47964dc957007a79585f3b77fb154"
+  },
+  "text_authority": {
+    "path": "code/README.md",
+    "sha256": "94fdc1d10e14f92e2a5278ef1eb472c96a737ff6b6e52b6d7434076694768072"
+  },
+  "source_field_hash_format": "sha256 of UTF-8 JSON, sorted keys, compact separators, ensure_ascii=False",
+  "default_viewbox": [
+    0,
+    0,
+    1600,
+    900
+  ],
+  "style": {
+    "background": "#FBFBF8",
+    "ink": "#202326",
+    "blue": "#3478BA",
+    "orange": "#E87823",
+    "font": "Inter",
+    "minimum_label_px": 30,
+    "timeline_operation_label_px": 42
+  },
+  "figures": [
+    {
+      "file": "images/elements/topology-a.svg",
+      "viewbox": [
+        0,
+        0,
+        1000,
+        1000
+      ],
+      "purpose": "Keep each data replica within one rack; show every DP pair crossing racks.",
+      "sha256": "071469a1afaf3dad8b73df618e64cc0d19a55744c4cbf7a20886bb26c54d1123",
+      "source_fields": [
+        {
+          "pointer": "/model/DP",
+          "sha256": "d4735e3a265e16eee03f59718b9b5d03019c07d8b6c51f90da3a666eec13ab35"
+        },
+        {
+          "pointer": "/model/PP",
+          "sha256": "4b227777d4dd1fc61c6f884f48641d02b4d121d3fd328cb08b5531fcacdabf8a"
+        },
+        {
+          "pointer": "/model/nodes",
+          "sha256": "2c624232cdd221771294dfbb310aca000a0df6ac8b66b696d90ef06fdefb64a3"
+        },
+        {
+          "pointer": "/model/GPUs",
+          "sha256": "a68b412c4282555f15546cf6e1fc42893b7e07f271557ceb021821098dd66c1b"
+        },
+        {
+          "pointer": "/model/GPUs_per_node",
+          "sha256": "2c624232cdd221771294dfbb310aca000a0df6ac8b66b696d90ef06fdefb64a3"
+        },
+        {
+          "pointer": "/placement_nodes_by_rack/A",
+          "sha256": "fc9bce287a2adc5abe19d276a65ed1ca674417cf6cbc42d4e72627db38b56f9e"
+        },
+        {
+          "pointer": "/placement_nodes_by_rack/node_identity",
+          "sha256": "c4217f6cd8ef59c7b512e6105cda6ca168cd15ffb270986fa6ecef8118dd96c8"
+        }
+      ],
+      "checks": {
+        "xml_parse": "pass",
+        "geometry_safe_inset_px": 20,
+        "bounds": "pass",
+        "minimum_font_px": 48
+      }
+    },
+    {
+      "file": "images/elements/topology-b.svg",
+      "viewbox": [
+        0,
+        0,
+        1000,
+        1100
+      ],
+      "purpose": "Put both replicas' stages 0/1 in rack 0 and 2/3 in rack 1; DP pairs stay in-rack, and the P1-to-P2 boundary crosses racks.",
+      "sha256": "afcbe3b07ac0cd38bda1a86a838e6a576104118b105a6c03ee26fd35ea860700",
+      "source_fields": [
+        {
+          "pointer": "/model/DP",
+          "sha256": "d4735e3a265e16eee03f59718b9b5d03019c07d8b6c51f90da3a666eec13ab35"
+        },
+        {
+          "pointer": "/model/PP",
+          "sha256": "4b227777d4dd1fc61c6f884f48641d02b4d121d3fd328cb08b5531fcacdabf8a"
+        },
+        {
+          "pointer": "/model/GPUs",
+          "sha256": "a68b412c4282555f15546cf6e1fc42893b7e07f271557ceb021821098dd66c1b"
+        },
+        {
+          "pointer": "/placement_nodes_by_rack/B",
+          "sha256": "bb93aaed76945471e94269705ac43ab0e0ef391304f5f88b3bc72f09fd00cbcd"
+        },
+        {
+          "pointer": "/placement_nodes_by_rack/node_identity",
+          "sha256": "c4217f6cd8ef59c7b512e6105cda6ca168cd15ffb270986fa6ecef8118dd96c8"
+        }
+      ],
+      "checks": {
+        "xml_parse": "pass",
+        "geometry_safe_inset_px": 20,
+        "bounds": "pass",
+        "minimum_font_px": 52
+      }
+    },
+    {
+      "file": "images/elements/rank-groups.svg",
+      "viewbox": [
+        0,
+        0,
+        1000,
+        900
+      ],
+      "purpose": "Show TP4 rows, CP2 vertical pairs and EP8 on one physical eight-rank grid.",
+      "sha256": "da06dca439044f333732537898b913e45f774423c9144f122bd32b1a063f2841",
+      "source_fields": [
+        {
+          "pointer": "/model/GPUs_per_node",
+          "sha256": "2c624232cdd221771294dfbb310aca000a0df6ac8b66b696d90ef06fdefb64a3"
+        },
+        {
+          "pointer": "/groups_each_node/attention_TP4_groups",
+          "sha256": "fc9bce287a2adc5abe19d276a65ed1ca674417cf6cbc42d4e72627db38b56f9e"
+        },
+        {
+          "pointer": "/groups_each_node/attention_CP2_groups",
+          "sha256": "cb6ee8c145a0088ea66b611aa23196fe853b367cb36794696ee7e202e940411c"
+        },
+        {
+          "pointer": "/groups_each_node/EP8_same_ranks",
+          "sha256": "29101ebf1ead685029508789eee51c4d4fff65524064d8e32a48efded7036982"
+        }
+      ],
+      "checks": {
+        "xml_parse": "pass",
+        "geometry_safe_inset_px": 20,
+        "bounds": "pass",
+        "minimum_font_px": 42
+      }
+    },
+    {
+      "file": "images/elements/pipeline-1f1b.svg",
+      "viewbox": [
+        0,
+        0,
+        1000,
+        1100
+      ],
+      "purpose": "Project one exact 22-slot four-stage schedule as two stacked 11-slot continuation panels, with operation labels and unit-service limits.",
+      "sha256": "0809c8f80d98d78cfd724a1eb92abd04a3f7dfa80b081ac0cb80daf8aeff1c0e",
+      "source_fields": [
+        {
+          "pointer": "/unit_1F1B/rows",
+          "sha256": "9d11eca40c7a2b30386a3a07dbfbb7d2d08c434b2a851068ee953a61000310ba"
+        },
+        {
+          "pointer": "/unit_1F1B/slots",
+          "sha256": "785f3ec7eb32f30b90cd0fcf3657d388b5ff4297f2f9716ff66e9b69c05ddd09"
+        },
+        {
+          "pointer": "/unit_1F1B/assumed_F_and_B_service",
+          "sha256": "6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b"
+        },
+        {
+          "pointer": "/unit_1F1B/zero_transfer_latency",
+          "sha256": "b5bea41b6c623f7c09f1bf24dcae58ebab3c0cdd90ad966bc43a45b44867e12b"
+        },
+        {
+          "pointer": "/unit_1F1B/limit",
+          "sha256": "671506cb1fea14e5a7806b51fd3a250ed5356095612cc660c205e218b2c0675e"
+        }
+      ],
+      "checks": {
+        "xml_parse": "pass",
+        "geometry_safe_inset_px": 20,
+        "bounds": "pass",
+        "minimum_font_px": 42
+      }
+    },
+    {
+      "file": "images/elements/muon-whole-matrix.svg",
+      "viewbox": [
+        0,
+        0,
+        1000,
+        1100
+      ],
+      "purpose": "Show four attention-state shards gathering before a finite whole-matrix Newton-Schulz update, followed by scatter/publication.",
+      "sha256": "ee9cc1fe8dbcd61cc6936a250c4bc1a7b1e82cd20f4484dab4fa71d93be8cea1",
+      "source_fields": [
+        {
+          "pointer": "/groups_each_node/attention_TP4_groups",
+          "sha256": "fc9bce287a2adc5abe19d276a65ed1ca674417cf6cbc42d4e72627db38b56f9e"
+        },
+        {
+          "pointer": "/optimizer_and_routing/Muon",
+          "sha256": "213d330507abb6167bde341fac022b4825fd76df82e43c417fce2781f7d3d7ec"
+        },
+        {
+          "pointer": "/optimizer_and_routing/owner",
+          "sha256": "380c5210aee0773a7de1ffe805a318e8bbb3da0970d8aab834c7f35e9935acbd"
+        },
+        {
+          "pointer": "/declared_capacity/states",
+          "sha256": "f5bf89a7e8926e9467e4ff2cb2d61e58042413a9504f3a2d961c275d7da7e326"
+        }
+      ],
+      "checks": {
+        "xml_parse": "pass",
+        "geometry_safe_inset_px": 20,
+        "bounds": "pass",
+        "minimum_font_px": 48
+      }
+    },
+    {
+      "file": "images/elements/gradient-barrier.svg",
+      "viewbox": [
+        0,
+        0,
+        1000,
+        1100
+      ],
+      "purpose": "Preserve the all-required-reductions, unique-global-norm, common-clipping, two-optimizer and publication dependencies.",
+      "sha256": "8444382382500d01025eb73e40efbceadb599a66152415e3c179ffb3e8e317db",
+      "source_fields": [
+        {
+          "pointer": "/optimizer_and_routing/barrier",
+          "sha256": "4f93bd5d756ba7d18e5e9a50eea9c32265fb39b7da730d9ef013aa1b2c352f7e"
+        },
+        {
+          "pointer": "/optimizer_and_routing/Muon",
+          "sha256": "213d330507abb6167bde341fac022b4825fd76df82e43c417fce2781f7d3d7ec"
+        },
+        {
+          "pointer": "/optimizer_and_routing/AdamW",
+          "sha256": "57dd8c876ce3868fff5675f7df095891e300efa068e48e9e5cef719330602c2c"
+        }
+      ],
+      "checks": {
+        "xml_parse": "pass",
+        "geometry_safe_inset_px": 20,
+        "bounds": "pass",
+        "minimum_font_px": 48
+      }
+    }
+  ]
+}

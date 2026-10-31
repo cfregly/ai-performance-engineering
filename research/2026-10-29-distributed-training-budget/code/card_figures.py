@@ -149,7 +149,7 @@ def tier_traffic(source):
 def ordered_floors(source):
     traffic = source["traffic_and_screens"]
     caps = source["assumed_capabilities"]
-    c = Card("Two ordered lower bounds", "The declared full DP all-reduce-before-norm plan has optimistic ordered resource floors, not runtime estimates. Blue is before clipping and orange is after clipping. A 150 ms target is shown on a zero-based millisecond axis.")
+    c = Card("Two ordered lower bounds", "The declared full DP all-reduce-before-norm plan has optimistic ordered resource floors, not runtime estimates. Blue is before clipping and orange is after clipping. An illustrative 150 ms budget is shown on a zero-based millisecond axis.")
     c.text(500, 140, "Two ordered lower bounds", 52, "middle")
     c.text(500, 198, "Hypothetical plan · ms per update", 36, "middle")
     for x, color, label in ((115, BLUE, "Before clip"), (540, ORANGE, "After clip")):
@@ -161,7 +161,7 @@ def ordered_floors(source):
         c.line(x, 600 if value == 300 else 350, x, 612 if value == 300 else 600, dashed=value==target)
         c.text(x, 645, str(value), 36, "middle")
     c.line(x0, 600, 840, 600)
-    c.text(x0+target*scale, 330, "150 ms target", 36, "middle")
+    c.text(x0+target*scale, 330, "Illustrative 150 ms budget", 36, "middle")
     for y, label in ((365,"A"),(510,"B")):
         values = traffic[label]["floors_ms"]
         pre, post = values["pre_clipping_phase"], values["post_clipping_phase"]

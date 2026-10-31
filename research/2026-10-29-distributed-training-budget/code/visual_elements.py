@@ -143,7 +143,7 @@ def topology_b(source):
         s.rect(x, 40, 440, 920)
         s.text(x + 220, 120, f"Rack {rack}", 60, anchor="middle", weight=600)
         for replica in range(source["model"]["DP"]):
-            s.text(x + 220, 220 + replica * 460, f"R{replica}", 60, anchor="middle", weight=600)
+            s.text(x + 220, 220 + replica * 460, f"Replica {replica}", 52, anchor="middle", weight=600)
         for node in nodes:
             replica, stage = divmod(node, source["model"]["PP"])
             nx, ny = x + 20 + (stage % 2) * 240, 280 + replica * 460
@@ -159,10 +159,10 @@ def topology_b(source):
             bx, by = positions[replica * 4 + stage + 1]
             s.line([(ax + 160, ay + 70), (bx, by + 70)], BLUE, arrow=True, sw=4)
     s.line([(50, 1020), (110, 1020)], BLUE, arrow=True, sw=4)
-    s.text(130, 1036, "PP", 48, BLUE)
+    s.text(130, 1036, "PP", 54, BLUE)
     s.line([(300, 1020), (360, 1020)], ORANGE, both=True, sw=4)
-    s.text(380, 1036, "DP", 48, ORANGE)
-    s.text(575, 1036, "8 GPUs/node", 48)
+    s.text(380, 1036, "DP", 54, ORANGE)
+    s.text(575, 1036, "8 GPUs/node", 54)
     return s
 
 

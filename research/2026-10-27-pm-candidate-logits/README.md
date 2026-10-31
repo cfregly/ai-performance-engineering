@@ -1,10 +1,10 @@
-# Project through the legal token rows
+# Project through the allowed token rows
 
-A synthetic output-head benchmark compares two ways to return legal token scores and their greedy winner. The dense baseline computes `H @ W.T`, gathers the legal scores, and selects their maximum. The candidate gathers legal weight rows first, computes `H @ W[S, :].T`, and uses the same selection path.
+A synthetic output-head benchmark compares two ways to return allowed token scores and their greedy winner. The dense baseline computes `H @ W.T`, gathers the allowed scores, and selects their maximum. The candidate gathers allowed weight rows first, computes `H @ W[S, :].T`, and uses the same selection path.
 
-One NVIDIA B200 ran strict FP32 with TF32 disabled, batch 8, hidden width 2,048 and vocabulary 131,072. Each step shared one sorted, noncontiguous legal set across all batch rows. A changing set differed at each of 16 steps; the sequence was reused across warmup and timing.
+One NVIDIA B200 ran strict FP32 with TF32 disabled, batch 8, hidden width 2,048 and vocabulary 131,072. Each step shared one sorted, noncontiguous allowed set across all batch rows. A changing set differed at each of 16 steps; the sequence was reused across warmup and timing.
 
-| Legal IDs | Set behavior | Dense ms/block | Selected rows ms/block | Observed speedup | Setup ms |
+| Allowed IDs | Set behavior | Dense ms/block | Selected rows ms/block | Observed speedup | Setup ms |
 |---:|---|---:|---:|---:|---:|
 | 16 | Static | 5.489 | 0.334 | 16.43x | 0.035 |
 | 16 | Changing | 5.494 | 0.560 | 9.81x | 0.015 |
@@ -19,11 +19,11 @@ The changing-set timings are not monotonic in set size. I did not profile their 
 
 Static mode gathers rows once before warmup and timing. Its setup cost is outside the warm-block ratios above; the retained 64-ID setup interval took 3.252 ms. That interval is far above the 16- and 256-ID intervals. Its cause was not isolated, so it may include a one-time effect rather than gather cost. Changing mode gathers rows in every timed step. Its setup column records synchronization around an empty setup branch. This test did not measure a continuous first-use interval or an observed payback point.
 
-Both paths checked 86,016 legal logits against an FP64 reference with `rtol=1e-4` and `atol=1e-5`. Maximum absolute errors were approximately `2.44e-6` for dense and `1.01e-6` for selected rows. All 768 selected-token rows per path matched the reference argmax. All-equal and two-way-maximum fixtures chose the smallest legal ID. These checks cover the tested inputs and explicit ties; trained-model near-ties need separate validation.
+Both paths checked 86,016 allowed logits against an FP64 reference with `rtol=1e-4` and `atol=1e-5`. Maximum absolute errors were approximately `2.44e-6` for dense and `1.01e-6` for selected rows. All 768 selected-token rows per path matched the reference argmax. All-equal and two-way-maximum fixtures chose the smallest allowed ID. These checks cover the tested inputs and explicit ties; trained-model near-ties need separate validation.
 
 - [Runnable source and reproduction commands](code/README.md)
 - [All six results and paired samples](evidence/recomputed-results.json)
-- [Original raw timing, legal IDs and correctness records](evidence/raw.jsonl)
+- [Original raw timing, allowed IDs and correctness records](evidence/raw.jsonl)
 - [Native worker summary](evidence/worker_result.json)
 - [Correctness records](evidence/correctness.json) and [timing method](evidence/timing-mode.json)
 - [Recorded environment](evidence/environment.json), [measurement metadata](evidence/measurement.json) and [file hashes](evidence/hashes.json)
@@ -36,7 +36,7 @@ python3 -m unittest discover -s code -p 'test_analyze.py' -v
 python3 code/screen.py --self-check
 ```
 
-The baseline is eager PyTorch CUDA `torch.mm` with preallocated buffers. The observations cover this synthetic stage and input shape. Model computation, grammar transitions, tokenization, sorting and transferring legal IDs, request scheduling, independent request grammars, other precisions, quantized or sharded heads and end-to-end generation were outside the timing. No profiler capture or measured memory peak is included.
+The baseline is eager PyTorch CUDA `torch.mm` with preallocated buffers. The observations cover this synthetic stage and input shape. Model computation, grammar transitions, tokenization, sorting and transferring allowed IDs, request scheduling, independent request grammars, other precisions, quantized or sharded heads and end-to-end generation were outside the timing. No profiler capture or measured memory peak is included.
 
 API contracts: [PyTorch matrix product](https://docs.pytorch.org/docs/2.14/generated/torch.mm.html), [linear projection](https://docs.pytorch.org/docs/2.14/generated/torch.nn.functional.linear.html). The [vLLM structured-output interface](https://docs.vllm.ai/en/latest/features/structured_outputs/) provides integration context; this test did not run vLLM.
 
@@ -45,7 +45,7 @@ API contracts: [PyTorch matrix product](https://docs.pytorch.org/docs/2.14/gener
 - Allowed tokens must be known before projection. This test starts with sorted, device-resident IDs, excluding grammar/tokenizer work, ID production and transfer.
 - Changing-set weight gathering is additional work and is included in its timings. Static reuse pays separate setup outside warm ratios, including the retained 3.252 ms interval at 64 IDs. Cold-start benefit and break-even were not measured.
 - All batch rows shared one allowed set. Different sets per request, near-full-vocabulary sets and other precisions remain untested here.
-- Only legal scores and their greedy winner are returned. The full weight tensor remains resident. No memory saving or complete-request gain is established.
+- Only allowed scores and their greedy winner are returned. The full weight tensor remains resident. No memory saving or complete-request gain is established.
 
 ## Prior work
 
@@ -179,14 +179,14 @@ The cover illustration is conceptual. Tile counts and drawn proportions do not e
 
 </details>
 
-### Changing legal sets: the observed stage gain
+### Changing allowed sets: the observed stage gain
 
-![Changing legal sets: the observed stage gain](images/comparison-detail.png)
+![Changing allowed sets: the observed stage gain](images/comparison-detail.png)
 
 <details>
 <summary>Square version</summary>
 
-![Changing legal sets: the observed stage gain — square](images/comparison-detail-square.png)
+![Changing allowed sets: the observed stage gain — square](images/comparison-detail-square.png)
 
 </details>
 

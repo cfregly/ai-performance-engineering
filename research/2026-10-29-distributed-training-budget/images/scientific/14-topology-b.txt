@@ -1,0 +1,18 @@
+Pair replicas within each rack
+Rack 0
+Replica 0
+Replica 1
+P0
+P1
+P0
+P1
+Rack 1
+Replica 0
+Replica 1
+P2
+P3
+P2
+P3
+PP
+DP
+8 GPUs/node

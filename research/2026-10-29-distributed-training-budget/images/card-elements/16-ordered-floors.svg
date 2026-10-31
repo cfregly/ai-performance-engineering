@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1000" height="1000" viewBox="0 0 1000 1000" role="img" aria-labelledby="title desc">
 <title id="title">Two ordered lower bounds</title>
-<desc id="desc">The declared full DP all-reduce-before-norm plan has optimistic ordered resource floors, not runtime estimates. Blue is before clipping and orange is after clipping. A 150 ms target is shown on a zero-based millisecond axis.</desc>
+<desc id="desc">The declared full DP all-reduce-before-norm plan has optimistic ordered resource floors, not runtime estimates. Blue is before clipping and orange is after clipping. An illustrative 150 ms budget is shown on a zero-based millisecond axis.</desc>
 <defs><marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto" markerUnits="userSpaceOnUse"><path d="M1 1L9 5L1 9" fill="none" stroke="#202326" stroke-width="2"/></marker></defs>
 <rect width="1000" height="1000" fill="#FBFBF8"/>
 <g font-family="Inter" font-weight="400" fill="#202326">
@@ -17,7 +17,7 @@
 <line x1="840" y1="600" x2="840" y2="612" stroke="#202326" stroke-width="2"/>
 <text x="840" y="645" font-size="36" text-anchor="middle" fill="#202326">300</text>
 <line x1="140" y1="600" x2="840" y2="600" stroke="#202326" stroke-width="2"/>
-<text x="490" y="330" font-size="36" text-anchor="middle" fill="#202326">150 ms target</text>
+<text x="490" y="330" font-size="36" text-anchor="middle" fill="#202326">Illustrative 150 ms budget</text>
 <rect x="140" y="365" width="404.732" height="70" fill="#3478BA" stroke="#3478BA" stroke-width="0"/>
 <rect x="544.732" y="365" width="156.736" height="70" fill="#E87823" stroke="#E87823" stroke-width="0"/>
 <text x="95" y="416" font-size="52" text-anchor="start" fill="#202326">A</text>
