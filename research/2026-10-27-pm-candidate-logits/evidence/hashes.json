@@ -1,18 +1,18 @@
 {
   "algorithm": "SHA256",
-  "scope": "Current declared public projection except this ledger. The original executed analyzer is retained separately.",
+  "scope": "Current explicit scientific projection. The original executed analyzer is retained separately. This ledger is not the historical run-source ledger.",
   "files": {
     "README.md": {
-      "sha256": "78c4fe8886d0acd31f1de18cb94572677605b8f3d8015200bc33b476262e77a8",
-      "bytes": 8888
+      "sha256": "76d49c12b8e7a0508905539f60eaca81f0764fa483e214208c0e6709ed704b41",
+      "bytes": 9994
     },
     "code/README.md": {
       "sha256": "0cc51b51b77aedec1abe90ae2f8d38dc8e0333c6c3a46edbae15ca861ee65027",
       "bytes": 3445
     },
     "code/analyze.py": {
-      "sha256": "c432abcd27ce77c4fff2ac1213d9d1ae227b310ecdb642f8f862888c26bf282c",
-      "bytes": 9698
+      "sha256": "f9d800adf0dff9a60b9a3128334c08d382910e36221b08515352b0ec03e80910",
+      "bytes": 9998
     },
     "code/plan.json": {
       "sha256": "9cfc32a85183c7f7c0993c444847ff49f33944299609a875989d8950a06cbc49",
@@ -23,8 +23,8 @@
       "bytes": 17567
     },
     "code/test_analyze.py": {
-      "sha256": "85eb6c7d37375f8504dbbfe3bd9c7c01e7d6c1b7aba4e71af752acd9baed7068",
-      "bytes": 9584
+      "sha256": "2848242e45f2f277d0f479c1f8185a6bc533af19b95c57c8cdc3a270976994d7",
+      "bytes": 10229
     },
     "evidence/correctness.json": {
       "sha256": "7aecc53542e4607985d8fc1a2ea2d84226b66c325b8c1d1bd912830116dc4e51",
@@ -35,8 +35,8 @@
       "bytes": 537
     },
     "evidence/measurement.json": {
-      "sha256": "fd88dbe69ab3058589b68133006242e552fbe0fcc52b4c61375eb00344fcefb9",
-      "bytes": 5384
+      "sha256": "85169cf8f5d4991a9bb5c7c1a60e020e339727d438f01db89f42266cf6a8908e",
+      "bytes": 5866
     },
     "evidence/paired-block-0.json": {
       "sha256": "3d24e1aa3c25d62ce7e6afe7fdb22e984b7e991a8adea4d9f5563e8bde09ff41",
@@ -333,6 +333,30 @@
     "code/executed-analyze.py": {
       "sha256": "797634284e64ffde7f71f971195f7be3e8400917e890cbf5b6fe33565a1b736e",
       "bytes": 3647
+    },
+    "images/result-scene.png": {
+      "sha256": "30a4b7c509dfd150ba1c320183e2ffbd7099afb506f8749b3d31c38089d29db5",
+      "bytes": 1011259
+    },
+    "images/result-scene.svg": {
+      "sha256": "32e834842671723ca9e18d8d8589599ff438f42a5be0c22036e624fa5f480352",
+      "bytes": 4271
+    },
+    "images/result-scene.txt": {
+      "sha256": "ef5508d122a0b496d0acfc7a30c6f349672066e10669c322a92f99861182c054",
+      "bytes": 361
+    },
+    "images/result-scene/render_result_scene.py": {
+      "sha256": "fbd4b008cd3e1db34f48d693e7f65b307a7fd80dc467464d70582b35681345d6",
+      "bytes": 11021
+    },
+    "images/result-scene/visual-tokens.json": {
+      "sha256": "677886666cf02f359a6ae23ff762185985e34c655f9335dfc969e38265a87b33",
+      "bytes": 3582
+    },
+    "images/result-scene/matrix-cut-art.png": {
+      "sha256": "b8bbee1cefdc666da6c3b5379421d48a14f6d3c0dfca1a9760cc220f6eabebfa",
+      "bytes": 3386088
     }
   }
 }

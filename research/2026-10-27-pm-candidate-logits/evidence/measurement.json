@@ -152,7 +152,14 @@
   },
   "analysis_maintenance": {
     "path": "code/analyze.py",
-    "sha256": "c432abcd27ce77c4fff2ac1213d9d1ae227b310ecdb642f8f862888c26bf282c",
-    "scope": "Stricter CPU validation of the same retained records. Original analyzer and measured samples preserved. No GPU rerun."
-  }
+    "sha256": "f9d800adf0dff9a60b9a3128334c08d382910e36221b08515352b0ec03e80910",
+    "scope": "CPU maintenance of the same retained records, including a correctness flag derived from recorded maximum errors. Original executed analyzer and measured samples preserved. FP64/argmax checks were executed by screen.py during the original GPU run, not re-executed by this analysis. No GPU rerun."
+  },
+  "analysis_maintenance_history": [
+    {
+      "path": "code/analyze.py",
+      "sha256": "c432abcd27ce77c4fff2ac1213d9d1ae227b310ecdb642f8f862888c26bf282c",
+      "scope": "Stricter CPU validation of the same retained records. Original analyzer and measured samples preserved. No GPU rerun."
+    }
+  ]
 }

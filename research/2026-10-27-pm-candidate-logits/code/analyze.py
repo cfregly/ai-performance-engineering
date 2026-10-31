@@ -188,8 +188,14 @@ def analyze(raw, plan):
         'checked_token_rows_per_path': sum(len(row['selected_tokens']) for row in checks),
         'max_abs_error_baseline': max(row['baseline_max_abs_error'] for row in checks),
         'max_abs_error_optimized': max(row['candidate_max_abs_error'] for row in checks),
-        # screen.py emits correctness rows only after its FP64 and argmax checks pass.
-        'all_correctness_checks_pass': True,
+        # Errors <= atol suffice for the numerical tolerance check.
+        # screen.py checked FP64 projection and argmax agreement at run time;
+        # this retained-error analysis does not re-execute those checks.
+        'all_correctness_checks_pass': all(
+            row[name] <= plan['correctness_atol']
+            for row in checks
+            for name in ('baseline_max_abs_error', 'candidate_max_abs_error')
+        ),
         'cells': cells,
         'all_cells_pass': all(cell['screen_pass'] for cell in cells),
         'interpretation': 'Observed synthetic strict-FP32 output-head stage timing. Three paired blocks in one process. No model, serving or request-tail measurement.',

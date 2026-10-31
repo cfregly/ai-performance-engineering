@@ -1,0 +1,232 @@
+{
+  "schema_version": 1,
+  "result_kind": "synthetic_arithmetic",
+  "claimed_scope": "Synthetic necessary resource and capacity accounting for one complete 64-GPU MoE training update under two matched rack placements, including a global clipping barrier and a declared FP32 whole-matrix Muon ownership policy. This supports no measured runtime, device fit, speedup or achieved MFU claim.",
+  "assumptions": [
+    "One hypothetical complete training update uses 64 GPUs in eight 8-GPU nodes and two racks: DP2, PP4, attention TP4/CP2 and experts ETP1/EP8 are alternate views of the same stage ranks.",
+    "The same 12-layer, hidden-width-2048, sequence-2048, top-2 MoE model, routing decisions, eight microbatches per data replica and 32768 tokens per update are held fixed across the two placements.",
+    "The balanced routing policy and exact logical directed-message plan define the service screens. A separate extreme-skew ledger stresses declared allocations and ownership.",
+    "The primary schedule explicitly completes full DP allreduce before clipping and replica0 supplies every unique norm term. This is a declared schedule choice, not intrinsic to clipping. Both optimizers and publication of weights/state follow the common clipping scalar.",
+    "Hidden matrices use the declared whole-matrix Muon ownership policy with five FP32 Newton-Schulz iterations. Embeddings, output head, router and normalization gains use AdamW. The FP32 iteration is an explicit departure from the pinned reference BF16 policy.",
+    "Assumed per-direction capacities are 80 decimal GB/s per rack crossing, 40 GB/s per node off-node send service, 160 GB/s per GPU intra-node send service and 160 GB/s aggregate within-rack injected service per rack. Device-memory service is 3 TB/s per GPU; training matrix work is 500 TFLOP/s per GPU and FP32 Muon matrix work is 100 TFLOP/s per GPU.",
+    "The necessary update floor takes the maximum resource screen within each pre- or post-clipping phase and adds those two ordered phase bounds. Endpoint rates are full duplex; GB, TB and TF use decimal powers. The comparison budget is 150 ms.",
+    "The ideal 1F1B illustration uses equal unit forward/backward service and zero transfer time. Its slots and activation lifetimes are not calibrated milliseconds.",
+    "The separately labeled reduce-scatter-first alternative splits each DP2 payload into equal reduce-scatter/allgather halves, partitions unique norm terms across both replicas, and grants optimistic post-clipping allgather/optimizer overlap without asserting a feasible DAG."
+  ],
+  "limitations": [
+    "No GPU workload, distributed training implementation, measured runtime, speedup, achieved MFU or device-fit result is established.",
+    "The resource maxima are necessary lower bounds, not a complete schedulable DAG or attainable runtime prediction. Finer dependencies, contention, communication latency and omitted operations can raise the time.",
+    "Norm-scalar service between the clipping phases is conservatively omitted from the ordered sum and retained in full-update payload screens. Transport headers, padding, retries and physical switch-hop expansion are excluded.",
+    "Dense matrix FLOP floors exclude normalization, softmax, GELU, AdamW scalar work, communication kernels and software overhead. Muon FLOPs are separate from training FLOPs and cannot inflate a useful-model MFU numerator.",
+    "Capacity totals sum declared tensors and some workspace maxima, but omit framework contexts, allocator reserve or fragmentation, extra library and transport workspaces, graph pools, compilation and checkpoint buffers.",
+    "Balanced service screens do not prove a worst-skew runtime. Streaming all selected expert assignments preserves the declared selected work but can add serial chunks, queues and retained activations.",
+    "The teaching-scale token budget and canonical whole-matrix optimizer owner can make optimizer work unusually large. The example does not establish convergence quality or recommend this model-to-GPU sizing.",
+    "The attention companion has a different one-sequence, one-layer, one-device workload. Its scratch bytes and transfer milliseconds are not inputs to this system budget. A ratio between the placement floors is not a measured speedup."
+  ],
+  "code": {
+    "path": "code/system_budget.py",
+    "sha256": "1ecd35376420100069b507436c0001b02b725d2be28a51fba730859afe2264e1"
+  },
+  "values": [
+    {
+      "name": "GPUs",
+      "value": 64,
+      "unit": "GPUs"
+    },
+    {
+      "name": "nodes",
+      "value": 8,
+      "unit": "nodes"
+    },
+    {
+      "name": "racks",
+      "value": 2,
+      "unit": "racks"
+    },
+    {
+      "name": "unique_parameters",
+      "value": 3469133824,
+      "unit": "parameters"
+    },
+    {
+      "name": "tokens_per_step",
+      "value": 32768,
+      "unit": "tokens/update"
+    },
+    {
+      "name": "last_stage_extra_matrix_work",
+      "value": 46.343361,
+      "unit": "percent"
+    },
+    {
+      "name": "physical_training_dense_work",
+      "value": 127.075734257664,
+      "unit": "TFLOP/update"
+    },
+    {
+      "name": "physical_muon_dense_work",
+      "value": 342.35989622784,
+      "unit": "TFLOP/update"
+    },
+    {
+      "name": "A_interrack_payload_both_directions",
+      "value": 27753070620,
+      "unit": "B/update"
+    },
+    {
+      "name": "A_maximum_node_offnode_payload_one_direction",
+      "value": 3670466574,
+      "unit": "B/update"
+    },
+    {
+      "name": "A_pre_clipping_phase",
+      "value": 173.4566912,
+      "unit": "ms/update"
+    },
+    {
+      "name": "A_post_clipping_phase",
+      "value": 67.172617421,
+      "unit": "ms/update"
+    },
+    {
+      "name": "A_barrier_ordered_phase_floor",
+      "value": 240.629308621,
+      "unit": "ms/update"
+    },
+    {
+      "name": "B_interrack_payload_both_directions",
+      "value": 268435512,
+      "unit": "B/update"
+    },
+    {
+      "name": "B_maximum_node_offnode_payload_one_direction",
+      "value": 3670466574,
+      "unit": "B/update"
+    },
+    {
+      "name": "B_pre_clipping_phase",
+      "value": 91.761664,
+      "unit": "ms/update"
+    },
+    {
+      "name": "B_post_clipping_phase",
+      "value": 67.172617421,
+      "unit": "ms/update"
+    },
+    {
+      "name": "B_barrier_ordered_phase_floor",
+      "value": 158.934281421,
+      "unit": "ms/update"
+    },
+    {
+      "name": "stage_0_balanced_declared_live_allocation",
+      "value": 2.590857536,
+      "unit": "GB"
+    },
+    {
+      "name": "stage_1_balanced_declared_live_allocation",
+      "value": 2.20694048,
+      "unit": "GB"
+    },
+    {
+      "name": "stage_2_balanced_declared_live_allocation",
+      "value": 2.125013312,
+      "unit": "GB"
+    },
+    {
+      "name": "stage_3_balanced_declared_live_allocation",
+      "value": 2.420622656,
+      "unit": "GB"
+    },
+    {
+      "name": "stage_0_worst_skew_declared_live_allocation",
+      "value": 3.41294112,
+      "unit": "GB"
+    },
+    {
+      "name": "stage_1_worst_skew_declared_live_allocation",
+      "value": 2.852863296,
+      "unit": "GB"
+    },
+    {
+      "name": "stage_2_worst_skew_declared_live_allocation",
+      "value": 2.59477536,
+      "unit": "GB"
+    },
+    {
+      "name": "stage_3_worst_skew_declared_live_allocation",
+      "value": 2.714223936,
+      "unit": "GB"
+    },
+    {
+      "name": "comparison_budget",
+      "value": 150,
+      "unit": "ms/update"
+    },
+    {
+      "name": "ideal_pipeline_service_slots",
+      "value": 22,
+      "unit": "unit-service slots"
+    },
+    {
+      "name": "ideal_pipeline_idle_fraction",
+      "value": 0.2727272727272727,
+      "unit": "fraction of elapsed slots"
+    },
+    {
+      "name": "ideal_pipeline_idle_over_busy",
+      "value": 0.375,
+      "unit": "fraction of busy slots"
+    },
+    {
+      "name": "RS_first_A_pre_clipping_phase",
+      "value": 86.7283456,
+      "unit": "ms/update necessary lower bound"
+    },
+    {
+      "name": "RS_first_A_post_clipping_phase",
+      "value": 86.7283456,
+      "unit": "ms/update necessary lower bound"
+    },
+    {
+      "name": "RS_first_A_necessary_step_floor",
+      "value": 173.4566912,
+      "unit": "ms/update necessary lower bound"
+    },
+    {
+      "name": "RS_first_B_pre_clipping_phase",
+      "value": 46.7196928,
+      "unit": "ms/update necessary lower bound"
+    },
+    {
+      "name": "RS_first_B_post_clipping_phase",
+      "value": 67.172617421,
+      "unit": "ms/update necessary lower bound"
+    },
+    {
+      "name": "RS_first_B_necessary_step_floor",
+      "value": 113.892310221,
+      "unit": "ms/update necessary lower bound"
+    },
+    {
+      "name": "RS_first_unique_norm_elements_replica_0",
+      "value": 1734566912,
+      "unit": "parameters"
+    },
+    {
+      "name": "RS_first_unique_norm_elements_replica_1",
+      "value": 1734566912,
+      "unit": "parameters"
+    }
+  ],
+  "source_results": {
+    "path": "evidence/reader-summary.json",
+    "sha256": "8ea8bdd624dea6a28e13c507e52bf4e9d9b47964dc957007a79585f3b77fb154"
+  },
+  "full_workbook_results": {
+    "path": "evidence/system-budget.json",
+    "sha256": "6d1ec270df49f3af4638c63a9ad315a9f819e386532a54c3c0926311d148bfa4"
+  },
+  "decision": "Primary full-DP-allreduce-before-norm schedule plus FP32 single-owner attention Muon excludes BOTH at 150 ms: A 240.629308621, B 158.934281421 ms. These are declared choices, not clipping requirements or runtimes. Alternative RS-first schedule at 150 ms: A is ruled out. B is not certified feasible.",
+  "precision_note": "Values are copied from the current retained reader-summary JSON, including its printed rounding. They are arithmetic outputs and chosen inputs, not observations of GPU execution."
+}

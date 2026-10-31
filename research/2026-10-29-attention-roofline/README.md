@@ -35,17 +35,19 @@ The bound excludes attention arithmetic, other tensors, final-gradient traffic, 
 
 Materialized partials give simple producer ownership at the cost of workspace, writes, rereads and a separate reduction. Smaller batches change the contract and add accumulation, scheduling and synchronization responsibilities. Prefer the simpler design when its costs fit the budget. Evaluate the complete changed path before choosing a faster implementation. No complete implementation fit or performance follows from these calculations.
 
+For the larger placement and update decision, see [A whole-system budget for a hypothetical training update](https://github.com/cfregly/ai-performance-engineering/tree/60f8aea572304ddbb3b9b9cc254c7c15cddb7337/research/2026-10-29-distributed-training-budget). It uses a different synthetic workload. Applying this attention check there requires recomputing per-rank shapes, partials, phase order, retention and bandwidth rather than transferring this example's bytes or milliseconds.
+
 ## Reproduce
 
-Python 3.10 or newer and the standard library are sufficient. From this directory:
+Python 3.10 or newer and the standard library are sufficient. From this directory, write the outputs, check them and run the CPU tests:
 
 ```sh
-PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s code -v
-PYTHONDONTWRITEBYTECODE=1 python3 code/roofline.py --output-dir evidence/derivation --check
-shasum -a 256 -c evidence/derivation/SHA256SUMS
+python3 code/roofline.py --output-dir reproduction-output
+python3 code/roofline.py --output-dir reproduction-output --check
+python3 -m unittest discover -s code -p 'test_*.py' -v
 ```
 
-Remove `--check` to regenerate the three deterministic JSON/CSV files. [RESULTS.json](evidence/derivation/RESULTS.json) records the full assumptions and exclusions. [Validation](evidence/derivation/VALIDATION.md) describes the focused checks. The tiny CPU toy uses artificial integer and exactly representable dyadic values, preserves reduction order and checks results against an independent cell-wise oracle. It does not implement attention derivatives, model GPU memory behavior or establish equivalence for reordered floating-point sums.
+The first command writes three deterministic JSON/CSV files. The check reports missing or changed outputs without rewriting them. The tests also cover a modified CSV that the check must reject and bind the [retained evidence values](evidence/analytical-results.json) to the calculator and retained results. [RESULTS.json](evidence/derivation/RESULTS.json) records the full assumptions and exclusions. [Validation](evidence/derivation/VALIDATION.md) describes the focused checks. The tiny CPU toy uses artificial integer and exactly representable dyadic values, preserves reduction order and checks results against an independent cell-wise oracle. It does not implement attention derivatives, model GPU memory behavior or establish equivalence for reordered floating-point sums.
 
 ## Related primary sources
 

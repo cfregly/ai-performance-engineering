@@ -55,7 +55,15 @@ API contracts: [PyTorch matrix product](https://docs.pytorch.org/docs/2.14/gener
 
 The complete configuration and methods are above. This figure summarizes the same measured changing-set case.
 
-![Output-head stage comparison with weight gathering included](images/gamma-explainer/result-social.png)
+![Output-head stage comparison with weight gathering included](images/result-scene.png)
+
+The selected figure combines retained conceptual artwork with the unchanged measured values. Its [editable SVG](images/result-scene.svg) and [renderer](images/result-scene/render_result_scene.py) retain the text and exact bar geometry. To rebuild it, use an environment with Pillow, librsvg (`rsvg-convert`) and Fontconfig already installed:
+
+```sh
+python3 images/result-scene/render_result_scene.py --overwrite
+```
+
+This command rebuilds the figure from retained evidence and artwork. It does not run the GPU benchmark.
 
 ## Figures
 
@@ -197,3 +205,20 @@ These figures explain the illustrative allowed-choice example and the retained o
 ![Static selection setup](images/gamma-explainer/setup.png)
 
 ![Applicability and limits](images/gamma-explainer/boundaries.png)
+
+
+<details>
+<summary>Timing-only view of the same strict-FP32 measurement</summary>
+
+![Timing-only output-head comparison, synthetic strict FP32 B200](images/gamma-explainer/result-social.png)
+
+</details>
+
+<details>
+<summary>Conceptual artwork used by the editable result scene</summary>
+
+This retained illustration supplies the row-selection scene. Its drawn dimensions do not encode benchmark dimensions or the count of allowed tokens. The renderer adds the verified text and measured chart separately.
+
+![Conceptual weight-row selection artwork](images/result-scene/matrix-cut-art.png)
+
+</details>

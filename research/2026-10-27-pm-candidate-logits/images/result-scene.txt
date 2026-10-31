@@ -1,0 +1,19 @@
+Select allowed rows
+before scoring
+Full weights
+Allowed rows
+Conceptual view · rows not to scale
+12.84× faster · output head only
+Median per warm 16-step block
+Full + filter
+5.399 ms
+Allowed rows only
+0.421 ms
+0
+2
+4
+6 ms
+Synthetic strict FP32 · B200
+64 allowed tokens shared by batch
+New set each step · weight gather included
+Whole-model gains unmeasured

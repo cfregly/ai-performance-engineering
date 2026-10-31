@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Conservation, gradient ownership, whole-matrix and dependency checks."""
 import math
+import json
+from pathlib import Path
 from collections import Counter, defaultdict
 from copy import deepcopy
 from dataclasses import replace
@@ -43,6 +45,11 @@ class SystemBudgetTests(unittest.TestCase):
         cls.x = Inputs()
         cls.t = build_traffic(cls.x)
         cls.w = workbook(cls.x)
+
+    def test_retained_reader_summary_matches_current_calculator_bytes(self):
+        retained = Path(__file__).resolve().parents[1] / 'evidence/reader-summary.json'
+        calculated = json.dumps(summary(self.w), separators=(',', ':'), sort_keys=True) + '\n'
+        self.assertEqual(retained.read_bytes(), calculated.encode('utf-8'))
 
     def test_declared_parallelism_uses_64_not_512_gpus(self):
         self.assertEqual(2 * 4 * 8, 64)

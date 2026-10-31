@@ -1,6 +1,7 @@
 """Check evidence integrity without importing torch or using a GPU."""
 import copy
 import json
+import math
 import tempfile
 import unittest
 from pathlib import Path
@@ -85,6 +86,16 @@ class EvidenceTests(unittest.TestCase):
         })
         self.assertFalse(summary['serving_measured'])
         self.assertFalse(summary['model_measured'])
+
+    def test_correctness_flag_uses_recorded_error_threshold(self):
+        for field in ('baseline_max_abs_error', 'candidate_max_abs_error'):
+            with self.subTest(field=field):
+                rows = copy.deepcopy(self.rows)
+                check = next(row for row in rows if row['kind'] == 'correctness')
+                check[field] = self.plan['correctness_atol']
+                self.assertTrue(self.altered(rows)['all_correctness_checks_pass'])
+                check[field] = math.nextafter(self.plan['correctness_atol'], math.inf)
+                self.assertFalse(self.altered(rows)['all_correctness_checks_pass'])
 
     def test_missing_pair_rejected(self):
         self.rows.remove(self.first('pair', size=16, mode='static', pair=2))

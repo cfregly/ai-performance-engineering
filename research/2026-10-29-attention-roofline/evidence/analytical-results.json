@@ -1,0 +1,87 @@
+{
+  "schema_version": 1,
+  "result_kind": "synthetic_arithmetic",
+  "claimed_scope": "Synthetic lower bound on unique FP32 partial-buffer HBM write/reread traffic under a full-producer-then-reducer phase contract, with illustrative retention and bandwidth assumptions.",
+  "assumptions": [
+    "One sequence (batch size 1), one attention layer backward, one device: 4096 positions, 16 query heads, 1 KV head, dimensions 128, tile128, unique FP32 partial dK/dV per head and causal tile pair",
+    "All uncompressed partials complete before separate reduction begins, without streaming consumption or recomputation",
+    "At most 128 MiB of partials survive on chip across the complete phase boundary",
+    "Bandwidth assumptions 8 and 6.4 decimal TB/s are aggregate payload ceilings, MiB is 2^20 bytes"
+  ],
+  "limitations": [
+    "No GPU run or faithful attention implementation, timings or speedup",
+    "Excludes final gradient traffic, other tensors, reduction arithmetic, launches, synchronization and bandwidth inefficiency",
+    "Bound belongs only to this representation and phase contract, not all attention algorithms",
+    "128 MiB is an illustrative total retention allowance, not an actual GPU cache-size claim"
+  ],
+  "code": {
+    "path": "code/roofline.py",
+    "sha256": "c96d7de65c0f36853d59d92655e736c6c6e6b84b06417ac9b6c5996de5adb9e8"
+  },
+  "values": [
+    {
+      "name": "causal_partial_pairs",
+      "value": 8448,
+      "unit": "pairs"
+    },
+    {
+      "name": "unique_partial_scratch",
+      "value": 1107296256,
+      "unit": "bytes"
+    },
+    {
+      "name": "retention_allowance",
+      "value": 134217728,
+      "unit": "bytes"
+    },
+    {
+      "name": "mandatory_partial_hbm_traffic_floor",
+      "value": 1946157056,
+      "unit": "bytes"
+    },
+    {
+      "name": "transfer_floor_at_8_decimal_tb_per_s",
+      "value": 0.243269632,
+      "unit": "ms"
+    },
+    {
+      "name": "transfer_floor_at_6_4_decimal_tb_per_s",
+      "value": 0.30408704,
+      "unit": "ms"
+    },
+    {
+      "name": "illustrative_target",
+      "value": 0.2,
+      "unit": "ms"
+    },
+    {
+      "name": "peak_two_query_tile_batch_scratch",
+      "value": 132120576,
+      "unit": "bytes"
+    },
+    {
+      "name": "logical_final_fp32_dk_dv",
+      "value": 4194304,
+      "unit": "bytes"
+    },
+    {
+      "name": "retention_equality_at_8_tb_s",
+      "value": 307296256,
+      "unit": "bytes"
+    },
+    {
+      "name": "retention_equality_at_6_4_tb_s",
+      "value": 467296256,
+      "unit": "bytes"
+    },
+    {
+      "name": "bandwidth_equality_at_128_mib_retention",
+      "value": 9.73078528,
+      "unit": "decimal TB/s"
+    }
+  ],
+  "raw_results": {
+    "path": "evidence/derivation/RESULTS.json",
+    "sha256": "d1439661b3fb845fa556338b2779cdaa2a34da46b3ccf62b1d26fec87d667557"
+  }
+}
