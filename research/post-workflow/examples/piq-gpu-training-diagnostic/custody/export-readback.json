@@ -1,0 +1,15 @@
+{
+  "immutable": true,
+  "objects": [
+    {
+      "available": true,
+      "id": "initial-checkpoint",
+      "sha256": "2eeb1d4efc39f61f6f81a5a60620c2c2e8f1a32938ed08b1ca66cb21eb2d3690",
+      "size_bytes": 8000000000
+    }
+  ],
+  "schema": "piq.gpu-training-readback.v1",
+  "scope": "export",
+  "synthetic_fixture": true,
+  "verified_at": "2026-10-31T12:55:00Z"
+}

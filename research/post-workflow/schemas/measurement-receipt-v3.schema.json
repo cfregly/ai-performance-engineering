@@ -1,0 +1,111 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:research-drafts:measurement-receipt:v3",
+  "title": "Qualified two-B200 GPU training measurement receipt v3",
+  "description": "Closed receipt for the fixed TE MXFP8-versus-BF16 study. Python recomputes all scientific gates and retained-byte bindings.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "state", "execution_class", "workload_family", "contract_id",
+    "workload_scope", "runtime_identifier", "hardware_identifier", "design",
+    "registration", "source_import_closure", "baseline_review", "telemetry_review",
+    "raw_census", "correctness_quality", "checkpoint_restart", "telemetry_coverage",
+    "custody_readback_cleanup", "qualification_report", "scientific_review",
+    "source_artifacts", "piq_envelope", "accepted_repeats", "failed_attempts",
+    "profile_evidence", "claims"
+  ],
+  "properties": {
+    "schema_version": {"const": 3},
+    "state": {"const": "measured"},
+    "execution_class": {"const": "gpu"},
+    "workload_family": {"const": "gpu_training"},
+    "contract_id": {"const": "te_mxfp8_bf16_two_b200_v1"},
+    "workload_scope": {"type": "string", "minLength": 1},
+    "runtime_identifier": {"type": "string", "minLength": 1},
+    "hardware_identifier": {"type": "string", "minLength": 1},
+    "design": {"$ref": "#/$defs/artifact"},
+    "registration": {"$ref": "#/$defs/artifact"},
+    "source_import_closure": {"$ref": "#/$defs/artifact"},
+    "baseline_review": {"$ref": "#/$defs/artifact"},
+    "telemetry_review": {"$ref": "#/$defs/artifact"},
+    "raw_census": {"$ref": "#/$defs/artifact"},
+    "correctness_quality": {"$ref": "#/$defs/artifact"},
+    "checkpoint_restart": {"$ref": "#/$defs/artifact"},
+    "telemetry_coverage": {"$ref": "#/$defs/artifact"},
+    "custody_readback_cleanup": {"$ref": "#/$defs/artifact"},
+    "qualification_report": {"$ref": "#/$defs/artifact"},
+    "scientific_review": {"$ref": "#/$defs/artifact"},
+    "source_artifacts": {
+      "type": "array", "minItems": 7, "maxItems": 7,
+      "items": {"$ref": "#/$defs/artifact"}
+    },
+    "piq_envelope": {"$ref": "#/$defs/artifact"},
+    "accepted_repeats": {
+      "type": "array", "minItems": 4, "maxItems": 4,
+      "prefixItems": [
+        {"$ref": "#/$defs/pair01"}, {"$ref": "#/$defs/pair02"},
+        {"$ref": "#/$defs/pair03"}, {"$ref": "#/$defs/pair04"}
+      ],
+      "items": false
+    },
+    "failed_attempts": {"type": "array", "maxItems": 0},
+    "profile_evidence": {
+      "type": "array",
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["kind", "capture_performed", "parser_accepted", "study_id", "design_sha256", "artifact"],
+        "properties": {
+          "kind": {"const": "gpu_profile"},
+          "capture_performed": {"const": true},
+          "parser_accepted": {"const": true},
+          "study_id": {"type": "string", "minLength": 1},
+          "design_sha256": {"$ref": "#/$defs/sha256"},
+          "artifact": {"$ref": "#/$defs/artifact"}
+        }
+      }
+    },
+    "claims": {
+      "type": "array", "minItems": 1,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["id", "source", "accepted_repeat_ids", "profile_claim"],
+        "properties": {
+          "id": {"type": "string", "minLength": 1},
+          "source": {"$ref": "#/$defs/artifact"},
+          "accepted_repeat_ids": {
+            "type": "array", "minItems": 4, "maxItems": 4,
+            "prefixItems": [
+              {"const": "pair-01"}, {"const": "pair-02"},
+              {"const": "pair-03"}, {"const": "pair-04"}
+            ],
+            "items": false
+          },
+          "profile_claim": {"type": "boolean"}
+        }
+      }
+    }
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "artifact": {
+      "type": "object", "additionalProperties": false,
+      "required": ["path", "sha256"],
+      "properties": {
+        "path": {"type": "string", "minLength": 1},
+        "sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "pair": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "accepted", "raw_result"],
+      "properties": {
+        "id": {"type": "string"}, "accepted": {"const": true},
+        "raw_result": {"$ref": "#/$defs/artifact"}
+      }
+    },
+    "pair01": {"allOf": [{"$ref": "#/$defs/pair"}, {"properties": {"id": {"const": "pair-01"}}}]},
+    "pair02": {"allOf": [{"$ref": "#/$defs/pair"}, {"properties": {"id": {"const": "pair-02"}}}]},
+    "pair03": {"allOf": [{"$ref": "#/$defs/pair"}, {"properties": {"id": {"const": "pair-03"}}}]},
+    "pair04": {"allOf": [{"$ref": "#/$defs/pair"}, {"properties": {"id": {"const": "pair-04"}}}]}
+  }
+}

@@ -1,0 +1,44 @@
+{
+  "accepted": true,
+  "arm_configuration_sha256": "2346b5d30320e015cbee350fd59890b0db8e9705f04c91164cf36bde02fd8f2a",
+  "attempt_id": "pair-01-candidate-attempt",
+  "design_sha256": "154ea279bafbd01e8118e3de98239f732b7c9e624795431629b2a1554e821537",
+  "ended_at": "2026-10-31T11:31:48Z",
+  "failure_reason": null,
+  "group_id": "pair-01",
+  "ranks": [
+    {
+      "arm_configuration_sha256": "2346b5d30320e015cbee350fd59890b0db8e9705f04c91164cf36bde02fd8f2a",
+      "device_type": "cuda",
+      "device_uuid": "GPU-SYNTHETIC-B200-0",
+      "host": "synthetic-one-host",
+      "local_rank": 0,
+      "output_ref": {
+        "path": "rank-outputs/pair-01-candidate-attempt-rank-0.json",
+        "sha256": "c20a67ba19e9472a930bcc88dc2ea410800f002f03c6765ee34e5f43bed53c4b"
+      },
+      "pid": 20030,
+      "rank": 0
+    },
+    {
+      "arm_configuration_sha256": "2346b5d30320e015cbee350fd59890b0db8e9705f04c91164cf36bde02fd8f2a",
+      "device_type": "cuda",
+      "device_uuid": "GPU-SYNTHETIC-B200-1",
+      "host": "synthetic-one-host",
+      "local_rank": 1,
+      "output_ref": {
+        "path": "rank-outputs/pair-01-candidate-attempt-rank-1.json",
+        "sha256": "50e7d403db70d9d0afe1979314549079104167de53506a7351968a9f9beaf551"
+      },
+      "pid": 20031,
+      "rank": 1
+    }
+  ],
+  "role": "candidate",
+  "run_id": "synthetic-run-pair-01",
+  "schema": "synthetic-piq-gpu-training-attempt.v1",
+  "started_at": "2026-10-31T11:30:00Z",
+  "status": "succeeded",
+  "study_id": "synthetic-te-study-v1",
+  "synthetic_fixture": true
+}

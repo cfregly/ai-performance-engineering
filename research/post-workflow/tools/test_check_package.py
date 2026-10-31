@@ -4,7 +4,6 @@ import binascii
 import copy
 import hashlib
 import json
-import shutil
 import struct
 import subprocess
 import sys
@@ -14,7 +13,12 @@ import zlib
 from pathlib import Path
 
 from tools.check_package import validate_package
-from tools.test_qualified_cpu_study import build_cpu_fixture
+from tools.test_piq_gpu_training_evidence import (
+    build_stage0_fixture,
+    build_two_host_fixture,
+    fixed_two_host_admission,
+)
+from tools.test_qualified_gpu_training import build_gpu_fixture
 from tools.typefully_draft_guard import decide
 
 
@@ -340,59 +344,7 @@ Status: completed
         return {"path": relative, "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
 
     def make_measured(self) -> None:
-        manifest = self.read_json("manifest.json")
-        manifest["content_state"] = "measured"
-        manifest["measurement_receipt"] = "evidence/measurement-receipt.json"
-        self.write_json("manifest.json", manifest)
-        (self.package / "VERIFICATION.md").write_text(
-            "# Verification\n\nMeasured package.\n\n## GPU stage\n\nMeasured workload with retained evidence.\n",
-            encoding="utf-8",
-        )
-        source = self.hashed_file("code/benchmark.py", "print('benchmark')\n")
-        repeats = []
-        for repeat_id in ("repeat-01", "repeat-02"):
-            raw = self.hashed_file(f"evidence/raw/{repeat_id}.json", json.dumps({"id": repeat_id}) + "\n")
-            repeats.append({"id": repeat_id, "accepted": True, "raw_result": raw})
-        failed = self.hashed_file("evidence/raw/attempt-warmup.json", '{"status":"failed"}\n')
-        guard = self.hashed_file("evidence/guards/guard.json", '{"accepted":true}\n')
-        profile = self.hashed_file("evidence/profiles/profile.json", '{"captured":true}\n')
-        correctness = self.hashed_file("evidence/correctness.json", '{"accepted":true}\n')
-        claim_source = {
-            "path": "README.md",
-            "sha256": hashlib.sha256((self.package / "README.md").read_bytes()).hexdigest(),
-        }
-        self.write_json(
-            "evidence/measurement-receipt.json",
-            {
-                "schema_version": 1,
-                "state": "measured",
-                "workload_scope": "fixture benchmark, fixed input and launch configuration",
-                "source_artifacts": [source],
-                "accepted_repeats": repeats,
-                "failed_attempts": [
-                    {
-                        "id": "attempt-warmup",
-                        "accepted": False,
-                        "failure_reason": "warmup was interrupted",
-                        "raw_result": failed,
-                    }
-                ],
-                "guard_receipts": [{"name": "execution-guard", "accepted": True, **guard}],
-                "profile_evidence": [{"name": "runtime-profile", "accepted": True, **profile}],
-                "runtime_identifier": "runtime-image@sha256:fixture",
-                "hardware_identifier": "gpu-fixture/serial-fixture",
-                "correctness": {"accepted": True, **correctness},
-                "expected_power_limit_w": 1000,
-                "power_limit_w": 1000,
-                "claims": [
-                    {
-                        "id": "article-latency-claim",
-                        "source": claim_source,
-                        "accepted_repeat_ids": ["repeat-01", "repeat-02"],
-                    }
-                ],
-            },
-        )
+        self.make_gpu_v3_measured()
 
     def assert_problem(self, phrase: str) -> None:
         errors = validate_package(self.package)
@@ -412,25 +364,30 @@ Status: completed
             receipt.pop(field, None)
         self.write_json("social/typefully-receipt.json", receipt)
 
-    def make_cpu_measured(self, *, declare_envelope: bool = True) -> dict:
-        receipt = build_cpu_fixture(self.package)
-        self.write_json("evidence/measurement-receipt.json", receipt)
+    def make_gpu_v3_measured(
+        self, *, declare_envelope: bool = True, synthetic: bool = False
+    ) -> dict:
+        receipt = build_gpu_fixture(self.package, synthetic=synthetic)
         manifest = self.read_json("manifest.json")
-        manifest.update(content_state="measured", measurement_receipt="evidence/measurement-receipt.json")
+        manifest.update(
+            content_state="measured",
+            measurement_receipt="evidence/measurement-receipt.json",
+            measurement_contract="qualified_gpu_training_v3",
+        )
         if declare_envelope:
-            manifest["piq_experiment_evidence"] = receipt["piq_envelopes"][0]["path"]
+            manifest["piq_experiment_evidence"] = receipt["piq_envelope"]["path"]
             manifest["diagnostic_finding_required"] = True
             manifest["diagnostic_finding"] = "evidence/diagnostic-finding.json"
             self.write_piq_diagnostic_finding(receipt)
         self.write_json("manifest.json", manifest)
         (self.package / "VERIFICATION.md").write_text(
-            "# Verification\n\n## CPU stage\n\nMeasured CPU study with retained qualification evidence.\n",
+            "# Verification\n\n## GPU stage\n\nMeasured GPU study with retained qualification evidence.\n",
             encoding="utf-8",
         )
         return receipt
 
     def write_piq_diagnostic_finding(self, receipt: dict) -> None:
-        envelope_ref = receipt["piq_envelopes"][0]
+        envelope_ref = receipt["piq_envelope"]
         envelope = self.read_json(envelope_ref["path"])
         attempt_ids = [attempt["id"] for attempt in envelope["attempts"]]
         run_ids = list(dict.fromkeys(attempt["run_id"] for attempt in envelope["attempts"]))
@@ -457,7 +414,7 @@ Status: completed
         finding = {
             "schema_version": 1,
             "kind": "piq_diagnostic_finding",
-            "example_id": "synthetic-cpu-package-gate-fixture",
+            "example_id": "synthetic-gpu-training-package-gate-fixture",
             "problem": {
                 "user_visible_symptom": "Repeated preparation can remain inside a finite job boundary.",
                 "reader_decision": "Decide whether to move immutable preparation outside repeated work.",
@@ -484,7 +441,7 @@ Status: completed
                 "reference_identity": "synthetic repeated-preparation fixture",
                 "candidate_identity": "synthetic separately-accounted-preparation fixture",
                 "sole_intended_change": "immutable preparation lifecycle",
-                "held_inputs_and_settings": ["same synthetic input and CPU contract"],
+                "held_inputs_and_settings": ["same synthetic input and GPU-training contract"],
                 "unavoidable_differences": [],
             },
             "complete_outcome": {
@@ -500,14 +457,14 @@ Status: completed
                 "acceptance_rule": "every admitted synthetic attempt passes exact digest equality",
                 "covered_work": "every attempt in the declared PIQ envelope",
                 "result": "PASS",
-                "evidence": receipt["correctness"],
+                "evidence": receipt["correctness_quality"],
             },
             "layer_evidence": layers,
             "piq_custody": {
                 "source_runtime_input_identities": "synthetic source, runtime and input identities retained by the fixture",
                 "run_ids": run_ids,
                 "attempt_ids": attempt_ids,
-                "artifact_refs": [envelope_ref],
+                "artifact_refs": [envelope_ref, receipt["qualification_report"]],
                 "readback": receipt["raw_census"],
                 "export": envelope_ref,
                 "cleanup": receipt["registration"],
@@ -531,66 +488,89 @@ Status: completed
         }
         self.write_json("evidence/diagnostic-finding.json", finding)
 
-    def test_valid_qualified_cpu_v2_does_not_require_gpu_placeholders(self) -> None:
-        receipt = self.make_cpu_measured(declare_envelope=False)
-        self.assertNotIn("power_limit_w", receipt)
-        self.assertNotIn("expected_power_limit_w", receipt)
+    def test_valid_gpu_training_v3_binds_declared_piq_v2_diagnostic(self) -> None:
+        self.make_gpu_v3_measured()
         self.assertEqual(validate_package(self.package), [])
 
-    def test_valid_qualified_cpu_v2_binds_declared_piq_diagnostic(self) -> None:
-        self.make_cpu_measured()
-        self.assertEqual(validate_package(self.package), [])
+    def test_synthetic_gpu_v3_cannot_establish_package_readiness(self) -> None:
+        self.make_gpu_v3_measured(synthetic=True)
+        self.assert_problem("synthetic GPU fixture cannot establish package readiness")
 
-    def test_invalid_cpu_v2_cannot_remove_diagnostic_block(self) -> None:
-        receipt = self.make_cpu_measured()
-        receipt["execution_class"] = "gpu"
-        self.write_json("evidence/measurement-receipt.json", receipt)
-        self.assert_problem("cpu execution")
-        self.assert_problem("PIQ diagnostic evidence cannot establish package readiness")
-
-    def test_cpu_v2_requires_cpu_execution_verification(self) -> None:
-        self.make_cpu_measured()
-        (self.package / "VERIFICATION.md").write_text("# Verification\n\n## GPU stage\n\nMeasured GPU study.\n")
-        self.assert_problem("nonempty '## CPU stage'")
-        (self.package / "VERIFICATION.md").write_text("# Verification\n\n## CPU stage\n\nNot run.\n")
-        self.assert_problem("CPU stage must explicitly describe itself as measured")
-
-    def test_cpu_v2_wrong_envelope_hash_keeps_diagnostic_block(self) -> None:
-        receipt = self.make_cpu_measured()
-        receipt["piq_envelopes"][0]["sha256"] = "0" * 64
-        self.write_json("evidence/measurement-receipt.json", receipt)
-        self.assert_problem("PIQ diagnostic evidence cannot establish package readiness")
-
-    def test_unqualified_cpu_report_keeps_diagnostic_block(self) -> None:
-        receipt = self.make_cpu_measured()
-        reference = receipt["qualification_report"]
-        report = self.read_json(reference["path"])
-        report["verdict"] = "INCONCLUSIVE"
-        self.write_json(reference["path"], report)
-        reference["sha256"] = hashlib.sha256((self.package / reference["path"]).read_bytes()).hexdigest()
-        self.write_json("evidence/measurement-receipt.json", receipt)
-        errors = validate_package(self.package)
-        self.assertTrue(any("report" in error.lower() for error in errors), errors)
-        self.assertTrue(any("PIQ diagnostic evidence cannot establish package readiness" in error for error in errors), errors)
-
-    def test_unrelated_diagnostic_cannot_use_valid_cpu_v2_qualification(self) -> None:
-        self.make_cpu_measured()
-        example = Path(__file__).resolve().parents[1] / "examples/piq-diagnostic"
-        shutil.copytree(example, self.package / "evidence/unrelated-diagnostic")
+    def test_gpu_training_v3_requires_exact_measurement_contract(self) -> None:
+        self.make_gpu_v3_measured()
         manifest = self.read_json("manifest.json")
-        manifest["piq_experiment_evidence"] = "evidence/unrelated-diagnostic/envelope.json"
+        manifest.pop("measurement_contract")
         self.write_json("manifest.json", manifest)
+        self.assert_problem("requires manifest.measurement_contract")
+
+    def test_gpu_training_v3_requires_current_diagnostic_declarations(self) -> None:
+        receipt = self.make_gpu_v3_measured()
+        original = self.read_json("manifest.json")
+        mutations = (
+            ("piq_experiment_evidence", "wrong/envelope.json", "exact PIQ v2 envelope path"),
+            ("diagnostic_finding_required", False, "diagnostic_finding_required true"),
+            ("diagnostic_finding", "wrong/finding.json", "requires manifest.diagnostic_finding"),
+        )
+        for field, value, expected in mutations:
+            with self.subTest(field=field):
+                manifest = copy.deepcopy(original)
+                manifest[field] = value
+                self.write_json("manifest.json", manifest)
+                errors = validate_package(self.package)
+                self.assertTrue(any(expected in error for error in errors), errors)
+        self.write_json("manifest.json", original)
+        self.assertEqual(receipt["piq_envelope"]["path"], original["piq_experiment_evidence"])
+
+    def test_gpu_receipt_v1_is_unsupported(self) -> None:
+        self.make_gpu_v3_measured()
+        self.write_json("evidence/measurement-receipt.json", {"schema_version": 1})
+        self.assert_problem("schema_version 1 is unsupported. Only version 3 is active")
+
+    def test_cpu_receipt_v2_is_unsupported(self) -> None:
+        self.make_gpu_v3_measured()
+        self.write_json("evidence/measurement-receipt.json", {"schema_version": 2})
+        self.assert_problem("schema_version 2 is unsupported. Only version 3 is active")
+
+    def test_piq_envelope_v1_is_unsupported(self) -> None:
+        receipt = self.make_gpu_v3_measured()
+        envelope = self.read_json(receipt["piq_envelope"]["path"])
+        envelope["schema_version"] = 1
+        self.write_json(receipt["piq_envelope"]["path"], envelope)
+        self.assert_problem("PIQ envelope schema_version 1 is unsupported. Only version 2 is active")
+
+    def test_current_nonqualifying_piq_v2_variants_validate_but_block_readiness(self) -> None:
+        for builder in (build_stage0_fixture, build_two_host_fixture):
+            with self.subTest(builder=builder.__name__):
+                bundle = builder(self.package / "evidence")
+                manifest = self.read_json("manifest.json")
+                manifest["piq_experiment_evidence"] = (
+                    bundle / "envelope.json"
+                ).relative_to(self.package).as_posix()
+                self.write_json("manifest.json", manifest)
+                with fixed_two_host_admission(bundle):
+                    errors = validate_package(self.package)
+                self.assertTrue(
+                    any(
+                        "PIQ v2 diagnostic variant cannot establish package readiness"
+                        in error
+                        for error in errors
+                    ),
+                    errors,
+                )
+                self.assertFalse(
+                    any("PIQ v2 bundle:" in error for error in errors), errors
+                )
+
+    def test_gpu_v3_wrong_envelope_hash_keeps_diagnostic_block(self) -> None:
+        receipt = self.make_gpu_v3_measured()
+        receipt["piq_envelope"]["sha256"] = "0" * 64
+        self.write_json("evidence/measurement-receipt.json", receipt)
         self.assert_problem("PIQ diagnostic evidence cannot establish package readiness")
 
-    def test_cpu_label_does_not_waive_legacy_gpu_v1_requirements(self) -> None:
-        self.make_measured()
-        receipt = self.read_json("evidence/measurement-receipt.json")
-        receipt["execution_class"] = "cpu"
-        receipt.pop("power_limit_w")
-        receipt["profile_evidence"] = []
-        self.write_json("evidence/measurement-receipt.json", receipt)
-        self.assert_problem("power_limit_w must be a positive finite number")
-        self.assert_problem("profile_evidence must be a nonempty list")
+    def test_gpu_v3_duplicate_key_is_rejected_strictly(self) -> None:
+        self.make_gpu_v3_measured()
+        self.prepend_json_member("evidence/measurement-receipt.json", "schema_version", 3)
+        self.assert_problem("duplicate JSON key: schema_version")
 
     def selected_copy(self, text: str) -> None:
         selected = self.read_json("manifest.json")["selected_image_stem"]
@@ -714,7 +694,12 @@ Status: completed
         manifest = json.loads(path.read_text())
         manifest["review_status"] = "REVIEW_BLOCKED"
         path.write_text(json.dumps(manifest))
-        self.assertTrue(any("private preview only" in error for error in validate_package(self.package)))
+        self.assertTrue(
+            any(
+                "private preview only" in error.lower()
+                for error in validate_package(self.package)
+            )
+        )
 
     def test_array_manifest_is_a_validation_error(self) -> None:
         (self.package / "manifest.json").write_text("[]")
@@ -760,13 +745,26 @@ Status: completed
 
     def test_measurement_receipt_rejects_identical_and_conflicting_duplicate_keys(self) -> None:
         self.make_measured()
-        self.assert_identical_and_conflicting_duplicates_rejected(
-            "evidence/measurement-receipt.json",
-            "measurement receipt",
-            "state",
-            "measured",
-            "source_reported",
-        )
+        path = self.package / "evidence/measurement-receipt.json"
+        valid_document = path.read_text(encoding="utf-8")
+        for duplicate_kind, value in (
+            ("identical", "measured"),
+            ("conflicting", "source_reported"),
+        ):
+            with self.subTest(duplicate_kind=duplicate_kind):
+                path.write_text(valid_document, encoding="utf-8")
+                self.prepend_json_member(
+                    "evidence/measurement-receipt.json", "state", value
+                )
+                errors = validate_package(self.package)
+                self.assertTrue(
+                    any(
+                        "invalid measurement receipt" in error
+                        and "duplicate JSON key: state" in error
+                        for error in errors
+                    ),
+                    errors,
+                )
 
     def test_declared_diagnostic_finding_is_part_of_package_gate(self) -> None:
         manifest = self.read_json("manifest.json")
@@ -938,111 +936,6 @@ note = "with False, with True, Raw metrics and units are retained."
         (self.package / "evidence/measurement-receipt.json").unlink()
         self.assert_problem("missing measurement receipt")
 
-    def test_corrupted_repeat_raw_result_fails_hash_check(self) -> None:
-        self.make_measured()
-        (self.package / "evidence/raw/repeat-01.json").write_text('{"corrupted":true}\n', encoding="utf-8")
-        self.assert_problem("accepted_repeats[0].raw_result.sha256 does not match")
-
-    def test_missing_profile_evidence_file_fails(self) -> None:
-        self.make_measured()
-        (self.package / "evidence/profiles/profile.json").unlink()
-        self.assert_problem("missing measurement receipt profile_evidence[0] file")
-
-    def test_repeated_repeat_id_fails(self) -> None:
-        self.make_measured()
-        receipt = self.read_json("evidence/measurement-receipt.json")
-        receipt["accepted_repeats"][1]["id"] = "repeat-01"
-        self.write_json("evidence/measurement-receipt.json", receipt)
-        self.assert_problem("accepted repeat IDs must be distinct")
-
-    def test_reused_raw_result_path_fails(self) -> None:
-        self.make_measured()
-        receipt = self.read_json("evidence/measurement-receipt.json")
-        receipt["accepted_repeats"][1]["raw_result"] = receipt["accepted_repeats"][0]["raw_result"]
-        self.write_json("evidence/measurement-receipt.json", receipt)
-        self.assert_problem("raw-result paths must be distinct")
-
-    def test_source_hash_failure_is_reported(self) -> None:
-        self.make_measured()
-        receipt = self.read_json("evidence/measurement-receipt.json")
-        receipt["source_artifacts"][0]["sha256"] = "0" * 64
-        self.write_json("evidence/measurement-receipt.json", receipt)
-        self.assert_problem("source_artifacts[0].sha256 does not match")
-
-    def test_source_artifact_symlink_cannot_escape_package(self) -> None:
-        self.make_measured()
-        outside = Path(self.temp.name) / "outside-source.py"
-        outside.write_text("print('outside')\n", encoding="utf-8")
-        link = self.package / "code/outside-source.py"
-        link.symlink_to(outside)
-        receipt = self.read_json("evidence/measurement-receipt.json")
-        receipt["source_artifacts"][0] = {
-            "path": "code/outside-source.py",
-            "sha256": hashlib.sha256(outside.read_bytes()).hexdigest(),
-        }
-        self.write_json("evidence/measurement-receipt.json", receipt)
-        self.assert_problem("source_artifacts[0].path escapes the package")
-
-    def test_explicit_acceptance_statuses_are_required(self) -> None:
-        self.make_measured()
-        receipt = self.read_json("evidence/measurement-receipt.json")
-        receipt["guard_receipts"][0]["accepted"] = "yes"
-        receipt["correctness"]["accepted"] = 1
-        self.write_json("evidence/measurement-receipt.json", receipt)
-        errors = validate_package(self.package)
-        self.assertTrue(any("guard_receipts[0].accepted must be true" in error for error in errors))
-        self.assertTrue(any("correctness.accepted must be true" in error for error in errors))
-
-    def test_power_limit_must_match_declared_expected_value(self) -> None:
-        self.make_measured()
-        receipt = self.read_json("evidence/measurement-receipt.json")
-        receipt["expected_power_limit_w"] = 700
-        self.write_json("evidence/measurement-receipt.json", receipt)
-        self.assert_problem("power_limit_w must equal declared expected_power_limit_w")
-
-    def test_power_limit_uses_declared_value_instead_of_hardcoded_1000(self) -> None:
-        self.make_measured()
-        receipt = self.read_json("evidence/measurement-receipt.json")
-        receipt["expected_power_limit_w"] = 700
-        receipt["power_limit_w"] = 700
-        self.write_json("evidence/measurement-receipt.json", receipt)
-        self.assertEqual(validate_package(self.package), [])
-
-    def test_expected_power_limit_rejects_nan(self) -> None:
-        self.make_measured()
-        receipt = self.read_json("evidence/measurement-receipt.json")
-        receipt["expected_power_limit_w"] = float("nan")
-        self.write_json("evidence/measurement-receipt.json", receipt)
-        self.assert_problem("expected_power_limit_w must be a positive finite number")
-
-    def test_actual_power_limit_rejects_infinity(self) -> None:
-        self.make_measured()
-        receipt = self.read_json("evidence/measurement-receipt.json")
-        receipt["power_limit_w"] = float("inf")
-        self.write_json("evidence/measurement-receipt.json", receipt)
-        self.assert_problem("power_limit_w must be a positive finite number")
-
-    def test_claim_must_link_to_known_accepted_repeats(self) -> None:
-        self.make_measured()
-        receipt = self.read_json("evidence/measurement-receipt.json")
-        receipt["claims"][0]["accepted_repeat_ids"][1] = "repeat-missing"
-        self.write_json("evidence/measurement-receipt.json", receipt)
-        self.assert_problem("references unknown repeats: repeat-missing")
-
-    def test_failed_attempt_id_cannot_reuse_accepted_repeat_id(self) -> None:
-        self.make_measured()
-        receipt = self.read_json("evidence/measurement-receipt.json")
-        receipt["failed_attempts"][0]["id"] = "repeat-01"
-        self.write_json("evidence/measurement-receipt.json", receipt)
-        self.assert_problem("distinct across accepted and failed attempts")
-
-    def test_failed_attempt_raw_result_cannot_reuse_accepted_file(self) -> None:
-        self.make_measured()
-        receipt = self.read_json("evidence/measurement-receipt.json")
-        receipt["failed_attempts"][0]["raw_result"] = receipt["accepted_repeats"][0]["raw_result"]
-        self.write_json("evidence/measurement-receipt.json", receipt)
-        self.assert_problem("raw-result paths must be distinct across accepted and failed attempts")
-
     def test_missing_audience_fails(self) -> None:
         manifest = self.read_json("manifest.json")
         manifest["audiences"] = manifest["audiences"][:5]
@@ -1054,45 +947,23 @@ note = "with False, with True, Raw metrics and units are retained."
         self.assert_problem("stale review hash for images/a")
 
     def test_piq_diagnostic_cannot_replace_measured_receipt_or_package_gate(self) -> None:
-        self.make_measured()
-        example = Path(__file__).resolve().parents[1] / "examples/piq-diagnostic"
-        shutil.copytree(example, self.package / "evidence/piq-experiment")
-        manifest = self.read_json("manifest.json")
-        manifest["piq_experiment_evidence"] = "evidence/piq-experiment/envelope.json"
-        self.write_json("manifest.json", manifest)
-        self.assert_problem("PIQ diagnostic evidence cannot establish package readiness")
+        self.make_gpu_v3_measured()
         (self.package / "evidence/measurement-receipt.json").unlink()
         self.assert_problem("measurement receipt")
-
-    def test_piq_import_does_not_enable_hypothetical_package_promotion(self) -> None:
-        example = Path(__file__).resolve().parents[1] / "examples/piq-diagnostic"
-        shutil.copytree(example, self.package / "evidence/piq-experiment")
-        manifest = self.read_json("manifest.json")
-        manifest["piq_experiment_evidence"] = "evidence/piq-experiment/envelope.json"
-        self.write_json("manifest.json", manifest)
         self.assert_problem("PIQ diagnostic evidence cannot establish package readiness")
 
-    def test_declared_two_host_functional_receipt_is_part_of_package_gate(self) -> None:
-        manifest = self.read_json("manifest.json")
-        manifest["piq_two_host_functional_receipt"] = (
-            "evidence/two-host-functional-receipt.json"
-        )
-        self.write_json("manifest.json", manifest)
-        self.assert_problem("missing nonsymlink PIQ two-host functional receipt")
-        template = Path(__file__).resolve().parents[1] / "templates/two-host-functional-receipt.json"
-        receipt = self.package / "evidence/two-host-functional-receipt.json"
-        receipt.parent.mkdir()
-        receipt.write_bytes(template.read_bytes())
-        self.assert_problem("cannot promote package readiness")
-
-    def test_two_host_functional_receipt_requires_manifest_schema_two(self) -> None:
-        self.make_legacy_schema_v1()
-        manifest = self.read_json("manifest.json")
-        manifest["piq_two_host_functional_receipt"] = (
-            "evidence/two-host-functional-receipt.json"
-        )
-        self.write_json("manifest.json", manifest)
-        self.assert_problem("supported only by schema 2")
+    def test_retired_two_host_piq_fields_are_unsupported(self) -> None:
+        for field in (
+            "piq_two_host_functional_receipt",
+            "piq_two_host_owner_authority_receipt",
+        ):
+            with self.subTest(field=field):
+                manifest = self.read_json("manifest.json")
+                manifest[field] = f"evidence/{field}.json"
+                self.write_json("manifest.json", manifest)
+                self.assert_problem(
+                    f"manifest.{field} is unsupported by the current PIQ v2 contract"
+                )
 
     def test_missing_typefully_receipt_fails(self) -> None:
         (self.package / "social/typefully-receipt.json").unlink()
@@ -1389,18 +1260,6 @@ note = "with False, with True, Raw metrics and units are retained."
         ).hexdigest()
         self.write_json("evidence/source-reported-receipt.json", receipt)
         self.assert_problem("review reviewer must be a nonempty string")
-
-    def test_two_host_owner_authority_receipt_is_fail_closed_in_package_gate(
-        self,
-    ) -> None:
-        manifest = self.read_json("manifest.json")
-        manifest["piq_two_host_owner_authority_receipt"] = (
-            "evidence/two-host-owner-authority-receipt.json"
-        )
-        self.write_json("manifest.json", manifest)
-        self.assert_problem("requires the exact declared producer functional receipt")
-        self.assert_problem("missing nonsymlink PIQ two-host owner receipt")
-
 
 if __name__ == "__main__":
     unittest.main()

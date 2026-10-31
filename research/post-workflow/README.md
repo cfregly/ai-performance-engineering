@@ -1,122 +1,111 @@
-# Post package and retained-evidence checks
+# Post package and current retained-evidence checks
 
-This public source snapshot checks retained files, hashes, declared identities,
-review receipts and exact draft readbacks. It includes the two-host producer and
-execution-owner evidence gates, their local builders and synthetic fixtures.
-It does not independently establish execution on two physical hosts, scientific
-qualification, package readiness or publication. No real owner callback or
-result is included. The production [admissions anchor](trust/piq-two-host-owner-admissions.json)
-is intentionally empty.
+This public source snapshot contains the current measurement receipt v3 and
+PIQ diagnostic envelope v2 checks. It removes the retired GPU receipt v1, CPU
+receipt v2, PIQ envelope v1, and separate two-host supplement paths.
+
+The snapshot is synthetic-only. It contains no real run, host, device, owner,
+account, admission, private package, performance result, qualification, draft,
+or publication record. The 59-file
+[GPU training diagnostic example](examples/piq-gpu-training-diagnostic) uses
+explicitly synthetic identifiers and values. The repository-owned
+[two-host admissions anchor](trust/piq-v2-two-host-admissions.json) is empty.
+
+Passing these checks proves validator behavior and retained-byte consistency
+only. It does not prove that a workload ran, that two physical hosts
+participated, that a scientific result qualified, or that a package is ready
+to publish.
+
+## Active contracts
+
+Read [PIQ_EXPERIMENT_EVIDENCE.md](PIQ_EXPERIMENT_EVIDENCE.md) for the closed
+PIQ v2 variants:
+
+- Stage 0 checkpoint-write batching binds both arms to one exact independent
+  oracle identity and output.
+- CPU two-host functional evidence requires an out-of-band row in the fixed
+  repository anchor. A bundle cannot admit itself, and no command-line or
+  environment override is accepted.
+- Transformer Engine GPU training binds all five execution groups and ten
+  attempts. Every raw attempt interval must fit inside its exact assignment
+  window.
+
+Read
+[QUALIFIED_GPU_TRAINING_EVIDENCE.md](QUALIFIED_GPU_TRAINING_EVIDENCE.md) for
+the fixed two-rank Transformer Engine MXFP8-versus-BF16 qualification contract,
+its deterministic evaluator, and its allowlisted public summary. The private
+package scaffold and any real admission rows are deliberately not projected.
+
+The public projection guard scans every staged file as bounded byte chunks,
+including binary captures. It rejects any retained private execution identity,
+even when that byte sequence crosses a scan-chunk boundary.
 
 ## Run the snapshot
 
-Use Python 3.10 or newer. The evidence gates use the standard library and make
-no runtime, network or external-account calls. The full suite also covers the
-retained document compositor, which needs Pillow, ReportLab and pypdf already
-available in the selected Python runtime. Run from this directory:
+Use Python 3.10 or newer. The current evidence validators use the standard
+library and make no runtime, network, PIQ, GPU, or external-account calls. Run
+these commands from this directory:
 
 ```sh
-python3 -m unittest tools.test_piq_experiment_evidence tools.test_check_package
+python3 -m unittest -v \
+  tools.test_qualified_gpu_training \
+  tools.test_piq_gpu_training_evidence \
+  tools.test_gpu_training_public_summary \
+  tools.test_check_diagnostic_finding \
+  tools.test_check_public_projection \
+  tools.test_check_package
+
+python3 tools/piq_gpu_training_evidence.py \
+  check examples/piq-gpu-training-diagnostic
+
 python3 -m unittest discover -s tools -t . -p 'test_*.py'
-python3 tools/piq_experiment_evidence.py check examples/piq-diagnostic
 ```
 
-The diagnostic example and the owner-facts example are synthetic format and
-test inputs. Their host labels, hashes, PIDs, times and measurements describe no
-real run. Tests inject admissions only in isolated fixtures. They leave the
-production anchor empty.
+The full discovery suite also covers the retained document compositor and may
+need Pillow, ReportLab, and pypdf in the selected Python runtime.
 
-To check a retained package, use its explicit path:
+To check one retained package, pass its explicit path:
 
 ```sh
-python3 tools/check_piq_two_host_functional.py --help
 python3 tools/check_package.py --help
-python3 tools/check_piq_two_host_functional.py /absolute/package
 python3 tools/check_package.py /absolute/package
 ```
 
-The functional checker distinguishes an absent declaration, producer consistency
-and an admitted owner receipt. Producer-only success exits zero while retaining
-its package-readiness block. A declared invalid or unadmitted owner receipt
-fails. The full package gate also requires the other content, scientific,
-review, image and draft-readback evidence. Its JSON loader rejects identical and
-conflicting duplicate keys at every depth in every package document it reads.
+The package gate also retains its reader, source-comment, scientific-image,
+rendered-preview, and unscheduled-draft dependencies. None of these offline
+tools saves, schedules, publishes, or changes an external account.
 
-## Two-host evidence and builders
+## Source identity and provenance
 
-Read [PIQ_EXPERIMENT_EVIDENCE.md](PIQ_EXPERIMENT_EVIDENCE.md) for the diagnostic
-envelope and producer receipt, then
-[PIQ_TWO_HOST_OWNER_AUTHORITY.md](PIQ_TWO_HOST_OWNER_AUTHORITY.md) for the
-separate owner receipt and admission boundary. The owner contract binds exact
-producer, envelope, handback, run and attempt bytes to declared launch, rank,
-physical-host, transport and cleanup observations. Hashes check byte integrity.
-They do not authenticate origin or inspect live machines.
+The projected private source revision is
+`05ca0567277ecf48d5af732c60aad9a0959489f1`. Its source tree is
+`d25e5e1044d487e2b84620f1426f5d93eec81c17`. The public base revision is
+`0942e572e82395277c08952a1536639b1d5303f4`.
 
-The [handback builder](tools/build_piq_two_host_owner_handback.py) and
-[receipt assembler](tools/assemble_piq_two_host_owner_receipt.py) read explicit
-local inputs and refuse to overwrite existing output. They do not collect
-observations, infer authority, create admissions or launch a workload. Start
-with the incomplete [owner-facts template](templates/two-host-owner-facts.json).
-The [synthetic example](examples/piq-two-host-owner-facts/owner-facts.json) shows
-the field layout only.
+[source-hashes.json](source-hashes.json) records every file staged under
+`research/post-workflow/`, except the hash manifest itself. Each entry names
+the public staged path, its public SHA-256, the exact source SHA-256 when the
+private revision contains that path, and its provenance. Public adaptations
+remove private scaffolding and identifiers, preserve public CLI behavior, and
+apply the repository's plain-language policy. Unrelated public workflow files
+remain bound to the public base revision.
 
-The two-host declarations require package manifest schema 2. This projection
-therefore includes the current schema-2 package gate and its reader, source
-comment and Typefully workflow dependencies. None of those offline tools saves,
-schedules, publishes or changes an external account. Real evidence, private
-draft readbacks and source-review admissions stay outside this reusable
-snapshot until separately reviewed for release.
-
-## Source identity and citations
-
-The projected source revision is
-`78a532f564e7e80cd22b08248e6d3c3cadc7d46d`. Its source tree is
-`77d055f4fe6f1ebc077b9d01ea350685272b0de5`. The public base revision is
-`38b3f2237c0634dd33f1f131c263f7ee5aa61374`.
-[source-hashes.json](source-hashes.json) records every snapshot file's SHA-256,
-its exact source SHA-256 when available and its public SHA-256. Each entry
-identifies unchanged source bytes, retained public files or a public adaptation.
-The hash manifest excludes itself. The enclosing Git commit and tree identify
-the manifest. Use commit-pinned repository links when citing any of these files.
-
-Verify the snapshot hashes from this directory:
+Verify every staged byte from this directory:
 
 ```sh
 python3 - <<'PY'
 import hashlib
 import json
 from pathlib import Path
-for item in json.loads(Path("source-hashes.json").read_text())["files"]:
+
+manifest = json.loads(Path("source-hashes.json").read_text(encoding="utf-8"))
+for item in manifest["files"]:
     actual = hashlib.sha256(Path(item["path"]).read_bytes()).hexdigest()
     assert actual == item["sha256"], item["path"]
 print("PASS snapshot hashes")
 PY
 ```
 
-Entries marked `verbatim_source` match the pinned source bytes. Public
-adaptations narrow evidence wording, add CLI help, apply plain-language policy
-and sanitize private test fixtures. The package JSON loader and the source
-regressions for the manifest, sources, Typefully receipt, independent review and
-measurement receipt match the merged source. Additional public tests cover
-nested duplicates, clean CLI errors, help and the owner-assertion output boundary.
-Three test modules replace private artifact paths or account identifiers with
-synthetic values. A package marker enables standard test discovery. The hash
-manifest records each adaptation while preserving the original source digest.
-
-Passing these tests verifies the source projection and retained-byte checks.
-It supplies no execution receipt, host observation, performance result or
-publication receipt. The production admissions anchor remains an unchanged,
-empty source copy.
-
-## Other package checks
-
-The package gate retains six audience variants, image and evidence hashes,
-independent review receipts, readable scientific previews and unscheduled
-Typefully readback requirements. Follow [PROFILE_CONVENTIONS.md](PROFILE_CONVENTIONS.md)
-for scientific profiles and [QUALIFIED_CPU_EVIDENCE.md](QUALIFIED_CPU_EVIDENCE.md)
-for the separate fixed CPU qualification contract.
-
-Every performance post and related reply still needs its runnable example,
-inputs and retained results in this repository. Commit and verify the matching
-code and scientific images before calling a draft ready. Source-only checks
-and synthetic fixtures cannot substitute for observed results.
+Every performance post and related reply still needs runnable code, inputs,
+and retained observed results in this repository. Source checks and synthetic
+fixtures cannot substitute for execution evidence.

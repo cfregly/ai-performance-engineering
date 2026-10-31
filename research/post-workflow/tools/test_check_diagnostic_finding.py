@@ -12,6 +12,12 @@ from tools.check_diagnostic_finding import (
     validate_declared_diagnostic_finding,
     validate_diagnostic_finding,
 )
+from tools.test_piq_gpu_training_evidence import (
+    build_stage0_fixture,
+    build_two_host_fixture,
+    fixed_two_host_admission,
+)
+from tools.test_qualified_gpu_training import build_gpu_fixture
 
 
 class DiagnosticFindingTests(unittest.TestCase):
@@ -26,7 +32,6 @@ class DiagnosticFindingTests(unittest.TestCase):
             "readback",
             "export",
             "cleanup",
-            "qualification",
         ):
             path = self.package / "evidence" / f"{name}.json"
             path.write_text(json.dumps({"name": name}) + "\n", encoding="utf-8")
@@ -34,23 +39,20 @@ class DiagnosticFindingTests(unittest.TestCase):
                 "path": f"evidence/{name}.json",
                 "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
             }
-        envelope_path = self.package / "evidence/envelope.json"
-        envelope_path.write_text(
-            json.dumps(
-                {
-                    "attempts": [
-                        {"id": "attempt-1", "run_id": "run-1"},
-                        {"id": "attempt-2", "run_id": "run-1"},
-                    ]
-                }
-            )
-            + "\n",
-            encoding="utf-8",
-        )
-        self.refs["envelope"] = {
-            "path": "evidence/envelope.json",
-            "sha256": hashlib.sha256(envelope_path.read_bytes()).hexdigest(),
+        self.receipt = build_gpu_fixture(self.package, synthetic=False)
+        self.refs["envelope"] = self.receipt["piq_envelope"]
+        receipt_path = self.package / "evidence/measurement-receipt.json"
+        self.refs["qualification"] = {
+            "path": "evidence/measurement-receipt.json",
+            "sha256": hashlib.sha256(receipt_path.read_bytes()).hexdigest(),
         }
+        envelope = json.loads(
+            (self.package / self.refs["envelope"]["path"]).read_text(
+                encoding="utf-8"
+            )
+        )
+        attempt_ids = [item["id"] for item in envelope["attempts"]]
+        run_ids = list(dict.fromkeys(item["run_id"] for item in envelope["attempts"]))
         layers = {
             name: {
                 "state": "NOT_APPLICABLE",
@@ -122,14 +124,17 @@ class DiagnosticFindingTests(unittest.TestCase):
             "layer_evidence": layers,
             "piq_custody": {
                 "source_runtime_input_identities": "source, runtime and input digests retained",
-                "run_ids": ["run-1"],
-                "attempt_ids": ["attempt-1", "attempt-2"],
-                "artifact_refs": [self.refs["envelope"]],
+                "run_ids": run_ids,
+                "attempt_ids": attempt_ids,
+                "artifact_refs": [
+                    self.refs["envelope"],
+                    self.receipt["qualification_report"],
+                ],
                 "readback": self.refs["readback"],
                 "export": self.refs["export"],
                 "cleanup": self.refs["cleanup"],
                 "qualification_receipt": self.refs["qualification"],
-                "report": None,
+                "report": self.receipt["qualification_report"],
             },
             "disposition": {
                 "value": "SUPPORTED",
@@ -159,8 +164,8 @@ class DiagnosticFindingTests(unittest.TestCase):
     def declared_manifest(self) -> dict:
         return {
             "content_state": "measured",
-            "measurement_receipt": "evidence/qualification.json",
-            "piq_experiment_evidence": "evidence/envelope.json",
+            "measurement_receipt": self.refs["qualification"]["path"],
+            "piq_experiment_evidence": self.refs["envelope"]["path"],
             "diagnostic_finding_required": True,
             "diagnostic_finding": DIAGNOSTIC_FINDING_PATH,
         }
@@ -306,17 +311,133 @@ class DiagnosticFindingTests(unittest.TestCase):
         self.write_finding()
         manifest = self.declared_manifest()
         manifest["content_state"] = "hypothetical"
-        manifest.pop("piq_experiment_evidence")
         errors = validate_declared_diagnostic_finding(self.package, manifest)
         self.assertTrue(
             any("content_state 'measured'" in error for error in errors), errors
         )
+        manifest.pop("piq_experiment_evidence")
+        errors = validate_declared_diagnostic_finding(self.package, manifest)
         self.assertTrue(
             any(
                 "requires manifest.piq_experiment_evidence" in error for error in errors
             ),
             errors,
         )
+
+    def test_piq_v2_requires_complete_census_and_exact_v3_report(self) -> None:
+        receipt = self.receipt
+        envelope_ref = self.refs["envelope"]
+        envelope = json.loads((self.package / envelope_ref["path"]).read_text())
+        receipt_ref = self.refs["qualification"]
+        custody = self.finding["piq_custody"]
+        custody["run_ids"] = list(dict.fromkeys(item["run_id"] for item in envelope["attempts"]))
+        custody["attempt_ids"] = [item["id"] for item in envelope["attempts"]]
+        custody["artifact_refs"] = [envelope_ref, receipt["qualification_report"]]
+        custody["qualification_receipt"] = receipt_ref
+        custody["report"] = receipt["qualification_report"]
+        self.write_finding()
+        manifest = self.declared_manifest()
+        self.assertEqual([], validate_declared_diagnostic_finding(self.package, manifest))
+
+        custody["attempt_ids"] = custody["attempt_ids"][:2]
+        custody["run_ids"] = custody["run_ids"][:1]
+        custody["report"] = self.refs["readback"]
+        self.write_finding()
+        errors = validate_declared_diagnostic_finding(self.package, manifest)
+        self.assertTrue(any("attempt_ids must exactly match" in error for error in errors), errors)
+        self.assertTrue(any("report must equal" in error for error in errors), errors)
+
+    def test_current_diagnostic_variants_bind_without_claiming_qualification(self) -> None:
+        for builder in (build_stage0_fixture, build_two_host_fixture):
+            with self.subTest(builder=builder.__name__):
+                bundle = builder(self.package / "evidence")
+                envelope_path = bundle / "envelope.json"
+                envelope = json.loads(envelope_path.read_text(encoding="utf-8"))
+                envelope_ref = {
+                    "path": envelope_path.relative_to(self.package).as_posix(),
+                    "sha256": hashlib.sha256(envelope_path.read_bytes()).hexdigest(),
+                }
+                workload = envelope["workload_evidence"]
+                attempts = envelope["attempts"]
+                run_ids = list(dict.fromkeys(item["run_id"] for item in attempts))
+                bundle_relative = bundle.relative_to(self.package)
+
+                def package_ref(ref: dict[str, str]) -> dict[str, str]:
+                    return {
+                        "path": (bundle_relative / ref["path"]).as_posix(),
+                        "sha256": ref["sha256"],
+                    }
+
+                refs = [envelope_ref]
+                for ref in workload.values():
+                    ref = package_ref(ref)
+                    if ref not in refs:
+                        refs.append(ref)
+                custody = self.finding["piq_custody"]
+                custody.update(
+                    run_ids=run_ids,
+                    attempt_ids=[item["id"] for item in attempts],
+                    artifact_refs=refs,
+                    readback=package_ref(workload["readback"]),
+                    export=package_ref(workload["export"]),
+                    cleanup=package_ref(workload["cleanup"]),
+                    qualification_receipt=None,
+                    report=None,
+                )
+                self.finding["correctness"]["evidence"] = package_ref(
+                    workload["correctness"]
+                )
+                self.write_finding()
+                manifest = {
+                    "content_state": "hypothetical",
+                    "piq_experiment_evidence": envelope_ref["path"],
+                    "diagnostic_finding_required": True,
+                    "diagnostic_finding": DIAGNOSTIC_FINDING_PATH,
+                }
+                with fixed_two_host_admission(bundle):
+                    self.assertEqual(
+                        [], validate_declared_diagnostic_finding(self.package, manifest)
+                    )
+
+    def test_piq_v1_envelope_is_unsupported(self) -> None:
+        envelope_path = self.package / self.refs["envelope"]["path"]
+        envelope = json.loads(envelope_path.read_text(encoding="utf-8"))
+        envelope["schema_version"] = 1
+        envelope_path.write_text(json.dumps(envelope, indent=2) + "\n", encoding="utf-8")
+        self.write_finding()
+        errors = validate_declared_diagnostic_finding(
+            self.package, self.declared_manifest()
+        )
+        self.assertTrue(
+            any("schema_version 1 is unsupported. Only version 2 is active" in error for error in errors),
+            errors,
+        )
+
+    def test_declared_finding_rejects_duplicate_keys_and_nonfinite_constants(self) -> None:
+        manifest = {
+            "content_state": "measured",
+            "measurement_receipt": self.refs["qualification"]["path"],
+            "piq_experiment_evidence": self.refs["envelope"]["path"],
+            "diagnostic_finding_required": True,
+            "diagnostic_finding": DIAGNOSTIC_FINDING_PATH,
+        }
+        for mutation, expected in (("duplicate", "duplicate JSON key"),
+                                   ("nonfinite", "nonfinite JSON constant")):
+            with self.subTest(mutation=mutation):
+                self.write_finding()
+                path = self.package / DIAGNOSTIC_FINDING_PATH
+                raw = path.read_text(encoding="utf-8")
+                if mutation == "duplicate":
+                    raw = raw.replace(
+                        '"schema_version": 1,',
+                        '"schema_version": 1, "schema_version": 1,',
+                        1,
+                    )
+                else:
+                    raw = raw.replace('"schema_version": 1', '"schema_version": NaN', 1)
+                path.write_text(raw, encoding="utf-8")
+                errors = validate_declared_diagnostic_finding(self.package, manifest)
+                self.assertTrue(any(expected in error for error in errors), errors)
 
     def test_path_without_required_flag_fails(self) -> None:
         self.write_finding()

@@ -1,0 +1,874 @@
+{
+  "artifacts": [
+    {
+      "path": "assignments/admission-01.json",
+      "role": "synthetic_fixture_artifact",
+      "sha256": "1587e50ba2ceab24a6d1104c29780c24e64f24664566297d53b463f170402833",
+      "size_bytes": 1993
+    },
+    {
+      "path": "assignments/pair-01.json",
+      "role": "synthetic_fixture_artifact",
+      "sha256": "81a02c0f4e3fe858a012d120ff7c92e66a691a349e1f835d55cba09b5d71d9dc",
+      "size_bytes": 1958
+    },
+    {
+      "path": "assignments/pair-02.json",
+      "role": "synthetic_fixture_artifact",
+      "sha256": "4fb555c3cee88768cf77205a7e6e1503160c203222b391f8d448db724c5cfa93",
+      "size_bytes": 1958
+    },
+    {
+      "path": "assignments/pair-03.json",
+      "role": "synthetic_fixture_artifact",
+      "sha256": "8286c498c34d721e1e5df1b4d8147ca79cec98cf3d7d998f6d8365cc56846f31",
+      "size_bytes": 1958
+    },
+    {
+      "path": "assignments/pair-04.json",
+      "role": "synthetic_fixture_artifact",
+      "sha256": "2ccee19829296ce3344f65c5c347122292b71112997b33419f1e0a8e5877c302",
+      "size_bytes": 1958
+    },
+    {
+      "path": "attempts/admission-01-baseline-attempt.json",
+      "role": "synthetic_fixture_artifact",
+      "sha256": "d1a0f32c1c6c807e2b0f1443b57711ad5cd5adc8843d8fd7832424e89a2f241a",
+      "size_bytes": 1566
+    },
+    {
+      "path": "attempts/admission-01-candidate-attempt.json",
+      "role": "synthetic_fixture_artifact",
+      "sha256": "11b8aede9e8f41932fb894bcbd144ef4364cdbe0c60eacb614b08e823f78803e",
+      "size_bytes": 1570
+    },
+    {
+      "path": "attempts/pair-01-baseline-attempt.json",
+      "role": "synthetic_fixture_artifact",
+      "sha256": "7fca89b01ef621a34e9bf1b8bc5b69071015e6b4eec2584fd5e0ac59babbab42",
+      "size_bytes": 1541
+    },
+    {
+      "path": "attempts/pair-01-candidate-attempt.json",
+      "role": "synthetic_fixture_artifact",
+      "sha256": "015ddc0cc6287aa488db490359fe0c626578ad0421255a04862809d8e9ed78be",
+      "size_bytes": 1545
+    },
+    {
+      "path": "attempts/pair-02-baseline-attempt.json",
+      "role": "synthetic_fixture_artifact",
+      "sha256": "87ab24fb3c9a67fbe99185e1a79c8bbb7b3750a3a2e0a0d48d210a57af5cbbe2",
+      "size_bytes": 1541
+    },
+    {
+      "path": "attempts/pair-02-candidate-attempt.json",
+      "role": "synthetic_fixture_artifact",
+      "sha256": "0ca8c856a7cde88198b12295cd16d23ebc7def017746477a0dc8b1f394eac300",
+      "size_bytes": 1545
+    },
+    {
+      "path": "attempts/pair-03-baseline-attempt.json",
+      "role": "synthetic_fixture_artifact",
+      "sha256": "cc6581842db9653675bda00d97fc2e2c1d16602e1d9dd46a3395a5792126ebe7",
+      "size_bytes": 1541
+    },
+    {
+      "path": "attempts/pair-03-candidate-attempt.json",
+      "role": "synthetic_fixture_artifact",
+      "sha256": "b038f7de35bf0b560bb70bb09b2994ced98befff2612e1d471ca44e6aa4a4556",
+      "size_bytes": 1545
+    },
+    {
+      "path": "attempts/pair-04-baseline-attempt.json",
+      "role": "synthetic_fixture_artifact",
+      "sha256": "9f5e2365b558678a50f651e3817f468840ce6f166d1280d6dbb0f72f861a4f2a",
+      "size_bytes": 1541
+    },
+    {
+      "path": "attempts/pair-04-candidate-attempt.json",
+      "role": "synthetic_fixture_artifact",
+      "sha256": "a8504870e22fecbe37402e057fc65bc837116caae2ccb4d5704826b1bdaf6bf5",
+      "size_bytes": 1545
+    },
+    {
+      "path": "checkpoint-restart.json",
+      "role": "synthetic_fixture_artifact",
+      "sha256": "725d072ef5b129f8e67a59154f16aa1f842e49fd7250e5f5abea77f43ce07691",
+      "size_bytes": 79
+    },
+    {
+      "path": "cleanup-index.json",
+      "role": "synthetic_fixture_artifact",
+      "sha256": "40812e5b69fd4cbc8bb2b17ea563efa081f4fc660a19f94e35899fd2918f3513",
+      "size_bytes": 68
+    },
+    {
+      "path": "custody-readback-cleanup.json",
+      "role": "synthetic_fixture_artifact",
+      "sha256": "cb2d9b0fca9d8324e218261e283cd06726a7c6bbd063fe75af7bf66350de7c23",
+      "size_bytes": 76
+    },
+    {
+      "path": "custody/custody-record.json",
+      "role": "synthetic_fixture_artifact",
+      "sha256": "05f56a7928d395c5b44f7ccf66a4898c0895d12bddf0544d81db151e29c1e0a6",
+      "size_bytes": 372
+    },
+    {
+      "path": "custody/export-readback.json",
+      "role": "synthetic_fixture_artifact",
+      "sha256": "81e4575e33395c766b937f30f2fca46dd5ea85517fe4e676f727ab2bcc1ef00b",
+      "size_bytes": 365
+    },
+    {
+      "path": "custody/local-readback.json",
+      "role": "synthetic_fixture_artifact",
+      "sha256": "c656adb9b22fd55377ecd55129a8fbe40c9b937896b31afb2130415ede8aa9a5",
+      "size_bytes": 372
+    },
+    {
+      "path": "custody/piq-readback.json",
+      "role": "synthetic_fixture_artifact",
+      "sha256": "3294f7de7d6fbd021f2078ce58ecd53ad1b3ffff656f4521f5f21b8f270ca768",
+      "size_bytes": 362
+    },
+    {
+      "path": "data-identity.json",
+      "role": "synthetic_fixture_artifact",
+      "sha256": "11d1dd060121b08fe58b9c331c840c286e0b8577748fbd68754a79e0fa4e593f",
+      "size_bytes": 405
+    },
+    {
+      "path": "design.json",
+      "role": "synthetic_fixture_artifact",
+      "sha256": "154ea279bafbd01e8118e3de98239f732b7c9e624795431629b2a1554e821537",
+      "size_bytes": 2569
+    },
+    {
+      "path": "execution-index.json",
+      "role": "synthetic_fixture_artifact",
+      "sha256": "1984a383bd25f02407075cc6fd634b337b1d9a142d938164fd17b14665bbd96b",
+      "size_bytes": 76
+    },
+    {
+      "path": "quality.json",
+      "role": "synthetic_fixture_artifact",
+      "sha256": "87c9be5328e009bb623b333a886095d0d5917ac26728a438513b8b83c468249f",
+      "size_bytes": 68
+    },
+    {
+      "path": "rank-outputs/admission-01-baseline-attempt-rank-0.json",
+      "role": "synthetic_fixture_artifact",
+      "sha256": "7a9dcf2118939986dc2dcd677dca40ac4586d88b68bd3cd89c25be0bf398dc94",
+      "size_bytes": 134
+    },
+    {
+      "path": "rank-outputs/admission-01-baseline-attempt-rank-1.json",
+      "role": "synthetic_fixture_artifact",
+      "sha256": "02e4ef01108781941fdbb7f36a0a0e400d6ffb7dcf86a3a9842d75736b3a5015",
+      "size_bytes": 134
+    },
+    {
+      "path": "rank-outputs/admission-01-candidate-attempt-rank-0.json",
+      "role": "synthetic_fixture_artifact",
+      "sha256": "9480b308f183fa356f3800684b344d7c4f9c5889da8846443353d580170cd0d2",
+      "size_bytes": 135
+    },
+    {
+      "path": "rank-outputs/admission-01-candidate-attempt-rank-1.json",
+      "role": "synthetic_fixture_artifact",
+      "sha256": "9abbf9ea6cf23cea717e20a023f8c37a3a55e55c64c7ff68d4b7bf5c27cb9065",
+      "size_bytes": 135
+    },
+    {
+      "path": "rank-outputs/pair-01-baseline-attempt-rank-0.json",
+      "role": "synthetic_fixture_artifact",
+      "sha256": "a9e070bc22f0298893d311b4de69e05c5da57e095cb21232e4e9b31f34e9ce57",
+      "size_bytes": 129
+    },
+    {
+      "path": "rank-outputs/pair-01-baseline-attempt-rank-1.json",
+      "role": "synthetic_fixture_artifact",
+      "sha256": "fa3d5e7b56051260e846e5d79f7bc40369961dc0192a9e653f6289fd06074ddb",
+      "size_bytes": 129
+    },
+    {
+      "path": "rank-outputs/pair-01-candidate-attempt-rank-0.json",
+      "role": "synthetic_fixture_artifact",
+      "sha256": "c20a67ba19e9472a930bcc88dc2ea410800f002f03c6765ee34e5f43bed53c4b",
+      "size_bytes": 130
+    },
+    {
+      "path": "rank-outputs/pair-01-candidate-attempt-rank-1.json",
+      "role": "synthetic_fixture_artifact",
+      "sha256": "50e7d403db70d9d0afe1979314549079104167de53506a7351968a9f9beaf551",
+      "size_bytes": 130
+    },
+    {
+      "path": "rank-outputs/pair-02-baseline-attempt-rank-0.json",
+      "role": "synthetic_fixture_artifact",
+      "sha256": "32e89e634dea6133388a89f28ad74461053d556e8fa98a296e5d0cbf19a06abd",
+      "size_bytes": 129
+    },
+    {
+      "path": "rank-outputs/pair-02-baseline-attempt-rank-1.json",
+      "role": "synthetic_fixture_artifact",
+      "sha256": "6eda02bc9f604f4112fc876d72b0dc515dbaeb09b0cbd802dee59ea990d9ade6",
+      "size_bytes": 129
+    },
+    {
+      "path": "rank-outputs/pair-02-candidate-attempt-rank-0.json",
+      "role": "synthetic_fixture_artifact",
+      "sha256": "1d25c2f8e05ec9ca75812ece4d0440aad279b237cbff13caf6c94b7650d5227b",
+      "size_bytes": 130
+    },
+    {
+      "path": "rank-outputs/pair-02-candidate-attempt-rank-1.json",
+      "role": "synthetic_fixture_artifact",
+      "sha256": "07d6800835d8803151a5855492235eb5c2ec33a4f7fc3cb051f22fdcea0c97a0",
+      "size_bytes": 130
+    },
+    {
+      "path": "rank-outputs/pair-03-baseline-attempt-rank-0.json",
+      "role": "synthetic_fixture_artifact",
+      "sha256": "01e0f0d357fb7fb0ae8796049eea52b77c15b377cc39b3ba1f0bc61d375a1d8d",
+      "size_bytes": 129
+    },
+    {
+      "path": "rank-outputs/pair-03-baseline-attempt-rank-1.json",
+      "role": "synthetic_fixture_artifact",
+      "sha256": "890d174213d145bd9a06938569ff069baa5b9c8bb67f632b95ffd19ee30e97fd",
+      "size_bytes": 129
+    },
+    {
+      "path": "rank-outputs/pair-03-candidate-attempt-rank-0.json",
+      "role": "synthetic_fixture_artifact",
+      "sha256": "e0b1c39daeb77fda6860944738b562043d14c1703c14ef3c5d8e4fb2feb7fbeb",
+      "size_bytes": 130
+    },
+    {
+      "path": "rank-outputs/pair-03-candidate-attempt-rank-1.json",
+      "role": "synthetic_fixture_artifact",
+      "sha256": "e39f57b1c746abdd73d3adc5cfd5ea474c6871f6ccc17a345832f01d64e1231f",
+      "size_bytes": 130
+    },
+    {
+      "path": "rank-outputs/pair-04-baseline-attempt-rank-0.json",
+      "role": "synthetic_fixture_artifact",
+      "sha256": "438151dcb9c47c63a6be32d3f5dd2660d3608fa40246e6a5c6ff90ded33d250e",
+      "size_bytes": 129
+    },
+    {
+      "path": "rank-outputs/pair-04-baseline-attempt-rank-1.json",
+      "role": "synthetic_fixture_artifact",
+      "sha256": "8bb23eefc3adf63e030dbc9ce033a96608d824fd9f6fa620e8ccbf7a02eaeb62",
+      "size_bytes": 129
+    },
+    {
+      "path": "rank-outputs/pair-04-candidate-attempt-rank-0.json",
+      "role": "synthetic_fixture_artifact",
+      "sha256": "ea3cd0f6d0a13e1bf4c0bf0aacfef93cb8b5bd5e8793babe2d1f94472bdf3f15",
+      "size_bytes": 130
+    },
+    {
+      "path": "rank-outputs/pair-04-candidate-attempt-rank-1.json",
+      "role": "synthetic_fixture_artifact",
+      "sha256": "e3b95726236eb125941a2f08b31619d90fb68d7b4a4615efbcf9dd00429a3dcc",
+      "size_bytes": 130
+    },
+    {
+      "path": "raw-census.json",
+      "role": "synthetic_fixture_artifact",
+      "sha256": "04d6f8793a3083146a4476a0c6b06849f0105bd6ef34a5f3d11ee19b94783c44",
+      "size_bytes": 71
+    },
+    {
+      "path": "source-import-closure.json",
+      "role": "synthetic_fixture_artifact",
+      "sha256": "ae5fbd36fde104415293500d5dd86667fad1c7123ef7f4ed7177ae15af38f321",
+      "size_bytes": 82
+    },
+    {
+      "path": "source/adapter.py",
+      "role": "synthetic_fixture_artifact",
+      "sha256": "758f33aec2f4b9d3e2912eac24a13beee4c365427cd3936e94841c324bacaf57",
+      "size_bytes": 53
+    },
+    {
+      "path": "source/checkpoint.py",
+      "role": "synthetic_fixture_artifact",
+      "sha256": "3ba76c94f757348cca74ad80695bf013364dc8149cba8f4769496781a2b3ea1a",
+      "size_bytes": 59
+    },
+    {
+      "path": "source/evaluator.py",
+      "role": "synthetic_fixture_artifact",
+      "sha256": "d527d15c5d3c77183d4b63f4ea9a67998528f0dff3e2bab70227591e1d3d3c5f",
+      "size_bytes": 57
+    },
+    {
+      "path": "source/helper.py",
+      "role": "synthetic_fixture_artifact",
+      "sha256": "1d28a91ea56e19ad34fa59fa99a3608046d54549d11f42a1eda1f2c3d23b38f7",
+      "size_bytes": 51
+    },
+    {
+      "path": "source/runner.py",
+      "role": "synthetic_fixture_artifact",
+      "sha256": "1176e7a766662fd2276e22a7b72d9e34d626b3bbc559b46d796e09976d1966f4",
+      "size_bytes": 51
+    },
+    {
+      "path": "source/telemetry.py",
+      "role": "synthetic_fixture_artifact",
+      "sha256": "80bd57e881508c1ff2b5308fb278970a330dbc4e4e4ac01136e28e31eb84cd99",
+      "size_bytes": 57
+    },
+    {
+      "path": "source/verifier.py",
+      "role": "synthetic_fixture_artifact",
+      "sha256": "4649c4d89084e364cce3c9a2f35adf916ac43f37eb83bcb80a1dc7f9e343fa0f",
+      "size_bytes": 55
+    },
+    {
+      "path": "telemetry-coverage.json",
+      "role": "synthetic_fixture_artifact",
+      "sha256": "86a8b382cf078b9b05792c2654a3d6b3d40e20aac3adf05f47085d8a291a0dea",
+      "size_bytes": 79
+    },
+    {
+      "path": "telemetry/raw-custody-index.json",
+      "role": "synthetic_fixture_artifact",
+      "sha256": "bc300bf259f0bc57f27bbe2e1c196ecd23013b3d532015872b7c276c910daabd",
+      "size_bytes": 80
+    },
+    {
+      "path": "telemetry/summary-index.json",
+      "role": "synthetic_fixture_artifact",
+      "sha256": "1777a09941b8a3f2466f7ef215fe5c14e835c638a11370572f23bd697736fc39",
+      "size_bytes": 78
+    }
+  ],
+  "attempts": [
+    {
+      "accepted": true,
+      "assignment_evidence": {
+        "path": "assignments/admission-01.json",
+        "sha256": "1587e50ba2ceab24a6d1104c29780c24e64f24664566297d53b463f170402833"
+      },
+      "failure_reason": null,
+      "group_id": "admission-01",
+      "id": "admission-01-baseline-attempt",
+      "raw_result": {
+        "path": "attempts/admission-01-baseline-attempt.json",
+        "sha256": "d1a0f32c1c6c807e2b0f1443b57711ad5cd5adc8843d8fd7832424e89a2f241a"
+      },
+      "role": "baseline",
+      "run_id": "synthetic-run-admission-01",
+      "status": "succeeded"
+    },
+    {
+      "accepted": true,
+      "assignment_evidence": {
+        "path": "assignments/admission-01.json",
+        "sha256": "1587e50ba2ceab24a6d1104c29780c24e64f24664566297d53b463f170402833"
+      },
+      "failure_reason": null,
+      "group_id": "admission-01",
+      "id": "admission-01-candidate-attempt",
+      "raw_result": {
+        "path": "attempts/admission-01-candidate-attempt.json",
+        "sha256": "11b8aede9e8f41932fb894bcbd144ef4364cdbe0c60eacb614b08e823f78803e"
+      },
+      "role": "candidate",
+      "run_id": "synthetic-run-admission-01",
+      "status": "succeeded"
+    },
+    {
+      "accepted": true,
+      "assignment_evidence": {
+        "path": "assignments/pair-01.json",
+        "sha256": "81a02c0f4e3fe858a012d120ff7c92e66a691a349e1f835d55cba09b5d71d9dc"
+      },
+      "failure_reason": null,
+      "group_id": "pair-01",
+      "id": "pair-01-baseline-attempt",
+      "raw_result": {
+        "path": "attempts/pair-01-baseline-attempt.json",
+        "sha256": "7fca89b01ef621a34e9bf1b8bc5b69071015e6b4eec2584fd5e0ac59babbab42"
+      },
+      "role": "baseline",
+      "run_id": "synthetic-run-pair-01",
+      "status": "succeeded"
+    },
+    {
+      "accepted": true,
+      "assignment_evidence": {
+        "path": "assignments/pair-01.json",
+        "sha256": "81a02c0f4e3fe858a012d120ff7c92e66a691a349e1f835d55cba09b5d71d9dc"
+      },
+      "failure_reason": null,
+      "group_id": "pair-01",
+      "id": "pair-01-candidate-attempt",
+      "raw_result": {
+        "path": "attempts/pair-01-candidate-attempt.json",
+        "sha256": "015ddc0cc6287aa488db490359fe0c626578ad0421255a04862809d8e9ed78be"
+      },
+      "role": "candidate",
+      "run_id": "synthetic-run-pair-01",
+      "status": "succeeded"
+    },
+    {
+      "accepted": true,
+      "assignment_evidence": {
+        "path": "assignments/pair-02.json",
+        "sha256": "4fb555c3cee88768cf77205a7e6e1503160c203222b391f8d448db724c5cfa93"
+      },
+      "failure_reason": null,
+      "group_id": "pair-02",
+      "id": "pair-02-candidate-attempt",
+      "raw_result": {
+        "path": "attempts/pair-02-candidate-attempt.json",
+        "sha256": "0ca8c856a7cde88198b12295cd16d23ebc7def017746477a0dc8b1f394eac300"
+      },
+      "role": "candidate",
+      "run_id": "synthetic-run-pair-02",
+      "status": "succeeded"
+    },
+    {
+      "accepted": true,
+      "assignment_evidence": {
+        "path": "assignments/pair-02.json",
+        "sha256": "4fb555c3cee88768cf77205a7e6e1503160c203222b391f8d448db724c5cfa93"
+      },
+      "failure_reason": null,
+      "group_id": "pair-02",
+      "id": "pair-02-baseline-attempt",
+      "raw_result": {
+        "path": "attempts/pair-02-baseline-attempt.json",
+        "sha256": "87ab24fb3c9a67fbe99185e1a79c8bbb7b3750a3a2e0a0d48d210a57af5cbbe2"
+      },
+      "role": "baseline",
+      "run_id": "synthetic-run-pair-02",
+      "status": "succeeded"
+    },
+    {
+      "accepted": true,
+      "assignment_evidence": {
+        "path": "assignments/pair-03.json",
+        "sha256": "8286c498c34d721e1e5df1b4d8147ca79cec98cf3d7d998f6d8365cc56846f31"
+      },
+      "failure_reason": null,
+      "group_id": "pair-03",
+      "id": "pair-03-candidate-attempt",
+      "raw_result": {
+        "path": "attempts/pair-03-candidate-attempt.json",
+        "sha256": "b038f7de35bf0b560bb70bb09b2994ced98befff2612e1d471ca44e6aa4a4556"
+      },
+      "role": "candidate",
+      "run_id": "synthetic-run-pair-03",
+      "status": "succeeded"
+    },
+    {
+      "accepted": true,
+      "assignment_evidence": {
+        "path": "assignments/pair-03.json",
+        "sha256": "8286c498c34d721e1e5df1b4d8147ca79cec98cf3d7d998f6d8365cc56846f31"
+      },
+      "failure_reason": null,
+      "group_id": "pair-03",
+      "id": "pair-03-baseline-attempt",
+      "raw_result": {
+        "path": "attempts/pair-03-baseline-attempt.json",
+        "sha256": "cc6581842db9653675bda00d97fc2e2c1d16602e1d9dd46a3395a5792126ebe7"
+      },
+      "role": "baseline",
+      "run_id": "synthetic-run-pair-03",
+      "status": "succeeded"
+    },
+    {
+      "accepted": true,
+      "assignment_evidence": {
+        "path": "assignments/pair-04.json",
+        "sha256": "2ccee19829296ce3344f65c5c347122292b71112997b33419f1e0a8e5877c302"
+      },
+      "failure_reason": null,
+      "group_id": "pair-04",
+      "id": "pair-04-baseline-attempt",
+      "raw_result": {
+        "path": "attempts/pair-04-baseline-attempt.json",
+        "sha256": "9f5e2365b558678a50f651e3817f468840ce6f166d1280d6dbb0f72f861a4f2a"
+      },
+      "role": "baseline",
+      "run_id": "synthetic-run-pair-04",
+      "status": "succeeded"
+    },
+    {
+      "accepted": true,
+      "assignment_evidence": {
+        "path": "assignments/pair-04.json",
+        "sha256": "2ccee19829296ce3344f65c5c347122292b71112997b33419f1e0a8e5877c302"
+      },
+      "failure_reason": null,
+      "group_id": "pair-04",
+      "id": "pair-04-candidate-attempt",
+      "raw_result": {
+        "path": "attempts/pair-04-candidate-attempt.json",
+        "sha256": "a8504870e22fecbe37402e057fc65bc837116caae2ccb4d5704826b1bdaf6bf5"
+      },
+      "role": "candidate",
+      "run_id": "synthetic-run-pair-04",
+      "status": "succeeded"
+    }
+  ],
+  "comparison": {
+    "baseline_attempt_ids": [
+      "admission-01-baseline-attempt",
+      "pair-01-baseline-attempt",
+      "pair-02-baseline-attempt",
+      "pair-03-baseline-attempt",
+      "pair-04-baseline-attempt"
+    ],
+    "candidate_attempt_ids": [
+      "admission-01-candidate-attempt",
+      "pair-01-candidate-attempt",
+      "pair-02-candidate-attempt",
+      "pair-03-candidate-attempt",
+      "pair-04-candidate-attempt"
+    ],
+    "reason": "PIQ v2 retains diagnostics. Only measurement receipt v3 may qualify.",
+    "scientific_disposition": "DIAGNOSTIC_ONLY"
+  },
+  "correctness": {
+    "accepted": true,
+    "artifact": {
+      "path": "quality.json",
+      "sha256": "87c9be5328e009bb623b333a886095d0d5917ac26728a438513b8b83c468249f"
+    }
+  },
+  "detached_objects": [
+    {
+      "availability": "retained",
+      "custody_record": {
+        "path": "custody/custody-record.json",
+        "sha256": "05f56a7928d395c5b44f7ccf66a4898c0895d12bddf0544d81db151e29c1e0a6"
+      },
+      "export_readback": {
+        "path": "custody/export-readback.json",
+        "sha256": "81e4575e33395c766b937f30f2fca46dd5ea85517fe4e676f727ab2bcc1ef00b"
+      },
+      "id": "initial-checkpoint",
+      "local_readback": {
+        "path": "custody/local-readback.json",
+        "sha256": "c656adb9b22fd55377ecd55129a8fbe40c9b937896b31afb2130415ede8aa9a5"
+      },
+      "media_type": "application/x-pytorch-checkpoint",
+      "piq_readback": {
+        "path": "custody/piq-readback.json",
+        "sha256": "3294f7de7d6fbd021f2078ce58ecd53ad1b3ffff656f4521f5f21b8f270ca768"
+      },
+      "role": "initial_checkpoint",
+      "sha256": "2eeb1d4efc39f61f6f81a5a60620c2c2e8f1a32938ed08b1ca66cb21eb2d3690",
+      "size_bytes": 8000000000
+    }
+  ],
+  "executions": [
+    {
+      "assignment_evidence": {
+        "path": "assignments/admission-01.json",
+        "sha256": "1587e50ba2ceab24a6d1104c29780c24e64f24664566297d53b463f170402833"
+      },
+      "attempt_ids": [
+        "admission-01-baseline-attempt",
+        "admission-01-candidate-attempt"
+      ],
+      "group_id": "admission-01",
+      "observed_resources": {
+        "accelerator_count": 2,
+        "device_uuids": [
+          "GPU-SYNTHETIC-B200-0",
+          "GPU-SYNTHETIC-B200-1"
+        ],
+        "host": "synthetic-one-host",
+        "node_count": 1,
+        "process_count": 2
+      },
+      "order": [
+        "baseline",
+        "candidate"
+      ],
+      "requested_resources": {
+        "accelerator_count": 2,
+        "executor": "assigned-gpu-host",
+        "node_count": 1,
+        "process_count": 2,
+        "timeout_seconds": 420
+      },
+      "run_id": "synthetic-run-admission-01"
+    },
+    {
+      "assignment_evidence": {
+        "path": "assignments/pair-01.json",
+        "sha256": "81a02c0f4e3fe858a012d120ff7c92e66a691a349e1f835d55cba09b5d71d9dc"
+      },
+      "attempt_ids": [
+        "pair-01-baseline-attempt",
+        "pair-01-candidate-attempt"
+      ],
+      "group_id": "pair-01",
+      "observed_resources": {
+        "accelerator_count": 2,
+        "device_uuids": [
+          "GPU-SYNTHETIC-B200-0",
+          "GPU-SYNTHETIC-B200-1"
+        ],
+        "host": "synthetic-one-host",
+        "node_count": 1,
+        "process_count": 2
+      },
+      "order": [
+        "baseline",
+        "candidate"
+      ],
+      "requested_resources": {
+        "accelerator_count": 2,
+        "executor": "assigned-gpu-host",
+        "node_count": 1,
+        "process_count": 2,
+        "timeout_seconds": 420
+      },
+      "run_id": "synthetic-run-pair-01"
+    },
+    {
+      "assignment_evidence": {
+        "path": "assignments/pair-02.json",
+        "sha256": "4fb555c3cee88768cf77205a7e6e1503160c203222b391f8d448db724c5cfa93"
+      },
+      "attempt_ids": [
+        "pair-02-candidate-attempt",
+        "pair-02-baseline-attempt"
+      ],
+      "group_id": "pair-02",
+      "observed_resources": {
+        "accelerator_count": 2,
+        "device_uuids": [
+          "GPU-SYNTHETIC-B200-0",
+          "GPU-SYNTHETIC-B200-1"
+        ],
+        "host": "synthetic-one-host",
+        "node_count": 1,
+        "process_count": 2
+      },
+      "order": [
+        "candidate",
+        "baseline"
+      ],
+      "requested_resources": {
+        "accelerator_count": 2,
+        "executor": "assigned-gpu-host",
+        "node_count": 1,
+        "process_count": 2,
+        "timeout_seconds": 420
+      },
+      "run_id": "synthetic-run-pair-02"
+    },
+    {
+      "assignment_evidence": {
+        "path": "assignments/pair-03.json",
+        "sha256": "8286c498c34d721e1e5df1b4d8147ca79cec98cf3d7d998f6d8365cc56846f31"
+      },
+      "attempt_ids": [
+        "pair-03-candidate-attempt",
+        "pair-03-baseline-attempt"
+      ],
+      "group_id": "pair-03",
+      "observed_resources": {
+        "accelerator_count": 2,
+        "device_uuids": [
+          "GPU-SYNTHETIC-B200-0",
+          "GPU-SYNTHETIC-B200-1"
+        ],
+        "host": "synthetic-one-host",
+        "node_count": 1,
+        "process_count": 2
+      },
+      "order": [
+        "candidate",
+        "baseline"
+      ],
+      "requested_resources": {
+        "accelerator_count": 2,
+        "executor": "assigned-gpu-host",
+        "node_count": 1,
+        "process_count": 2,
+        "timeout_seconds": 420
+      },
+      "run_id": "synthetic-run-pair-03"
+    },
+    {
+      "assignment_evidence": {
+        "path": "assignments/pair-04.json",
+        "sha256": "2ccee19829296ce3344f65c5c347122292b71112997b33419f1e0a8e5877c302"
+      },
+      "attempt_ids": [
+        "pair-04-baseline-attempt",
+        "pair-04-candidate-attempt"
+      ],
+      "group_id": "pair-04",
+      "observed_resources": {
+        "accelerator_count": 2,
+        "device_uuids": [
+          "GPU-SYNTHETIC-B200-0",
+          "GPU-SYNTHETIC-B200-1"
+        ],
+        "host": "synthetic-one-host",
+        "node_count": 1,
+        "process_count": 2
+      },
+      "order": [
+        "baseline",
+        "candidate"
+      ],
+      "requested_resources": {
+        "accelerator_count": 2,
+        "executor": "assigned-gpu-host",
+        "node_count": 1,
+        "process_count": 2,
+        "timeout_seconds": 420
+      },
+      "run_id": "synthetic-run-pair-04"
+    }
+  ],
+  "experiment": {
+    "data": {
+      "path": "data-identity.json",
+      "sha256": "11d1dd060121b08fe58b9c331c840c286e0b8577748fbd68754a79e0fa4e593f"
+    },
+    "design": {
+      "path": "design.json",
+      "sha256": "154ea279bafbd01e8118e3de98239f732b7c9e624795431629b2a1554e821537"
+    },
+    "hypothesis": "Synthetic fixture only. No execution claim.",
+    "id": "synthetic-te-study-v1",
+    "initial_checkpoint": {
+      "object_id": "initial-checkpoint",
+      "sha256": "2eeb1d4efc39f61f6f81a5a60620c2c2e8f1a32938ed08b1ca66cb21eb2d3690",
+      "size_bytes": 8000000000
+    },
+    "question": "Synthetic fixture: does complete-job MXFP8 pass the frozen gates?",
+    "source_artifacts": [
+      {
+        "path": "source/runner.py",
+        "sha256": "1176e7a766662fd2276e22a7b72d9e34d626b3bbc559b46d796e09976d1966f4"
+      },
+      {
+        "path": "source/adapter.py",
+        "sha256": "758f33aec2f4b9d3e2912eac24a13beee4c365427cd3936e94841c324bacaf57"
+      },
+      {
+        "path": "source/verifier.py",
+        "sha256": "4649c4d89084e364cce3c9a2f35adf916ac43f37eb83bcb80a1dc7f9e343fa0f"
+      },
+      {
+        "path": "source/evaluator.py",
+        "sha256": "d527d15c5d3c77183d4b63f4ea9a67998528f0dff3e2bab70227591e1d3d3c5f"
+      },
+      {
+        "path": "source/checkpoint.py",
+        "sha256": "3ba76c94f757348cca74ad80695bf013364dc8149cba8f4769496781a2b3ea1a"
+      },
+      {
+        "path": "source/telemetry.py",
+        "sha256": "80bd57e881508c1ff2b5308fb278970a330dbc4e4e4ac01136e28e31eb84cd99"
+      },
+      {
+        "path": "source/helper.py",
+        "sha256": "1d28a91ea56e19ad34fa59fa99a3608046d54549d11f42a1eda1f2c3d23b38f7"
+      }
+    ],
+    "workload_scope": "synthetic fixed two-B200 TE MXFP8-versus-BF16 training fixture"
+  },
+  "experiment_kind": "te_mxfp8_gpu_training",
+  "kind": "piq_experiment_evidence",
+  "objective": {
+    "direction": "minimize",
+    "ended_at": "2026-10-31T12:31:50Z",
+    "metric": "complete_job_elapsed",
+    "started_at": "2026-10-31T11:00:00Z",
+    "unit": "nanoseconds"
+  },
+  "schema_version": 2,
+  "scientific_disposition": "DIAGNOSTIC_ONLY",
+  "scope": "diagnostic",
+  "stack": {
+    "hardware_identifier": "03bb0b2a4952a344c1e1e7841d294e228769d3d2ee6aa862078a71a0b6371157",
+    "layers": [
+      {
+        "name": "host",
+        "state": "observed"
+      },
+      {
+        "name": "accelerator",
+        "state": "observed"
+      },
+      {
+        "name": "fabric",
+        "state": "observed"
+      },
+      {
+        "name": "storage",
+        "state": "observed"
+      },
+      {
+        "name": "orchestration",
+        "state": "observed"
+      },
+      {
+        "name": "runtime",
+        "state": "observed"
+      },
+      {
+        "name": "workload",
+        "state": "observed"
+      }
+    ],
+    "piq_revision": "1111111111111111111111111111111111111111",
+    "runtime_identifier": "synthetic-pytorch-2.15-te-2.20.2-cuda-13.4.3"
+  },
+  "study_id": "synthetic-te-study-v1",
+  "workload_evidence": {
+    "checkpoint_restart": {
+      "path": "checkpoint-restart.json",
+      "sha256": "725d072ef5b129f8e67a59154f16aa1f842e49fd7250e5f5abea77f43ce07691"
+    },
+    "cleanup": {
+      "path": "cleanup-index.json",
+      "sha256": "40812e5b69fd4cbc8bb2b17ea563efa081f4fc660a19f94e35899fd2918f3513"
+    },
+    "execution": {
+      "path": "execution-index.json",
+      "sha256": "1984a383bd25f02407075cc6fd634b337b1d9a142d938164fd17b14665bbd96b"
+    },
+    "export": {
+      "path": "custody/export-readback.json",
+      "sha256": "81e4575e33395c766b937f30f2fca46dd5ea85517fe4e676f727ab2bcc1ef00b"
+    },
+    "quality": {
+      "path": "quality.json",
+      "sha256": "87c9be5328e009bb623b333a886095d0d5917ac26728a438513b8b83c468249f"
+    },
+    "readback": {
+      "path": "custody/local-readback.json",
+      "sha256": "c656adb9b22fd55377ecd55129a8fbe40c9b937896b31afb2130415ede8aa9a5"
+    },
+    "telemetry_raw_custody_index": {
+      "path": "telemetry/raw-custody-index.json",
+      "sha256": "bc300bf259f0bc57f27bbe2e1c196ecd23013b3d532015872b7c276c910daabd"
+    },
+    "telemetry_summary": {
+      "path": "telemetry-coverage.json",
+      "sha256": "86a8b382cf078b9b05792c2654a3d6b3d40e20aac3adf05f47085d8a291a0dea"
+    }
+  },
+  "workload_family": "gpu_training"
+}

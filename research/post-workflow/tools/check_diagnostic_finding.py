@@ -10,6 +10,11 @@ import sys
 from pathlib import Path
 from typing import Any
 
+if __package__:
+    from .piq_gpu_training_evidence import validate_bundle as validate_piq_v2_bundle
+else:
+    from piq_gpu_training_evidence import validate_bundle as validate_piq_v2_bundle
+
 
 DIAGNOSTIC_FINDING_PATH = "evidence/diagnostic-finding.json"
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
@@ -22,6 +27,27 @@ LAYERS = (
     "application_or_job",
 )
 LAYER_STATES = {"OBSERVED", "UNAVAILABLE", "NOT_APPLICABLE"}
+
+
+def reject_duplicate_json_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"duplicate JSON key: {key}")
+        result[key] = value
+    return result
+
+
+def reject_nonfinite_json_constant(value: str) -> None:
+    raise ValueError(f"nonfinite JSON constant: {value}")
+
+
+def load_strict_json(path: Path) -> Any:
+    return json.loads(
+        path.read_text(encoding="utf-8"),
+        object_pairs_hook=reject_duplicate_json_keys,
+        parse_constant=reject_nonfinite_json_constant,
+    )
 
 
 def nonempty_string(value: Any) -> bool:
@@ -330,11 +356,19 @@ def validate_diagnostic_finding(package: Path, data: Any) -> list[str]:
             errors,
             nonempty=True,
         )
-        for field in ("readback", "export", "cleanup", "qualification_receipt"):
+        for field in ("readback", "export", "cleanup"):
             validate_ref(
                 package,
                 custody.get(field),
                 f"diagnostic finding piq_custody.{field}",
+                errors,
+            )
+        qualification = custody.get("qualification_receipt")
+        if qualification is not None:
+            validate_ref(
+                package,
+                qualification,
+                "diagnostic finding piq_custody.qualification_receipt",
                 errors,
             )
         report = custody.get("report")
@@ -392,12 +426,7 @@ def validate_diagnostic_finding(package: Path, data: Any) -> list[str]:
 def validate_package_bindings(
     package: Path, manifest: dict[str, Any], finding: dict[str, Any], errors: list[str]
 ) -> None:
-    """Bind the diagnostic interpretation to the package's qualified PIQ evidence."""
-    if manifest.get("content_state") != "measured":
-        errors.append(
-            "declared diagnostic finding requires manifest.content_state 'measured'"
-        )
-
+    """Bind interpretation to one current PIQ-v2 experiment-kind variant."""
     custody = finding.get("piq_custody")
     if not isinstance(custody, dict):
         return
@@ -405,12 +434,6 @@ def validate_package_bindings(
     qualification_path = (
         qualification.get("path") if isinstance(qualification, dict) else None
     )
-    if qualification_path != manifest.get("measurement_receipt"):
-        errors.append(
-            "diagnostic finding piq_custody.qualification_receipt.path must equal "
-            "manifest.measurement_receipt"
-        )
-
     envelope_relative = manifest.get("piq_experiment_evidence")
     if (
         not safe_relative(envelope_relative)
@@ -440,12 +463,20 @@ def validate_package_bindings(
 
     envelope_path = package / str(envelope_relative)
     try:
-        envelope = json.loads(envelope_path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        envelope = load_strict_json(envelope_path)
+    except (OSError, UnicodeError, ValueError) as exc:
         errors.append(
             f"cannot read diagnostic finding PIQ envelope {envelope_relative}: {exc}"
         )
         return
+    envelope_version = envelope.get("schema_version") if isinstance(envelope, dict) else None
+    if type(envelope_version) is not int or envelope_version != 2:
+        errors.append(
+            f"diagnostic finding PIQ envelope schema_version {envelope_version!r} is unsupported. Only version 2 is active"
+        )
+        return
+    bundle_errors = validate_piq_v2_bundle(envelope_path.parent)
+    errors.extend(f"diagnostic finding PIQ v2 bundle: {error}" for error in bundle_errors)
     attempts = envelope.get("attempts") if isinstance(envelope, dict) else None
     if (
         not isinstance(attempts, list)
@@ -470,6 +501,88 @@ def validate_package_bindings(
         errors.append(
             "diagnostic finding piq_custody.run_ids must exactly match the declared PIQ envelope first-occurrence order"
         )
+    experiment_kind = envelope.get("experiment_kind")
+    if experiment_kind == "checkpoint_write_batching_stage0":
+        expected_census = (2, 1)
+        evidence_roles = ("correctness", "cleanup", "custody", "readback", "export")
+    elif experiment_kind == "cpu_two_host_functional":
+        expected_census = (1, 1)
+        evidence_roles = (
+            "execution", "correctness", "partition_rehash", "transport", "cleanup",
+            "custody", "readback", "export", "owner_attestation",
+            "current_admission",
+        )
+    elif experiment_kind == "te_mxfp8_gpu_training":
+        expected_census = (10, 5)
+        evidence_roles = ()
+    else:
+        errors.append(f"diagnostic finding PIQ v2 experiment_kind {experiment_kind!r} is unsupported")
+        return
+    if (len(attempts), len(expected_run_ids)) != expected_census:
+        errors.append(
+            "diagnostic finding PIQ v2 binding has the wrong attempt/run census "
+            f"for {experiment_kind}"
+        )
+    if experiment_kind != "te_mxfp8_gpu_training":
+        if qualification is not None or manifest.get("measurement_receipt") is not None:
+            errors.append(
+                "diagnostic-only PIQ v2 variants must not declare a qualification receipt"
+            )
+        if custody.get("report") is not None:
+            errors.append(
+                "diagnostic-only PIQ v2 variants must not declare a qualification report"
+            )
+        workload_evidence = envelope.get("workload_evidence")
+        if isinstance(workload_evidence, dict) and isinstance(artifacts, list):
+            bundle_relative = Path(str(envelope_relative)).parent
+
+            def package_ref(ref: Any) -> Any:
+                if not isinstance(ref, dict) or set(ref) != {"path", "sha256"}:
+                    return ref
+                return {
+                    "path": (bundle_relative / str(ref["path"])).as_posix(),
+                    "sha256": ref["sha256"],
+                }
+
+            for role in evidence_roles:
+                ref = package_ref(workload_evidence.get(role))
+                if ref not in artifacts:
+                    errors.append(
+                        f"diagnostic finding PIQ v2 artifact_refs must include exact {role} evidence"
+                    )
+            for role in ("readback", "export", "cleanup"):
+                if custody.get(role) != package_ref(workload_evidence.get(role)):
+                    errors.append(
+                        f"diagnostic finding piq_custody.{role} must equal the exact PIQ v2 role"
+                    )
+        return
+    if manifest.get("content_state") != "measured":
+        errors.append(
+            "TE diagnostic finding requires manifest.content_state 'measured'"
+        )
+    if qualification_path != manifest.get("measurement_receipt"):
+        errors.append(
+            "diagnostic finding piq_custody.qualification_receipt.path must equal "
+            "manifest.measurement_receipt"
+        )
+    if not safe_relative(qualification_path):
+        errors.append("diagnostic finding TE PIQ v2 qualification receipt path is unsafe")
+        return
+    try:
+        receipt = load_strict_json(package / str(qualification_path))
+    except (OSError, UnicodeError, ValueError) as exc:
+        errors.append(f"cannot read diagnostic finding GPU v3 qualification receipt: {exc}")
+        return
+    if not isinstance(receipt, dict) or receipt.get("schema_version") != 3:
+        errors.append("diagnostic finding PIQ v2 requires measurement receipt v3")
+        return
+    if receipt.get("piq_envelope") != envelope_ref:
+        errors.append("diagnostic finding PIQ v2 envelope ref must equal the v3 receipt binding")
+    report_ref = receipt.get("qualification_report")
+    if custody.get("report") != report_ref:
+        errors.append("diagnostic finding piq_custody.report must equal the v3 qualification report")
+    if not isinstance(artifacts, list) or report_ref not in artifacts:
+        errors.append("diagnostic finding PIQ v2 artifact_refs must include the exact v3 qualification report")
 
 
 def validate_declared_diagnostic_finding(package: Path, manifest: Any) -> list[str]:
@@ -495,8 +608,8 @@ def validate_declared_diagnostic_finding(package: Path, manifest: Any) -> list[s
         errors.append(f"missing diagnostic finding: {relative}")
         return errors
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        data = load_strict_json(path)
+    except (OSError, UnicodeError, ValueError) as exc:
         errors.append(f"invalid diagnostic finding {path}: {exc}")
         return errors
     errors.extend(validate_diagnostic_finding(package, data))
@@ -515,8 +628,8 @@ def main(argv: list[str] | None = None) -> int:
     package = Path(argv[0]).resolve()
     manifest_path = package / "manifest.json"
     try:
-        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        manifest = load_strict_json(manifest_path)
+    except (OSError, UnicodeError, ValueError) as exc:
         print(f"FAIL {package}: invalid manifest: {exc}", file=sys.stderr)
         return 1
     if not isinstance(manifest, dict):

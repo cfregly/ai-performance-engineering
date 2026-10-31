@@ -1,0 +1,64 @@
+{
+  "attempt_processes": [
+    {
+      "attempt_id": "pair-04-baseline-attempt",
+      "pids": [
+        20080,
+        20081
+      ]
+    },
+    {
+      "attempt_id": "pair-04-candidate-attempt",
+      "pids": [
+        20090,
+        20091
+      ]
+    }
+  ],
+  "cgroup": "/synthetic/pair-04",
+  "device_uuids": [
+    "GPU-SYNTHETIC-B200-0",
+    "GPU-SYNTHETIC-B200-1"
+  ],
+  "executable_sha256": "df1e18f8fd428a6fde53b8b9ba648e1c9fa51b8c13b497dd402de168b4059b76",
+  "group_id": "pair-04",
+  "node": "synthetic-one-host",
+  "observed_resources": {
+    "accelerator_count": 2,
+    "device_uuids": [
+      "GPU-SYNTHETIC-B200-0",
+      "GPU-SYNTHETIC-B200-1"
+    ],
+    "host": "synthetic-one-host",
+    "node_count": 1,
+    "process_count": 2
+  },
+  "owner": "synthetic-execution-owner",
+  "plan_sha256": "36e2d868ef38add850f193e9e49891a0d06b98dfaa8ba515500e3867b665ac0e",
+  "requested_resources": {
+    "accelerator_count": 2,
+    "executor": "assigned-gpu-host",
+    "node_count": 1,
+    "process_count": 2,
+    "timeout_seconds": 420
+  },
+  "run_id": "synthetic-run-pair-04",
+  "runtime_identifier": "synthetic-pytorch-2.15-te-2.20.2-cuda-13.4.3",
+  "scheduler_job_id": "synthetic-job-pair-04",
+  "schema": "piq.gpu-training-assignment.v1",
+  "session_id": "synthetic-session-pair-04",
+  "source_sha256s": [
+    "1176e7a766662fd2276e22a7b72d9e34d626b3bbc559b46d796e09976d1966f4",
+    "758f33aec2f4b9d3e2912eac24a13beee4c365427cd3936e94841c324bacaf57",
+    "4649c4d89084e364cce3c9a2f35adf916ac43f37eb83bcb80a1dc7f9e343fa0f",
+    "d527d15c5d3c77183d4b63f4ea9a67998528f0dff3e2bab70227591e1d3d3c5f",
+    "3ba76c94f757348cca74ad80695bf013364dc8149cba8f4769496781a2b3ea1a",
+    "80bd57e881508c1ff2b5308fb278970a330dbc4e4e4ac01136e28e31eb84cd99",
+    "1d28a91ea56e19ad34fa59fa99a3608046d54549d11f42a1eda1f2c3d23b38f7"
+  ],
+  "study_id": "synthetic-te-study-v1",
+  "window": {
+    "ended_at": "2026-10-31T12:31:50Z",
+    "started_at": "2026-10-31T12:20:00Z"
+  }
+}
