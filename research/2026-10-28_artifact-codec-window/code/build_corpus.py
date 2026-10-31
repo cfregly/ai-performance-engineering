@@ -89,7 +89,7 @@ def _extension(path: str) -> str:
 
 
 def select_entries(lines: list[str], limit: int = MAX_FILES) -> list[dict]:
-    """Apply the closed selection rule to `git ls-tree -l` records."""
+    """Select mode-100644 blobs, retaining the first path for each object ID."""
     seen, candidates = set(), []
     for line in lines:
         metadata, path = line.split("\t", 1)

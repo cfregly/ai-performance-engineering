@@ -45,6 +45,9 @@ class CorpusBuilderTests(unittest.TestCase):
             [(30, "docs/larger.JSONL"), (12, "code/alpha.py"),
              (12, "code/zeta.txt"), (12, "root/first.MD")],
         )
+        selected_paths = {entry["path"] for entry in selected}
+        self.assertNotIn("code/executable.py", selected_paths)
+        self.assertNotIn("root/repeated.md", selected_paths)
         self.assertEqual(len({entry["git_blob"] for entry in selected}), len(selected))
 
     def test_preregistered_caps_and_counts_are_exact(self):
