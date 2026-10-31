@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "kind": "piq_two_host_owner_authority_receipt",
+  "scope": "bounded_two_host_functional_execution_and_custody",
+  "qualification": "not_established",
+  "producer_receipt": null,
+  "envelope": null,
+  "run_id": "",
+  "attempt_ids": [],
+  "owner_handback": null,
+  "authority": {
+    "owner_id": "",
+    "authority_id": "",
+    "attested_at": ""
+  },
+  "attempts": []
+}

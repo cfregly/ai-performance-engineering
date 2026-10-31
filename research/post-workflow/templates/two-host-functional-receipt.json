@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "kind": "piq_two_host_functional_evidence",
+  "authority": "retained_producer_assertion",
+  "qualification": "not_established",
+  "envelope": null,
+  "run_id": "",
+  "attempt_ids": [],
+  "aggregations": [],
+  "execution": null,
+  "correctness": null,
+  "custody": {
+    "readback": null,
+    "export": null,
+    "import_receipt": null,
+    "cleanup": null
+  }
+}

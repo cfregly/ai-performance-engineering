@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import binascii
+import copy
 import hashlib
 import json
 import shutil
@@ -14,6 +15,7 @@ from pathlib import Path
 
 from tools.check_package import validate_package
 from tools.test_qualified_cpu_study import build_cpu_fixture
+from tools.typefully_draft_guard import decide
 
 
 CONCEPTS = ["images/a", "images/b", "images/c"]
@@ -43,6 +45,14 @@ def png_bytes(width: int, height: int, rgb: tuple[int, int, int]) -> bytes:
 
 
 class PackageGateTests(unittest.TestCase):
+    def test_required_reader_visual_declaration_cannot_be_omitted(self) -> None:
+        manifest_path = self.package / "manifest.json"
+        manifest = json.loads(manifest_path.read_text())
+        manifest["reader_visuals_required"] = True
+        manifest.pop("reader_visuals", None)
+        manifest_path.write_text(json.dumps(manifest))
+        self.assertTrue(any("reader_visuals_required" in error for error in validate_package(self.package)))
+
     def setUp(self) -> None:
         self.temp = tempfile.TemporaryDirectory()
         self.package = Path(self.temp.name) / "posts" / "fixture"
@@ -50,6 +60,7 @@ class PackageGateTests(unittest.TestCase):
         for relative, text in {
             "README.md": "# Article\nHypothetical example.\n",
             "tweets.md": "# Social\n",
+            "source-comment.md": "# Source-native comment\n\nStatus: draft, unsent\n\n## Source context\n\nFixture source context.\n\n## Comment draft\n\nA useful unsent fixture comment.\n",
             "claims-allow.txt": "100 ms | illustrative\n",
             "VERIFICATION.md": "# Verification\n\nHypothetical package.\n\n## GPU stage\n\nNo GPU workload launched.\n",
             "images/README.md": "# Images\n",
@@ -72,7 +83,7 @@ class PackageGateTests(unittest.TestCase):
             (self.package / f"{stem}.txt").write_text("Illustrative fixture.\n", encoding="utf-8")
 
         manifest = {
-            "schema_version": 1,
+            "schema_version": 2,
             "content_state": "hypothetical",
             "concepts": CONCEPTS,
             "cover_stem": COVER,
@@ -80,6 +91,8 @@ class PackageGateTests(unittest.TestCase):
             "audiences": AUDIENCES,
             "review_receipt": "images/review.json",
             "typefully_receipt": "social/typefully-receipt.json",
+            "typefully_workflow_receipt": "social/typefully-workflow.json",
+            "source_comment": "source-comment.md",
         }
         self.write_json("manifest.json", manifest)
         selected = self.package / f"{COVER}.png"
@@ -88,6 +101,7 @@ class PackageGateTests(unittest.TestCase):
         (self.package / "image.txt").write_bytes((self.package / f"{COVER}.txt").read_bytes())
         self.write_review()
         self.write_typefully()
+        self.write_typefully_workflow()
 
     def tearDown(self) -> None:
         self.temp.cleanup()
@@ -99,6 +113,22 @@ class PackageGateTests(unittest.TestCase):
         path = self.package / relative
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(value, indent=2) + "\n", encoding="utf-8")
+
+    def prepend_manifest_schema_version(self, value: int) -> None:
+        path = self.package / "manifest.json"
+        manifest = path.read_text(encoding="utf-8")
+        self.assertTrue(manifest.startswith("{"))
+        path.write_text(
+            f'{{\n  "schema_version": {value},' + manifest[1:],
+            encoding="utf-8",
+        )
+
+    def assert_duplicate_manifest_schema_version_rejected(self, value: int) -> None:
+        self.prepend_manifest_schema_version(value)
+        errors = validate_package(self.package)
+        self.assertEqual(len(errors), 1, errors)
+        self.assertIn("invalid manifest", errors[0])
+        self.assertIn("duplicate JSON key: schema_version", errors[0])
 
     def write_review(self) -> None:
         images = {
@@ -113,6 +143,8 @@ class PackageGateTests(unittest.TestCase):
             {
                 "status": "draft",
                 "scheduled_at": None,
+                "published_at": None,
+                "publication_authorized": False,
                 "platforms": ["x", "linkedin"],
                 "image_sha256": hashlib.sha256((self.package / "image.png").read_bytes()).hexdigest(),
                 "texts": {
@@ -121,8 +153,159 @@ class PackageGateTests(unittest.TestCase):
                 },
                 "content_files": {"x": "social/x.txt", "linkedin": "social/linkedin.txt"},
                 "draft_id": "draft-123",
+                "social_set_id": 17,
+                "media_ids": ["media-x", "media-linkedin"],
                 "editor_url": "https://typefully.example/draft-123",
                 "readback_verified": True,
+            },
+        )
+
+    def artifact_ref(self, relative: str) -> dict[str, str]:
+        path = self.package / relative
+        return {"path": relative, "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
+
+    def write_typefully_workflow(self) -> None:
+        raw = {
+            "id": "draft-123",
+            "draft_id": "draft-123",
+            "social_set_id": 17,
+            "status": "draft",
+            "publish_state": None,
+            "created_at": "2026-10-26T11:00:00Z",
+            "updated_at": "2026-10-26T12:00:00Z",
+            "scheduled_date": None,
+            "published_at": None,
+            "share_url": None,
+            "private_url": "https://typefully.example/draft-123",
+            "x_published_url": None,
+            "linkedin_published_url": None,
+            "mastodon_published_url": None,
+            "threads_published_url": None,
+            "bluesky_published_url": None,
+            "substack_published_url": None,
+            "x_article_published_url": None,
+            "x_post_published_at": None,
+            "linkedin_post_published_at": None,
+            "mastodon_post_published_at": None,
+            "threads_post_published_at": None,
+            "bluesky_post_published_at": None,
+            "substack_post_published_at": None,
+            "x_article_published_at": None,
+            "draft_title": "Fixture draft",
+            "tags": ["needs-review"],
+            "scratchpad_text": "Fixture notes.",
+            "platforms": {
+                "x": {
+                    "enabled": True,
+                    "posts": [{
+                        "text": (self.package / "social/x.txt").read_text(encoding="utf-8"),
+                        "media_ids": ["media-x"],
+                    }],
+                    "settings": None,
+                },
+                "linkedin": {
+                    "enabled": True,
+                    "posts": [{
+                        "text": (self.package / "social/linkedin.txt").read_text(encoding="utf-8"),
+                        "media_ids": ["media-linkedin"],
+                    }],
+                    "settings": None,
+                },
+                "mastodon": {"enabled": False},
+                "threads": {"enabled": False},
+                "bluesky": {"enabled": False},
+                "substack": {"enabled": False},
+                "x_article": None,
+            },
+        }
+        target = {"social_set_id": 17}
+        payload = {
+            key: copy.deepcopy(raw[key])
+            for key in ("draft_title", "tags", "scratchpad_text", "platforms")
+        }
+        guard = decide({
+            "desired": {"target": target, "payload": payload},
+            "readback_target": target,
+            "list_readback": {"results": [copy.deepcopy(raw)]},
+            "detail_readback": copy.deepcopy(raw),
+            "prior_receipt": None,
+        })
+        self.assertEqual(guard["decision"], "UNCHANGED")
+        self.write_json("social/typefully-readback.json", raw)
+        self.write_json("social/final-guard.json", guard)
+        analytics = self.hashed_file(
+            "social/typefully-analytics-review.md",
+            """# Typefully analytics review
+
+Status: completed
+
+- Observed at: 2026-10-26T11:50:00Z
+- Reviewer: Fixture analytics reviewer
+- Sources checked: Retained Typefully X export and native LinkedIn availability view.
+- Evidence limits: One small fixture cohort. Associations are descriptive and no causal result is claimed.
+- Access blocker: Native LinkedIn metrics were unavailable in this fixture.
+- Decision summary: Keep the direct technical hook and record LinkedIn analytics as unavailable.
+""",
+        )
+        people = self.hashed_file(
+            "social/typefully-people-review.md",
+            """# Relevant people and conversation review
+
+Status: completed
+
+- Observed at: 2026-10-26T11:51:00Z
+- Reviewer: Fixture people reviewer
+- Sources checked: Package source list, named maintainers, and directly relevant native conversations.
+- Evidence limits: Fixture identities are illustrative. No live mention or relationship is established.
+- Access blocker: No additional blocker affected the bounded fixture review.
+- Decision summary: Use no native mention and retain no conversation target because none was verified.
+""",
+        )
+        promotion = self.hashed_file(
+            "social/promotion-readback.txt", "Observed after final edit and reload.\n"
+        )
+        self.write_json(
+            "social/typefully-workflow.json",
+            {
+                "schema_version": 1,
+                "operation": "create",
+                "prior_readback": None,
+                "draft_id": "draft-123",
+                "social_set_id": 17,
+                "verified_at": "2026-10-26T12:05:00Z",
+                "status": "draft",
+                "scheduled_at": None,
+                "published_at": None,
+                "publication_authorized": False,
+                "platforms": ["x", "linkedin"],
+                "lifecycle_tag": "needs-review",
+                "tags": ["needs-review"],
+                "approval": None,
+                "raw_readback": self.artifact_ref("social/typefully-readback.json"),
+                "guard_receipt": self.artifact_ref("social/final-guard.json"),
+                "media_ids": {"x": [["media-x"]], "linkedin": [["media-linkedin"]]},
+                "analytics": {
+                    "review": analytics,
+                    "x": {"status": "reviewed", "reason": ""},
+                    "linkedin": {"status": "unavailable", "reason": "No native fixture analytics."},
+                },
+                "people": {
+                    "review": people,
+                    "mentions": {"state": "none", "reason": "No native mention selected.", "verified": []},
+                    "opportunities": {"state": "none", "reason": "No native parent selected."},
+                },
+                "promotion": {
+                    name: {
+                        "state": "off",
+                        "trigger": "",
+                        "reason": "Observed off in fixture.",
+                        "evidence": promotion,
+                        "checked_at": "2026-10-26T12:01:00Z",
+                        "dormant": True,
+                    }
+                    for name in ("auto_retweet", "auto_plug")
+                },
+                "reviewer": "fixture-reviewer",
             },
         )
 
@@ -191,6 +374,20 @@ class PackageGateTests(unittest.TestCase):
         errors = validate_package(self.package)
         self.assertTrue(any(phrase in error for error in errors), f"{phrase!r} absent from {errors!r}")
 
+    def make_legacy_schema_v1(self) -> None:
+        manifest = self.read_json("manifest.json")
+        manifest["schema_version"] = 1
+        manifest.pop("typefully_workflow_receipt", None)
+        manifest.pop("source_comment", None)
+        self.write_json("manifest.json", manifest)
+        (self.package / "source-comment.md").unlink(missing_ok=True)
+        (self.package / "social/typefully-workflow.json").unlink(missing_ok=True)
+
+        receipt = self.read_json("social/typefully-receipt.json")
+        for field in ("published_at", "publication_authorized", "social_set_id", "media_ids"):
+            receipt.pop(field, None)
+        self.write_json("social/typefully-receipt.json", receipt)
+
     def make_cpu_measured(self, *, declare_envelope: bool = True) -> dict:
         receipt = build_cpu_fixture(self.package)
         self.write_json("evidence/measurement-receipt.json", receipt)
@@ -198,12 +395,117 @@ class PackageGateTests(unittest.TestCase):
         manifest.update(content_state="measured", measurement_receipt="evidence/measurement-receipt.json")
         if declare_envelope:
             manifest["piq_experiment_evidence"] = receipt["piq_envelopes"][0]["path"]
+            manifest["diagnostic_finding_required"] = True
+            manifest["diagnostic_finding"] = "evidence/diagnostic-finding.json"
+            self.write_piq_diagnostic_finding(receipt)
         self.write_json("manifest.json", manifest)
         (self.package / "VERIFICATION.md").write_text(
             "# Verification\n\n## CPU stage\n\nMeasured CPU study with retained qualification evidence.\n",
             encoding="utf-8",
         )
         return receipt
+
+    def write_piq_diagnostic_finding(self, receipt: dict) -> None:
+        envelope_ref = receipt["piq_envelopes"][0]
+        envelope = self.read_json(envelope_ref["path"])
+        attempt_ids = [attempt["id"] for attempt in envelope["attempts"]]
+        run_ids = list(dict.fromkeys(attempt["run_id"] for attempt in envelope["attempts"]))
+        phase_ref = receipt["raw_census"]
+        layers = {
+            name: {
+                "state": "NOT_APPLICABLE",
+                "observations": [],
+                "evidence_refs": [],
+                "gaps": [f"{name} is outside this synthetic package-gate fixture"],
+            }
+            for name in (
+                "storage_and_input", "process_cpu_and_memory", "accelerator",
+                "communication", "inference_or_training_runtime", "application_or_job",
+            )
+        }
+        for name in ("storage_and_input", "application_or_job"):
+            layers[name] = {
+                "state": "OBSERVED",
+                "observations": [f"Synthetic {name} fixture evidence is retained"],
+                "evidence_refs": [phase_ref],
+                "gaps": [],
+            }
+        finding = {
+            "schema_version": 1,
+            "kind": "piq_diagnostic_finding",
+            "example_id": "synthetic-cpu-package-gate-fixture",
+            "problem": {
+                "user_visible_symptom": "Repeated preparation can remain inside a finite job boundary.",
+                "reader_decision": "Decide whether to move immutable preparation outside repeated work.",
+                "application_or_job_boundary": "Synthetic fixture start through accepted completion.",
+            },
+            "piq_detection": {
+                "detectable_issue": "Repeated immutable preparation remains inside the job boundary.",
+                "observed_signal": "Synthetic storage intervals recur inside the retained job census.",
+                "affected_layers": ["storage_and_input", "application_or_job"],
+                "decision_enabled": "Move immutable preparation to a separately accounted setup phase.",
+                "evidence_refs": [phase_ref],
+            },
+            "predicted_symptom": {
+                "hypothesis": "Repeated preparation is charged to every finite job.",
+                "expected_observations": ["Preparation appears inside each admitted job boundary."],
+                "evidence_refs": [phase_ref],
+            },
+            "competing_explanation": {
+                "hypothesis": "The codec work itself explains the complete elapsed time.",
+                "distinguishing_observations": ["Preparation and codec intervals remain separately identifiable."],
+                "evidence_refs": [phase_ref],
+            },
+            "fixed_change": {
+                "reference_identity": "synthetic repeated-preparation fixture",
+                "candidate_identity": "synthetic separately-accounted-preparation fixture",
+                "sole_intended_change": "immutable preparation lifecycle",
+                "held_inputs_and_settings": ["same synthetic input and CPU contract"],
+                "unavoidable_differences": [],
+            },
+            "complete_outcome": {
+                "start_event": "synthetic finite job start",
+                "stop_event": "accepted synthetic finite job completion",
+                "setup_accounting": "synthetic setup retained separately and in the complete boundary",
+                "cleanup_accounting": "synthetic cleanup retained in the fixture census",
+                "failed_work_accounting": "the complete synthetic attempt census is retained",
+                "excluded_costs": [],
+            },
+            "correctness": {
+                "independent_oracle": "synthetic exact roundtrip digest",
+                "acceptance_rule": "every admitted synthetic attempt passes exact digest equality",
+                "covered_work": "every attempt in the declared PIQ envelope",
+                "result": "PASS",
+                "evidence": receipt["correctness"],
+            },
+            "layer_evidence": layers,
+            "piq_custody": {
+                "source_runtime_input_identities": "synthetic source, runtime and input identities retained by the fixture",
+                "run_ids": run_ids,
+                "attempt_ids": attempt_ids,
+                "artifact_refs": [envelope_ref],
+                "readback": receipt["raw_census"],
+                "export": envelope_ref,
+                "cleanup": receipt["registration"],
+                "qualification_receipt": self.artifact_ref("evidence/measurement-receipt.json"),
+                "report": receipt["qualification_report"],
+            },
+            "disposition": {
+                "value": "SUPPORTED",
+                "supported_observations": ["The synthetic fixture retains the issue-first cross-layer contract."],
+                "remaining_unknowns": ["Synthetic fixtures do not establish real execution or performance."],
+                "evidence_refs": [phase_ref],
+            },
+            "tradeoff": {
+                "measured_benefit": "The synthetic fixture exercises the package contract only.",
+                "added_cost_or_responsibility": ["setup accounting and invalidation remain explicit"],
+                "applicability": "contract validation for PIQ-backed package tests",
+                "simpler_option": "omit PIQ evidence for a non-PIQ historical package",
+                "when_to_use_or_skip": "Use for PIQ-backed examples. Skip for packages with no PIQ evidence.",
+                "next_measurement_or_action": "Replace synthetic refs with retained real evidence before production.",
+            },
+        }
+        self.write_json("evidence/diagnostic-finding.json", finding)
 
     def test_valid_qualified_cpu_v2_does_not_require_gpu_placeholders(self) -> None:
         receipt = self.make_cpu_measured(declare_envelope=False)
@@ -394,9 +696,138 @@ class PackageGateTests(unittest.TestCase):
         (self.package / "manifest.json").write_text("[]")
         self.assertTrue(any("manifest must be a JSON object" in error for error in validate_package(self.package)))
 
-    def test_valid_fixture_passes(self) -> None:
+    def test_normal_valid_manifest_json_passes(self) -> None:
         self.assertNotIn("measurement_receipt", self.read_json("manifest.json"))
         self.assertEqual(validate_package(self.package), [])
+
+    def test_manifest_rejects_conflicting_duplicate_key(self) -> None:
+        self.assert_duplicate_manifest_schema_version_rejected(1)
+
+    def test_manifest_rejects_identical_duplicate_key(self) -> None:
+        self.assert_duplicate_manifest_schema_version_rejected(2)
+
+    def test_declared_diagnostic_finding_is_part_of_package_gate(self) -> None:
+        manifest = self.read_json("manifest.json")
+        manifest.update(
+            diagnostic_finding_required=True,
+            diagnostic_finding="evidence/diagnostic-finding.json",
+        )
+        self.write_json("manifest.json", manifest)
+        self.assert_problem("missing diagnostic finding")
+
+    def test_diagnostic_finding_path_cannot_be_optional(self) -> None:
+        manifest = self.read_json("manifest.json")
+        manifest["diagnostic_finding"] = "evidence/diagnostic-finding.json"
+        self.write_json("manifest.json", manifest)
+        self.assert_problem("diagnostic_finding_required")
+
+    def indexed_phone_fixture(self, dimensions: tuple[int, int] = (400, 400)) -> dict:
+        phone_path = f"{COVER}-400.png"
+        (self.package / phone_path).write_bytes(png_bytes(*dimensions, (4, 24, 44)))
+        square = {**self.artifact_ref(f"{COVER}-square.png"), "width": 1080, "height": 1080}
+        index = {"assets": [{"stem": COVER, "selected": square,
+                             "variants": {"square": dict(square), "phone": {
+                                 **self.artifact_ref(phone_path), "width": dimensions[0], "height": dimensions[1]}}}]}
+        self.write_json("images/asset-index.json", index)
+        return index
+
+    def test_indexed_square_phone_current_contract_passes(self) -> None:
+        self.indexed_phone_fixture()
+        self.assertEqual(validate_package(self.package), [])
+
+    def test_indexed_legacy_phone_current_contract_passes(self) -> None:
+        self.indexed_phone_fixture((400, 225))
+        self.assertEqual(validate_package(self.package), [])
+
+    def test_unindexed_square_phone_keeps_legacy_dimension_requirement(self) -> None:
+        (self.package / f"{COVER}-400.png").write_bytes(png_bytes(400, 400, (4, 24, 44)))
+        self.assert_problem(f"wrong dimensions for {COVER}-400.png: expected 400x225")
+        self.write_json("images/asset-index.json", {"assets": [{"stem": COVER, "selected": {}}]})
+        self.assert_problem(f"wrong dimensions for {COVER}-400.png: expected 400x225")
+
+    def test_indexed_square_phone_rejects_stale_and_mismatched_references(self) -> None:
+        original = self.indexed_phone_fixture()
+        for failure in ("phone_hash", "selected_hash", "square_hash", "phone_path", "selected_path", "square_path", "selected_size"):
+            with self.subTest(failure=failure):
+                index = copy.deepcopy(original)
+                asset = index["assets"][0]
+                if failure.endswith("_hash"):
+                    target = asset["selected"] if failure == "selected_hash" else asset["variants"][failure.removesuffix("_hash")]
+                    target["sha256"] = "0" * 64
+                elif failure.endswith("_path"):
+                    target = asset["selected"] if failure == "selected_path" else asset["variants"][failure.removesuffix("_path")]
+                    target["path"] = f"{COVER}.png"
+                else:
+                    asset["selected"]["width"] = 400
+                self.write_json("images/asset-index.json", index)
+                self.assert_problem("asset index")
+
+    def test_indexed_phone_rejects_unsupported_or_false_geometry(self) -> None:
+        for dimensions in ((400, 300), (800, 800), (400, 225)):
+            with self.subTest(dimensions=dimensions):
+                index = self.indexed_phone_fixture(dimensions)
+                if dimensions == (400, 225):
+                    path = self.package / f"{COVER}-400.png"
+                    path.write_bytes(png_bytes(400, 400, (4, 24, 44)))
+                    index["assets"][0]["variants"]["phone"].update(self.artifact_ref(f"{COVER}-400.png"))
+                    self.write_json("images/asset-index.json", index)
+                self.assert_problem("asset index")
+
+    def test_indexed_phone_rejects_malformed_index_and_duplicate_stem(self) -> None:
+        original = self.indexed_phone_fixture()
+        cases = [None, [], {}, {"assets": []}, {"assets": [None]},
+                 {"assets": original["assets"] * 2}]
+        for field, value in (("variants", None), ("phone", None), ("selected", None), ("phone_hash", "invalid"), ("phone_width", "400")):
+            index = copy.deepcopy(original)
+            asset = index["assets"][0]
+            if field == "phone":
+                asset["variants"]["phone"] = value
+            elif field == "phone_hash":
+                asset["variants"]["phone"]["sha256"] = value
+            elif field == "phone_width":
+                asset["variants"]["phone"]["width"] = value
+            else:
+                asset[field] = value
+            cases.append(index)
+        for index in cases:
+            with self.subTest(index=index):
+                self.write_json("images/asset-index.json", index)
+                self.assert_problem("asset index")
+        (self.package / "images/asset-index.json").write_text("{invalid")
+        self.assert_problem("invalid asset index")
+
+    def test_retained_schema_v1_package_keeps_legacy_contract(self) -> None:
+        self.make_legacy_schema_v1()
+        self.assertEqual(validate_package(self.package), [])
+
+    def test_schema_v2_upgrade_requires_every_extended_artifact(self) -> None:
+        self.make_legacy_schema_v1()
+        manifest = self.read_json("manifest.json")
+        manifest["schema_version"] = 2
+        self.write_json("manifest.json", manifest)
+        errors = "\n".join(validate_package(self.package))
+        self.assertIn("schema-2 manifest.typefully_workflow_receipt", errors)
+        self.assertIn("schema-2 manifest.source_comment", errors)
+        self.assertIn("Typefully receipt publication_authorized must be false", errors)
+
+    def test_schema_v1_cannot_partially_adopt_schema_v2_fields(self) -> None:
+        self.make_legacy_schema_v1()
+        manifest = self.read_json("manifest.json")
+        manifest["typefully_workflow_receipt"] = "social/typefully-workflow.json"
+        self.write_json("manifest.json", manifest)
+        self.assert_problem("schema-1 manifest must not declare typefully_workflow_receipt")
+
+    def test_manifest_schema_version_is_explicit_and_bounded(self) -> None:
+        manifest = self.read_json("manifest.json")
+        for version in (0, 3, True, "2"):
+            with self.subTest(version=version):
+                manifest["schema_version"] = version
+                self.write_json("manifest.json", manifest)
+                self.assert_problem("manifest.schema_version must equal 1 or 2")
+        template = json.loads(
+            (Path(__file__).resolve().parents[1] / "templates/package-manifest.json").read_text(encoding="utf-8")
+        )
+        self.assertEqual(template["schema_version"], 2)
 
     def test_public_copy_rejects_contextless_boolean_comparisons(self) -> None:
         for phrase in ("with False", "with True"):
@@ -579,9 +1010,58 @@ note = "with False, with True, Raw metrics and units are retained."
         self.write_json("manifest.json", manifest)
         self.assert_problem("PIQ diagnostic evidence cannot establish package readiness")
 
+    def test_declared_two_host_functional_receipt_is_part_of_package_gate(self) -> None:
+        manifest = self.read_json("manifest.json")
+        manifest["piq_two_host_functional_receipt"] = (
+            "evidence/two-host-functional-receipt.json"
+        )
+        self.write_json("manifest.json", manifest)
+        self.assert_problem("missing nonsymlink PIQ two-host functional receipt")
+        template = Path(__file__).resolve().parents[1] / "templates/two-host-functional-receipt.json"
+        receipt = self.package / "evidence/two-host-functional-receipt.json"
+        receipt.parent.mkdir()
+        receipt.write_bytes(template.read_bytes())
+        self.assert_problem("cannot promote package readiness")
+
+    def test_two_host_functional_receipt_requires_manifest_schema_two(self) -> None:
+        self.make_legacy_schema_v1()
+        manifest = self.read_json("manifest.json")
+        manifest["piq_two_host_functional_receipt"] = (
+            "evidence/two-host-functional-receipt.json"
+        )
+        self.write_json("manifest.json", manifest)
+        self.assert_problem("supported only by schema 2")
+
     def test_missing_typefully_receipt_fails(self) -> None:
         (self.package / "social/typefully-receipt.json").unlink()
         self.assert_problem("missing Typefully receipt")
+
+    def test_typefully_workflow_manifest_contract_is_mandatory(self) -> None:
+        manifest = self.read_json("manifest.json")
+        manifest.pop("typefully_workflow_receipt")
+        self.write_json("manifest.json", manifest)
+        self.assert_problem("manifest.typefully_workflow_receipt must equal")
+
+    def test_missing_typefully_workflow_receipt_fails(self) -> None:
+        (self.package / "social/typefully-workflow.json").unlink()
+        self.assert_problem("Typefully workflow: cannot read receipt")
+
+    def test_source_comment_manifest_and_file_are_mandatory(self) -> None:
+        manifest = self.read_json("manifest.json")
+        manifest.pop("source_comment")
+        self.write_json("manifest.json", manifest)
+        self.assert_problem("manifest.source_comment must equal")
+        (self.package / "source-comment.md").unlink()
+        self.assert_problem("missing required file: source-comment.md")
+
+    def test_unfilled_or_sent_source_comment_fails(self) -> None:
+        template = Path(__file__).resolve().parents[1] / "templates/source-comment.md"
+        (self.package / "source-comment.md").write_bytes(template.read_bytes())
+        self.assert_problem("still matches the unfilled template")
+        (self.package / "source-comment.md").write_text(
+            "# Source-native comment\n\nStatus: sent\n\n## Source context\n\nFixture.\n\n## Comment draft\n\nFixture.\n"
+        )
+        self.assert_problem("must declare 'Status: draft, unsent'")
 
     def test_missing_independent_review_receipt_fails(self) -> None:
         (self.package / "images/review.json").unlink()
@@ -595,6 +1075,14 @@ note = "with False, with True, Raw metrics and units are retained."
         errors = validate_package(self.package)
         self.assertTrue(any("status must be 'draft'" in e for e in errors))
         self.assertTrue(any("scheduled_at must be null" in e for e in errors))
+
+    def test_typefully_publication_authorization_fails(self) -> None:
+        receipt = self.read_json("social/typefully-receipt.json")
+        receipt["publication_authorized"] = True
+        receipt["published_at"] = "2030-01-01T00:00:00Z"
+        self.write_json("social/typefully-receipt.json", receipt)
+        self.assert_problem("publication_authorized must be false")
+        self.assert_problem("published_at must be")
 
     def test_typefully_text_mismatch_fails(self) -> None:
         receipt = self.read_json("social/typefully-receipt.json")
@@ -615,6 +1103,56 @@ note = "with False, with True, Raw metrics and units are retained."
         result = subprocess.run([sys.executable, str(script)], text=True, capture_output=True, check=False)
         self.assertEqual(result.returncode, 2)
         self.assertIn("usage:", result.stderr)
+
+    def test_cli_help_exits_zero_without_checking_a_package(self) -> None:
+        script = Path(__file__).with_name("check_package.py")
+        for flag in ("-h", "--help"):
+            with self.subTest(flag=flag):
+                result = subprocess.run(
+                    [sys.executable, str(script), flag],
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                )
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertIn("usage:", result.stdout)
+                self.assertIn("retained package files", result.stdout)
+                self.assertEqual(result.stderr, "")
+                self.assertNotIn("FAIL", result.stdout)
+
+    def test_manifest_rejects_nested_duplicate_keys(self) -> None:
+        original = json.dumps(self.read_json("manifest.json"))
+        duplicates = (
+            '"metadata": {"owner": "first", "owner": "second"}',
+            '"metadata": {"owner": "same", "owner": "same"}',
+        )
+        for duplicate in duplicates:
+            with self.subTest(duplicate=duplicate):
+                (self.package / "manifest.json").write_text(
+                    original[:-1] + ", " + duplicate + "}\n",
+                    encoding="utf-8",
+                )
+                errors = validate_package(self.package)
+                self.assertEqual(len(errors), 1, errors)
+                self.assertIn("invalid manifest", errors[0])
+                self.assertIn("duplicate JSON key:", errors[0])
+
+    def test_cli_reports_duplicate_manifest_key_without_traceback(self) -> None:
+        original = json.dumps(self.read_json("manifest.json"))
+        (self.package / "manifest.json").write_text(
+            original[:-1] + ', "schema_version": 2}\n', encoding="utf-8"
+        )
+        script = Path(__file__).with_name("check_package.py")
+        result = subprocess.run(
+            [sys.executable, str(script), str(self.package)],
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("duplicate JSON key: schema_version", result.stderr)
+        self.assertNotIn("Traceback", result.stderr)
+        self.assertNotIn("PASS", result.stdout)
 
 
     def make_source_reported(self) -> None:
@@ -789,6 +1327,17 @@ note = "with False, with True, Raw metrics and units are retained."
         ).hexdigest()
         self.write_json("evidence/source-reported-receipt.json", receipt)
         self.assert_problem("review reviewer must be a nonempty string")
+
+    def test_two_host_owner_authority_receipt_is_fail_closed_in_package_gate(
+        self,
+    ) -> None:
+        manifest = self.read_json("manifest.json")
+        manifest["piq_two_host_owner_authority_receipt"] = (
+            "evidence/two-host-owner-authority-receipt.json"
+        )
+        self.write_json("manifest.json", manifest)
+        self.assert_problem("requires the exact declared producer functional receipt")
+        self.assert_problem("missing nonsymlink PIQ two-host owner receipt")
 
 
 if __name__ == "__main__":

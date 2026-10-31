@@ -1,5 +1,10 @@
 # Import PIQ diagnostic experiments
 
+This public projection checks retained evidence bytes only. It contains no
+real execution callback or admission. The production admissions anchor is
+empty, and synthetic fixtures provide no execution, physical-host, qualification,
+package-readiness or publication proof.
+
 PIQ exports can retain workload evidence for private analysis without inventing
 GPU metadata for CPU work. Version 1 is a diagnostic contract, with a shared
 envelope and small workload adapters. It does not qualify a performance result,
@@ -213,6 +218,63 @@ authorize a new launch. The importer does not check current allocations or
 freshness. GPU execution remains refused until an existing owner provides a
 supported execution seam with current authority. Import never reserves a
 resource or starts a process, GPU workload or service.
+
+### Supplementary two-host functional receipt
+
+`nodeCount` is requested capacity, not a statement that every requested host
+participated. Generic envelope validation therefore keeps its upper-bound rule
+and does not require the number of reported host labels to equal `nodeCount`.
+
+Manifest schema 2 packages that discuss a functional two-host run must
+separately declare `piq_two_host_functional_receipt` at
+`evidence/two-host-functional-receipt.json`. The
+[version-1 receipt schema](schemas/piq-two-host-functional-evidence-v1.schema.json)
+binds a second diagnostic envelope, its exact execution and correctness files,
+one run, selected accepted attempts, each rank-output-to-aggregate correctness
+projection, and distinct run/envelope-bound readback, export, private-import and
+cleanup projections. For
+each selected attempt, the checker requires a succeeded, accepted attempt with
+an explicit complete two-rank census that reports two distinct nonempty host
+labels. Hosts are evaluated within each attempt. Two one-host attempts on
+different labels do not pass. Assigned CPU evidence also binds exactly two
+declared target IDs and distinct host-identity hashes through
+`executor: "assigned-cpu-hosts"`.
+
+This receipt is deliberately `authority: "retained_producer_assertion"` and
+`qualification: "not_established"`. It closes a package-consistency hole. It
+does not independently prove that two physical machines ran, that the ranks
+were concurrent, or that inter-host traffic occurred. Declaring it therefore
+blocks package readiness unless the exact
+[two-host admitted owner-attested contract](PIQ_TWO_HOST_OWNER_AUTHORITY.md)
+also validates. That optional schema-2 declaration is fixed at
+`piq_two_host_owner_authority_receipt: "evidence/two-host-owner-authority-receipt.json"`.
+It binds producer bytes and the exact envelope/run/attempt census to retained
+owner handback, the objective and native attempt windows, declared physical-host
+hashes, canonical boot/session/PID identity, TCP-family inter-host transport,
+and cleanup after launch, both ranks and transport. The exact tuple
+must also appear in the fixed repository admissions anchor after independent
+source review. The committed production anchor is empty until a real owner
+callback is reviewed. Hashes provide byte integrity, not origin
+authentication. Admission is an out-of-band source-review trust boundary, not
+a cryptographic signature. Use a separately reviewed signed version 2 if that
+property becomes necessary. An admitted receipt may remove only this one
+readiness block. The producer stays diagnostic, and neither receipt can replace
+or promote the qualified envelope named by `piq_experiment_evidence`.
+
+Check the retained consistency boundary directly with:
+
+```sh
+python3 tools/check_piq_two_host_functional.py /absolute/path/to/package
+```
+
+The command reports `NOT_DECLARED` when the package has not opted in. With only
+the producer receipt, a passing standalone check states that producer-assertion
+consistency passed while package readiness remains blocked and exits 0 as the
+documented consistency-only API. A declared owner receipt that is invalid or
+unadmitted exits nonzero. An admitted owner-attested receipt checks the narrower
+retained functional execution/custody assertions against the fixed reviewed
+tuple. It does not independently verify physical machines, execution or traffic,
+and scientific qualification remains unestablished.
 
 ## Qualification and publication stay separate
 

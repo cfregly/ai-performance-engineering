@@ -31,6 +31,108 @@ INPUT_ARTIFACT_PATH = re.compile(r"evidence/inputs/[A-Za-z0-9][A-Za-z0-9._-]{0,1
 RESERVED_INPUT_NAMES = {"CON", "PRN", "AUX", "NUL"} | {f"{prefix}{i}" for prefix in ("COM", "LPT") for i in range(1, 10)}
 MAX_INPUT_BYTES = 8 * 1024 * 1024
 MAX_TOTAL_INPUT_BYTES = 64 * 1024 * 1024
+ARTIFACT_CODEC_MAX_INPUT_BYTES = 32 * 1024 * 1024
+ARTIFACT_CODEC_MAX_TOTAL_INPUT_BYTES = 128 * 1024 * 1024
+
+
+def assigned_cpu_host_targets(resources: dict, errors: list[str]) -> set[str]:
+    """Validate the bounded two-host CPU resource projection.
+
+    This binds requested host identities inside retained evidence. It does not
+    inspect live hosts or turn producer metadata into independent execution
+    proof. The optional functional receipt supplies that separate claim gate.
+    """
+    if (
+        resources.get("executor"),
+        resources.get("acceleratorCount"),
+        resources.get("nodeCount"),
+        resources.get("processCount"),
+    ) != ("assigned-cpu-hosts", 0, 2, 2):
+        errors.append(
+            "assigned CPU execution requires exactly two hosts, two processes, and zero accelerators"
+        )
+    for field, lower, upper in (
+        ("cpuCount", 2, 128),
+        ("memoryLimitMiB", 32, 524288),
+        ("timeoutSeconds", 1, 180),
+    ):
+        value = resources.get(field)
+        if type(value) is not int or not lower <= value <= upper:
+            errors.append(
+                f"assigned CPU execution.resources.{field} must be an integer in {lower}..{upper}"
+            )
+
+    hosts = resources.get("cpuHosts")
+    if not isinstance(hosts, list) or len(hosts) != 2:
+        errors.append("assigned CPU execution.resources.cpuHosts must contain exactly two hosts")
+        return set()
+    expected_fields = {
+        "targetId",
+        "hostIdentitySha256",
+        "pythonExecutable",
+        "pythonExecutableSha256",
+        "cpuCount",
+        "memoryLimitMiB",
+    }
+    targets: list[str] = []
+    identities: list[str] = []
+    cpu_total = 0
+    memory_total = 0
+    for index, value in enumerate(hosts):
+        label = f"execution.resources.cpuHosts[{index}]"
+        if not isinstance(value, dict) or set(value) != expected_fields:
+            errors.append(f"{label} fields do not match the assigned CPU host contract")
+            continue
+        target = value.get("targetId")
+        if (
+            not isinstance(target, str)
+            or re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}", target) is None
+        ):
+            errors.append(f"{label}.targetId must be a portable nonempty identifier")
+        else:
+            targets.append(target)
+        identity = value.get("hostIdentitySha256")
+        if not isinstance(identity, str) or SHA256.fullmatch(identity) is None:
+            errors.append(f"{label}.hostIdentitySha256 must be a lowercase SHA-256 digest")
+        else:
+            identities.append(identity)
+        executable = value.get("pythonExecutable")
+        executable_path = PurePosixPath(executable) if isinstance(executable, str) else None
+        if (
+            executable_path is None
+            or not executable_path.is_absolute()
+            or str(executable_path) != executable
+            or any(part in ("", ".", "..") for part in executable_path.parts[1:])
+            or any(character in executable for character in "\x00\n\r")
+        ):
+            errors.append(f"{label}.pythonExecutable must be a canonical absolute path")
+        executable_sha = value.get("pythonExecutableSha256")
+        if not isinstance(executable_sha, str) or SHA256.fullmatch(executable_sha) is None:
+            errors.append(f"{label}.pythonExecutableSha256 must be a lowercase SHA-256 digest")
+        cpu_count = value.get("cpuCount")
+        memory = value.get("memoryLimitMiB")
+        if type(cpu_count) is not int or not 1 <= cpu_count <= 64:
+            errors.append(f"{label}.cpuCount must be an integer in 1..64")
+        else:
+            cpu_total += cpu_count
+        if type(memory) is not int or not 16 <= memory <= 262144:
+            errors.append(f"{label}.memoryLimitMiB must be an integer in 16..262144")
+        else:
+            memory_total += memory
+    if len(targets) != len(set(targets)):
+        errors.append("assigned CPU host targetId values must be distinct")
+    if len(identities) != len(set(identities)):
+        errors.append("assigned CPU host identity hashes must be distinct")
+    if type(resources.get("cpuCount")) is int and cpu_total != resources["cpuCount"]:
+        errors.append("assigned CPU host cpuCount values must sum to execution.resources.cpuCount")
+    if (
+        type(resources.get("memoryLimitMiB")) is int
+        and memory_total != resources["memoryLimitMiB"]
+    ):
+        errors.append(
+            "assigned CPU host memoryLimitMiB values must sum to execution.resources.memoryLimitMiB"
+        )
+    return set(targets)
 
 
 def correctness_configuration(value: Any, errors: list[str]) -> str | None:
@@ -422,6 +524,12 @@ def validate_bundle(bundle: Path) -> list[str]:
                            or isinstance(workload_identity, dict) and "input_artifacts" in workload_identity
                            or bool(manifest_inputs))
     if additional_declared:
+        # Match the admitted SDK workload scope. Aliases and design drift keep
+        # the generic ceilings and still fail the existing identity checks.
+        codec_inputs = (family == "cpu_artifact_codec" and isinstance(design, dict)
+                        and design.get("workload_family") == "cpu_artifact_codec")
+        file_limit = ARTIFACT_CODEC_MAX_INPUT_BYTES if codec_inputs else MAX_INPUT_BYTES
+        total_limit = ARTIFACT_CODEC_MAX_TOTAL_INPUT_BYTES if codec_inputs else MAX_TOTAL_INPUT_BYTES
         additional = design.get("input_artifacts") if isinstance(design, dict) else None
         if not isinstance(additional, list) or not 1 <= len(additional) <= 16:
             errors.append("experiment design input_artifacts must be a list of 1 to 16 references")
@@ -436,8 +544,8 @@ def validate_bundle(bundle: Path) -> list[str]:
         if main_input:
             main_bytes = main_input.stat().st_size
             total_bytes += main_bytes
-            if main_bytes > MAX_INPUT_BYTES:
-                errors.append("main input exceeds the 8 MiB input file limit")
+            if main_bytes > file_limit:
+                errors.append(f"main input exceeds the {file_limit // (1024 * 1024)} MiB input file limit")
         for i, item in enumerate(additional):
             label = f"experiment design input_artifacts[{i}]"
             if not isinstance(item, dict) or set(item) != {"path", "sha256"}:
@@ -459,10 +567,10 @@ def validate_bundle(bundle: Path) -> list[str]:
             if path:
                 size = path.stat().st_size
                 total_bytes += size
-                if size > MAX_INPUT_BYTES:
-                    errors.append(f"{label} exceeds the 8 MiB input file limit")
-        if total_bytes > MAX_TOTAL_INPUT_BYTES:
-            errors.append("main and additional input artifacts exceed the 64 MiB combined limit")
+                if size > file_limit:
+                    errors.append(f"{label} exceeds the {file_limit // (1024 * 1024)} MiB input file limit")
+        if total_bytes > total_limit:
+            errors.append(f"main and additional input artifacts exceed the {total_limit // (1024 * 1024)} MiB combined limit")
         if stack_ref is None or not isinstance(workload_identity, dict):
             errors.append("additional input artifacts require an indexed stack-identity workload object")
         elif not same_json(workload_identity.get("input_artifacts"), additional):
@@ -662,9 +770,17 @@ def validate_bundle(bundle: Path) -> list[str]:
             if type(number) is not int or number < minimum:
                 errors.append(f"execution.resources.{field} must be an integer >= {minimum}")
         node_count = resources.get("nodeCount", 1)
-        if resources.get("executor") not in ("local-process", "assigned-gpu"):
-            errors.append("execution.resources.executor must be local-process or assigned-gpu")
-        gpu_requested = resources.get("executor") == "assigned-gpu" or (
+        executor = resources.get("executor")
+        if executor not in ("local-process", "assigned-gpu", "assigned-cpu-hosts"):
+            errors.append(
+                "execution.resources.executor must be local-process, assigned-gpu, or assigned-cpu-hosts"
+            )
+        assigned_cpu_targets = (
+            assigned_cpu_host_targets(resources, errors)
+            if executor == "assigned-cpu-hosts"
+            else set()
+        )
+        gpu_requested = executor == "assigned-gpu" or (
             type(resources.get("acceleratorCount")) is int and resources["acceleratorCount"] > 0)
         gpu_observation = None
         gpu_ranks_observed = any(
@@ -714,8 +830,15 @@ def validate_bundle(bundle: Path) -> list[str]:
                     validate_slurm_observation(observation, manifest, digest(manifest_path), resources,
                                                design if isinstance(design, dict) else {}, source_refs, evidence.get("input"), errors)
             string(resources.get("targetId"), "execution.resources.targetId")
-        elif resources.get("assignmentEvidence") is not None or resources.get("targetId") is not None:
-            errors.append("CPU execution cannot declare a GPU assignment or target")
+        elif executor == "assigned-cpu-hosts":
+            if resources.get("assignmentEvidence") is not None or resources.get("targetId") is not None:
+                errors.append("assigned CPU execution cannot declare a GPU assignment or target")
+        elif (
+            resources.get("assignmentEvidence") is not None
+            or resources.get("targetId") is not None
+            or resources.get("cpuHosts") is not None
+        ):
+            errors.append("local CPU execution cannot declare assigned host or GPU resources")
 
         arms = design.get("arms") if isinstance(design, dict) else None
         arm_configurations: dict[str, dict] = {}
@@ -816,6 +939,10 @@ def validate_bundle(bundle: Path) -> list[str]:
                     pids.add((host, pid))
                 if isinstance(host, str):
                     hosts.add(host)
+                    if assigned_cpu_targets and host not in assigned_cpu_targets:
+                        errors.append(
+                            f"{label} rank host does not match an assigned CPU target"
+                        )
                     if type(local_rank) is int:
                         if (host, local_rank) in local_ranks:
                             errors.append(f"{label} localRank must be distinct per host")
@@ -909,6 +1036,191 @@ def import_bundle(source: Path, destination: Path) -> Path:
     return destination
 
 
+
+# Indexed originals are a separate bounded data-transport contract. They never
+# enter finite scientific validation or grant execution/qualification authority.
+ORIGINALS_TOTAL_BYTES = 128 * 1024 * 1024
+ORIGINALS_FILE_BYTES = 64 * 1024 * 1024
+ORIGINALS_INDEX_BYTES = 8 * 1024 * 1024
+ORIGINALS_FILES = 4096
+ORIGINALS_RECEIPT = "originals-import-receipt.json"
+
+
+def _originals_name(value):
+    if not isinstance(value, str) or not value or len(value) > 4096:
+        raise ValueError("bounded portable relative originals path required")
+    parts = value.split("/")
+    reserved = {"con", "prn", "aux", "nul"} | {f"{p}{i}" for p in ("com", "lpt") for i in range(1, 10)}
+    if any(not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,254}", p)
+           or p.endswith(".") or p.split(".")[0].casefold() in reserved for p in parts):
+        raise ValueError("portable relative originals path required")
+    return parts
+
+
+def _originals_read(root, name, maximum):
+    import os
+    import stat
+    root = Path(root).absolute()
+    parts = _originals_name(name)
+    descriptor = os.open("/", os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        for part in [*root.parts[1:], *parts[:-1]]:
+            child = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=descriptor)
+            os.close(descriptor)
+            descriptor = child
+        fd = os.open(parts[-1], os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=descriptor)
+        try:
+            before = os.fstat(fd)
+            if not stat.S_ISREG(before.st_mode) or not 0 <= before.st_size <= maximum:
+                raise ValueError("bounded regular originals file required")
+            chunks, count = [], 0
+            while True:
+                block = os.read(fd, min(1024 * 1024, maximum + 1 - count))
+                if not block:
+                    break
+                chunks.append(block)
+                count += len(block)
+                if count > maximum:
+                    raise ValueError("originals file exceeds byte limit")
+            after = os.fstat(fd)
+            if (before.st_dev, before.st_ino, before.st_size, before.st_mtime_ns) != (
+                    after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns) or count != before.st_size:
+                raise ValueError("originals file changed during read")
+            return b"".join(chunks)
+        finally:
+            os.close(fd)
+    finally:
+        os.close(descriptor)
+
+
+def _originals_json(raw):
+    def unique(pairs):
+        result = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError("duplicate originals JSON field")
+            result[key] = value
+        return result
+    return json.loads(raw, object_pairs_hook=unique,
+                      parse_constant=lambda value: (_ for _ in ()).throw(ValueError("nonfinite JSON")))
+
+
+def validate_originals(source, index_name):
+    """Verify indexed retained bytes only, never native identity or science."""
+    import os
+    import stat
+    source = Path(source).absolute()
+    _originals_name(index_name)
+    if index_name == ORIGINALS_RECEIPT:
+        raise ValueError("index collides with reserved import receipt")
+    raw_index = _originals_read(source, index_name, ORIGINALS_INDEX_BYTES)
+    index = _originals_json(raw_index)
+    if not isinstance(index, dict) or not isinstance(index.get("kind"), str) or not re.fullmatch(
+            r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}", index["kind"]):
+        raise ValueError("explicit retained-originals source kind required")
+    artifacts = index.get("artifacts")
+    if not isinstance(artifacts, list) or not 1 <= len(artifacts) <= ORIGINALS_FILES:
+        raise ValueError("indexed originals count must be 1..4096")
+    names, folded, total = {}, set(), 0
+    for item in artifacts:
+        if not isinstance(item, dict):
+            raise ValueError("originals artifact object required")
+        name = item.get("path")
+        _originals_name(name)
+        if name in (index_name, ORIGINALS_RECEIPT) or name.casefold() in folded:
+            raise ValueError("duplicate/colliding originals artifact path")
+        size = item.get("sizeBytes")
+        if type(size) is not int or not 0 <= size <= ORIGINALS_FILE_BYTES or not isinstance(
+                item.get("sha256"), str) or not SHA256.fullmatch(item["sha256"]):
+            raise ValueError("explicit bounded originals size and sha256 required")
+        total += size
+        if total > ORIGINALS_TOTAL_BYTES:
+            raise ValueError("originals indexed bytes exceed128MiB")
+        names[name] = item
+        folded.add(name.casefold())
+    observed, directory_count = set(), 0
+    for base, directories, files in os.walk(source, followlinks=False):
+        directory_count += 1
+        if directory_count > ORIGINALS_FILES + 1:
+            raise ValueError("originals directory count exceeds bound")
+        for name in directories:
+            mode = (Path(base) / name).lstat().st_mode
+            if not stat.S_ISDIR(mode):
+                raise ValueError("originals symlink/special directory refused")
+        for name in files:
+            path = Path(base) / name
+            if not stat.S_ISREG(path.lstat().st_mode):
+                raise ValueError("originals symlink/special file refused")
+            observed.add(path.relative_to(source).as_posix())
+            if len(observed) > ORIGINALS_FILES + 2:
+                raise ValueError("originals file census exceeds bound")
+    allowed = {index_name, *names}
+    if ORIGINALS_RECEIPT in observed:
+        receipt = _originals_json(_originals_read(source, ORIGINALS_RECEIPT, 65536))
+        expected = {"state": "indexed_originals_imported", "source_kind": index["kind"],
+                    "index_sha256": hashlib.sha256(raw_index).hexdigest(),
+                    "scientifically_verified": False, "qualification": "not_established",
+                    "publishable": False, "indexed_files": len(names), "indexed_bytes": total}
+        if not isinstance(receipt, dict) or any(type(receipt.get(k)) is not type(v) or receipt.get(k) != v
+                                                for k, v in expected.items()):
+            raise ValueError("originals import receipt does not match data-only scope")
+        allowed.add(ORIGINALS_RECEIPT)
+    if observed != allowed:
+        raise ValueError("originals exact file set differs from declared index")
+    for name, item in names.items():
+        data = _originals_read(source, name, ORIGINALS_FILE_BYTES)
+        if len(data) != item["sizeBytes"] or hashlib.sha256(data).hexdigest() != item["sha256"]:
+            raise ValueError("originals indexed hash/size drift: " + name)
+    return {"index_bytes": raw_index, "source_kind": index["kind"],
+            "index_sha256": hashlib.sha256(raw_index).hexdigest(),
+            "artifacts": names, "indexed_files": len(names), "indexed_bytes": total}
+
+
+def import_originals(source, destination, index_name):
+    """Copy validated raw transport data atomically. Keep partial staging on failure."""
+    source, destination = Path(source).absolute(), Path(destination).absolute()
+    before = validate_originals(source, index_name)
+    if destination.exists() or destination.is_symlink():
+        raise ValueError("destination already exists. Preserving it")
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    stage = Path(tempfile.mkdtemp(prefix=".piq-originals-", dir=destination.parent))
+    bundle = stage / "bundle"
+    bundle.mkdir()
+    try:
+        for name in [index_name, *before["artifacts"]]:
+            data = _originals_read(source, name, ORIGINALS_INDEX_BYTES if name == index_name else ORIGINALS_FILE_BYTES)
+            target = bundle / name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            with target.open("xb") as stream:
+                stream.write(data)
+                stream.flush()
+                import os
+                os.fsync(stream.fileno())
+        copied = validate_originals(bundle, index_name)
+        after = validate_originals(source, index_name)
+        if copied != before or after != before:
+            raise ValueError("originals changed during import")
+        receipt = {"state": "indexed_originals_imported", "source_kind": before["source_kind"],
+                   "index_sha256": before["index_sha256"], "scientifically_verified": False,
+                   "qualification": "not_established", "publishable": False,
+                   "indexed_files": before["indexed_files"], "indexed_bytes": before["indexed_bytes"],
+                   "imported_at": datetime.now(timezone.utc).isoformat()}
+        (bundle / ORIGINALS_RECEIPT).write_text(json.dumps(receipt, indent=2) + "\n")
+        validate_originals(bundle, index_name)
+        if destination.exists() or destination.is_symlink():
+            raise ValueError("destination appeared during import. Preserving it")
+        bundle.rename(destination)
+        stage.rmdir()
+        return destination
+    except BaseException as exc:
+        (stage / "PARTIAL-IMPORT.json").write_text(json.dumps({
+            "state": "PARTIAL", "source": str(source), "destination": str(destination),
+            "index_sha256": before["index_sha256"], "error": type(exc).__name__ + ": " + str(exc),
+            "scientifically_verified": False, "qualification": "not_established",
+            "publishable": False}, indent=2) + "\n")
+        raise ValueError(f"originals import failed. Partial evidence retained at {stage}: {exc}") from exc
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
@@ -917,18 +1229,32 @@ def main(argv: list[str] | None = None) -> int:
     ingest = commands.add_parser("import")
     ingest.add_argument("bundle", type=Path)
     ingest.add_argument("destination", type=Path)
+    originals_check = commands.add_parser("check-originals")
+    originals_check.add_argument("bundle", type=Path)
+    originals_check.add_argument("--index", required=True)
+    originals_import = commands.add_parser("import-originals")
+    originals_import.add_argument("bundle", type=Path)
+    originals_import.add_argument("destination", type=Path)
+    originals_import.add_argument("--index", required=True)
     args = parser.parse_args(argv)
     try:
         if args.command == "check":
             errors = validate_bundle(args.bundle)
             if errors:
                 raise ValueError("\n".join(errors))
-        else:
+        elif args.command == "import":
             import_bundle(args.bundle, args.destination)
+        elif args.command == "check-originals":
+            validate_originals(args.bundle, args.index)
+        else:
+            import_originals(args.bundle, args.destination, args.index)
     except (OSError, ValueError) as exc:
         print(f"FAIL: {exc}", file=sys.stderr)
         return 1
-    print("PASS: retained PIQ diagnostic evidence; qualification and publication remain unestablished")
+    if args.command in ("check-originals", "import-originals"):
+        print("PASS: indexed retained original bytes only. scientifically_verified=false. Qualification not established. publishable=false")
+    else:
+        print("PASS: retained PIQ diagnostic evidence. Qualification and publication remain unestablished")
     return 0
 
 
