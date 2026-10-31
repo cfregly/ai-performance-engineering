@@ -35,7 +35,7 @@ The bound excludes attention arithmetic, other tensors, final-gradient traffic, 
 
 Materialized partials give simple producer ownership at the cost of workspace, writes, rereads and a separate reduction. Smaller batches change the contract and add accumulation, scheduling and synchronization responsibilities. Prefer the simpler design when its costs fit the budget. Evaluate the complete changed path before choosing a faster implementation. No complete implementation fit or performance follows from these calculations.
 
-For the larger placement and update decision, see [A whole-system budget for a hypothetical training update](https://github.com/cfregly/ai-performance-engineering/tree/60f8aea572304ddbb3b9b9cc254c7c15cddb7337/research/2026-10-29-distributed-training-budget). It uses a different synthetic workload. Applying this attention check there requires recomputing per-rank shapes, partials, phase order, retention and bandwidth rather than transferring this example's bytes or milliseconds.
+For the larger placement and update decision, see [A whole-system budget for a hypothetical training update](../2026-10-29-distributed-training-budget). It uses a different synthetic workload. Applying this attention check there requires recomputing per-rank shapes, partials, phase order, retention and bandwidth rather than transferring this example's bytes or milliseconds.
 
 ## Reproduce
 
