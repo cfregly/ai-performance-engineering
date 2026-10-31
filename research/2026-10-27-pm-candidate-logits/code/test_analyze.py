@@ -304,7 +304,7 @@ class EvidenceTests(unittest.TestCase):
         self.assertTrue(result['all_cells_pass'])
 
     def test_setup_is_reported_separately_from_block_screen(self):
-        # The plan reports setup separately; it defines no setup-size cutoff.
+        # The plan reports setup separately. It defines no setup-size cutoff.
         for mode in ('static', 'changing'):
             for setup_ms in (0.0, 1_000_000.0):
                 with self.subTest(mode=mode, setup_ms=setup_ms):
