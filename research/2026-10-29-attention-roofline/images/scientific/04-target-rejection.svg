@@ -4,7 +4,7 @@
 <rect width="1200" height="1200" fill="#FBFBF8"/>
 <text x="84" y="112" font-family="Inter" font-size="60" font-weight="700" text-anchor="start" fill="#202326">Transfers alone miss the target</text>
 <text x="84" y="182" font-family="Inter" font-size="52" font-weight="400" text-anchor="start" fill="#202326">Produce all, then reduce · analytical</text>
-<text x="84" y="246" font-family="Inter" font-size="52" font-weight="400" text-anchor="start" fill="#202326">Assumed 8 decimal TB/s, shared</text>
+<text x="84" y="246" font-family="Inter" font-size="52" font-weight="400" text-anchor="start" fill="#202326">Assumed 8 TB/s for reads + writes</text>
 <svg x="84" y="288" width="1032" height="246" viewBox="190 750 2016 480" overflow="hidden" preserveAspectRatio="xMidYMid meet"><image width="2400" height="2400" xlink:href="../attention-scenes/factory-source.png"/></svg>
 <text x="84" y="586" font-family="Inter" font-size="52" font-weight="600" text-anchor="start" fill="#202326">Target 0.200 ms</text>
 <rect x="84.000000" y="608.000000" width="825.600000" height="36.000000" fill="#3478BA" />

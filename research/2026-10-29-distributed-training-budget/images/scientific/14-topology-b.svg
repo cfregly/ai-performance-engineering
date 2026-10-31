@@ -8,7 +8,7 @@
 <marker id="orange" markerWidth="20" markerHeight="18" refX="18" refY="9" orient="auto-start-reverse" markerUnits="userSpaceOnUse"><path d="M 2 2 L 18 9 L 2 16" fill="none" stroke="#E87823" stroke-width="4"/></marker>
 </defs><g font-family="Inter">
 <text x="600" y="136" font-size="64" font-weight="600" text-anchor="middle" fill="#202326">Pair stages inside racks</text>
-<text x="600" y="204" font-size="52" font-weight="400" text-anchor="middle" fill="#202326">B after · Replica 0 top · Replica 1 bottom</text>
+<text x="600" y="204" font-size="52" font-weight="400" text-anchor="middle" fill="#202326">B moved · Replica 0 top, 1 bottom</text>
 <rect x="84.000000000" y="250" width="470.000000000" height="730" fill="#FBFBF8" stroke="#202326" stroke-width="3"/>
 <text x="319" y="322" font-size="60" font-weight="600" text-anchor="middle" fill="#202326">Rack 0</text>
 <rect x="646.000000000" y="250" width="470.000000000" height="730" fill="#FBFBF8" stroke="#202326" stroke-width="3"/>

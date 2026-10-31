@@ -44,8 +44,15 @@ def sha(data: bytes) -> str:
 
 
 def run(args: list[str], **kwargs) -> bytes:
-    return subprocess.run(args, check=True, stdout=subprocess.PIPE,
-                          stderr=subprocess.PIPE, **kwargs).stdout
+    try:
+        return subprocess.run(args, check=True, stdout=subprocess.PIPE,
+                              stderr=subprocess.PIPE, **kwargs).stdout
+    except subprocess.CalledProcessError as exc:
+        detail = exc.stderr or b''
+        if isinstance(detail, bytes):
+            detail = detail.decode('utf-8', errors='replace')
+        raise ValueError(f'Command failed ({exc.returncode}): {" ".join(args)}\n'
+                         f'{detail.strip() or "No stderr was returned."}') from exc
 
 
 def font_env(cache: Path) -> dict[str, str]:
@@ -167,7 +174,7 @@ def slides(data: dict, asset_prefix: str = '../attention-scenes') -> list[Slide]
     b = Slide(STEMS[1], 'Transfers alone miss the target', asset_prefix)
     b.text(b.title, 84, 112, 60, 700)
     b.text('Produce all, then reduce · analytical', 84, 182)
-    b.text('Assumed 8 decimal TB/s, shared', 84, 246)
+    b.text('Assumed 8 TB/s for reads + writes', 84, 246)
     b.art('factory-source.png', (190, 750, 2016, 480), (84, 288, 1032, 246))
     floor = float(data['derivation']['hypothetical_bandwidth_floors_ms']['8'])
     for y, value, label, color in ((586,.2,'Target 0.200 ms','blue'),
@@ -255,6 +262,34 @@ def slides(data: dict, asset_prefix: str = '../attention-scenes') -> list[Slide]
 def validate_svg(slide: Slide, svg: bytes, env: dict) -> dict:
     root=ET.fromstring(svg)
     ns={'s':'http://www.w3.org/2000/svg'}
+    topology = None
+    if slide.name == STEMS[2]:
+        expected_nodes = {f'{kind}-producer-{index}': 'partial'
+                          for kind in ('all', 'bounded', 'direct') for index in (1, 2, 3)}
+        expected_nodes.update({f'all-buffer-{index}': 'stored-partial' for index in (1, 2, 3)})
+        expected_nodes.update({'all-reducer': 'reducer', 'all-output': 'output',
+                               'bounded-buffer': 'batch-buffer', 'bounded-reducer': 'reducer',
+                               'bounded-output': 'output', 'direct-synchronization': 'synchronization',
+                               'direct-output': 'output'})
+        nodes = [node for node in root.iter() if 'data-node-id' in node.attrib]
+        actual_nodes = {node.attrib['data-node-id']: node.attrib.get('data-node-kind') for node in nodes}
+        require(len(nodes) == len(expected_nodes) and actual_nodes == expected_nodes,
+                'Reduction topology node IDs or kinds differ from the declared 19 nodes')
+        expected_edges = {(f'all-producer-{index}', f'all-buffer-{index}') for index in (1, 2, 3)}
+        expected_edges.update((f'all-buffer-{index}', 'all-reducer') for index in (1, 2, 3))
+        expected_edges.add(('all-reducer', 'all-output'))
+        expected_edges.update((f'bounded-producer-{index}', 'bounded-buffer') for index in (1, 2, 3))
+        expected_edges.update({('bounded-buffer', 'bounded-reducer'), ('bounded-reducer', 'bounded-output')})
+        expected_edges.update((f'direct-producer-{index}', 'direct-output') for index in (1, 2, 3))
+        edges = [node for node in root.iter()
+                 if 'data-flow-source' in node.attrib or 'data-flow-target' in node.attrib]
+        actual_edges = [(node.attrib.get('data-flow-source'), node.attrib.get('data-flow-target'))
+                        for node in edges]
+        require(len(edges) == 15 and set(actual_edges) == expected_edges,
+                'Reduction topology must contain all 15 exact directed edges without duplicates')
+        require(all(len(node.findall('s:line', ns)) == 3 for node in edges),
+                'Reduction edge must contain one shaft and two arrowhead lines')
+        topology = {'node_count': len(nodes), 'edge_count': len(edges), 'exact_ids_and_directed_edges': True}
     texts=root.findall('.//s:text',ns)
     require(len(texts)==len(slide.labels), 'Label inventory mismatch')
     for node,row in zip(texts,slide.labels):
@@ -276,7 +311,8 @@ def validate_svg(slide: Slide, svg: bytes, env: dict) -> dict:
     return {'text_elements':len(texts),'minimum_font_px':min(r['font_px'] for r in slide.labels),
             'minimum_at_297_px':min(r['font_px']*297/SIZE for r in slide.labels),
             'minimum_at_312_px':min(r['font_px']*312/SIZE for r in slide.labels),
-            'safe_margin_checked_px':80,'labels':slide.labels}
+            'safe_margin_checked_px':80,'labels':slide.labels,
+            **({'topology': topology} if topology is not None else {})}
 
 
 def raster_source(svg: bytes, asset_prefix: str) -> bytes:
@@ -296,9 +332,9 @@ def raster_source(svg: bytes, asset_prefix: str) -> bytes:
 
 
 def render(output: Path, data: dict, asset_context: Path | None = None) -> dict:
-    output.mkdir(parents=True,exist_ok=True)
     asset_prefix=Path(os.path.relpath(INPUTS,asset_context or output)).as_posix()
     records={}
+    pending = {}
     with tempfile.TemporaryDirectory(prefix='attention-fonts-') as temp:
         env=font_env(Path(temp))
         matched=run(['fc-match','-f','%{family}|%{file}','Inter'],env=env).decode()
@@ -308,19 +344,24 @@ def render(output: Path, data: dict, asset_context: Path | None = None) -> dict:
             svg=slide.result()
             require(b'data:' not in svg and b'base64' not in svg,'Stored SVG must use relative assets')
             checks=validate_svg(slide,svg,env)
-            (output/(slide.name+'.svg')).write_bytes(svg)
+            pending[slide.name + '.svg'] = svg
             rendered=run(['rsvg-convert','--format','png'],input=raster_source(svg,asset_prefix),env=env)
             # Normalize the existing renderer's metadata without touching visual pixels.
             png=run(['magick','png:-','-strip','-define','png:exclude-chunks=date,time','png:-'],
                     input=rendered,env=env)
             require(struct.unpack('>II',png[16:24])==(SIZE,SIZE),'Incorrect raster dimensions')
-            (output/(slide.name+'.png')).write_bytes(png)
-            (output/(slide.name+'.txt')).write_text('\n'.join(r['text'] for r in slide.labels)+'\n')
+            pending[slide.name + '.png'] = png
+            pending[slide.name + '.txt'] = ('\n'.join(r['text'] for r in slide.labels)+'\n').encode()
             for width in WIDTHS:
                 preview=run(['magick','png:-','-filter','Lanczos','-resize',f'{width}x{width}',
                              '-strip','-define','png:exclude-chunks=date,time','png:-'],input=png,env=env)
-                (output/f'{slide.name}-{width}.png').write_bytes(preview)
+                pending[f'{slide.name}-{width}.png'] = preview
             records[slide.name]={'svg_sha256':sha(svg),'png_sha256':sha(png),**checks}
+    # Finish validation and every subprocess before replacing any retained output.
+    require(len(pending) == len(STEMS) * 5, 'Generated output inventory incomplete')
+    output.mkdir(parents=True,exist_ok=True)
+    for name, content in pending.items():
+        (output / name).write_bytes(content)
     return records
 
 

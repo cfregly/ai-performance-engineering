@@ -106,7 +106,7 @@ These diagrams follow the same synthetic workload, phase contract and analytical
 
 ## Rebuild the selected figures
 
-The current three cards use Inter labels of at least 52 px on a 1200 px canvas. Rebuilding requires the retained font and artwork, rsvg-convert 2.62.3 and ImageMagick 7.1.2-26. SVG artwork and font links are relative.
+The current three cards use Inter labels of at least 52 px on a 1200 px canvas. Rebuilding requires the retained font and artwork, rsvg-convert 2.62.3, ImageMagick 7.1.2-26 and Fontconfig (`fc-match`). SVG artwork and font links are relative.
 
 ```sh
 python3 code/render_attention_figures.py --check

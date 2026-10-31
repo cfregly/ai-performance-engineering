@@ -16,11 +16,12 @@ import html
 import json
 import math
 import os
+import shutil
 from pathlib import Path
 import subprocess
 import tempfile
 import xml.etree.ElementTree as ET
-from PIL import ImageFont
+from PIL import ImageFont, __version__ as PILLOW_VERSION
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "images/scientific"
@@ -95,7 +96,7 @@ class Figure:
         for key in ("ink", "blue", "orange"):
             self.parts.append(f'<marker id="{key}" markerWidth="20" markerHeight="18" refX="18" refY="9" orient="auto-start-reverse" markerUnits="userSpaceOnUse"><path d="M 2 2 L 18 9 L 2 16" fill="none" stroke="{colors[key]}" stroke-width="4"/></marker>')
         self.parts.append('</defs><g font-family="Inter">')
-        self.labels, self.text_boxes, self.geometry, self.lines = [], [], [], []
+        self.labels, self.text_boxes, self.geometry, self.lines, self.image_boxes = [], [], [], [], []
 
     def text(self, x, y, value, size=52, anchor="middle", color="ink", weight=400, surface="background"):
         require(size >= MINIMUM, f"Essential label below {MINIMUM} px: {value}")
@@ -120,7 +121,7 @@ class Figure:
         extra = f' stroke="{self.colors[stroke]}" stroke-width="{sw}"' if stroke else ''
         self.parts.append(f'<rect x="{x:.9f}" y="{y:g}" width="{width:.9f}" height="{height:g}" fill="{self.colors[color]}"{extra}/>')
 
-    def line(self, x1, y1, x2, y2, color="ink", sw=3, arrow=False, both=False, dashed=False):
+    def line(self, x1, y1, x2, y2, color="ink", sw=3, arrow=False, both=False, dashed=False, artwork_overlay=False):
         require(all(math.isfinite(v) for v in (x1, y1, x2, y2, sw)) and sw > 0, "Invalid line")
         require(min(x1, x2, y1, y2) >= SAFE and max(x1, x2, y1, y2) <= SIZE - SAFE, "Line outside safe margins")
         extra = ' stroke-dasharray="12 10"' if dashed else ''
@@ -128,11 +129,14 @@ class Figure:
             extra += f' marker-end="url(#{color})"'
         if both:
             extra += f' marker-start="url(#{color})"'
-        self.lines.append({'x1': x1, 'y1': y1, 'x2': x2, 'y2': y2, 'stroke_width': sw})
+        self.lines.append({'x1': x1, 'y1': y1, 'x2': x2, 'y2': y2, 'stroke_width': sw, 'intentional_artwork_overlay': artwork_overlay})
         self.parts.append(f'<line x1="{x1:g}" y1="{y1:g}" x2="{x2:g}" y2="{y2:g}" stroke="{self.colors[color]}" stroke-width="{sw}"{extra}/>')
 
     def image(self, name, x, y, width, height, crop=None):
         require(name in {'rack-traffic-scene.png', 'ordered-barrier-scene.png'}, f'Unsupported retained artwork: {name}')
+        require(all(math.isfinite(v) for v in (x, y, width, height)) and width > 0 and height > 0, 'Invalid artwork rectangle')
+        require(x >= SAFE and y >= SAFE and x + width <= SIZE - SAFE and y + height <= SIZE - SAFE, 'Artwork outside safe margins')
+        self.image_boxes.append({'name': name, 'left': x, 'top': y, 'right': x + width, 'bottom': y + height, 'crop': crop})
         if crop:
             self.parts.append(f'<svg x="{x}" y="{y}" width="{width}" height="{height}" viewBox="{crop}" overflow="hidden"><image width="1900" height="360" href="{name}"/></svg>')
         else:
@@ -145,6 +149,14 @@ class Figure:
                 overlap_x = min(first['right'], second['right']) - max(first['left'], second['left'])
                 overlap_y = min(first['bottom'], second['bottom']) - max(first['top'], second['top'])
                 require(not (overlap_x > 0 and overlap_y > 0), f"Text collision: {first['text']} / {second['text']}")
+        for image in self.image_boxes:
+            for box in self.text_boxes:
+                overlap_x = min(image['right'], box['right']) - max(image['left'], box['left'])
+                overlap_y = min(image['bottom'], box['bottom']) - max(image['top'], box['top'])
+                require(not (overlap_x > 0 and overlap_y > 0), f"Text/artwork collision: {box['text']} / {image['name']}")
+            for line in self.lines:
+                require(segment_box_clearance(line, image) >= 0 or line['intentional_artwork_overlay'],
+                        f"Line/artwork overlap needs explicit artwork_overlay: {image['name']}")
         for line in self.lines:
             for box in self.text_boxes:
                 clearance = segment_box_clearance(line, box)
@@ -172,19 +184,19 @@ def traffic_figure(source, colors):
     figure = Figure('Placement moves rack traffic', 'Hypothetical logical cross-rack payload, both directions combined per update. B keeps within-rack loops and a thin symbolic cross-rack pipeline connection. Artwork and connector widths explain placement, not quantitative proportions. Within-rack payload is between nodes. Both placements have the same total off-node payload.', colors)
     figure.text(600, 136, 'Placement moves rack traffic', 64, weight=600)
     figure.text(600, 204, 'Same 64 GPUs · hypothetical update')
-    figure.text(382, 268, 'A · before', 60, weight=600)
-    figure.text(840, 268, 'B · after', 60, weight=600)
+    figure.text(382, 268, 'A · original', 60, weight=600)
+    figure.text(840, 268, 'B · moved', 60, weight=600)
     figure.image('rack-traffic-scene.png', 180, 283, 840, 357.623762376)
     # One symbolic pipeline connection crosses B's rack boundary. Its fixed
     # thin stroke is an illustration convention, never a payload scale.
-    figure.line(766, 466, 868, 466, 'blue', 3, arrow=True)
+    figure.line(766, 466, 868, 466, 'blue', 3, arrow=True, artwork_overlay=True)
     figure.geometry.append({'B_illustration_cross_rack_pipeline_connection': True,
                             'artwork_connector_stroke_px': 3,
                             'artwork_connector_width_encodes_quantity': False,
                             'within_rack_loops_retained': True})
     figure.text(600, 692, 'Cross-rack GB · both directions')
     x0, scale = 160, 900 / 30
-    for y, name, color in ((720, 'A', 'blue'), (830, 'B', 'orange')):
+    for y, name, color in ((720, 'A', 'blue'), (830, 'B', 'blue')):
         value = source['traffic_and_screens'][name]['aggregate_sent_bytes']['inter_rack'] / 1e9
         figure.rect(x0, y, value * scale, 72, color)
         figure.text(110, y + 55, name, 60, weight=600)
@@ -247,7 +259,7 @@ def floor_figure(source, colors):
 def topology_figure(source, colors):
     figure = Figure('Pair stages inside racks', 'Placement B has stages 0 and 1 of both replicas in rack 0 and stages 2 and 3 in rack 1. The two thick blue P1 to P2 pipeline hops cross racks. Thin blue hops and orange data-parallel pairs stay inside a rack.', colors)
     figure.text(600, 136, 'Pair stages inside racks', 64, weight=600)
-    figure.text(600, 204, 'B after · Replica 0 top · Replica 1 bottom')
+    figure.text(600, 204, 'B moved · Replica 0 top, 1 bottom')
     centers = {0: 170, 1: 470, 2: 730, 3: 1030}
     for rack, (left, title_x) in enumerate(((84, 319), (646, 881))):
         figure.rect(left, 250, 470, 730, stroke='ink')
@@ -271,9 +283,27 @@ def topology_figure(source, colors):
 BUILDERS = {'14-topology-b': topology_figure, '15-tier-traffic': traffic_figure, '16-ordered-floors': floor_figure}
 
 
+def required_tool(name):
+    path = shutil.which(name)
+    require(path is not None, f'Required rendering tool is missing from PATH: {name}. Use an existing matching environment.')
+    return path
+
+
+def rendering_stack():
+    result = {'rsvg-convert': subprocess.check_output([required_tool('rsvg-convert'), '--version'], text=True).splitlines()[0],
+              'Pillow': PILLOW_VERSION}
+    for library in ('pango', 'cairo'):
+        tool = shutil.which('pkg-config')
+        version = subprocess.run([tool, '--modversion', library], capture_output=True, text=True) if tool else None
+        result[library] = {'available': bool(version and version.returncode == 0),
+                           'version': version.stdout.strip() if version and version.returncode == 0 else None,
+                           'authority': 'pkg-config --modversion ' + library if tool else 'pkg-config unavailable'}
+    return result
+
+
 def retained_font_environment(config):
-    env = dict(os.environ, FONTCONFIG_FILE=str(config), LC_ALL='C')
-    matched = subprocess.run(['fc-match', '-f', '%{family}|%{file}', 'Inter'], capture_output=True, text=True, env=env)
+    env = dict(os.environ, FONTCONFIG_FILE=str(config), PANGOCAIRO_BACKEND='fc', LC_ALL='C')
+    matched = subprocess.run([required_tool('fc-match'), '-f', '%{family}|%{file}', 'Inter'], capture_output=True, text=True, env=env)
     require(matched.returncode == 0, f'fc-match failed: {matched.stderr}')
     family, separator, filename = matched.stdout.partition('|')
     require(separator and family == 'Inter', f'Inter resolution failed: {matched.stdout}')
@@ -294,7 +324,7 @@ def render_png(svg, env):
         require(data.startswith(b'\x89PNG\r\n\x1a\n'), f'Retained artwork is not PNG: {name}')
         embedded = base64.b64encode(data).decode()
         resolved = resolved.replace(f'href="{name}"', f'href="data:image/png;base64,{embedded}"')
-    result = subprocess.run(['rsvg-convert', '--width', '2400', '--height', '2400'], input=resolved.encode(), capture_output=True, env=env)
+    result = subprocess.run([required_tool('rsvg-convert'), '--width', '2400', '--height', '2400'], input=resolved.encode(), capture_output=True, env=env)
     require(result.returncode == 0, f'rsvg-convert failed: {result.stderr.decode(errors="replace")}')
     return result.stdout
 
@@ -310,7 +340,9 @@ def main():
     tokens = json.loads(TOKENS.read_text())
     require(tokens['typography']['font_family'] == 'Inter', 'Inter is required')
     validate_source(source)
-    receipt = {'source_sha256': digest(SOURCE.read_bytes()), 'tokens_sha256': digest(TOKENS.read_bytes()), 'font_sha256': digest(FONT.read_bytes()), 'artwork_sha256': {name: digest((OUT / name).read_bytes()) for name in ('rack-traffic-scene.png', 'ordered-barrier-scene.png')}, 'stored_svg_artwork': 'relative hrefs resolved only in memory for PNG conversion', 'rsvg_version': subprocess.check_output(['rsvg-convert', '--version'], text=True).splitlines()[0], 'figures': []}
+    required_tool('fc-match')
+    stack = rendering_stack()
+    receipt = {'rendering_stack': stack, 'PANGOCAIRO_BACKEND': 'fc', 'source_sha256': digest(SOURCE.read_bytes()), 'tokens_sha256': digest(TOKENS.read_bytes()), 'font_sha256': digest(FONT.read_bytes()), 'artwork_sha256': {name: digest((OUT / name).read_bytes()) for name in ('rack-traffic-scene.png', 'ordered-barrier-scene.png')}, 'stored_svg_artwork': 'relative hrefs resolved only in memory for PNG conversion', 'rsvg_version': stack['rsvg-convert'], 'figures': []}
     outputs = []
     with tempfile.TemporaryDirectory(prefix='scientific-figures-') as temp:
         config = Path(temp) / 'fonts.conf'
@@ -333,10 +365,10 @@ def main():
                 path = OUT / f'{name}.{extension}'
                 if args.check and extension == 'png':
                     require(path.is_file(), f'Retained output is missing: {path.name}')
-                    hint = f" PNG byte equality depends on the rendering stack. Tested with rsvg-convert 2.62.3 and Pillow 11.3.0; current {receipt['rsvg_version']}. SVG/TXT already match."
+                    hint = f" PNG byte equality depends on the rendering stack. Current rendering stack: {receipt['rendering_stack']}. SVG/TXT already match."
                     require(path.read_bytes() == data, f'Regeneration differs: {path.name}.' + hint)
                 outputs.append((path, data))
-            receipt['figures'].append({'name': name, 'hashes': {key: digest(data) for key, data in generated.items()}, 'viewbox': [0, 0, 1200, 1200], 'essential_font_min_px': min(box['font_size'] for box in figure.text_boxes), 'minimum_at_297_px': min(box['font_size'] for box in figure.text_boxes) * 297 / SIZE, 'minimum_at_312_px': min(box['font_size'] for box in figure.text_boxes) * 312 / SIZE, 'minimum_text_contrast_ratio': min(box['contrast_ratio'] for box in figure.text_boxes), 'text_safe_margins': SAFE, 'text_collision_check': 'pass', 'line_text_clearance_min_px': LINE_TEXT_CLEARANCE, 'line_text_clearance_observed_px': min(segment_box_clearance(line, box) for line in figure.lines for box in figure.text_boxes), 'line_text_clearance_check': 'pass', 'geometry': figure.geometry})
+            receipt['figures'].append({'name': name, 'hashes': {key: digest(data) for key, data in generated.items()}, 'viewbox': [0, 0, 1200, 1200], 'essential_font_min_px': min(box['font_size'] for box in figure.text_boxes), 'minimum_at_297_px': min(box['font_size'] for box in figure.text_boxes) * 297 / SIZE, 'minimum_at_312_px': min(box['font_size'] for box in figure.text_boxes) * 312 / SIZE, 'minimum_text_contrast_ratio': min(box['contrast_ratio'] for box in figure.text_boxes), 'text_safe_margins': SAFE, 'text_collision_check': 'pass', 'image_boxes': figure.image_boxes, 'text_artwork_collision_check': 'pass', 'declared_artwork_overlay_count': sum(line['intentional_artwork_overlay'] for line in figure.lines), 'line_text_clearance_min_px': LINE_TEXT_CLEARANCE, 'line_text_clearance_observed_px': min(segment_box_clearance(line, box) for line in figure.lines for box in figure.text_boxes), 'line_text_clearance_check': 'pass', 'geometry': figure.geometry})
     # Validate every figure before writing any output.
     if not args.check:
         for path, data in outputs:

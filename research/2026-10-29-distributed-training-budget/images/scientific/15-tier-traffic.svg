@@ -9,15 +9,15 @@
 </defs><g font-family="Inter">
 <text x="600" y="136" font-size="64" font-weight="600" text-anchor="middle" fill="#202326">Placement moves rack traffic</text>
 <text x="600" y="204" font-size="52" font-weight="400" text-anchor="middle" fill="#202326">Same 64 GPUs · hypothetical update</text>
-<text x="382" y="268" font-size="60" font-weight="600" text-anchor="middle" fill="#202326">A · before</text>
-<text x="840" y="268" font-size="60" font-weight="600" text-anchor="middle" fill="#202326">B · after</text>
+<text x="382" y="268" font-size="60" font-weight="600" text-anchor="middle" fill="#202326">A · original</text>
+<text x="840" y="268" font-size="60" font-weight="600" text-anchor="middle" fill="#202326">B · moved</text>
 <image x="180" y="283" width="840" height="357.623762376" href="rack-traffic-scene.png"/>
 <line x1="766" y1="466" x2="868" y2="466" stroke="#3478BA" stroke-width="3" marker-end="url(#blue)"/>
 <text x="600" y="692" font-size="52" font-weight="400" text-anchor="middle" fill="#202326">Cross-rack GB · both directions</text>
 <rect x="160.000000000" y="720" width="832.592118600" height="72" fill="#3478BA"/>
 <text x="110" y="775" font-size="60" font-weight="600" text-anchor="middle" fill="#202326">A</text>
 <text x="188" y="775" font-size="56" font-weight="600" text-anchor="start" fill="#FFFFFF">27.753 GB</text>
-<rect x="160.000000000" y="830" width="8.053065360" height="72" fill="#E87823"/>
+<rect x="160.000000000" y="830" width="8.053065360" height="72" fill="#3478BA"/>
 <text x="110" y="885" font-size="60" font-weight="600" text-anchor="middle" fill="#202326">B</text>
 <text x="188" y="885" font-size="56" font-weight="600" text-anchor="start" fill="#202326">0.268 GB</text>
 <line x1="160" y1="710" x2="160" y2="925" stroke="#202326" stroke-width="3"/>

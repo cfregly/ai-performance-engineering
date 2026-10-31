@@ -1,7 +1,7 @@
 Placement moves rack traffic
 Same 64 GPUs · hypothetical update
-A · before
-B · after
+A · original
+B · moved
 Cross-rack GB · both directions
 A
 27.753 GB

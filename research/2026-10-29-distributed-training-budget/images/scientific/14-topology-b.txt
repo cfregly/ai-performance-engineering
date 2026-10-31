@@ -1,5 +1,5 @@
 Pair stages inside racks
-B after · Replica 0 top · Replica 1 bottom
+B moved · Replica 0 top, 1 bottom
 Rack 0
 Rack 1
 P0

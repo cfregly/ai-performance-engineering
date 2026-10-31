@@ -6,12 +6,12 @@ One NVIDIA B200 ran strict FP32 with TF32 disabled, batch 8, hidden width 2,048 
 
 | Allowed IDs | Set behavior | Dense ms/block | Selected rows ms/block | Observed speedup | Setup ms |
 |---:|---|---:|---:|---:|---:|
-| 16 | Static | 5.489 | 0.334 | 16.43x | 0.035 |
-| 16 | Changing | 5.494 | 0.560 | 9.81x | 0.015 |
-| 64 | Static | 5.409 | 0.349 | 15.48x | 3.252 |
-| 64 | Changing | 5.399 | 0.421 | 12.84x | 0.004 |
-| 256 | Static | 5.466 | 0.350 | 15.64x | 0.022 |
-| 256 | Changing | 5.471 | 0.421 | 12.99x | 0.004 |
+| 16 | Static | 5.489 | 0.334 | 16.43× | 0.035 |
+| 16 | Changing | 5.494 | 0.560 | 9.81× | 0.015 |
+| 64 | Static | 5.409 | 0.349 | 15.48× | 3.252 |
+| 64 | Changing | 5.399 | 0.421 | 12.84× | 0.004 |
+| 256 | Static | 5.466 | 0.350 | 15.64× | 0.022 |
+| 256 | Changing | 5.471 | 0.421 | 12.99× | 0.004 |
 
 Times are medians of three matched warm blocks, each containing 16 projection/filter/selection steps and final device synchronization. Pair order was dense-first, candidate-first, then dense-first after two warmup blocks per path. Every one of the 18 pairs favored selected rows. The nearest-rank p95 of three samples is the largest block, rather than request tail latency. The fixed order and three pairs do not separate execution order from sample position. In the 64-ID changing-set cell, the candidate-first block took 0.414593 ms, versus 0.420575 and 0.421094 ms for its two candidate-second blocks. These retained samples support this within-process screen, rather than a broad repeatability claim.
 

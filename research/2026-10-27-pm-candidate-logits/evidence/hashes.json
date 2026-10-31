@@ -3,12 +3,12 @@
   "scope": "Current explicit scientific projection. The original executed analyzer is retained separately. This ledger is not the historical run-source ledger.",
   "files": {
     "README.md": {
-      "sha256": "f9e567f1d1a4346b3818bf59c44ed51ad6a1b32e1d260f605b4ad3642b0db3b6",
-      "bytes": 10043
+      "sha256": "07a162576d065a5642524f00b080bc9ff1b6f64d4f5b764faf1ee7ee3b12d1f0",
+      "bytes": 10049
     },
     "code/README.md": {
-      "sha256": "0cc51b51b77aedec1abe90ae2f8d38dc8e0333c6c3a46edbae15ca861ee65027",
-      "bytes": 3445
+      "sha256": "849e51e22bead3f11e683b69352131ef634b5b4c7531fd64c0b271f7f2b5452d",
+      "bytes": 3849
     },
     "code/analyze.py": {
       "sha256": "f9d800adf0dff9a60b9a3128334c08d382910e36221b08515352b0ec03e80910",

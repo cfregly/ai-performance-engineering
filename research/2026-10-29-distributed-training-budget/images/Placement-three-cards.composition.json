@@ -1,15 +1,15 @@
 {
   "schema_version": 1,
   "kind": "lossless_square_image_pdf_composition",
-  "created_at": "2026-10-31T20:36:34.958372+00:00",
+  "created_at": "2026-10-31T21:22:52.222532+00:00",
   "document": {
     "path": "images/Placement-three-cards.pdf",
-    "sha256": "33c7db42e7a8be56312cd4ec862248dee39025c558acdc6ba9c028d316a266df",
+    "sha256": "42d34f2206366a16aeb2ad11d217782a546f2f627f196df6a64ce51fb9f36ddc",
     "page_count": 3
   },
   "asset_index": {
     "path": "images/reader-card-index.json",
-    "sha256": "6ed5165bd4346e268566bd148b3e5b6e41cb212cd2cdcfec0db4a9df0fcad28b"
+    "sha256": "3b1766eeb7f5ccf1067ae8b896229952fb9ee53054b4dcde703a39d0b7526680"
   },
   "composition_receipt": "images/Placement-three-cards.composition.json",
   "page_size_points": {
@@ -39,11 +39,11 @@
       "title": "Placement moves rack traffic",
       "source_png": {
         "path": "images/scientific/15-tier-traffic.png",
-        "sha256": "b1d92cb00fabcacd1238d2d0c91c0711067cbe30d22af3cba3aab007ba80a540",
+        "sha256": "9d0dd2846d49dfb991cb76c7952ceceacf55b6e2961e450f1f978f7ec83e0ae4",
         "width": 2400,
         "height": 2400
       },
-      "decoded_rgb_sha256": "68bf13ecdd06fef6fc3c20c0cab91406b1c71a443d0ee4c7b609525ff58703e3",
+      "decoded_rgb_sha256": "a39fc838d6e324a3c02594b5119054792e462ddf91abcee73472cdbdf312f37f",
       "page_box_points": [
         0,
         0,
@@ -72,11 +72,11 @@
       "title": "Two ordered lower bounds",
       "source_png": {
         "path": "images/scientific/16-ordered-floors.png",
-        "sha256": "da6e7eb389206da721fa8cae932f59bfae36e538713048f86f23c24dbc81829f",
+        "sha256": "5ef0315b5a9089a12e4aec40956f585a0c8b116c3445b59b489375169723d4e9",
         "width": 2400,
         "height": 2400
       },
-      "decoded_rgb_sha256": "fd649bcfc570d198afbfdf37546706358a7d758900bebd46ed8cb86704a77f8f",
+      "decoded_rgb_sha256": "8c765c138bd4cc55fb2fbdddfae7397a811ed592e612e81e8eb6a5e2d2ba612b",
       "page_box_points": [
         0,
         0,
@@ -105,11 +105,11 @@
       "title": "Placement B: pair replicas within each rack",
       "source_png": {
         "path": "images/scientific/14-topology-b.png",
-        "sha256": "407deca05d8da6275d85b570beae219813d517d95a7c36fa3743439e013f9986",
+        "sha256": "04c127947e139a886e3609aaee3e12c53b73bf13cc58807e1681198bc9ebfdc6",
         "width": 2400,
         "height": 2400
       },
-      "decoded_rgb_sha256": "df47b1cf04700a42fa092e940304134d1a3b95bbf60bb82b50aaec33328c0d4e",
+      "decoded_rgb_sha256": "1ff027b3a96bbd9e9d2b323790c5c5982fb3139f79b2f34945134b27f1117040",
       "page_box_points": [
         0,
         0,

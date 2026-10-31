@@ -1,6 +1,6 @@
 Transfers alone miss the target
 Produce all, then reduce · analytical
-Assumed 8 decimal TB/s, shared
+Assumed 8 TB/s for reads + writes
 Target 0.200 ms
 Transfer floor ≥0.243 ms
 0
