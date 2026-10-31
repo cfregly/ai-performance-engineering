@@ -3,8 +3,11 @@
 
 Requires existing Pillow, librsvg's rsvg-convert and Fontconfig executables.
 No generation service, network request or installation is used. Run from any
-working directory. Outputs are new result-scene assets in the package's images
-directory. Pass --overwrite only to rebuild these owned outputs.
+working directory. --check regenerates in temporary storage and compares the
+canonical SVG, PNG and TXT byte-for-byte without changing package files.
+Pass --overwrite to rebuild those three files, the 400/312 px PNG previews and
+images/result-scene/receipt.json. PNG byte equality requires a matching renderer
+and font stack; see the public README for the versions used.
 """
 
 from __future__ import annotations
@@ -13,9 +16,12 @@ import argparse
 from datetime import datetime, timezone
 import hashlib
 import html
+import io
+import math
 import json
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import tempfile
 import xml.etree.ElementTree as ET
@@ -42,28 +48,43 @@ def relative(path: Path) -> str:
     return path.relative_to(PACKAGE).as_posix()
 
 
-def render(overwrite: bool = False):
+def require(condition: bool, message: str) -> None:
+    """Keep data and layout guards active under python -O."""
+    if not condition:
+        raise ValueError(message)
+
+
+def render(overwrite: bool = False, check: bool = False):
+    require(not (overwrite and check), "--check and --overwrite are mutually exclusive")
     tokens = json.loads(TOKENS_PATH.read_text())
-    assert tokens["typography"]["font_family"] == "Inter"
+    require(tokens["typography"]["font_family"] == "Inter", "The retained font family must be Inter")
     palette = tokens["colors"]
     roles = tokens["typography"]["roles_px"]
     margin = tokens["spacing"]["safe_margin_px"]
     # At a 312 px image width, 48 source pixels become 12.48 CSS pixels.
     body = roles["body"] + tokens["spacing"]["scale_px"][0] // 2
-    assert body == 48 and margin == 84
+    require(body == 48 and margin == 84, "The retained layout requires 48 px body text and 84 px margins")
     data = json.loads(SUMMARY.read_text())
-    cell = next(c for c in data["cells"] if c["size"] == 64 and c["mode"] == "changing")
+    cells = [c for c in data["cells"] if c["size"] == 64 and c["mode"] == "changing"]
+    require(len(cells) == 1, "Expected exactly one changing-set, 64-token cell")
+    cell = cells[0]
     baseline = cell["baseline_median_wall_ms"]
     candidate = cell["candidate_median_wall_ms"]
     ratio = cell["speedup"]
-    assert data["model_measured"] is False and data["serving_measured"] is False
-    assert round(baseline, 3) == 5.399 and round(candidate, 3) == 0.421
-    assert round(ratio, 2) == 12.84
+    require(data["model_measured"] is False and data["serving_measured"] is False,
+            "The retained result must not claim model or serving measurements")
+    require(all(isinstance(value, (int, float)) and not isinstance(value, bool)
+                and math.isfinite(value) and value > 0
+                for value in [baseline, candidate, ratio]),
+            "Timing values and speedup must be positive finite numbers")
+    require(round(baseline, 3) == 5.399 and round(candidate, 3) == 0.421,
+            "Timings do not match the retained result displayed by this scene")
+    require(round(ratio, 2) == 12.84, "Speedup does not match the retained result")
     inputs = {relative(p): sha(p) for p in [TOKENS_PATH, FONT, ART, SUMMARY]}
     outputs = [OUTPUT.with_suffix(s) for s in [".svg", ".png", ".txt"]]
     outputs += [IMAGES / f"result-scene-{width}px.png" for width in [400, 312]]
     receipt_path = HERE / "receipt.json"
-    if not overwrite:
+    if not overwrite and not check:
         existing = [relative(p) for p in outputs + [receipt_path] if p.exists()]
         if existing:
             raise SystemExit("Owned outputs already exist. Use --overwrite to rebuild: " + ", ".join(existing))
@@ -77,14 +98,14 @@ def render(overwrite: bool = False):
         items.append(f'<line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" stroke="{palette["ink"]}" stroke-width="{width}"/>')
 
     def text(x, y, value, size=body, weight=400, fill=None, anchor="start"):
-        assert ";" not in value
+        require(";" not in value, "Scene text must not contain semicolons")
         face = ImageFont.truetype(str(FONT), size)
         face.set_variation_by_axes([14, weight])
         width = face.getlength(value)
         left = x if anchor == "start" else x - width if anchor == "end" else x - width / 2
-        assert left >= margin, (value, left)
-        assert left + width <= W - margin + 1, (value, left + width)
-        assert y <= H - margin, (value, y)
+        require(left >= margin, f"Text extends beyond the left margin: {value!r} at {left}")
+        require(left + width <= W - margin + 1, f"Text extends beyond the right margin: {value!r} at {left + width}")
+        require(y <= H - margin, f"Text extends beyond the bottom margin: {value!r} at {y}")
         text_items.append({"text": value, "font_size": size, "font_weight": weight, "baseline": [x, y], "width": round(width, 3), "size_at_312px_image_width": size * 312 / W})
         items.append(f'<text x="{x}" y="{y}" font-family="Inter" font-size="{size}" font-weight="{weight}" fill="{fill or palette["ink"]}" text-anchor="{anchor}">{html.escape(value)}</text>')
 
@@ -134,29 +155,53 @@ def render(overwrite: bool = False):
 </defs>
 {''.join(items)}
 </svg>'''
-    svg_path = OUTPUT.with_suffix(".svg")
-    svg_path.write_text(svg)
-    ET.parse(svg_path)
-    OUTPUT.with_suffix(".txt").write_text("\n".join(item["text"] for item in text_items) + "\n")
-    # Fontconfig is process-local. Its temporary absolute paths are neither
-    # shipped nor written into the public renderer or provenance receipt.
-    with tempfile.TemporaryDirectory(prefix="result-scene-font-") as folder:
+    ET.fromstring(svg)
+    rendered = {
+        OUTPUT.with_suffix(".svg"): svg.encode("utf-8"),
+        OUTPUT.with_suffix(".txt"): ("\n".join(item["text"] for item in text_items) + "\n").encode("utf-8"),
+    }
+    # All rendering, resource resolution and Fontconfig caches stay in temporary
+    # storage. Relative SVG resource paths match the final images/ layout.
+    with tempfile.TemporaryDirectory(prefix="result-scene-render-") as folder:
         temp = Path(folder)
+        temp_images = temp / "images"
+        (temp_images / "result-scene").mkdir(parents=True)
+        (temp_images / "fonts").mkdir()
+        temp_font = temp_images / "fonts/Inter.ttf"
+        shutil.copyfile(FONT, temp_font)
+        shutil.copyfile(ART, temp_images / "result-scene/matrix-cut-art.png")
+        temp_svg = temp_images / "result-scene.svg"
+        temp_svg.write_bytes(rendered[OUTPUT.with_suffix(".svg")])
+        temp_png = temp_images / "result-scene.png"
         config = temp / "fonts.conf"
-        config.write_text(f'<?xml version="1.0"?><!DOCTYPE fontconfig SYSTEM "urn:fontconfig:fonts.dtd"><fontconfig><dir>{html.escape(str(FONT.parent))}</dir><cachedir>{html.escape(str(temp / "cache"))}</cachedir></fontconfig>')
+        config.write_text(f'<?xml version="1.0"?><!DOCTYPE fontconfig SYSTEM "urn:fontconfig:fonts.dtd"><fontconfig><dir>{html.escape(str(temp_font.parent))}</dir><cachedir>{html.escape(str(temp / "cache"))}</cachedir></fontconfig>')
         env = {**os.environ, "FONTCONFIG_FILE": str(config)}
         matched = subprocess.check_output(["fc-match", "-f", "%{file}\n%{family}\n", "Inter"], env=env, text=True).splitlines()
-        assert Path(matched[0]).resolve() == FONT.resolve(), "Inter source file did not resolve"
-        subprocess.run(["rsvg-convert", "--output", str(OUTPUT.with_suffix(".png")), str(svg_path)], env=env, check=True)
-    with Image.open(OUTPUT.with_suffix(".png")) as image:
-        assert image.size == (W, H)
+        require(bool(matched) and Path(matched[0]).resolve() == temp_font.resolve(),
+                "Inter source file did not resolve")
+        subprocess.run(["rsvg-convert", "--output", str(temp_png), str(temp_svg)], env=env, check=True)
+        rendered[OUTPUT.with_suffix(".png")] = temp_png.read_bytes()
+    with Image.open(io.BytesIO(rendered[OUTPUT.with_suffix(".png")])) as image:
+        require(image.size == (W, H), f"Unexpected rendered dimensions: {image.size}")
         for width in [400, 312]:
-            image.resize((width, round(H * width / W)), Image.Resampling.LANCZOS).save(IMAGES / f"result-scene-{width}px.png")
-    assert inputs == {relative(p): sha(p) for p in [TOKENS_PATH, FONT, ART, SUMMARY]}
+            preview = io.BytesIO()
+            image.resize((width, round(H * width / W)), Image.Resampling.LANCZOS).save(preview, format="PNG")
+            rendered[IMAGES / f"result-scene-{width}px.png"] = preview.getvalue()
+    require(inputs == {relative(p): sha(p) for p in [TOKENS_PATH, FONT, ART, SUMMARY]},
+            "Retained inputs changed during rendering")
+    if check:
+        canonical = [OUTPUT.with_suffix(s) for s in [".svg", ".png", ".txt"]]
+        different = [relative(p) for p in canonical if not p.is_file() or p.read_bytes() != rendered[p]]
+        require(not different, "Regeneration differs for canonical outputs: " + ", ".join(different)
+                + ". PNG byte equality depends on the renderer and font stack; compare the documented versions.")
+        print(json.dumps({"state": "canonical outputs match byte-for-byte", "checked": [relative(p) for p in canonical], "package_files_written": False}))
+        return
+    for path in outputs:
+        path.write_bytes(rendered[path])
     receipt = {
         "schema_version": 1,
         "created_at": datetime.now(timezone.utc).isoformat(),
-        "state": "rendered local asset, independent review and platform preview pending",
+        "state": "rendered from retained inputs. Review and platform preview evidence are retained separately",
         "family": "scene_evidence_split",
         "dimensions_px": [W, H],
         "renderer": relative(Path(__file__).resolve()),
@@ -180,5 +225,8 @@ def render(overwrite: bool = False):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--overwrite", action="store_true", help="Rebuild only the owned result-scene outputs")
-    render(parser.parse_args().overwrite)
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--overwrite", action="store_true", help="Rebuild canonical SVG/PNG/TXT, 400/312 px previews and receipt.json")
+    mode.add_argument("--check", action="store_true", help="Compare canonical SVG/PNG/TXT byte-for-byte using temporary storage; write no package files")
+    args = parser.parse_args()
+    render(overwrite=args.overwrite, check=args.check)

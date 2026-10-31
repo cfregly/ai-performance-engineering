@@ -6,7 +6,7 @@
       "title": "Placement moves rack traffic",
       "selected": {
         "path": "images/scientific/15-tier-traffic.png",
-        "sha256": "3af13f95996e0230108b25d385b2166df20c4213468cebc42a03c8550e5cc56c",
+        "sha256": "9a6c95cd9c3d1a7b80ac7b2fe18ef06f755a776571739681c1035dbdc55790d9",
         "width": 2400,
         "height": 2400
       }
@@ -16,7 +16,7 @@
       "title": "Two ordered lower bounds",
       "selected": {
         "path": "images/scientific/16-ordered-floors.png",
-        "sha256": "fde85c822fdc209d7315908ec07c520002b9dfe790a8facf3776e65ef789f0b2",
+        "sha256": "db6a38bea6b09b420f05c1a4798f4f4bbb88821f6fdf7e0f897ed2e2d442e73e",
         "width": 2400,
         "height": 2400
       }
@@ -26,7 +26,7 @@
       "title": "Placement B: pair replicas within each rack",
       "selected": {
         "path": "images/scientific/14-topology-b.png",
-        "sha256": "84a85e1450419a39a01b50dad0091f916548fabbf8dc7c6ab4da63577b48a046",
+        "sha256": "407deca05d8da6275d85b570beae219813d517d95a7c36fa3743439e013f9986",
         "width": 2400,
         "height": 2400
       }

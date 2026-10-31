@@ -63,7 +63,8 @@ class Card:
         for x, y, w, h, kind in self.bounds:
             if min(x, y) < 80 or x+w > 920 or y+h > 920:
                 raise ValueError(f"{kind} outside 80 px inset: {(x,y,w,h)}")
-        assert min(self.fonts) >= 36
+        if not self.fonts or min(self.fonts) < 36:
+            raise ValueError("A label is smaller than 36 px")
         data = ("\n".join(self.parts+["</g></svg>"])+"\n").encode()
         ET.fromstring(data)
         return data
@@ -96,8 +97,10 @@ def stage_work(source):
 
 
 def norm_schedules(source):
-    assert "declared choice" in source["optimizer_and_routing"]["barrier"]
-    assert "RS ->" in source["alternative_DP_schedule"]["order"]
+    if "declared choice" not in source["optimizer_and_routing"]["barrier"]:
+        raise ValueError("The primary clipping schedule must be a declared choice")
+    if "RS ->" not in source["alternative_DP_schedule"]["order"]:
+        raise ValueError("The alternative schedule must begin with reduce-scatter")
     c = Card("Same norm. Different waiting.", "The declared full DP all-reduce plan and a reduce-scatter-first alternative preserve total payload and norm mathematics. Possible allgather/optimizer overlap is optimistic and must respect the full dependency graph.")
     c.text(500, 140, "Same norm.", 60, "middle")
     c.text(500, 206, "Different waiting.", 60, "middle")
@@ -123,7 +126,8 @@ def tier_traffic(source):
     traffic = source["traffic_and_screens"]
     a = traffic["A"]["aggregate_sent_bytes"]
     b = traffic["B"]["aggregate_sent_bytes"]
-    assert a["inter_rack"]+a["intra_rack"] == b["inter_rack"]+b["intra_rack"]
+    if a["inter_rack"]+a["intra_rack"] != b["inter_rack"]+b["intra_rack"]:
+        raise ValueError("Total off-node payload must be conserved")
     c = Card("Placement moves rack traffic", "Logical directed payload, both directions per update. Cross-rack payload moves within the racks; total off-node payload is unchanged.")
     c.text(500, 140, "Placement moves rack traffic", 50, "middle")
     c.text(500, 198, "Hypothetical cross-rack GB / update", 36, "middle")
@@ -166,7 +170,8 @@ def ordered_floors(source):
         values = traffic[label]["floors_ms"]
         pre, post = values["pre_clipping_phase"], values["post_clipping_phase"]
         total = pre+post
-        assert abs(total-values["necessary_step_floor"]) < 1e-6
+        if not abs(total-values["necessary_step_floor"]) < 1e-6:
+            raise ValueError(f"Ordered phase sum differs for placement {label}")
         c.rect(x0, y, pre*scale, 70, BLUE, BLUE, 0)
         c.rect(x0+pre*scale, y, post*scale, 70, ORANGE, ORANGE, 0)
         c.text(95, y+51, label, 52)
@@ -190,23 +195,37 @@ FIGURES = {"04-stage-work": stage_work, "12-norm-schedules": norm_schedules,
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--check", action="store_true")
-    parser.add_argument("--receipt", type=Path)
+    parser.add_argument("--receipt", type=Path, help="Write a relative-path receipt, or verify an existing receipt with --check.")
     args = parser.parse_args()
     source_bytes = SOURCE.read_bytes()
     source = json.loads(source_bytes)
-    OUT.mkdir(parents=True, exist_ok=True)
-    receipt = {"source": str(SOURCE), "source_sha256": hashlib.sha256(source_bytes).hexdigest(), "cards": []}
+    if args.check:
+        if not OUT.is_dir():
+            raise ValueError("Retained card directory is missing: images/card-elements")
+    else:
+        OUT.mkdir(parents=True, exist_ok=True)
+    receipt = {"source": SOURCE.relative_to(ROOT).as_posix(), "source_sha256": hashlib.sha256(source_bytes).hexdigest(), "cards": []}
     for name, builder in FIGURES.items():
         card = builder(source)
         data = card.validate()
         path = OUT / (name+".svg")
         if args.check:
-            assert path.read_bytes() == data, f"Regeneration differs: {path}"
+            if not path.is_file():
+                raise ValueError(f"Retained card is missing: {path.relative_to(ROOT).as_posix()}")
+            if path.read_bytes() != data:
+                raise ValueError(f"Regeneration differs: {path.relative_to(ROOT).as_posix()}")
         else:
             path.write_bytes(data)
-        receipt["cards"].append({"file": str(path), "sha256": hashlib.sha256(data).hexdigest(), "viewbox": [0,0,1000,1000], "minimum_font_px": min(card.fonts), "safe_inset_px": 80, "xml_parse": "pass", "bounds": "pass", "geometry": card.geometry})
+        receipt["cards"].append({"file": path.relative_to(ROOT).as_posix(), "sha256": hashlib.sha256(data).hexdigest(), "viewbox": [0,0,1000,1000], "minimum_font_px": min(card.fonts), "safe_inset_px": 80, "xml_parse": "pass", "bounds": "pass", "geometry": card.geometry})
     if args.receipt:
-        args.receipt.write_text(json.dumps(receipt,indent=2)+"\n")
+        receipt_bytes = (json.dumps(receipt,indent=2)+"\n").encode()
+        if args.check:
+            if not args.receipt.is_file():
+                raise ValueError("Retained receipt is missing")
+            if args.receipt.read_bytes() != receipt_bytes:
+                raise ValueError("Retained receipt differs")
+        else:
+            args.receipt.write_bytes(receipt_bytes)
     print(f"{'Verified' if args.check else 'Wrote'} four cards: XML, 80 px bounds and minimum 36 px labels pass.")
 
 

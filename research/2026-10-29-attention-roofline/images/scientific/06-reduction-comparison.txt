@@ -1,0 +1,12 @@
+Compare the complete path
+Store all partials
+Simple ownership.
+More scratch + traffic.
+Combine smaller batches
+Less live scratch.
+More coordination.
+Accumulate directly
+Less staging.
+Check synchronization.
+Each design needs correctness checks.
+Sum order can change rounding.

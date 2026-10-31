@@ -3,8 +3,8 @@
   "scope": "Current explicit scientific projection. The original executed analyzer is retained separately. This ledger is not the historical run-source ledger.",
   "files": {
     "README.md": {
-      "sha256": "10de2e8e2b7b39765adf2ce78d71aa1a38e90850871f38ebe62f6f88677c046d",
-      "bytes": 10022
+      "sha256": "f9e567f1d1a4346b3818bf59c44ed51ad6a1b32e1d260f605b4ad3642b0db3b6",
+      "bytes": 10043
     },
     "code/README.md": {
       "sha256": "0cc51b51b77aedec1abe90ae2f8d38dc8e0333c6c3a46edbae15ca861ee65027",
@@ -286,30 +286,6 @@
       "sha256": "7c08b6d90f2f7778bc7ddd928785df08fd03e1c1837741d1ed710ca3abb07479",
       "bytes": 7837804
     },
-    "images/gamma-explainer/example.png": {
-      "sha256": "f6fcdcb9beaf970ab9a0d45db712a914c9f06f56dc57ebb955e0740d70c5f2dc",
-      "bytes": 286956
-    },
-    "images/gamma-explainer/mechanism.png": {
-      "sha256": "ca52f523d4d65560777669540822a2e6c19f82bea88eb95ac38dc56c73c2c5de",
-      "bytes": 304755
-    },
-    "images/gamma-explainer/result.png": {
-      "sha256": "e522cdf85db07029e0012c3d0b4c4cf62b5e6e23fccf18325533f9b0ec9c2408",
-      "bytes": 298996
-    },
-    "images/gamma-explainer/matrix.png": {
-      "sha256": "6c2a7a5f9d5b6536d720a7dda270115354967956a933109f731225e3875e3736",
-      "bytes": 339871
-    },
-    "images/gamma-explainer/setup.png": {
-      "sha256": "becf39a94112bf1abf3c90eb06e5b45b0e033e87bdc993e001d5aff9d823809a",
-      "bytes": 260918
-    },
-    "images/gamma-explainer/boundaries.png": {
-      "sha256": "5fa85fb497de4a40356f1da195d46efee82da1657e20cc2f95f85ac1864975cf",
-      "bytes": 384738
-    },
     "images/gamma-explainer/result.txt": {
       "sha256": "32bf3ba56b5074cc928485efffc207e7248ec1786236d62b3ca591839cdf3393",
       "bytes": 318
@@ -321,10 +297,6 @@
     "images/fonts/OFL.txt": {
       "sha256": "5b9321a4298cfeb6b34354164a1c3afc3db114569984c502b9b35d988fd58c57",
       "bytes": 4377
-    },
-    "images/gamma-explainer/result-social.png": {
-      "sha256": "91ad42bdb729999447260446448b046010ec586dff4bbdfec5d53b3950d065e8",
-      "bytes": 282337
     },
     "images/gamma-explainer/result-social.txt": {
       "sha256": "80e0fcf7cbec7125261476f4813291dd8f7cd28f60ec4462934b3727b156e9dc",
@@ -347,8 +319,8 @@
       "bytes": 361
     },
     "images/result-scene/render_result_scene.py": {
-      "sha256": "fbd4b008cd3e1db34f48d693e7f65b307a7fd80dc467464d70582b35681345d6",
-      "bytes": 11021
+      "sha256": "66c3467e17524d6b0f65f40c63750810bd8830537a6b3d1d597ff23223162066",
+      "bytes": 14236
     },
     "images/result-scene/visual-tokens.json": {
       "sha256": "677886666cf02f359a6ae23ff762185985e34c655f9335dfc969e38265a87b33",
@@ -357,6 +329,10 @@
     "images/result-scene/matrix-cut-art.png": {
       "sha256": "b8bbee1cefdc666da6c3b5379421d48a14f6d3c0dfca1a9760cc220f6eabebfa",
       "bytes": 3386088
+    },
+    "images/.gitignore": {
+      "sha256": "2f2f39be015d276bc340ce45ca6a3e1fa1020fa39a43c5b1bce0019bba812b0d",
+      "bytes": 75
     }
   }
 }

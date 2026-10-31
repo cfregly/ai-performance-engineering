@@ -2,7 +2,7 @@
 
 A synthetic output-head benchmark compares two ways to return allowed token scores and their greedy winner. The dense baseline computes `H @ W.T`, gathers the allowed scores, and selects their maximum. The candidate gathers allowed weight rows first, computes `H @ W[S, :].T`, and uses the same selection path.
 
-One NVIDIA B200 ran strict FP32 with TF32 disabled, batch 8, hidden width 2,048 and vocabulary 131,072. Each step shared one sorted, noncontiguous allowed set across all batch rows. A changing set differed at each of 16 steps; the sequence was reused across warmup and timing.
+One NVIDIA B200 ran strict FP32 with TF32 disabled, batch 8, hidden width 2,048 and vocabulary 131,072. Each step shared one sorted, noncontiguous allowed set across all batch rows. A changing set differed at each of 16 steps. The sequence was reused across warmup and timing.
 
 | Allowed IDs | Set behavior | Dense ms/block | Selected rows ms/block | Observed speedup | Setup ms |
 |---:|---|---:|---:|---:|---:|
@@ -13,13 +13,13 @@ One NVIDIA B200 ran strict FP32 with TF32 disabled, batch 8, hidden width 2,048 
 | 256 | Static | 5.466 | 0.350 | 15.64x | 0.022 |
 | 256 | Changing | 5.471 | 0.421 | 12.99x | 0.004 |
 
-Times are medians of three matched warm blocks, each containing 16 projection/filter/selection steps and final device synchronization. Pair order was dense-first, candidate-first, then dense-first after two warmup blocks per path. Every one of the 18 pairs favored selected rows. The nearest-rank p95 of three samples is the largest block, rather than request tail latency.
+Times are medians of three matched warm blocks, each containing 16 projection/filter/selection steps and final device synchronization. Pair order was dense-first, candidate-first, then dense-first after two warmup blocks per path. Every one of the 18 pairs favored selected rows. The nearest-rank p95 of three samples is the largest block, rather than request tail latency. The fixed order and three pairs do not separate execution order from sample position. In the 64-ID changing-set cell, the candidate-first block took 0.414593 ms, versus 0.420575 and 0.421094 ms for its two candidate-second blocks. These retained samples support this within-process screen, rather than a broad repeatability claim.
 
 The changing-set timings are not monotonic in set size. I did not profile their cause, so the three sizes establish no scaling trend.
 
-Static mode gathers rows once before warmup and timing. Its setup cost is outside the warm-block ratios above; the retained 64-ID setup interval took 3.252 ms. That interval is far above the 16- and 256-ID intervals. Its cause was not isolated, so it may include a one-time effect rather than gather cost. Changing mode gathers rows in every timed step. Its setup column records synchronization around an empty setup branch. This test did not measure a continuous first-use interval or an observed payback point.
+Static mode gathers rows once before warmup and timing. Its setup cost is outside the warm-block ratios above. The retained 64-ID setup interval took 3.252 ms. That interval is far above the 16- and 256-ID intervals. Its cause was not isolated, so it may include a one-time effect rather than gather cost. Changing mode gathers rows in every timed step. Its setup column records synchronization around an empty setup branch. This test did not measure a continuous first-use interval or an observed payback point.
 
-Both paths checked 86,016 allowed logits against an FP64 reference with `rtol=1e-4` and `atol=1e-5`. Maximum absolute errors were approximately `2.44e-6` for dense and `1.01e-6` for selected rows. All 768 selected-token rows per path matched the reference argmax. All-equal and two-way-maximum fixtures chose the smallest allowed ID. These checks cover the tested inputs and explicit ties; trained-model near-ties need separate validation.
+Both paths checked 86,016 allowed logits against an FP64 reference with `rtol=1e-4` and `atol=1e-5`. Maximum absolute errors were approximately `2.44e-6` for dense and `1.01e-6` for selected rows. All 768 selected-token rows per path matched the reference argmax. All-equal and two-way-maximum fixtures chose the smallest allowed ID. These checks cover the tested inputs and explicit ties. Trained-model near-ties need separate validation.
 
 - [Runnable source and reproduction commands](code/README.md)
 - [All six results and paired samples](evidence/recomputed-results.json)
@@ -38,7 +38,7 @@ python3 code/screen.py --self-check
 
 The baseline is eager PyTorch CUDA `torch.mm` with preallocated buffers. The observations cover this synthetic stage and input shape. Model computation, grammar transitions, tokenization, sorting and transferring allowed IDs, request scheduling, independent request grammars, other precisions, quantized or sharded heads and end-to-end generation were outside the timing. No profiler capture or measured memory peak is included.
 
-API contracts: [PyTorch matrix product](https://docs.pytorch.org/docs/2.14/generated/torch.mm.html), [linear projection](https://docs.pytorch.org/docs/2.14/generated/torch.nn.functional.linear.html). The [vLLM structured-output interface](https://docs.vllm.ai/en/latest/features/structured_outputs/) provides integration context; this test did not run vLLM.
+API contracts: [PyTorch matrix product](https://docs.pytorch.org/docs/2.14/generated/torch.mm.html), [linear projection](https://docs.pytorch.org/docs/2.14/generated/torch.nn.functional.linear.html). The [vLLM structured-output interface](https://docs.vllm.ai/en/latest/features/structured_outputs/) provides integration context. This test did not run vLLM.
 
 ## Trade-offs
 
@@ -60,10 +60,12 @@ The complete configuration and methods are above. This figure summarizes the sam
 The selected figure combines retained conceptual artwork with the unchanged measured values. Its [editable SVG](images/result-scene.svg) and [renderer](images/result-scene/render_result_scene.py) retain the text and exact bar geometry. To rebuild it, use an environment with Pillow, librsvg (`rsvg-convert`) and Fontconfig already installed:
 
 ```sh
-python3 images/result-scene/render_result_scene.py --overwrite
+python3 images/result-scene/render_result_scene.py --check
 ```
 
-This command rebuilds the figure from retained evidence and artwork. It does not run the GPU benchmark.
+This read-only command regenerates into temporary storage and checks the canonical SVG, PNG and text. It does not run the GPU benchmark. Use `--overwrite` to regenerate intentionally. That also creates 312 px and 400 px preview images and a provenance receipt, which are generated side files excluded by the companion `.gitignore`.
+
+Exact PNG rebuilding was checked with Python 3.12.2, Pillow 11.3.0, rsvg-convert 2.62.3, Cairo 1.18.4, Pango 1.57.1, Harfbuzz 14.2.1 and Fontconfig 2.18.1. A different stack can change PNG bytes even when SVG and text agree. Inspect those sources before regeneration.
 
 ## Figures
 
@@ -76,7 +78,7 @@ The cover illustration is conceptual. Tile counts and drawn proportions do not e
 <details>
 <summary>Square version</summary>
 
-![Choose first. Multiply less. — square](images/fun-square.png)
+![Choose first. Multiply less.: square](images/fun-square.png)
 
 </details>
 
@@ -87,7 +89,7 @@ The cover illustration is conceptual. Tile counts and drawn proportions do not e
 <details>
 <summary>Square version</summary>
 
-![Select rows before multiplying — square](images/a-square.png)
+![Select rows before multiplying: square](images/a-square.png)
 
 </details>
 
@@ -98,7 +100,7 @@ The cover illustration is conceptual. Tile counts and drawn proportions do not e
 <details>
 <summary>Square version</summary>
 
-![Six measured output-head comparisons — square](images/b-square.png)
+![Six measured output-head comparisons: square](images/b-square.png)
 
 </details>
 
@@ -109,7 +111,7 @@ The cover illustration is conceptual. Tile counts and drawn proportions do not e
 <details>
 <summary>Square version</summary>
 
-![Where to inspect a decoder — square](images/c-square.png)
+![Where to inspect a decoder: square](images/c-square.png)
 
 </details>
 
@@ -120,7 +122,7 @@ The cover illustration is conceptual. Tile counts and drawn proportions do not e
 <details>
 <summary>Square version</summary>
 
-![A smaller set of possible answers — square](images/aud-curious-square.png)
+![A smaller set of possible answers: square](images/aud-curious-square.png)
 
 </details>
 
@@ -131,7 +133,7 @@ The cover illustration is conceptual. Tile counts and drawn proportions do not e
 <details>
 <summary>Square version</summary>
 
-![The output contract matters — square](images/aud-ml-engineer-square.png)
+![The output contract matters: square](images/aud-ml-engineer-square.png)
 
 </details>
 
@@ -142,7 +144,7 @@ The cover illustration is conceptual. Tile counts and drawn proportions do not e
 <details>
 <summary>Square version</summary>
 
-![Read the paired block timings — square](images/aud-performance-engineer-square.png)
+![Read the paired block timings: square](images/aud-performance-engineer-square.png)
 
 </details>
 
@@ -153,7 +155,7 @@ The cover illustration is conceptual. Tile counts and drawn proportions do not e
 <details>
 <summary>Square version</summary>
 
-![Avoid projecting unused rows — square](images/aud-kernel-engineer-square.png)
+![Avoid projecting unused rows: square](images/aud-kernel-engineer-square.png)
 
 </details>
 
@@ -164,7 +166,7 @@ The cover illustration is conceptual. Tile counts and drawn proportions do not e
 <details>
 <summary>Square version</summary>
 
-![Where integration time can return — square](images/aud-platform-operations-square.png)
+![Where integration time can return: square](images/aud-platform-operations-square.png)
 
 </details>
 
@@ -175,7 +177,7 @@ The cover illustration is conceptual. Tile counts and drawn proportions do not e
 <details>
 <summary>Square version</summary>
 
-![Stage gains and whole-system gains — square](images/aud-business-capacity-square.png)
+![Stage gains and whole-system gains: square](images/aud-business-capacity-square.png)
 
 </details>
 
@@ -186,31 +188,7 @@ The cover illustration is conceptual. Tile counts and drawn proportions do not e
 <details>
 <summary>Square version</summary>
 
-![Changing allowed sets: the observed stage gain — square](images/comparison-detail-square.png)
-
-</details>
-
-## Visual walkthrough
-
-These figures explain the illustrative allowed-choice example and the retained output-head measurements. Model and serving performance were not measured.
-
-![Illustrative allowed choices](images/gamma-explainer/example.png)
-
-![Final scoring paths](images/gamma-explainer/mechanism.png)
-
-![Measured stage comparison](images/gamma-explainer/result.png)
-
-![All six measured cases](images/gamma-explainer/matrix.png)
-
-![Static selection setup](images/gamma-explainer/setup.png)
-
-![Applicability and limits](images/gamma-explainer/boundaries.png)
-
-
-<details>
-<summary>Timing-only view of the same strict-FP32 measurement</summary>
-
-![Timing-only output-head comparison, synthetic strict FP32 B200](images/gamma-explainer/result-social.png)
+![Changing allowed sets: the observed stage gain: square](images/comparison-detail-square.png)
 
 </details>
 

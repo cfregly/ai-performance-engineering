@@ -1,0 +1,15 @@
+Placement moves rack traffic
+Same 64 GPUs · hypothetical update
+A · before
+B · after
+Cross-rack GB · both directions
+A
+27.753 GB
+B
+0.268 GB
+0
+10
+20
+30
+Within racks: 0.805 → 28.290 GB
+Total off-node payload unchanged

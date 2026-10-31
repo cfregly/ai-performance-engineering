@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="1200" height="1200" viewBox="0 0 1200 1200">
+<title>Scratch becomes traffic</title>
+<style>@font-face {font-family: Inter; src: url("../attention-scenes/Inter.ttf") format("truetype"); font-weight: 100 900; font-style: normal;}</style>
+<rect width="1200" height="1200" fill="#FBFBF8"/>
+<text x="84" y="112" font-family="Inter" font-size="64" font-weight="700" text-anchor="start" fill="#202326">Scratch becomes traffic</text>
+<text x="84" y="182" font-family="Inter" font-size="52" font-weight="400" text-anchor="start" fill="#202326">Attention backward · one sequence,</text>
+<text x="84" y="246" font-family="Inter" font-size="52" font-weight="400" text-anchor="start" fill="#202326">one layer · one device · FP32 partials</text>
+<svg x="84" y="278" width="1032" height="226" viewBox="0 624 2400 738" overflow="hidden" preserveAspectRatio="xMidYMid meet"><image width="2400" height="2400" xlink:href="../attention-scenes/warehouse-source.png"/></svg>
+<text x="84" y="557" font-family="Inter" font-size="52" font-weight="600" text-anchor="start" fill="#202326">1,056 MiB produced</text>
+<rect x="84.000000" y="579.000000" width="532.125000" height="27.000000" fill="#3478BA" />
+<text x="84" y="669" font-family="Inter" font-size="52" font-weight="600" text-anchor="start" fill="#202326">≤128 MiB retained on chip</text>
+<rect x="84.000000" y="691.000000" width="64.500000" height="27.000000" fill="#3478BA" />
+<text x="84" y="781" font-family="Inter" font-size="52" font-weight="600" text-anchor="start" fill="#202326">≥1,856 MiB out + back</text>
+<rect x="84.000000" y="803.000000" width="935.250000" height="27.000000" fill="#E87823" />
+<line x1="84" y1="837" x2="1116" y2="837" stroke="#202326" stroke-width="3" />
+<line x1="84.0" y1="837" x2="84.0" y2="849" stroke="#202326" stroke-width="3" />
+<text x="84.0" y="905" font-family="Inter" font-size="52" font-weight="400" text-anchor="start" fill="#202326">0</text>
+<line x1="600.0" y1="837" x2="600.0" y2="849" stroke="#202326" stroke-width="3" />
+<text x="600.0" y="905" font-family="Inter" font-size="52" font-weight="400" text-anchor="middle" fill="#202326">1,024</text>
+<line x1="1116.0" y1="837" x2="1116.0" y2="849" stroke="#202326" stroke-width="3" />
+<text x="1116.0" y="905" font-family="Inter" font-size="52" font-weight="400" text-anchor="end" fill="#202326">2,048 MiB</text>
+<text x="84" y="977" font-family="Inter" font-size="52" font-weight="400" text-anchor="start" fill="#202326">All production, then reduction.</text>
+<text x="84" y="1041" font-family="Inter" font-size="52" font-weight="400" text-anchor="start" fill="#202326">≥928 MiB out + ≥928 MiB reread.</text>
+<text x="84" y="1105" font-family="Inter" font-size="52" font-weight="400" text-anchor="start" fill="#202326">No compression or recomputation.</text>
+</svg>

@@ -8,7 +8,7 @@ Python 3.14.6 standard-library checks on October 29, 2026:
 
 October 31, 2026: all 19 current unit tests passed, including evidence-hash binding and the CLI check/reject test. The 16-test result above records the October 29 validation.
 
-The three README commands also passed on October 31 from a clean checkout of public commit `86fb8f0f5e1ad9452474a32fadb93ce7b052150d`. The generated JSON and CSV files matched the retained derivation byte for byte. The retained reproduction receipt records the checkout identity, commands and exit codes.
+The three README commands also passed on October 31 from a clean checkout of public commit `86fb8f0f5e1ad9452474a32fadb93ce7b052150d`. The roofline calculator, its tests and retained arithmetic data are unchanged in this revision. Selected figure rendering is checked separately. The generated JSON and CSV files matched the retained derivation byte for byte. The retained reproduction receipt records the checkout identity, commands and exit codes.
 
 No GPU execution or timing was performed. These checks establish the declared arithmetic and tiny CPU toy equivalence. They do not establish attention-derivative correctness, implementation fit, attainable runtime or speedup.
 
@@ -25,4 +25,6 @@ Check the maintained source snapshot from the companion directory:
 
 ```sh
 shasum -a 256 -c evidence/derivation/SHA256SUMS-current
+# On systems with GNU coreutils instead:
+sha256sum -c evidence/derivation/SHA256SUMS-current
 ```

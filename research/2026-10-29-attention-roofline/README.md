@@ -103,3 +103,34 @@ These diagrams follow the same synthetic workload, phase contract and analytical
 ## Source snapshot checksums
 
 `evidence/derivation/SHA256SUMS` retains the historical October 29 snapshot. For the maintained tree, run `shasum -a 256 -c evidence/derivation/SHA256SUMS-current`. Its scope excludes both checksum ledgers and the validation note to avoid self-reference.
+
+## Rebuild the selected figures
+
+The current three cards use Inter labels of at least 52 px on a 1200 px canvas. Rebuilding requires the retained font and artwork, rsvg-convert 2.62.3 and ImageMagick 7.1.2-26. SVG artwork and font links are relative.
+
+```sh
+python3 code/render_attention_figures.py --check
+```
+
+The check regenerates into temporary storage and compares the retained files. It does not overwrite them. PNG byte equality depends on the rendering stack. To regenerate intentionally, omit `--check` or use `--output-dir` for a separate directory. This renders retained analytical values and performs no GPU experiment.
+
+<details>
+<summary>Artwork inputs and compact exports</summary>
+
+![Retained scene or compact figure export](images/attention-scenes/factory-source.png)
+
+![Retained scene or compact figure export](images/attention-scenes/warehouse-source.png)
+
+![Retained scene or compact figure export](images/scientific/03-scratch-traffic-297.png)
+
+![Retained scene or compact figure export](images/scientific/03-scratch-traffic-312.png)
+
+![Retained scene or compact figure export](images/scientific/04-target-rejection-297.png)
+
+![Retained scene or compact figure export](images/scientific/04-target-rejection-312.png)
+
+![Retained scene or compact figure export](images/scientific/06-reduction-comparison-297.png)
+
+![Retained scene or compact figure export](images/scientific/06-reduction-comparison-312.png)
+
+</details>

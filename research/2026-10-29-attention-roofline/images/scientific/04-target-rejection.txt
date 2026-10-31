@@ -1,0 +1,11 @@
+Transfers alone miss the target
+Produce all, then reduce · analytical
+Assumed 8 decimal TB/s, shared
+Target 0.200 ms
+Transfer floor ≥0.243 ms
+0
+0.125
+0.250 ms
+1,856 MiB ÷ assumed 8 TB/s.
+Transfers alone exceed this target.
+Compute and other traffic excluded.

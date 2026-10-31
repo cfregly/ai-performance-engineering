@@ -2,7 +2,7 @@
 
 This Python workbook follows one complete distributed training update: model work, token ownership, attention and expert layouts, communication, pipeline lifetimes, optimizer ownership and global clipping. It helps reject a design whose necessary resource floor already exceeds its budget. It performs no GPU execution and supplies no measured runtime, speedup or MFU.
 
-The same synthetic work is assigned to two placements of 64 generic GPUs. The primary plan chooses full data-parallel allreduce before the norm, replica 0 ownership of every unique norm term, and FP32 whole-matrix attention Muon on one canonical stage owner. Under those policies, the barrier-ordered floors are **240.63 ms for placement A and 158.93 ms for placement B. Both exceed the illustrative 150 ms budget.** A separate reduce-scatter-first alternative has different dependency floors, described below. None is a measured runtime or speedup.
+The same synthetic work is assigned to two placements of 64 generic GPUs. The primary plan chooses full data-parallel allreduce before the norm, replica 0 ownership of every unique norm term, and FP32 whole-matrix attention Muon on one canonical stage owner. Under those policies, the barrier-ordered floors are **240.63 ms for placement A and 158.93 ms for placement B. Both exceed the illustrative 150 ms budget.** The busiest rank's FP32 Muon work is 51.54 ms for its own experts plus 15.63 ms for gathered attention matrices at the assumed 100 TFLOP/s, totaling 67.17 ms. A separate reduce-scatter-first alternative has different dependency floors, described below. None is a measured runtime or speedup.
 
 ## Declared teaching example
 
@@ -65,6 +65,8 @@ Python 3.10 or later and the standard library are sufficient. From this director
 PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s code -p 'test_*.py' -v
 PYTHONDONTWRITEBYTECODE=1 python3 code/system_budget.py --output evidence/system-budget.json
 PYTHONDONTWRITEBYTECODE=1 python3 code/reader_summary.py --output evidence/reader-summary.json
+PYTHONDONTWRITEBYTECODE=1 python3 code/verify_analytical_results.py
+git diff --exit-code evidence/
 ```
 
 The tests check conservation, unique gradient ownership, rank mapping, whole-matrix optimizer behavior, clipping dependencies, allocation ledgers and the two placement decisions. These local checks do not validate a distributed training implementation or model quality.
@@ -161,7 +163,7 @@ These are the complete reader cards for the same hypothetical construction. The 
 ![Decide what to build next](images/aud-business-capacity-square.png)
 
 
-## Diagram source
+## Compact diagram elements
 
 Regenerate the four quantitative and schedule cards with `python3 code/card_figures.py`. Use `--check` to compare the retained SVG bytes. The six component diagrams regenerate with `python3 code/visual_elements.py`. These scripts reproduce the scientific geometry and labels, not the complete hosted presentation.
 
@@ -180,7 +182,7 @@ Regenerate the four quantitative and schedule cards with `python3 code/card_figu
 
 A keeps each data replica in one rack. B pairs corresponding stages within racks. In the ordered-floor chart, blue is before clipping and orange after clipping.
 
-With librsvg already installed, validate the selected SVG and PNG exports:
+With Pillow and librsvg already installed, validate the selected SVG and PNG exports:
 
 ```sh
 python3 code/scientific_figures.py --check
@@ -192,5 +194,14 @@ The renderer reads retained calculations, artwork and Inter font assets. It perf
 <summary>Retained barrier illustration used by the selected chart</summary>
 
 ![Gradient-barrier conveyor illustration](images/scientific/ordered-barrier-scene.png)
+
+</details>
+
+Selected figure rebuilding was checked with Python 3.12.2, Pillow 11.3.0 and rsvg-convert 2.62.3. Exact PNG bytes depend on the rendering stack and retained Inter font. A PNG mismatch on another build can occur even when SVG and text agree. Inspect those sources before regenerating the PNG. Editable SVGs require their relative artwork assets.
+
+<details>
+<summary>Artwork inputs and compact exports</summary>
+
+![Retained scene or compact figure export](images/scientific/rack-traffic-scene.png)
 
 </details>

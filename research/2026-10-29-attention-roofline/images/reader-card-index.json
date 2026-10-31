@@ -6,9 +6,9 @@
       "title": "A floor can reject a target",
       "selected": {
         "path": "images/scientific/04-target-rejection.png",
-        "sha256": "6d8852a1e870cd0476fd652ffa9271c22101f5ac33b3c5310b75bb602f3b5f82",
-        "width": 2400,
-        "height": 2400
+        "sha256": "9d4e0f9f27884a32ec4cf4864339b7267132e524b0e0db91006310b24588414f",
+        "width": 1200,
+        "height": 1200
       }
     },
     {
@@ -16,9 +16,9 @@
       "title": "Scratch can become the bottleneck",
       "selected": {
         "path": "images/scientific/03-scratch-traffic.png",
-        "sha256": "2f72258aee3b09d624c0ed7ead4df9fdf67f291c4367ce138c33c0501eb77eef",
-        "width": 2400,
-        "height": 2400
+        "sha256": "3d70152c89e122fd781fb67702dd290971c169d2b65f233b3a22d8e7651e70d2",
+        "width": 1200,
+        "height": 1200
       }
     },
     {
@@ -26,9 +26,9 @@
       "title": "Compare the complete path",
       "selected": {
         "path": "images/scientific/06-reduction-comparison.png",
-        "sha256": "ea1f7354dad06387cb67308b8337f4a2981841c7c379172169f789d9dca43fc0",
-        "width": 2400,
-        "height": 2400
+        "sha256": "d634f066eea64191c5478f1171c38e957274f22d4d5891cd80f3a4e918f7cb45",
+        "width": 1200,
+        "height": 1200
       }
     }
   ]

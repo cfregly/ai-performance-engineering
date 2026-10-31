@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="1200" viewBox="0 0 1200 1200" role="img" aria-labelledby="title description">
+<title id="title">Placement moves rack traffic</title>
+<desc id="description">Hypothetical logical cross-rack payload, both directions combined per update. Artwork explains changing ownership, not quantitative proportions. Both placements have the same total off-node payload.</desc>
+<rect width="1200" height="1200" fill="#FBFBF8"/>
+<defs>
+<marker id="ink" markerWidth="20" markerHeight="18" refX="18" refY="9" orient="auto-start-reverse" markerUnits="userSpaceOnUse"><path d="M 2 2 L 18 9 L 2 16" fill="none" stroke="#202326" stroke-width="4"/></marker>
+<marker id="blue" markerWidth="20" markerHeight="18" refX="18" refY="9" orient="auto-start-reverse" markerUnits="userSpaceOnUse"><path d="M 2 2 L 18 9 L 2 16" fill="none" stroke="#3478BA" stroke-width="4"/></marker>
+<marker id="orange" markerWidth="20" markerHeight="18" refX="18" refY="9" orient="auto-start-reverse" markerUnits="userSpaceOnUse"><path d="M 2 2 L 18 9 L 2 16" fill="none" stroke="#E87823" stroke-width="4"/></marker>
+</defs><g font-family="Inter">
+<text x="600" y="136" font-size="64" font-weight="600" text-anchor="middle" fill="#202326">Placement moves rack traffic</text>
+<text x="600" y="204" font-size="52" font-weight="400" text-anchor="middle" fill="#202326">Same 64 GPUs · hypothetical update</text>
+<text x="382" y="268" font-size="60" font-weight="600" text-anchor="middle" fill="#202326">A · before</text>
+<text x="840" y="268" font-size="60" font-weight="600" text-anchor="middle" fill="#202326">B · after</text>
+<image x="180" y="283" width="840" height="357.623762376" href="rack-traffic-scene.png"/>
+<text x="600" y="692" font-size="52" font-weight="400" text-anchor="middle" fill="#202326">Cross-rack GB · both directions</text>
+<rect x="160.000000000" y="720" width="832.592118600" height="72" fill="#3478BA"/>
+<text x="110" y="775" font-size="60" font-weight="600" text-anchor="middle" fill="#202326">A</text>
+<text x="188" y="775" font-size="56" font-weight="600" text-anchor="start" fill="#FFFFFF">27.753 GB</text>
+<rect x="160.000000000" y="830" width="8.053065360" height="72" fill="#E87823"/>
+<text x="110" y="885" font-size="60" font-weight="600" text-anchor="middle" fill="#202326">B</text>
+<text x="188" y="885" font-size="56" font-weight="600" text-anchor="start" fill="#202326">0.268 GB</text>
+<line x1="160" y1="710" x2="160" y2="925" stroke="#202326" stroke-width="3"/>
+<line x1="160" y1="925" x2="1060" y2="925" stroke="#202326" stroke-width="3"/>
+<text x="160" y="988" font-size="52" font-weight="400" text-anchor="middle" fill="#202326">0</text>
+<text x="460" y="988" font-size="52" font-weight="400" text-anchor="middle" fill="#202326">10</text>
+<text x="760" y="988" font-size="52" font-weight="400" text-anchor="middle" fill="#202326">20</text>
+<text x="1060" y="988" font-size="52" font-weight="400" text-anchor="middle" fill="#202326">30</text>
+<text x="600" y="1052" font-size="52" font-weight="400" text-anchor="middle" fill="#202326">Within racks: 0.805 → 28.290 GB</text>
+<text x="600" y="1100" font-size="52" font-weight="400" text-anchor="middle" fill="#202326">Total off-node payload unchanged</text>
+</g></svg>

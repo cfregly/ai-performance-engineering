@@ -1,45 +1,44 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="1200" viewBox="0 0 1200 1200" role="img"><title>Placement B: pair replicas within each rack</title><desc>Rack 0 has stages 0 and 1 of both replicas; rack 1 has stages 2 and 3 of both replicas. Data-parallel pairs stay inside a rack. The stage 1 to stage 2 pipeline boundary crosses racks for both replicas.</desc><rect width="1200" height="1200" fill="#FBFBF8" /><text x="600" y="100" font-family="Inter" font-size="54" font-weight="600" text-anchor="middle" fill="#202326">Pair replicas within each rack</text><defs>
-<marker id="arrow-ink" markerWidth="12" markerHeight="10" refX="11" refY="5" orient="auto-start-reverse" markerUnits="userSpaceOnUse"><path d="M 1 1 L 11 5 L 1 9" fill="none" stroke="#202326" stroke-width="3" /></marker>
-<marker id="arrow-blue" markerWidth="12" markerHeight="10" refX="11" refY="5" orient="auto-start-reverse" markerUnits="userSpaceOnUse"><path d="M 1 1 L 11 5 L 1 9" fill="none" stroke="#3478BA" stroke-width="3" /></marker>
-<marker id="arrow-orange" markerWidth="12" markerHeight="10" refX="11" refY="5" orient="auto-start-reverse" markerUnits="userSpaceOnUse"><path d="M 1 1 L 11 5 L 1 9" fill="none" stroke="#E87823" stroke-width="3" /></marker>
-</defs>
-<g transform="translate(150 140) scale(0.9)"><rect x="30" y="40" width="440" height="920" fill="#FBFBF8" stroke="#202326" stroke-width="3" />
-<text x="250" y="120" font-family="Inter" font-size="60" font-weight="600" text-anchor="middle" fill="#202326">Rack 0</text>
-<text x="250" y="220" font-family="Inter" font-size="52" font-weight="600" text-anchor="middle" fill="#202326">Replica 0</text>
-<text x="250" y="680" font-family="Inter" font-size="52" font-weight="600" text-anchor="middle" fill="#202326">Replica 1</text>
-<rect x="50" y="280" width="160" height="140" fill="#FBFBF8" stroke="#202326" stroke-width="3" />
-<text x="130" y="372" font-family="Inter" font-size="64" font-weight="600" text-anchor="middle" fill="#202326">P0</text>
-<rect x="290" y="280" width="160" height="140" fill="#FBFBF8" stroke="#202326" stroke-width="3" />
-<text x="370" y="372" font-family="Inter" font-size="64" font-weight="600" text-anchor="middle" fill="#202326">P1</text>
-<rect x="50" y="740" width="160" height="140" fill="#FBFBF8" stroke="#202326" stroke-width="3" />
-<text x="130" y="832" font-family="Inter" font-size="64" font-weight="600" text-anchor="middle" fill="#202326">P0</text>
-<rect x="290" y="740" width="160" height="140" fill="#FBFBF8" stroke="#202326" stroke-width="3" />
-<text x="370" y="832" font-family="Inter" font-size="64" font-weight="600" text-anchor="middle" fill="#202326">P1</text>
-<polyline points="130,420 130,740" fill="none" stroke="#E87823" stroke-width="4" stroke-linejoin="miter" marker-end="url(#arrow-orange)" marker-start="url(#arrow-orange)" />
-<polyline points="370,420 370,740" fill="none" stroke="#E87823" stroke-width="4" stroke-linejoin="miter" marker-end="url(#arrow-orange)" marker-start="url(#arrow-orange)" />
-<rect x="530" y="40" width="440" height="920" fill="#FBFBF8" stroke="#202326" stroke-width="3" />
-<text x="750" y="120" font-family="Inter" font-size="60" font-weight="600" text-anchor="middle" fill="#202326">Rack 1</text>
-<text x="750" y="220" font-family="Inter" font-size="52" font-weight="600" text-anchor="middle" fill="#202326">Replica 0</text>
-<text x="750" y="680" font-family="Inter" font-size="52" font-weight="600" text-anchor="middle" fill="#202326">Replica 1</text>
-<rect x="550" y="280" width="160" height="140" fill="#FBFBF8" stroke="#202326" stroke-width="3" />
-<text x="630" y="372" font-family="Inter" font-size="64" font-weight="600" text-anchor="middle" fill="#202326">P2</text>
-<rect x="790" y="280" width="160" height="140" fill="#FBFBF8" stroke="#202326" stroke-width="3" />
-<text x="870" y="372" font-family="Inter" font-size="64" font-weight="600" text-anchor="middle" fill="#202326">P3</text>
-<rect x="550" y="740" width="160" height="140" fill="#FBFBF8" stroke="#202326" stroke-width="3" />
-<text x="630" y="832" font-family="Inter" font-size="64" font-weight="600" text-anchor="middle" fill="#202326">P2</text>
-<rect x="790" y="740" width="160" height="140" fill="#FBFBF8" stroke="#202326" stroke-width="3" />
-<text x="870" y="832" font-family="Inter" font-size="64" font-weight="600" text-anchor="middle" fill="#202326">P3</text>
-<polyline points="630,420 630,740" fill="none" stroke="#E87823" stroke-width="4" stroke-linejoin="miter" marker-end="url(#arrow-orange)" marker-start="url(#arrow-orange)" />
-<polyline points="870,420 870,740" fill="none" stroke="#E87823" stroke-width="4" stroke-linejoin="miter" marker-end="url(#arrow-orange)" marker-start="url(#arrow-orange)" />
-<polyline points="210,350 290,350" fill="none" stroke="#3478BA" stroke-width="4" stroke-linejoin="miter" marker-end="url(#arrow-blue)" />
-<polyline points="450,350 550,350" fill="none" stroke="#3478BA" stroke-width="4" stroke-linejoin="miter" marker-end="url(#arrow-blue)" />
-<polyline points="710,350 790,350" fill="none" stroke="#3478BA" stroke-width="4" stroke-linejoin="miter" marker-end="url(#arrow-blue)" />
-<polyline points="210,810 290,810" fill="none" stroke="#3478BA" stroke-width="4" stroke-linejoin="miter" marker-end="url(#arrow-blue)" />
-<polyline points="450,810 550,810" fill="none" stroke="#3478BA" stroke-width="4" stroke-linejoin="miter" marker-end="url(#arrow-blue)" />
-<polyline points="710,810 790,810" fill="none" stroke="#3478BA" stroke-width="4" stroke-linejoin="miter" marker-end="url(#arrow-blue)" />
-<polyline points="50,1020 110,1020" fill="none" stroke="#3478BA" stroke-width="4" stroke-linejoin="miter" marker-end="url(#arrow-blue)" />
-<text x="130" y="1036" font-family="Inter" font-size="54" font-weight="400" text-anchor="start" fill="#3478BA">PP</text>
-<polyline points="300,1020 360,1020" fill="none" stroke="#E87823" stroke-width="4" stroke-linejoin="miter" marker-end="url(#arrow-orange)" marker-start="url(#arrow-orange)" />
-<text x="380" y="1036" font-family="Inter" font-size="54" font-weight="400" text-anchor="start" fill="#E87823">DP</text>
-<text x="575" y="1036" font-family="Inter" font-size="54" font-weight="400" text-anchor="start" fill="#202326">8 GPUs/node</text>
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="1200" viewBox="0 0 1200 1200" role="img" aria-labelledby="title description">
+<title id="title">Pair stages inside racks</title>
+<desc id="description">Placement B has stages 0 and 1 of both replicas in rack 0 and stages 2 and 3 in rack 1. The two thick blue P1 to P2 pipeline hops cross racks. Thin blue hops and orange data-parallel pairs stay inside a rack.</desc>
+<rect width="1200" height="1200" fill="#FBFBF8"/>
+<defs>
+<marker id="ink" markerWidth="20" markerHeight="18" refX="18" refY="9" orient="auto-start-reverse" markerUnits="userSpaceOnUse"><path d="M 2 2 L 18 9 L 2 16" fill="none" stroke="#202326" stroke-width="4"/></marker>
+<marker id="blue" markerWidth="20" markerHeight="18" refX="18" refY="9" orient="auto-start-reverse" markerUnits="userSpaceOnUse"><path d="M 2 2 L 18 9 L 2 16" fill="none" stroke="#3478BA" stroke-width="4"/></marker>
+<marker id="orange" markerWidth="20" markerHeight="18" refX="18" refY="9" orient="auto-start-reverse" markerUnits="userSpaceOnUse"><path d="M 2 2 L 18 9 L 2 16" fill="none" stroke="#E87823" stroke-width="4"/></marker>
+</defs><g font-family="Inter">
+<text x="600" y="136" font-size="64" font-weight="600" text-anchor="middle" fill="#202326">Pair stages inside racks</text>
+<text x="600" y="204" font-size="52" font-weight="400" text-anchor="middle" fill="#202326">B after · Replica 0 top · Replica 1 bottom</text>
+<rect x="84.000000000" y="250" width="470.000000000" height="730" fill="#FBFBF8" stroke="#202326" stroke-width="3"/>
+<text x="319" y="322" font-size="60" font-weight="600" text-anchor="middle" fill="#202326">Rack 0</text>
+<rect x="646.000000000" y="250" width="470.000000000" height="730" fill="#FBFBF8" stroke="#202326" stroke-width="3"/>
+<text x="881" y="322" font-size="60" font-weight="600" text-anchor="middle" fill="#202326">Rack 1</text>
+<line x1="170" y1="562" x2="170" y2="820" stroke="#E87823" stroke-width="4" marker-end="url(#orange)" marker-start="url(#orange)"/>
+<rect x="100.000000000" y="442" width="140.000000000" height="120" fill="#FBFBF8" stroke="#202326" stroke-width="3"/>
+<text x="170" y="523" font-size="64" font-weight="600" text-anchor="middle" fill="#202326">P0</text>
+<rect x="100.000000000" y="820" width="140.000000000" height="120" fill="#FBFBF8" stroke="#202326" stroke-width="3"/>
+<text x="170" y="901" font-size="64" font-weight="600" text-anchor="middle" fill="#202326">P0</text>
+<line x1="470" y1="562" x2="470" y2="820" stroke="#E87823" stroke-width="4" marker-end="url(#orange)" marker-start="url(#orange)"/>
+<rect x="400.000000000" y="442" width="140.000000000" height="120" fill="#FBFBF8" stroke="#202326" stroke-width="3"/>
+<text x="470" y="523" font-size="64" font-weight="600" text-anchor="middle" fill="#202326">P1</text>
+<rect x="400.000000000" y="820" width="140.000000000" height="120" fill="#FBFBF8" stroke="#202326" stroke-width="3"/>
+<text x="470" y="901" font-size="64" font-weight="600" text-anchor="middle" fill="#202326">P1</text>
+<line x1="730" y1="562" x2="730" y2="820" stroke="#E87823" stroke-width="4" marker-end="url(#orange)" marker-start="url(#orange)"/>
+<rect x="660.000000000" y="442" width="140.000000000" height="120" fill="#FBFBF8" stroke="#202326" stroke-width="3"/>
+<text x="730" y="523" font-size="64" font-weight="600" text-anchor="middle" fill="#202326">P2</text>
+<rect x="660.000000000" y="820" width="140.000000000" height="120" fill="#FBFBF8" stroke="#202326" stroke-width="3"/>
+<text x="730" y="901" font-size="64" font-weight="600" text-anchor="middle" fill="#202326">P2</text>
+<line x1="1030" y1="562" x2="1030" y2="820" stroke="#E87823" stroke-width="4" marker-end="url(#orange)" marker-start="url(#orange)"/>
+<rect x="960.000000000" y="442" width="140.000000000" height="120" fill="#FBFBF8" stroke="#202326" stroke-width="3"/>
+<text x="1030" y="523" font-size="64" font-weight="600" text-anchor="middle" fill="#202326">P3</text>
+<rect x="960.000000000" y="820" width="140.000000000" height="120" fill="#FBFBF8" stroke="#202326" stroke-width="3"/>
+<text x="1030" y="901" font-size="64" font-weight="600" text-anchor="middle" fill="#202326">P3</text>
+<line x1="240" y1="502" x2="400" y2="502" stroke="#3478BA" stroke-width="3" marker-end="url(#blue)"/>
+<line x1="540" y1="502" x2="660" y2="502" stroke="#3478BA" stroke-width="12" marker-end="url(#blue)"/>
+<line x1="800" y1="502" x2="960" y2="502" stroke="#3478BA" stroke-width="3" marker-end="url(#blue)"/>
+<line x1="240" y1="880" x2="400" y2="880" stroke="#3478BA" stroke-width="3" marker-end="url(#blue)"/>
+<line x1="540" y1="880" x2="660" y2="880" stroke="#3478BA" stroke-width="12" marker-end="url(#blue)"/>
+<line x1="800" y1="880" x2="960" y2="880" stroke="#3478BA" stroke-width="3" marker-end="url(#blue)"/>
+<text x="600" y="1045" font-size="52" font-weight="600" text-anchor="middle" fill="#202326">P1 → P2 crosses racks</text>
+<text x="600" y="1100" font-size="52" font-weight="400" text-anchor="middle" fill="#202326">DP inside racks · 8 GPUs per node</text>
 </g></svg>

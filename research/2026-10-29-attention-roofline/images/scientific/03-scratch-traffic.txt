@@ -1,0 +1,12 @@
+Scratch becomes traffic
+Attention backward · one sequence,
+one layer · one device · FP32 partials
+1,056 MiB produced
+≤128 MiB retained on chip
+≥1,856 MiB out + back
+0
+1,024
+2,048 MiB
+All production, then reduction.
+≥928 MiB out + ≥928 MiB reread.
+No compression or recomputation.

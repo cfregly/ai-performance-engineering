@@ -8,8 +8,15 @@ from copy import deepcopy
 from dataclasses import replace
 from fractions import Fraction
 import unittest
+import hashlib
+import os
+import shutil
+import subprocess
+import sys
+import tempfile
 
 from reader_summary import summary
+from verify_analytical_results import expected_values, validate_document, verify
 from system_budget import (Inputs, Traffic, TRAFFIC_PHASE, build_traffic, budget_screen, capacity,
                            chunk_routes, companion_mapping, compute, gid,
                            identity, ns_work, parameters, rack_of, routes,
@@ -545,6 +552,115 @@ class SystemBudgetTests(unittest.TestCase):
         self.assertEqual(4 * (low["scratch_bytes_per_rank"] + high["scratch_bytes_per_rank"]), 1056 * 1024 ** 2)
         self.assertEqual(high["scratch_HBM_floor_bytes_per_rank"], 136 * 1024 ** 2)
         self.assertEqual(low["scratch_HBM_floor_bytes_per_rank"], 0)
+
+
+class AnalyticalResultsContractTests(unittest.TestCase):
+    """Export regressions: the oracle is current calculator output, not the JSON."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.root = Path(__file__).resolve().parents[1]
+        cls.w = workbook()
+        cls.s = summary(cls.w)
+        cls.expected = expected_values(cls.w, cls.s)
+        cls.document = json.loads((cls.root / "evidence/analytical-results.json").read_text())
+        cls.pins = {key: {"path": path, "sha256": hashlib.sha256((cls.root / path).read_bytes()).hexdigest()}
+                    for key, path in (("code", "code/system_budget.py"),
+                                      ("source_results", "evidence/reader-summary.json"),
+                                      ("full_workbook_results", "evidence/system-budget.json"))}
+
+    def test_retained_analytical_export_matches_all_current_values_units_and_pins(self):
+        self.assertEqual(verify(self.root)["named_values"], 38)
+
+    def test_every_exported_value_rejects_numeric_drift(self):
+        for i, row in enumerate(self.document["values"]):
+            with self.subTest(name=row["name"]):
+                changed = deepcopy(self.document)
+                changed["values"][i]["value"] += 1
+                with self.assertRaisesRegex(ValueError, "wrong current value"):
+                    validate_document(changed, self.expected, self.pins)
+
+    def test_every_exported_value_rejects_wrong_units(self):
+        for i, row in enumerate(self.document["values"]):
+            with self.subTest(name=row["name"]):
+                changed = deepcopy(self.document)
+                changed["values"][i]["unit"] = "wrong unit"
+                with self.assertRaisesRegex(ValueError, "wrong unit"):
+                    validate_document(changed, self.expected, self.pins)
+
+    def test_export_rejects_missing_duplicate_extra_or_renamed_rows(self):
+        for change in ("missing", "duplicate", "extra", "renamed"):
+            with self.subTest(change=change):
+                changed = deepcopy(self.document)
+                if change == "missing":
+                    changed["values"].pop()
+                elif change == "duplicate":
+                    changed["values"].append(deepcopy(changed["values"][0]))
+                elif change == "extra":
+                    changed["values"].append({"name": "unknown", "value": 0, "unit": "GB"})
+                else:
+                    changed["values"][0]["name"] = "unknown"
+                with self.assertRaisesRegex(ValueError, "duplicate value name|value names differ"):
+                    validate_document(changed, self.expected, self.pins)
+
+    def test_export_rejects_each_stale_hash_or_wrong_source_path(self):
+        for key in self.pins:
+            for field in ("sha256", "path"):
+                with self.subTest(pin=key, field=field):
+                    changed = deepcopy(self.document)
+                    changed[key][field] = "stale"
+                    with self.assertRaisesRegex(ValueError, "path/SHA256 pin"):
+                        validate_document(changed, self.expected, self.pins)
+
+    def test_projection_is_checked_against_workbook_not_only_reader_summary(self):
+        changed = deepcopy(self.s)
+        changed["compute"]["physical_training_dense_TF"] += 1
+        with self.assertRaisesRegex(ValueError, "summary/workbook projection differs"):
+            expected_values(self.w, changed)
+
+    def test_comparison_budget_tracks_declared_assumption_without_copying_150(self):
+        changed_w, changed_s = deepcopy(self.w), deepcopy(self.s)
+        changed_w["hypothetical_budget_screen"]["budget_seconds"] *= 2
+        budget_ms = changed_w["hypothetical_budget_screen"]["budget_seconds"] * 1000
+        changed_s["decision"] = "Declared comparison at " + f"{budget_ms:g} ms: synthetic only"
+        projected = expected_values(changed_w, changed_s)
+        self.assertEqual(projected["comparison_budget"]["value"], budget_ms)
+        self.assertNotEqual(projected["comparison_budget"]["value"], self.expected["comparison_budget"]["value"])
+
+    def test_optimized_verifier_rejects_wrong_value_and_all_three_stale_pins(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "package"
+            for relative in ("code/system_budget.py", "code/reader_summary.py", "code/verify_analytical_results.py",
+                             "evidence/analytical-results.json", "evidence/reader-summary.json", "evidence/system-budget.json"):
+                destination = root / relative
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(self.root / relative, destination)
+            target = root / "evidence/analytical-results.json"
+            command = [sys.executable, "-O", str(root / "code/verify_analytical_results.py")]
+            env = dict(os.environ, PYTHONDONTWRITEBYTECODE="1")
+            good = subprocess.run(command, capture_output=True, text=True, env=env, timeout=30)
+            self.assertEqual(good.returncode, 0, good.stderr)
+            for change in ("value", *self.pins, "retained_source_results", "retained_full_workbook_results"):
+                with self.subTest(change=change):
+                    mutated = deepcopy(self.document)
+                    if change == "value":
+                        mutated["values"][0]["value"] += 1
+                    elif change.startswith("retained_"):
+                        pin = change.removeprefix("retained_")
+                        retained = root / self.pins[pin]["path"]
+                        retained.write_bytes(retained.read_bytes() + b" ")
+                        mutated[pin]["sha256"] = hashlib.sha256(retained.read_bytes()).hexdigest()
+                    else:
+                        mutated[change]["sha256"] = "0" * 64
+                    target.write_text(json.dumps(mutated))
+                    result = subprocess.run(command, capture_output=True, text=True, env=env, timeout=30)
+                    self.assertNotEqual(result.returncode, 0, result.stdout)
+                    expected_error = ("wrong current value" if change == "value" else
+                                      "retained output differs" if change.startswith("retained_") else
+                                      "path/SHA256 pin")
+                    self.assertIn(expected_error, result.stderr)
+                    if change.startswith("retained_"):
+                        shutil.copyfile(self.root / self.pins[pin]["path"], retained)
 
 
 if __name__ == "__main__":
