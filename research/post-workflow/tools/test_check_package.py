@@ -114,21 +114,45 @@ class PackageGateTests(unittest.TestCase):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(value, indent=2) + "\n", encoding="utf-8")
 
-    def prepend_manifest_schema_version(self, value: int) -> None:
-        path = self.package / "manifest.json"
-        manifest = path.read_text(encoding="utf-8")
-        self.assertTrue(manifest.startswith("{"))
+    def prepend_json_member(self, relative: str, key: str, value: object) -> None:
+        path = self.package / relative
+        document = path.read_text(encoding="utf-8")
+        self.assertTrue(document.startswith("{"))
         path.write_text(
-            f'{{\n  "schema_version": {value},' + manifest[1:],
+            f"{{\n  {json.dumps(key)}: {json.dumps(value)}," + document[1:],
             encoding="utf-8",
         )
 
-    def assert_duplicate_manifest_schema_version_rejected(self, value: int) -> None:
-        self.prepend_manifest_schema_version(value)
+    def assert_only_duplicate_json_error(self, label: str, key: str) -> None:
         errors = validate_package(self.package)
         self.assertEqual(len(errors), 1, errors)
-        self.assertIn("invalid manifest", errors[0])
-        self.assertIn("duplicate JSON key: schema_version", errors[0])
+        self.assertIn(f"invalid {label}", errors[0])
+        self.assertIn(f"duplicate JSON key: {key}", errors[0])
+
+    def assert_identical_and_conflicting_duplicates_rejected(
+        self,
+        relative: str,
+        label: str,
+        key: str,
+        identical: object,
+        conflicting: object,
+    ) -> None:
+        path = self.package / relative
+        valid_document = path.read_text(encoding="utf-8")
+        self.assertEqual(validate_package(self.package), [])
+        for duplicate_kind, value in (
+            ("identical", identical),
+            ("conflicting", conflicting),
+        ):
+            with self.subTest(relative=relative, duplicate_kind=duplicate_kind):
+                path.write_text(valid_document, encoding="utf-8")
+                self.prepend_json_member(relative, key, value)
+                self.assert_only_duplicate_json_error(label, key)
+        path.write_text(valid_document, encoding="utf-8")
+
+    def assert_duplicate_manifest_schema_version_rejected(self, value: int) -> None:
+        self.prepend_json_member("manifest.json", "schema_version", value)
+        self.assert_only_duplicate_json_error("manifest", "schema_version")
 
     def write_review(self) -> None:
         images = {
@@ -705,6 +729,44 @@ Status: completed
 
     def test_manifest_rejects_identical_duplicate_key(self) -> None:
         self.assert_duplicate_manifest_schema_version_rejected(2)
+
+    def test_sources_reject_identical_and_conflicting_duplicate_keys(self) -> None:
+        self.write_json("sources.json", {"sources": []})
+        self.assert_identical_and_conflicting_duplicates_rejected(
+            "sources.json",
+            "sources JSON",
+            "sources",
+            [],
+            [{"id": "shadow-source"}],
+        )
+
+    def test_typefully_receipt_rejects_identical_and_conflicting_duplicate_keys(self) -> None:
+        self.assert_identical_and_conflicting_duplicates_rejected(
+            "social/typefully-receipt.json",
+            "Typefully receipt",
+            "status",
+            "draft",
+            "scheduled",
+        )
+
+    def test_independent_review_rejects_identical_and_conflicting_duplicate_keys(self) -> None:
+        self.assert_identical_and_conflicting_duplicates_rejected(
+            "images/review.json",
+            "independent review receipt",
+            "verdict",
+            "PASS",
+            "FAIL",
+        )
+
+    def test_measurement_receipt_rejects_identical_and_conflicting_duplicate_keys(self) -> None:
+        self.make_measured()
+        self.assert_identical_and_conflicting_duplicates_rejected(
+            "evidence/measurement-receipt.json",
+            "measurement receipt",
+            "state",
+            "measured",
+            "source_reported",
+        )
 
     def test_declared_diagnostic_finding_is_part_of_package_gate(self) -> None:
         manifest = self.read_json("manifest.json")

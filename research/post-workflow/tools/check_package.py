@@ -137,17 +137,13 @@ def load_json(
     path: Path,
     errors: list[str],
     label: str,
-    *,
-    reject_duplicates: bool = False,
 ) -> Any | None:
     if not path.is_file():
         errors.append(f"missing {label}: {path}")
         return None
     try:
         raw = path.read_text(encoding="utf-8")
-        if reject_duplicates:
-            return json.loads(raw, object_pairs_hook=reject_duplicate_json_keys)
-        return json.loads(raw)
+        return json.loads(raw, object_pairs_hook=reject_duplicate_json_keys)
     except (OSError, UnicodeError, ValueError) as exc:
         errors.append(f"invalid {label} {path}: {exc}")
         return None
@@ -921,12 +917,7 @@ def validate_package(package: Path) -> list[str]:
         require_file(package, relative, errors)
     load_json(package / "sources.json", errors, "sources JSON")
 
-    manifest = load_json(
-        package / "manifest.json",
-        errors,
-        "manifest",
-        reject_duplicates=True,
-    )
+    manifest = load_json(package / "manifest.json", errors, "manifest")
     if manifest is None:
         return errors
     audience_stems, selected, state, schema_version = validate_manifest(manifest, errors)
