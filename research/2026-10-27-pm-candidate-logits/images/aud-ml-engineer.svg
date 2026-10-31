@@ -1,0 +1,70 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900">
+<rect width="100%" height="100%" fill="#FBFBF8"/>
+<defs><marker id="arrow" viewBox="0 0 12 12" refX="9" refY="6" markerWidth="5" markerHeight="5" orient="auto"><path d="M1 1 L10 6 L1 11" fill="none" stroke="context-stroke" stroke-width="2"/></marker>
+<pattern id="hatch" width="18" height="18" patternUnits="userSpaceOnUse"><path d="M-4 18 L18 -4 M8 26 L26 8" stroke="#E87823" stroke-width="2" opacity=".35"/></pattern></defs>
+<text x="85" y="93" font-family="Bradley Hand" font-size="72" fill="#202326" text-anchor="start" font-weight="normal">
+<tspan x="85" dy="0">Gather the rows, then multiply</tspan>
+</text>
+<text x="89" y="154" font-family="Arial, Helvetica, sans-serif" font-size="43" fill="#202326" text-anchor="start" font-weight="normal">
+<tspan x="89" dy="0">One shared legal set across the batch</tspan>
+</text>
+<path d="M89 174.0 Q480 168.0 1080 176.0" fill="none" stroke="#202326" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="800" y="303" font-family="Arial, Helvetica, sans-serif" font-size="74" fill="#3478BA" text-anchor="middle" font-weight="bold">
+<tspan x="800" dy="0">H @ W[ids].T</tspan>
+</text>
+<rect x="100" y="385" width="280" height="150" rx="8" fill="#FBFBF8" stroke="#202326" stroke-width="4"/>
+<path d="M112 388 Q226.0 383 368 388" fill="none" stroke="#202326" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M103 422.5 Q242.0 420.5 377 422.5" fill="none" stroke="#202326" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M103 460.0 Q242.0 458.0 377 460.0" fill="none" stroke="#202326" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M103 497.5 Q242.0 495.5 377 497.5" fill="none" stroke="#202326" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M140.0 388 Q142.0 458.0 140.0 532" fill="none" stroke="#202326" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M180.0 388 Q182.0 458.0 180.0 532" fill="none" stroke="#202326" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M220.0 388 Q222.0 458.0 220.0 532" fill="none" stroke="#202326" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M260.0 388 Q262.0 458.0 260.0 532" fill="none" stroke="#202326" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M300.0 388 Q302.0 458.0 300.0 532" fill="none" stroke="#202326" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M340.0 388 Q342.0 458.0 340.0 532" fill="none" stroke="#202326" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="240" y="598" font-family="Arial, Helvetica, sans-serif" font-size="45" fill="#202326" text-anchor="middle" font-weight="normal">
+<tspan x="240" dy="0">H (8 × 2048)</tspan>
+</text>
+<text x="445" y="482" font-family="Arial, Helvetica, sans-serif" font-size="66" fill="#202326" text-anchor="middle" font-weight="normal">
+<tspan x="445" dy="0">×</tspan>
+</text>
+<rect x="530" y="370" width="385" height="180" rx="8" fill="#EFF5FA" stroke="#3478BA" stroke-width="4"/>
+<path d="M542 373 Q703.25 368 903 373" fill="none" stroke="#3478BA" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M533 406.0 Q724.5 404.0 912 406.0" fill="none" stroke="#3478BA" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M533 442.0 Q724.5 440.0 912 442.0" fill="none" stroke="#3478BA" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M533 478.0 Q724.5 476.0 912 478.0" fill="none" stroke="#3478BA" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M533 514.0 Q724.5 512.0 912 514.0" fill="none" stroke="#3478BA" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M578.125 373 Q580.125 458.0 578.125 547" fill="none" stroke="#3478BA" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M626.25 373 Q628.25 458.0 626.25 547" fill="none" stroke="#3478BA" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M674.375 373 Q676.375 458.0 674.375 547" fill="none" stroke="#3478BA" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M722.5 373 Q724.5 458.0 722.5 547" fill="none" stroke="#3478BA" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M770.625 373 Q772.625 458.0 770.625 547" fill="none" stroke="#3478BA" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M818.75 373 Q820.75 458.0 818.75 547" fill="none" stroke="#3478BA" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M866.875 373 Q868.875 458.0 866.875 547" fill="none" stroke="#3478BA" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="722" y="598" font-family="Arial, Helvetica, sans-serif" font-size="43" fill="#202326" text-anchor="middle" font-weight="normal">
+<tspan x="722" dy="0">W[ids].T: 2048 × 64</tspan>
+</text>
+<path d="M968 460 Q1026.0 458.0 1080 460" fill="none" stroke="#202326" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<rect x="1145" y="405" width="275" height="115" rx="8" fill="#EFF5FA" stroke="#3478BA" stroke-width="4"/>
+<path d="M1157 408 Q1268.75 403 1408 408" fill="none" stroke="#3478BA" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M1148 443.3333333333333 Q1284.5 441.3333333333333 1417 443.3333333333333" fill="none" stroke="#3478BA" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M1148 481.6666666666667 Q1284.5 479.6666666666667 1417 481.6666666666667" fill="none" stroke="#3478BA" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M1190.8333333333333 408 Q1192.8333333333333 460.5 1190.8333333333333 517" fill="none" stroke="#3478BA" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M1236.6666666666667 408 Q1238.6666666666667 460.5 1236.6666666666667 517" fill="none" stroke="#3478BA" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M1282.5 408 Q1284.5 460.5 1282.5 517" fill="none" stroke="#3478BA" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M1328.3333333333333 408 Q1330.3333333333333 460.5 1328.3333333333333 517" fill="none" stroke="#3478BA" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M1374.1666666666667 408 Q1376.1666666666667 460.5 1374.1666666666667 517" fill="none" stroke="#3478BA" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="1282" y="598" font-family="Arial, Helvetica, sans-serif" font-size="44" fill="#202326" text-anchor="middle" font-weight="normal">
+<tspan x="1282" dy="0">Logits: 8 × 64</tspan>
+</text>
+<text x="800" y="709" font-family="Arial, Helvetica, sans-serif" font-size="49" fill="#202326" text-anchor="middle" font-weight="normal">
+<tspan x="800" dy="0">Legal argmax → map back to token IDs</tspan>
+</text>
+<text x="800" y="778" font-family="Arial, Helvetica, sans-serif" font-size="43" fill="#202326" text-anchor="middle" font-weight="normal">
+<tspan x="800" dy="0">Preserve ID order + tie rules</tspan>
+</text>
+<text x="89" y="865.0" font-family="Arial, Helvetica, sans-serif" font-size="36" fill="#202326" text-anchor="start" font-weight="normal">
+<tspan x="89" dy="0">64 legal IDs · strict FP32 · TF32 off · check logit tolerance and exact token agreement</tspan>
+</text>
+</svg>

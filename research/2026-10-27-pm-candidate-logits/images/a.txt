@@ -1,0 +1,29 @@
+Select rows before projection
+
+Move the legal-ID selection ahead of the output-head matrix multiply. The full path projects all vocabulary rows, then filters scores. The candidate gathers legal weight rows first, projects only those rows, and takes the legal argmax. The tested stage uses one shared legal set across batch 8, strict FP32 and TF32 disabled.
+
+Select rows before projection
+Keep only the legal output scores
+Full head, then filter
+All weight rows
+Project every token
+Filter scores
++ legal argmax
+Select rows, then project
+Legal rows only
+Project legal tokens
+Legal argmax
+Shared legal set across batch 8 · strict FP32 output-head stage · TF32 off
+Select rows before
+projection
+All rows
+Project all
+Filter
+scores
+Legal rows
+Project legal
+Legal
+argmax
+The selection moves upstream
+Shared legal set across batch 8
+Strict FP32 output-head stage · TF32 off

@@ -1,0 +1,72 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1080" viewBox="0 0 1080 1080">
+<rect width="100%" height="100%" fill="#FBFBF8"/>
+<defs><marker id="arrow" viewBox="0 0 12 12" refX="9" refY="6" markerWidth="5" markerHeight="5" orient="auto"><path d="M1 1 L10 6 L1 11" fill="none" stroke="context-stroke" stroke-width="2"/></marker>
+<pattern id="hatch" width="18" height="18" patternUnits="userSpaceOnUse"><path d="M-4 18 L18 -4 M8 26 L26 8" stroke="#E87823" stroke-width="2" opacity=".35"/></pattern></defs>
+<text x="65" y="85" font-family="Bradley Hand" font-size="59" fill="#202326" text-anchor="start" font-weight="normal">
+<tspan x="65" dy="0">Check when constraints</tspan>
+<tspan x="65" dy="66.08000000000001">become available</tspan>
+</text>
+<text x="68" y="212.08" font-family="Arial, Helvetica, sans-serif" font-size="35" fill="#202326" text-anchor="start" font-weight="normal">
+<tspan x="68" dy="0">Legal IDs must arrive before projection</tspan>
+</text>
+<path d="M68 232.08 Q350 226.08 770 234.08" fill="none" stroke="#202326" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="72" y="342" font-family="Bradley Hand" font-size="47" fill="#3478BA" text-anchor="start" font-weight="normal">
+<tspan x="72" dy="0">One shared legal set</tspan>
+</text>
+<rect x="81" y="386" width="65" height="46" rx="8" fill="#EFF5FA" stroke="#3478BA" stroke-width="3"/>
+<path d="M93 389 Q110.25 384 134 389" fill="none" stroke="#3478BA" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="174" y="386" width="65" height="46" rx="8" fill="#EFF5FA" stroke="#3478BA" stroke-width="3"/>
+<path d="M186 389 Q203.25 384 227 389" fill="none" stroke="#3478BA" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="267" y="386" width="65" height="46" rx="8" fill="#EFF5FA" stroke="#3478BA" stroke-width="3"/>
+<path d="M279 389 Q296.25 384 320 389" fill="none" stroke="#3478BA" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="360" y="386" width="65" height="46" rx="8" fill="#EFF5FA" stroke="#3478BA" stroke-width="3"/>
+<path d="M372 389 Q389.25 384 413 389" fill="none" stroke="#3478BA" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="81" y="451" width="65" height="46" rx="8" fill="#EFF5FA" stroke="#3478BA" stroke-width="3"/>
+<path d="M93 454 Q110.25 449 134 454" fill="none" stroke="#3478BA" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="174" y="451" width="65" height="46" rx="8" fill="#EFF5FA" stroke="#3478BA" stroke-width="3"/>
+<path d="M186 454 Q203.25 449 227 454" fill="none" stroke="#3478BA" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="267" y="451" width="65" height="46" rx="8" fill="#EFF5FA" stroke="#3478BA" stroke-width="3"/>
+<path d="M279 454 Q296.25 449 320 454" fill="none" stroke="#3478BA" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="360" y="451" width="65" height="46" rx="8" fill="#EFF5FA" stroke="#3478BA" stroke-width="3"/>
+<path d="M372 454 Q389.25 449 413 454" fill="none" stroke="#3478BA" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="265" y="560" font-family="Arial, Helvetica, sans-serif" font-size="39" fill="#3478BA" text-anchor="middle" font-weight="normal">
+<tspan x="265" dy="0">Batch 8</tspan>
+</text>
+<path d="M475 444 Q539.5 442.0 600 444" fill="none" stroke="#3478BA" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<rect x="650" y="381" width="352" height="150" rx="16" fill="#EFF5FA" stroke="#3478BA" stroke-width="4"/>
+<path d="M662 384 Q808.4 379 990 384" fill="none" stroke="#3478BA" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="826" y="436" font-family="Arial, Helvetica, sans-serif" font-size="37" fill="#202326" text-anchor="middle" font-weight="normal">
+<tspan x="826" dy="0">Gather rows</tspan>
+<tspan x="826" dy="44.4">→ output head</tspan>
+</text>
+<text x="72" y="678" font-family="Bradley Hand" font-size="47" fill="#E87823" text-anchor="start" font-weight="normal">
+<tspan x="72" dy="0">Different IDs per request?</tspan>
+</text>
+<rect x="84" y="728" width="190" height="80" rx="16" fill="#FBFBF8" stroke="#E87823" stroke-width="4"/>
+<path d="M96 731 Q169.5 726 262 731" fill="none" stroke="#E87823" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="179" y="781" font-family="Arial, Helvetica, sans-serif" font-size="36" fill="#E87823" text-anchor="middle" font-weight="normal">
+<tspan x="179" dy="0">IDs A</tspan>
+</text>
+<rect x="314" y="728" width="190" height="80" rx="16" fill="#FBFBF8" stroke="#E87823" stroke-width="4"/>
+<path d="M326 731 Q399.5 726 492 731" fill="none" stroke="#E87823" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="409" y="781" font-family="Arial, Helvetica, sans-serif" font-size="36" fill="#E87823" text-anchor="middle" font-weight="normal">
+<tspan x="409" dy="0">IDs B</tspan>
+</text>
+<rect x="544" y="728" width="190" height="80" rx="16" fill="#FBFBF8" stroke="#E87823" stroke-width="4"/>
+<path d="M556 731 Q629.5 726 722 731" fill="none" stroke="#E87823" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="639" y="781" font-family="Arial, Helvetica, sans-serif" font-size="36" fill="#E87823" text-anchor="middle" font-weight="normal">
+<tspan x="639" dy="0">IDs C</tspan>
+</text>
+<rect x="774" y="728" width="190" height="80" rx="16" fill="#FBFBF8" stroke="#E87823" stroke-width="4"/>
+<path d="M786 731 Q859.5 726 952 731" fill="none" stroke="#E87823" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="869" y="781" font-family="Arial, Helvetica, sans-serif" font-size="36" fill="#E87823" text-anchor="middle" font-weight="normal">
+<tspan x="869" dy="0">IDs D</tspan>
+</text>
+<text x="540" y="902" font-family="Arial, Helvetica, sans-serif" font-size="39" fill="#202326" text-anchor="middle" font-weight="normal">
+<tspan x="540" dy="0">Validate that implementation</tspan>
+<tspan x="540" dy="46.8">before using this stage gain</tspan>
+</text>
+<text x="68" y="1045.0" font-family="Arial, Helvetica, sans-serif" font-size="31" fill="#202326" text-anchor="start" font-weight="normal">
+<tspan x="68" dy="0">This comparison uses one device-resident set</tspan>
+</text>
+</svg>

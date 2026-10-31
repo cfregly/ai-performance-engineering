@@ -1,0 +1,28 @@
+Measure requests before capacity
+
+The changing 64-ID synthetic strict-FP32 output-head stage was 12.84x faster by the ratio of median warm 16-step blocks, including gather. The three individual paired baseline/candidate ratios span 12.806948x to 13.045276x, displayed as an observed 12.81–13.05x range. This is the min–max of three paired ratios in one process, not a confidence interval. This is a stage gain, not a capacity result. Measure the stage share in real requests and measure end-to-end throughput and latency before promising capacity. No cost, capacity or SLA result is inferred.
+
+Measure the share before promising capacity
+Synthetic output-head gain → request measurement
+12.84×
+Stage gain
+Observed range
+12.81–13.05×
+3 paired ratios
+Measure request share
+Throughput
++ latency
+Measure end to end before a capacity promise
+Changing 64 IDs · gather included · median 16-step warm blocks
+Synthetic strict-FP32 stage · batch 8 · hidden 2048 · vocab 131072
+Shared IDs · TF32 off · 3 paired blocks / cell · one process
+Measure the share
+before promising capacity
+Measure requests
+How much request time is in this stage?
+Measure throughput + latency
+before making a capacity promise
+Changing 64 IDs · gather included · 16-step blocks
+Synthetic FP32 · batch 8 · hidden 2048 · vocab 131072
+Shared IDs · TF32 off
+3 paired blocks / cell · one process

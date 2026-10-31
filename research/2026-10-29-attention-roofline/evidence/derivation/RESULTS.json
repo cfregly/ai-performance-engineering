@@ -1,0 +1,357 @@
+{
+  "assumptions": [
+    "Counts are for one sequence (batch size 1) in one attention layer backward on one device",
+    "N counts both query and key/value positions, with aligned causal tiles",
+    "Each represented partial byte is independently necessary for the chosen reduction",
+    "At most C bytes of these partials can survive on chip across the complete phase boundary",
+    "Every unretained partial byte must cross the HBM boundary once in each direction",
+    "Bandwidth is a hypothetical aggregate payload ceiling shared by reads and writes",
+    "MiB means 1048576 bytes and TB/s means 1000000000000 bytes per second"
+  ],
+  "cache_sensitivity": [
+    {
+      "floor_ms_at_6.4_decimal_tb_per_s": "0.34603008",
+      "floor_ms_at_8_decimal_tb_per_s": "0.276824064",
+      "partial_hbm_traffic_floor_bytes": 2214592512,
+      "retained_capacity_bytes": 0,
+      "retained_capacity_mib": 0
+    },
+    {
+      "floor_ms_at_6.4_decimal_tb_per_s": "0.3407872",
+      "floor_ms_at_8_decimal_tb_per_s": "0.27262976",
+      "partial_hbm_traffic_floor_bytes": 2181038080,
+      "retained_capacity_bytes": 16777216,
+      "retained_capacity_mib": 16
+    },
+    {
+      "floor_ms_at_6.4_decimal_tb_per_s": "0.33554432",
+      "floor_ms_at_8_decimal_tb_per_s": "0.268435456",
+      "partial_hbm_traffic_floor_bytes": 2147483648,
+      "retained_capacity_bytes": 33554432,
+      "retained_capacity_mib": 32
+    },
+    {
+      "floor_ms_at_6.4_decimal_tb_per_s": "0.32505856",
+      "floor_ms_at_8_decimal_tb_per_s": "0.260046848",
+      "partial_hbm_traffic_floor_bytes": 2080374784,
+      "retained_capacity_bytes": 67108864,
+      "retained_capacity_mib": 64
+    },
+    {
+      "floor_ms_at_6.4_decimal_tb_per_s": "0.30408704",
+      "floor_ms_at_8_decimal_tb_per_s": "0.243269632",
+      "partial_hbm_traffic_floor_bytes": 1946157056,
+      "retained_capacity_bytes": 134217728,
+      "retained_capacity_mib": 128
+    },
+    {
+      "floor_ms_at_6.4_decimal_tb_per_s": "0.262144",
+      "floor_ms_at_8_decimal_tb_per_s": "0.2097152",
+      "partial_hbm_traffic_floor_bytes": 1677721600,
+      "retained_capacity_bytes": 268435456,
+      "retained_capacity_mib": 256
+    },
+    {
+      "floor_ms_at_6.4_decimal_tb_per_s": "0.17825792",
+      "floor_ms_at_8_decimal_tb_per_s": "0.142606336",
+      "partial_hbm_traffic_floor_bytes": 1140850688,
+      "retained_capacity_bytes": 536870912,
+      "retained_capacity_mib": 512
+    },
+    {
+      "floor_ms_at_6.4_decimal_tb_per_s": "0.01048576",
+      "floor_ms_at_8_decimal_tb_per_s": "0.008388608",
+      "partial_hbm_traffic_floor_bytes": 67108864,
+      "retained_capacity_bytes": 1073741824,
+      "retained_capacity_mib": 1024
+    },
+    {
+      "floor_ms_at_6.4_decimal_tb_per_s": "0",
+      "floor_ms_at_8_decimal_tb_per_s": "0",
+      "partial_hbm_traffic_floor_bytes": 0,
+      "retained_capacity_bytes": 1107296256,
+      "retained_capacity_mib": 1056
+    },
+    {
+      "floor_ms_at_6.4_decimal_tb_per_s": "0",
+      "floor_ms_at_8_decimal_tb_per_s": "0",
+      "partial_hbm_traffic_floor_bytes": 0,
+      "retained_capacity_bytes": 2147483648,
+      "retained_capacity_mib": 2048
+    }
+  ],
+  "derivation": {
+    "causal_tile_pairs_all_query_heads": 8448,
+    "hypothetical_bandwidth_floors_ms": {
+      "6.4": "0.30408704",
+      "8": "0.243269632"
+    },
+    "not_retained_bytes_at_phase_boundary": 973078528,
+    "partial_bytes_per_pair": 131072,
+    "partial_hbm_traffic_floor_bytes": 1946157056,
+    "tile_pairs_per_query_head": 528,
+    "tiles": 32,
+    "time_formula_ms": "traffic_bytes * 1000 / (decimal_TB_per_second * 1000000000000)",
+    "total_partial_bytes": 1107296256,
+    "total_partial_mib": "1056",
+    "traffic_formula": "2 * max(0, total_partial_bytes - retained_capacity_bytes)"
+  },
+  "excluded_costs": [
+    "later writeback of dead partials that remain dirty in a write-back cache",
+    "Q/K/V and upstream-gradient reads",
+    "attention arithmetic, masks, normalization, and recomputation choices",
+    "final dQ/dK/dV writes and any accumulation reads or writes",
+    "reducer arithmetic, launch, scheduling, synchronization, and locality costs",
+    "other live allocations and competition for cache or shared memory",
+    "transaction granularity and bandwidth efficiency"
+  ],
+  "kind": "independently derived synthetic analytical example",
+  "limitations": [
+    "This is a bound for the stated representation and phase contract, not all attention algorithms",
+    "The bandwidth values are hypothetical and are not measured hardware performance",
+    "This code is not a runnable attention kernel and gives no model or serving speedup",
+    "A zero partial-spill lower bound does not prove that a complete attention implementation fits on chip",
+    "Batching changes the phase contract and adds unestimated accumulation and scheduling costs",
+    "No performance comparison is possible from these calculations alone"
+  ],
+  "measurements": {
+    "cpu_timings": [],
+    "gpu_runs": 0,
+    "gpu_timings": []
+  },
+  "phase_contract": {
+    "all_producer_partials_complete_before_separate_reducer": true,
+    "compression_allowed": false,
+    "maximum_on_chip_retention_bytes_between_phases": 134217728,
+    "producer_reducer_streaming_allowed": false,
+    "recomputation_allowed": false
+  },
+  "reduction_batch_sensitivity": [
+    {
+      "changes_original_phase_contract": true,
+      "logical_final_dk_dv_bytes_residency_unspecified": 4194304,
+      "maximum_partial_scratch_bytes": 67108864,
+      "maximum_partial_scratch_mib": "64",
+      "partial_hbm_traffic_floor_bytes_at_128_mib_retention": 0,
+      "producer_then_reducer_batches": 32,
+      "query_tiles_per_batch": 1
+    },
+    {
+      "changes_original_phase_contract": true,
+      "logical_final_dk_dv_bytes_residency_unspecified": 4194304,
+      "maximum_partial_scratch_bytes": 132120576,
+      "maximum_partial_scratch_mib": "126",
+      "partial_hbm_traffic_floor_bytes_at_128_mib_retention": 0,
+      "producer_then_reducer_batches": 16,
+      "query_tiles_per_batch": 2
+    },
+    {
+      "changes_original_phase_contract": true,
+      "logical_final_dk_dv_bytes_residency_unspecified": 4194304,
+      "maximum_partial_scratch_bytes": 255852544,
+      "maximum_partial_scratch_mib": "244",
+      "partial_hbm_traffic_floor_bytes_at_128_mib_retention": 570425344,
+      "producer_then_reducer_batches": 8,
+      "query_tiles_per_batch": 4
+    },
+    {
+      "changes_original_phase_contract": true,
+      "logical_final_dk_dv_bytes_residency_unspecified": 4194304,
+      "maximum_partial_scratch_bytes": 478150656,
+      "maximum_partial_scratch_mib": "456",
+      "partial_hbm_traffic_floor_bytes_at_128_mib_retention": 1258291200,
+      "producer_then_reducer_batches": 4,
+      "query_tiles_per_batch": 8
+    },
+    {
+      "changes_original_phase_contract": true,
+      "logical_final_dk_dv_bytes_residency_unspecified": 4194304,
+      "maximum_partial_scratch_bytes": 822083584,
+      "maximum_partial_scratch_mib": "784",
+      "partial_hbm_traffic_floor_bytes_at_128_mib_retention": 1677721600,
+      "producer_then_reducer_batches": 2,
+      "query_tiles_per_batch": 16
+    },
+    {
+      "changes_original_phase_contract": false,
+      "logical_final_dk_dv_bytes_residency_unspecified": 4194304,
+      "maximum_partial_scratch_bytes": 1107296256,
+      "maximum_partial_scratch_mib": "1056",
+      "partial_hbm_traffic_floor_bytes_at_128_mib_retention": 1946157056,
+      "producer_then_reducer_batches": 1,
+      "query_tiles_per_batch": 32
+    }
+  ],
+  "representation": {
+    "bytes_per_scalar": 4,
+    "causal_diagonal_tiles": "one full key-tile dK/dV partial, despite masked score elements",
+    "edge_key_tiles": "padded to tile_rows",
+    "head_mapping": "consecutive query-head groups share one KV head",
+    "partial_dtype": "FP32",
+    "partial_ownership": "unique query-head, query-tile, key-tile"
+  },
+  "schema_version": 1,
+  "specification": {
+    "key_dimension": 128,
+    "kv_heads": 1,
+    "query_heads": 16,
+    "sequence_length": 4096,
+    "tile_rows": 128,
+    "value_dimension": 128
+  },
+  "target_screen": {
+    "bandwidth_at_equal_floor_decimal_tb_per_s": "9.73078528",
+    "floor_exceeds_target": {
+      "6.4": true,
+      "8": true
+    },
+    "illustrative_target_ms": "0.200",
+    "retention_at_equal_floor_bytes": {
+      "6.4": 467296256,
+      "8": 307296256
+    },
+    "scope": "A floor above the target rejects this contract. A floor below it proves no attainable runtime."
+  },
+  "toy_correctness_illustration": {
+    "comparisons": {
+      "dyadic_float": {
+        "equal": true,
+        "final_scalar_count": 30,
+        "final_sum": 3.375,
+        "final_values": [
+          [
+            [
+              -0.5,
+              -1.875,
+              -1.125
+            ],
+            [
+              -0.375,
+              0.375,
+              1.125
+            ],
+            [
+              0.375,
+              0.875,
+              -0.75
+            ],
+            [
+              -0.25,
+              0.25,
+              0.75
+            ],
+            [
+              1.25,
+              -0.625,
+              -0.375
+            ]
+          ],
+          [
+            [
+              1.125,
+              1.875,
+              0.5
+            ],
+            [
+              -0.875,
+              -0.125,
+              0.625
+            ],
+            [
+              0.75,
+              -0.875,
+              -0.375
+            ],
+            [
+              0.125,
+              0.625,
+              1.125
+            ],
+            [
+              0.375,
+              0.625,
+              -1.25
+            ]
+          ]
+        ],
+        "partial_count": 24
+      },
+      "integer": {
+        "equal": true,
+        "final_scalar_count": 30,
+        "final_sum": 27,
+        "final_values": [
+          [
+            [
+              -4,
+              -15,
+              -9
+            ],
+            [
+              -3,
+              3,
+              9
+            ],
+            [
+              3,
+              7,
+              -6
+            ],
+            [
+              -2,
+              2,
+              6
+            ],
+            [
+              10,
+              -5,
+              -3
+            ]
+          ],
+          [
+            [
+              9,
+              15,
+              4
+            ],
+            [
+              -7,
+              -1,
+              5
+            ],
+            [
+              6,
+              -7,
+              -3
+            ],
+            [
+              1,
+              5,
+              9
+            ],
+            [
+              3,
+              5,
+              -10
+            ]
+          ]
+        ],
+        "partial_count": 24
+      }
+    },
+    "float_values": "multiples of 1/8 with exactly representable sums in this tiny example",
+    "generally_reordered_floating_point_reductions": "may round differently",
+    "purpose": "CPU arithmetic illustration with artificial contributions, not an attention kernel",
+    "reduction_order": "identical in both paths",
+    "specification": {
+      "key_dimension": 2,
+      "kv_heads": 2,
+      "query_heads": 4,
+      "sequence_length": 5,
+      "tile_rows": 2,
+      "value_dimension": 1
+    },
+    "timings_collected": false,
+    "workload_scope": "one sequence (batch size 1), one attention layer backward, one device"
+  }
+}

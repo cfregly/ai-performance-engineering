@@ -1,0 +1,20 @@
+Score the choices you can emit
+
+Example: when only YES and NO can be emitted, move selection before scoring rather than computing scores for all tokens and discarding most. The legal choices must be known before scoring. The words in this drawing explain the mechanism; they are not benchmark inputs.
+
+Why score tokens you cannot emit?
+Example: only YES or NO can be emitted
+Score everything
+YES
+road
+apple
+NO
+blue
+river
+Select first
+Score only
+legal tokens
+The legal choices must be known before scoring
+Why score tokens
+you cannot emit?
+Score only legal tokens

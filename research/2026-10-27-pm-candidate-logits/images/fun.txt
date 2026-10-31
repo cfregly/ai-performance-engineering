@@ -1,0 +1,7 @@
+INFERENCE / OUTPUT HEAD
+CHOOSE FIRST.
+Multiply less.
+Score only allowed tokens.
+Skip scores you will discard.
+Fregly’s take
+@cfregly

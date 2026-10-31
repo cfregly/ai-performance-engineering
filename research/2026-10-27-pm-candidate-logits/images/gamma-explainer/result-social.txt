@@ -1,0 +1,9 @@
+Output-head stage only
+Not a whole-model speedup
+12.84× faster output head
+5.399 → 0.421 ms per warm 16-step block
+Full + filter: 5.399 ms
+Allowed only: 0.421 ms
+Synthetic test on B200
+64 allowed tokens shared by the batch
+Changed each step · weight gathering included

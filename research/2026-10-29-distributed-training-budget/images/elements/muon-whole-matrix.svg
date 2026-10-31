@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="1100" viewBox="0 0 1000 1100" role="img" aria-labelledby="title desc">
+<title id="title">Gather before the whole-matrix Muon update</title>
+<desc id="desc">Four attention-state shards contain FP32 gradient, master weights and momentum. Gather a whole two-dimensional matrix on stage rank 0, run five finite FP32 Newton-Schulz iterations, then scatter and publish weights and optimizer state. This approximate transform is not exact SVD. Expert matrices already reside whole on their local owners.</desc>
+<defs>
+<marker id="arrow-ink" markerWidth="12" markerHeight="10" refX="11" refY="5" orient="auto-start-reverse" markerUnits="userSpaceOnUse"><path d="M 1 1 L 11 5 L 1 9" fill="none" stroke="#202326" stroke-width="3"/></marker>
+<marker id="arrow-blue" markerWidth="12" markerHeight="10" refX="11" refY="5" orient="auto-start-reverse" markerUnits="userSpaceOnUse"><path d="M 1 1 L 11 5 L 1 9" fill="none" stroke="#3478BA" stroke-width="3"/></marker>
+<marker id="arrow-orange" markerWidth="12" markerHeight="10" refX="11" refY="5" orient="auto-start-reverse" markerUnits="userSpaceOnUse"><path d="M 1 1 L 11 5 L 1 9" fill="none" stroke="#E87823" stroke-width="3"/></marker>
+</defs>
+<rect x="0" y="0" width="1000" height="1100" fill="#FBFBF8"/>
+<text x="500" y="85" font-family="Inter" font-size="60" font-weight="600" text-anchor="middle" fill="#202326">Whole-matrix Muon</text>
+<text x="500" y="160" font-family="Inter" font-size="52" font-weight="400" text-anchor="middle" fill="#202326">4 attention-state shards</text>
+<text x="500" y="218" font-family="Inter" font-size="48" font-weight="400" text-anchor="middle" fill="#202326">FP32 gradient / master / momentum</text>
+<rect x="70" y="250" width="200" height="70" fill="#3478BA" fill-opacity="0.09" stroke="#3478BA" stroke-width="3"/>
+<text x="170" y="302" font-family="Inter" font-size="48" font-weight="400" text-anchor="middle" fill="#202326">0</text>
+<polyline points="170,320 170,347" fill="none" stroke="#3478BA" stroke-width="3" stroke-linejoin="miter"/>
+<rect x="290" y="250" width="200" height="70" fill="#3478BA" fill-opacity="0.09" stroke="#3478BA" stroke-width="3"/>
+<text x="390" y="302" font-family="Inter" font-size="48" font-weight="400" text-anchor="middle" fill="#202326">1</text>
+<polyline points="390,320 390,347" fill="none" stroke="#3478BA" stroke-width="3" stroke-linejoin="miter"/>
+<rect x="510" y="250" width="200" height="70" fill="#3478BA" fill-opacity="0.09" stroke="#3478BA" stroke-width="3"/>
+<text x="610" y="302" font-family="Inter" font-size="48" font-weight="400" text-anchor="middle" fill="#202326">2</text>
+<polyline points="610,320 610,347" fill="none" stroke="#3478BA" stroke-width="3" stroke-linejoin="miter"/>
+<rect x="730" y="250" width="200" height="70" fill="#3478BA" fill-opacity="0.09" stroke="#3478BA" stroke-width="3"/>
+<text x="830" y="302" font-family="Inter" font-size="48" font-weight="400" text-anchor="middle" fill="#202326">3</text>
+<polyline points="830,320 830,347" fill="none" stroke="#3478BA" stroke-width="3" stroke-linejoin="miter"/>
+<polyline points="170,347 830,347" fill="none" stroke="#3478BA" stroke-width="3" stroke-linejoin="miter"/>
+<polyline points="500,347 500,385" fill="none" stroke="#3478BA" stroke-width="4" stroke-linejoin="miter" marker-end="url(#arrow-blue)"/>
+<rect x="50" y="385" width="900" height="175" fill="#3478BA" fill-opacity="0.06" stroke="#3478BA" stroke-width="3"/>
+<rect x="80" y="410" width="150" height="125" fill="#3478BA" fill-opacity="0.08" stroke="#3478BA" stroke-width="3"/>
+<polyline points="80,441.25 230,441.25" fill="none" stroke="#3478BA" stroke-width="2" stroke-linejoin="miter"/>
+<polyline points="80,472.5 230,472.5" fill="none" stroke="#3478BA" stroke-width="2" stroke-linejoin="miter"/>
+<polyline points="80,503.75 230,503.75" fill="none" stroke="#3478BA" stroke-width="2" stroke-linejoin="miter"/>
+<polyline points="117.5,410 117.5,535" fill="none" stroke="#3478BA" stroke-width="2" stroke-linejoin="miter"/>
+<polyline points="155.0,410 155.0,535" fill="none" stroke="#3478BA" stroke-width="2" stroke-linejoin="miter"/>
+<polyline points="192.5,410 192.5,535" fill="none" stroke="#3478BA" stroke-width="2" stroke-linejoin="miter"/>
+<text x="590" y="450" font-family="Inter" font-size="52" font-weight="600" text-anchor="middle" fill="#202326">Gather whole matrix</text>
+<text x="590" y="520" font-family="Inter" font-size="52" font-weight="600" text-anchor="middle" fill="#202326">on stage rank 0</text>
+<polyline points="500,560 500,610" fill="none" stroke="#202326" stroke-width="4" stroke-linejoin="miter" marker-end="url(#arrow-ink)"/>
+<rect x="50" y="610" width="900" height="210" fill="#FBFBF8" stroke="#202326" stroke-width="3"/>
+<text x="500" y="674" font-family="Inter" font-size="52" font-weight="600" text-anchor="middle" fill="#202326">5 finite Newton–Schulz</text>
+<text x="500" y="736" font-family="Inter" font-size="48" font-weight="400" text-anchor="middle" fill="#202326">FP32 iterations</text>
+<text x="500" y="795" font-family="Inter" font-size="48" font-weight="400" text-anchor="middle" fill="#202326">Approximate, not exact SVD</text>
+<polyline points="500,820 500,880" fill="none" stroke="#E87823" stroke-width="4" stroke-linejoin="miter" marker-end="url(#arrow-orange)"/>
+<rect x="50" y="880" width="900" height="130" fill="#E87823" fill-opacity="0.06" stroke="#E87823" stroke-width="3"/>
+<text x="500" y="934" font-family="Inter" font-size="52" font-weight="600" text-anchor="middle" fill="#E87823">Scatter + publish</text>
+<text x="500" y="992" font-family="Inter" font-size="48" font-weight="400" text-anchor="middle" fill="#202326">weights AND optimizer state</text>
+<text x="500" y="1062" font-family="Inter" font-size="48" font-weight="400" text-anchor="middle" fill="#202326">Experts: whole on local owners</text>
+</svg>

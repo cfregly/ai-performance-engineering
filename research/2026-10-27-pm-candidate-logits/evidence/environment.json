@@ -1,0 +1,20 @@
+{
+  "device_name": "NVIDIA B200",
+  "compute_capability": [
+    10,
+    0
+  ],
+  "total_memory_bytes": 191503007744,
+  "python": "3.12.3 (main, Jun 19 2026, 12:46:00) [GCC 13.3.0]",
+  "torch": "2.14.1+cu130",
+  "torch_cuda": "13.0",
+  "tf32": false,
+  "float32_matmul_precision": "highest",
+  "deterministic_algorithms": false,
+  "operating_system": "Linux",
+  "driver_version": "580.173.02",
+  "power_limit_w_observed_before_and_after": 1000,
+  "one_device": true,
+  "clock_settings_changed": false,
+  "power_settings_changed": false
+}

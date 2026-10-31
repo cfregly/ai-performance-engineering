@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="1000" viewBox="0 0 1000 1000" role="img" aria-labelledby="title desc">
+<title id="title">Placement moves rack traffic</title>
+<desc id="desc">Logical directed payload, both directions per update. Cross-rack payload moves within the racks; total off-node payload is unchanged.</desc>
+<defs><marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto" markerUnits="userSpaceOnUse"><path d="M1 1L9 5L1 9" fill="none" stroke="#202326" stroke-width="2"/></marker></defs>
+<rect width="1000" height="1000" fill="#FBFBF8"/>
+<g font-family="Inter" font-weight="400" fill="#202326">
+<text x="500" y="140" font-size="50" text-anchor="middle" fill="#202326">Placement moves rack traffic</text>
+<text x="500" y="198" font-size="36" text-anchor="middle" fill="#202326">Hypothetical cross-rack GB / update</text>
+<text x="500" y="250" font-size="36" text-anchor="middle" fill="#202326">Both directions</text>
+<line x1="195" y1="350" x2="195" y2="690" stroke="#202326" stroke-width="2"/>
+<text x="195" y="740" font-size="36" text-anchor="middle" fill="#202326">0</text>
+<line x1="428.333" y1="690" x2="428.333" y2="704" stroke="#202326" stroke-width="2"/>
+<text x="428.333" y="740" font-size="36" text-anchor="middle" fill="#202326">10</text>
+<line x1="661.667" y1="690" x2="661.667" y2="704" stroke="#202326" stroke-width="2"/>
+<text x="661.667" y="740" font-size="36" text-anchor="middle" fill="#202326">20</text>
+<line x1="895" y1="690" x2="895" y2="704" stroke="#202326" stroke-width="2"/>
+<text x="895" y="740" font-size="36" text-anchor="middle" fill="#202326">30</text>
+<line x1="195" y1="690" x2="895" y2="690" stroke="#202326" stroke-width="2"/>
+<rect x="195" y="360" width="647.572" height="85" fill="#3478BA" stroke="#3478BA" stroke-width="0"/>
+<text x="110" y="421" font-size="52" text-anchor="start" fill="#202326">A</text>
+<text x="195" y="335" font-size="56" text-anchor="start" fill="#202326">27.753 GB</text>
+<rect x="195" y="570" width="6.2635" height="85" fill="#E87823" stroke="#E87823" stroke-width="0"/>
+<text x="110" y="631" font-size="52" text-anchor="start" fill="#202326">B</text>
+<text x="195" y="545" font-size="56" text-anchor="start" fill="#202326">0.268 GB</text>
+<text x="500" y="830" font-size="36" text-anchor="middle" fill="#202326">Within rack: 0.805 → 28.290 GB</text>
+<text x="500" y="890" font-size="36" text-anchor="middle" fill="#202326">Total off-node payload unchanged</text>
+</g></svg>

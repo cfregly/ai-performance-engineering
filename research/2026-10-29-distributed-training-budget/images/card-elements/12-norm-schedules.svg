@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="1000" viewBox="0 0 1000 1000" role="img" aria-labelledby="title desc">
+<title id="title">Same norm. Different waiting.</title>
+<desc id="desc">The declared full DP all-reduce plan and a reduce-scatter-first alternative preserve total payload and norm mathematics. Possible allgather/optimizer overlap is optimistic and must respect the full dependency graph.</desc>
+<defs><marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto" markerUnits="userSpaceOnUse"><path d="M1 1L9 5L1 9" fill="none" stroke="#202326" stroke-width="2"/></marker></defs>
+<rect width="1000" height="1000" fill="#FBFBF8"/>
+<g font-family="Inter" font-weight="400" fill="#202326">
+<text x="500" y="140" font-size="60" text-anchor="middle" fill="#202326">Same norm.</text>
+<text x="500" y="206" font-size="60" text-anchor="middle" fill="#202326">Different waiting.</text>
+<text x="275" y="270" font-size="42" text-anchor="middle" fill="#202326">Declared plan</text>
+<line x1="275" y1="375" x2="275" y2="410" stroke="#202326" stroke-width="2" marker-end="url(#arrow)"/>
+<line x1="275" y1="510" x2="275" y2="545" stroke="#202326" stroke-width="2" marker-end="url(#arrow)"/>
+<line x1="275" y1="615" x2="275" y2="650" stroke="#202326" stroke-width="2" marker-end="url(#arrow)"/>
+<text x="725" y="270" font-size="42" text-anchor="middle" fill="#202326">Alternative</text>
+<line x1="725" y1="375" x2="725" y2="410" stroke="#202326" stroke-width="2" marker-end="url(#arrow)"/>
+<line x1="725" y1="510" x2="725" y2="545" stroke="#202326" stroke-width="2" marker-end="url(#arrow)"/>
+<line x1="725" y1="615" x2="725" y2="650" stroke="#202326" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="90" y="290" width="370" height="85" fill="#FBFBF8" stroke="#202326" stroke-width="2"/>
+<text x="275" y="345.7" font-size="40" text-anchor="middle" fill="#202326">Full all-reduce</text>
+<rect x="90" y="410" width="370" height="100" fill="#FBFBF8" stroke="#202326" stroke-width="2"/>
+<text x="275" y="473.2" font-size="40" text-anchor="middle" fill="#202326">Unique norm</text>
+<rect x="90" y="545" width="370" height="70" fill="#FBFBF8" stroke="#202326" stroke-width="2"/>
+<text x="275" y="593.2" font-size="40" text-anchor="middle" fill="#202326">Clip</text>
+<rect x="90" y="650" width="370" height="140" fill="#FBFBF8" stroke="#202326" stroke-width="2"/>
+<text x="275" y="733.2" font-size="40" text-anchor="middle" fill="#202326">Optimizer</text>
+<rect x="540" y="290" width="370" height="85" fill="#FBFBF8" stroke="#202326" stroke-width="2"/>
+<text x="725" y="345.7" font-size="40" text-anchor="middle" fill="#202326">Reduce-scatter</text>
+<rect x="540" y="410" width="370" height="100" fill="#FBFBF8" stroke="#202326" stroke-width="2"/>
+<text x="725" y="451.72" font-size="36" text-anchor="middle" fill="#202326">Disjoint terms</text>
+<text x="725" y="492.04" font-size="36" text-anchor="middle" fill="#202326">one global norm</text>
+<rect x="540" y="545" width="370" height="70" fill="#FBFBF8" stroke="#202326" stroke-width="2"/>
+<text x="725" y="593.2" font-size="40" text-anchor="middle" fill="#202326">Clip</text>
+<rect x="540" y="650" width="370" height="140" fill="#FBFBF8" stroke="#202326" stroke-width="2"/>
+<text x="725" y="691.56" font-size="36" text-anchor="middle" fill="#202326">Allgather +</text>
+<text x="725" y="731.88" font-size="36" text-anchor="middle" fill="#202326">optimizer</text>
+<text x="725" y="772.2" font-size="36" text-anchor="middle" fill="#202326">possible overlap</text>
+<text x="500" y="830" font-size="36" text-anchor="middle" fill="#202326">Same bytes and norm math.</text>
+<text x="500" y="870" font-size="36" text-anchor="middle" fill="#202326">Optimistic floors need a full</text>
+<text x="500" y="910" font-size="36" text-anchor="middle" fill="#202326">dependency graph before speed claims.</text>
+</g></svg>
