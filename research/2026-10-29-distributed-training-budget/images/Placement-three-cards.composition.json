@@ -1,15 +1,15 @@
 {
   "schema_version": 1,
   "kind": "lossless_square_image_pdf_composition",
-  "created_at": "2026-10-31T18:20:10.947364+00:00",
+  "created_at": "2026-10-31T20:36:34.958372+00:00",
   "document": {
     "path": "images/Placement-three-cards.pdf",
-    "sha256": "e01a11ea41c85c150253b4fdb8f8a25e95c6b933a52f8bed569b3e965c010ea6",
+    "sha256": "33c7db42e7a8be56312cd4ec862248dee39025c558acdc6ba9c028d316a266df",
     "page_count": 3
   },
   "asset_index": {
     "path": "images/reader-card-index.json",
-    "sha256": "a28c526d4c9a116515ccecbabda79b86bb341bccec9d26274f8522dabcf053b9"
+    "sha256": "6ed5165bd4346e268566bd148b3e5b6e41cb212cd2cdcfec0db4a9df0fcad28b"
   },
   "composition_receipt": "images/Placement-three-cards.composition.json",
   "page_size_points": {
@@ -72,11 +72,11 @@
       "title": "Two ordered lower bounds",
       "source_png": {
         "path": "images/scientific/16-ordered-floors.png",
-        "sha256": "c6ed9a46fbdcc02e526cbda595579cbace06687a300a479725d9fc15eab56a5d",
+        "sha256": "da6e7eb389206da721fa8cae932f59bfae36e538713048f86f23c24dbc81829f",
         "width": 2400,
         "height": 2400
       },
-      "decoded_rgb_sha256": "09583ff3952af2c9961015cc7b5b40db48389b08f8333ec08721fef389aa0556",
+      "decoded_rgb_sha256": "fd649bcfc570d198afbfdf37546706358a7d758900bebd46ed8cb86704a77f8f",
       "page_box_points": [
         0,
         0,

@@ -163,26 +163,9 @@ These are the complete reader cards for the same hypothetical construction. The 
 ![Decide what to build next](images/aud-business-capacity-square.png)
 
 
-## Compact diagram elements
-
-These SVG components supply geometry for custom figures. In their A/B comparisons, A is before the rack move and B is after it. Use the selected figures below for the complete captions, conditions and larger labels.
-
-Regenerate the four quantitative and schedule cards with `python3 code/card_figures.py`. Use `--check` to compare the retained SVG bytes. The six component diagrams regenerate with `python3 code/visual_elements.py`. These scripts reproduce the scientific geometry and labels, not the complete hosted presentation.
-
-- [muon whole matrix](images/elements/muon-whole-matrix.svg)
-- [topology a](images/elements/topology-a.svg)
-- [topology b](images/elements/topology-b.svg)
-- [gradient barrier](images/elements/gradient-barrier.svg)
-- [rank groups](images/elements/rank-groups.svg)
-- [pipeline 1f1b](images/elements/pipeline-1f1b.svg)
-- [04 stage work](images/card-elements/04-stage-work.svg)
-- [16 ordered floors](images/card-elements/16-ordered-floors.svg)
-- [15 tier traffic](images/card-elements/15-tier-traffic.svg)
-- [12 norm schedules](images/card-elements/12-norm-schedules.svg)
-
 ## Rebuild the selected figures
 
-A keeps each data replica in one rack. B pairs corresponding stages within racks. In the ordered-floor chart, blue is before clipping and orange after clipping.
+The three selected figures above carry the complete captions, conditions and larger labels. A keeps each data replica in one rack. B pairs corresponding stages within racks. In the ordered-floor chart, blue is before clipping and orange after clipping.
 
 With Pillow and librsvg already installed, validate the selected SVG and PNG exports:
 

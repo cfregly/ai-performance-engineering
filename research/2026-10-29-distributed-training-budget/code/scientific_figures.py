@@ -204,7 +204,8 @@ def floor_figure(source, colors):
     figure = Figure('Two ordered lower bounds', 'The illustration shows a clipping barrier. It is separate from the dashed illustrative 150 ms budget on the chart below. Blue is before clipping and orange after clipping. The busiest rank updates local experts and gathered attention matrices. All values are lower bounds under assumed rates, not runtimes.', colors)
     figure.text(600, 136, 'Two ordered lower bounds', 64, weight=600)
     figure.text(600, 204, 'Hypothetical plan · ms per update')
-    figure.text(108, 266, 'A before · B after', anchor='start')
+    figure.text(108, 266, 'A: original · B: moved', anchor='start')
+    require(figure.text_boxes[-1]['right'] <= 640, 'Placement key overlaps the barrier illustration')
     for y, label, color in ((326, 'Pre-clip', 'blue'), (416, 'Post-clip', 'orange')):
         figure.rect(108, y - 37, 32, 32, color)
         figure.text(160, y, label, anchor='start')

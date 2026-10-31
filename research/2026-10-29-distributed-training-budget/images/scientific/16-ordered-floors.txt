@@ -1,6 +1,6 @@
 Two ordered lower bounds
 Hypothetical plan · ms per update
-A before · B after
+A: original · B: moved
 Pre-clip
 Post-clip
 Clipping barrier

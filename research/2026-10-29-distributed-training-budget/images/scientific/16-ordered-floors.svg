@@ -9,7 +9,7 @@
 </defs><g font-family="Inter">
 <text x="600" y="136" font-size="64" font-weight="600" text-anchor="middle" fill="#202326">Two ordered lower bounds</text>
 <text x="600" y="204" font-size="52" font-weight="400" text-anchor="middle" fill="#202326">Hypothetical plan · ms per update</text>
-<text x="108" y="266" font-size="52" font-weight="400" text-anchor="start" fill="#202326">A before · B after</text>
+<text x="108" y="266" font-size="52" font-weight="400" text-anchor="start" fill="#202326">A: original · B: moved</text>
 <rect x="108.000000000" y="289" width="32.000000000" height="32" fill="#3478BA"/>
 <text x="160" y="326" font-size="52" font-weight="400" text-anchor="start" fill="#202326">Pre-clip</text>
 <rect x="108.000000000" y="379" width="32.000000000" height="32" fill="#E87823"/>
