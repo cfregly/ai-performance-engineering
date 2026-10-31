@@ -1,0 +1,101 @@
+{
+  "schema_version": 1,
+  "kind": "piq_two_host_owner_facts",
+  "scope": "bounded_two_host_functional_execution_and_custody",
+  "qualification": "not_established",
+  "producer_receipt_sha256": "",
+  "envelope_sha256": "",
+  "run_id": "",
+  "attempt_ids": [
+    ""
+  ],
+  "authority": {
+    "owner_id": "",
+    "authority_id": "",
+    "attested_at": ""
+  },
+  "attempts": [
+    {
+      "attempt_id": "",
+      "launch": {
+        "launch_id": "",
+        "controller_id": "",
+        "execution_session_id": "",
+        "started_at": "",
+        "ended_at": ""
+      },
+      "ranks": [
+        {
+          "rank": 0,
+          "producer_host": "",
+          "physical_host_id": "",
+          "boot_id": "",
+          "execution_session_id": "",
+          "pid": 0,
+          "started_at": "",
+          "ended_at": "",
+          "launch_id": "",
+          "controller_id": ""
+        },
+        {
+          "rank": 1,
+          "producer_host": "",
+          "physical_host_id": "",
+          "boot_id": "",
+          "execution_session_id": "",
+          "pid": 0,
+          "started_at": "",
+          "ended_at": "",
+          "launch_id": "",
+          "controller_id": ""
+        }
+      ],
+      "transport": {
+        "transport_id": "",
+        "protocol": "tcp",
+        "source_rank": 0,
+        "destination_rank": 1,
+        "source_pid": 0,
+        "destination_pid": 0,
+        "source_physical_host_id": "",
+        "destination_physical_host_id": "",
+        "execution_session_id": "",
+        "sent_payload_sha256": "",
+        "received_payload_sha256": "",
+        "payload_size_bytes": 0,
+        "sent_at": "",
+        "received_at": ""
+      },
+      "cleanup": [
+        {
+          "rank": 0,
+          "physical_host_id": "",
+          "boot_id": "",
+          "execution_session_id": "",
+          "pid": 0,
+          "launch_id": "",
+          "controller_id": "",
+          "transport_id": "",
+          "observed_at": "",
+          "pid_absent": true,
+          "transport_closed": true,
+          "session_terminal": true
+        },
+        {
+          "rank": 1,
+          "physical_host_id": "",
+          "boot_id": "",
+          "execution_session_id": "",
+          "pid": 0,
+          "launch_id": "",
+          "controller_id": "",
+          "transport_id": "",
+          "observed_at": "",
+          "pid_absent": true,
+          "transport_closed": true,
+          "session_terminal": true
+        }
+      ]
+    }
+  ]
+}

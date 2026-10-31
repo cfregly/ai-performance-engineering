@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "operation": "update",
+  "prior_readback": null,
+  "draft_id": null,
+  "social_set_id": null,
+  "verified_at": null,
+  "status": "draft",
+  "scheduled_at": null,
+  "published_at": null,
+  "publication_authorized": false,
+  "platforms": ["x", "linkedin"],
+  "lifecycle_tag": "needs-review",
+  "tags": ["needs-review"],
+  "approval": null,
+  "raw_readback": {"path": "", "sha256": ""},
+  "guard_receipt": {"path": "", "sha256": ""},
+  "media_ids": {
+    "x": [],
+    "linkedin": []
+  },
+  "analytics": {
+    "review": {"path": "", "sha256": ""},
+    "x": {"status": "unavailable", "reason": ""},
+    "linkedin": {"status": "unavailable", "reason": ""}
+  },
+  "people": {
+    "review": {"path": "", "sha256": ""},
+    "mentions": {"state": "none", "reason": "", "verified": []},
+    "opportunities": {"state": "none", "reason": ""}
+  },
+  "promotion": {
+    "auto_retweet": {
+      "state": "unverified",
+      "trigger": "",
+      "reason": "Not yet checked in Typefully.",
+      "evidence": {"path": "", "sha256": ""},
+      "checked_at": null,
+      "dormant": true
+    },
+    "auto_plug": {
+      "state": "unverified",
+      "trigger": "",
+      "reason": "Not yet checked in Typefully.",
+      "evidence": {"path": "", "sha256": ""},
+      "checked_at": null,
+      "dormant": true
+    }
+  },
+  "reviewer": ""
+}

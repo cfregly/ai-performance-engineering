@@ -1,0 +1,109 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:piq:two-host-functional-evidence:v1",
+  "title": "PIQ two-host functional evidence v1",
+  "description": "Supplementary retained producer evidence for selected accepted attempts whose complete rank census reports two hosts. This is diagnostic and does not establish qualification or independently prove physical execution.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "kind",
+    "authority",
+    "qualification",
+    "envelope",
+    "run_id",
+    "attempt_ids",
+    "aggregations",
+    "execution",
+    "correctness",
+    "custody"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "kind": {
+      "const": "piq_two_host_functional_evidence"
+    },
+    "authority": {
+      "const": "retained_producer_assertion"
+    },
+    "qualification": {
+      "const": "not_established"
+    },
+    "envelope": {
+      "$ref": "#/$defs/artifact"
+    },
+    "run_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "attempt_ids": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "aggregations": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/artifact"
+      }
+    },
+    "execution": {
+      "$ref": "#/$defs/artifact"
+    },
+    "correctness": {
+      "$ref": "#/$defs/artifact"
+    },
+    "custody": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "readback",
+        "export",
+        "import_receipt",
+        "cleanup"
+      ],
+      "properties": {
+        "readback": {
+          "$ref": "#/$defs/artifact"
+        },
+        "export": {
+          "$ref": "#/$defs/artifact"
+        },
+        "import_receipt": {
+          "$ref": "#/$defs/artifact"
+        },
+        "cleanup": {
+          "$ref": "#/$defs/artifact"
+        }
+      }
+    }
+  },
+  "$defs": {
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "sha256"
+      ],
+      "properties": {
+        "path": {
+          "type": "string",
+          "pattern": "^evidence/(?!\\.{1,2}(?:/|$))(?!.*?/\\.{1,2}(?:/|$))[^/\\\\]+(?:/[^/\\\\]+)*$"
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      }
+    }
+  }
+}

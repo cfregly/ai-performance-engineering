@@ -19,19 +19,27 @@ from typing import Any
 from urllib.parse import urlsplit
 
 if __package__:
+    from .check_diagnostic_finding import validate_declared_diagnostic_finding
     from .check_profile_conventions import validate_profile_conventions
+    from .check_piq_two_host_functional import validate_declared_two_host_functional
     from .check_social_preview import validate_social_preview
     from .check_public_projection import validate_public_projection
     from .check_reader_copy import validate_reader_copy
+    from .check_reader_visuals import validate_reader_visuals
     from .piq_experiment_evidence import validate_bundle as validate_piq_bundle
     from .qualified_cpu_study import cpu_receipt_binds_envelope, validate_cpu_receipt
+    from .typefully_workflow import WORKFLOW_PATH, validate_workflow
 else:
+    from check_diagnostic_finding import validate_declared_diagnostic_finding
     from check_profile_conventions import validate_profile_conventions
+    from check_piq_two_host_functional import validate_declared_two_host_functional
     from check_social_preview import validate_social_preview
     from check_public_projection import validate_public_projection
     from check_reader_copy import validate_reader_copy
+    from check_reader_visuals import validate_reader_visuals
     from piq_experiment_evidence import validate_bundle as validate_piq_bundle
     from qualified_cpu_study import cpu_receipt_binds_envelope, validate_cpu_receipt
+    from typefully_workflow import WORKFLOW_PATH, validate_workflow
 
 
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
@@ -39,6 +47,7 @@ CONCEPTS = ["images/a", "images/b", "images/c"]
 COVER = "images/fun"
 REVIEW_PATH = "images/review.json"
 TYPEFULLY_PATH = "social/typefully-receipt.json"
+SOURCE_COMMENT_PATH = "source-comment.md"
 MEASUREMENT_RECEIPT_PATH = "evidence/measurement-receipt.json"
 SOURCE_REPORTED_RECEIPT_PATH = "evidence/source-reported-receipt.json"
 SOCIAL_FILES = {"x": "social/x.txt", "linkedin": "social/linkedin.txt"}
@@ -52,7 +61,7 @@ REQUIRED_FILES = [
     "images/README.md",
     "images/audiences.md",
 ]
-PUBLIC_COPY_ROOT_FILES = ("README.md", "tweets.md")
+PUBLIC_COPY_ROOT_FILES = ("README.md", "tweets.md", SOURCE_COMMENT_PATH)
 PUBLIC_COPY_PATTERNS = (
     (re.compile(r"\bwith\s+False\b", re.I), "contextless comparison 'with False'"),
     (re.compile(r"\bwith\s+True\b", re.I), "contextless comparison 'with True'"),
@@ -115,13 +124,31 @@ def sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def load_json(path: Path, errors: list[str], label: str) -> Any | None:
+def reject_duplicate_json_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    value: dict[str, Any] = {}
+    for key, child in pairs:
+        if key in value:
+            raise ValueError(f"duplicate JSON key: {key}")
+        value[key] = child
+    return value
+
+
+def load_json(
+    path: Path,
+    errors: list[str],
+    label: str,
+    *,
+    reject_duplicates: bool = False,
+) -> Any | None:
     if not path.is_file():
         errors.append(f"missing {label}: {path}")
         return None
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raw = path.read_text(encoding="utf-8")
+        if reject_duplicates:
+            return json.loads(raw, object_pairs_hook=reject_duplicate_json_keys)
+        return json.loads(raw)
+    except (OSError, UnicodeError, ValueError) as exc:
         errors.append(f"invalid {label} {path}: {exc}")
         return None
 
@@ -216,12 +243,14 @@ def validate_hashed_file(
     return relative
 
 
-def validate_manifest(data: Any, errors: list[str]) -> tuple[list[str], str | None, str | None]:
+def validate_manifest(data: Any, errors: list[str]) -> tuple[list[str], str | None, str | None, int | None]:
     if not isinstance(data, dict):
         errors.append("manifest must be a JSON object")
-        return [], None, None
-    if data.get("schema_version") != 1:
-        errors.append("manifest.schema_version must equal 1")
+        return [], None, None, None
+    schema_version = data.get("schema_version")
+    if type(schema_version) is not int or schema_version not in {1, 2}:
+        errors.append("manifest.schema_version must equal 1 or 2")
+        schema_version = None
     if data.get("content_state") not in {"hypothetical", "measured", "source_reported"}:
         errors.append("manifest.content_state must be 'hypothetical', 'measured', or 'source_reported'")
     if data.get("concepts") != CONCEPTS:
@@ -232,6 +261,17 @@ def validate_manifest(data: Any, errors: list[str]) -> tuple[list[str], str | No
         errors.append(f"manifest.review_receipt must equal {REVIEW_PATH!r}")
     if data.get("typefully_receipt") != TYPEFULLY_PATH:
         errors.append(f"manifest.typefully_receipt must equal {TYPEFULLY_PATH!r}")
+    if schema_version == 2:
+        if data.get("typefully_workflow_receipt") != WORKFLOW_PATH:
+            errors.append(f"schema-2 manifest.typefully_workflow_receipt must equal {WORKFLOW_PATH!r}")
+        if data.get("source_comment") != SOURCE_COMMENT_PATH:
+            errors.append(f"schema-2 manifest.source_comment must equal {SOURCE_COMMENT_PATH!r}")
+    elif schema_version == 1:
+        for field in ("typefully_workflow_receipt", "source_comment"):
+            if field in data:
+                errors.append(
+                    f"schema-1 manifest must not declare {field}. Migrate to schema 2 with the complete workflow contract"
+                )
     state = data.get("content_state")
     if state == "measured" and data.get("measurement_receipt") != MEASUREMENT_RECEIPT_PATH:
         errors.append(f"measured manifest.measurement_receipt must equal {MEASUREMENT_RECEIPT_PATH!r}")
@@ -284,14 +324,95 @@ def validate_manifest(data: Any, errors: list[str]) -> tuple[list[str], str | No
     if selected not in allowed:
         errors.append("manifest.selected_image_stem must name one declared concept, cover, or audience stem")
         selected = None
-    return audience_stems, selected, data.get("content_state")
+    return audience_stems, selected, data.get("content_state"), schema_version
 
 
-def validate_variant(package: Path, stem: str, errors: list[str]) -> str | None:
+def indexed_phone_dimensions(package: Path, stems: list[str], errors: list[str]) -> dict[str, tuple[int, int]]:
+    """Admit square previews only through current, exact indexed PNG references."""
+    index_path = package / "images/asset-index.json"
+    if not index_path.exists():
+        return {}
+    if index_path.is_symlink():
+        errors.append("asset index must not be a symlink")
+        return {}
+    before = len(errors)
+    index = load_json(index_path, errors, "asset index")
+    if index is None:
+        if len(errors) == before:
+            errors.append("asset index must be a JSON object")
+        return {}
+    if not isinstance(index, dict) or not isinstance(index.get("assets"), list) or not index["assets"]:
+        errors.append("asset index must contain a nonempty assets list")
+        return {}
+
+    def current_png(value: Any, relative: str, dimensions: tuple[int, int], label: str) -> bool:
+        before = len(errors)
+        if not isinstance(value, dict):
+            errors.append(f"{label} must be a PNG reference object")
+            return False
+        if value.get("path") != relative:
+            errors.append(f"{label}.path must equal {relative}")
+            return False
+        if (type(value.get("width")) is not int or type(value.get("height")) is not int
+                or (value["width"], value["height"]) != dimensions):
+            errors.append(f"{label} must declare {dimensions[0]}x{dimensions[1]}")
+        validate_hashed_file(package, value, label, errors)
+        path = package / relative
+        if path.is_file() and png_dimensions(path) != dimensions:
+            errors.append(f"{label} current PNG dimensions do not match {dimensions[0]}x{dimensions[1]}")
+        return len(errors) == before
+
+    contracts: dict[str, tuple[int, int]] = {}
+    seen: set[str] = set()
+    for position, asset in enumerate(index["assets"]):
+        label = f"asset index assets[{position}]"
+        if not isinstance(asset, dict) or not isinstance(asset.get("stem"), str):
+            errors.append(f"{label} must be an object with a stem")
+            continue
+        stem = asset["stem"]
+        if stem not in stems:
+            continue
+        if stem in seen:
+            errors.append(f"asset index has duplicate stem: {stem}")
+            contracts.pop(stem, None)
+            continue
+        seen.add(stem)
+        if "variants" not in asset:
+            continue  # Retained indexes without a phone contract keep the legacy shape.
+        variants = asset["variants"]
+        if not isinstance(variants, dict):
+            errors.append(f"{label}.variants must be an object")
+            continue
+        if "phone" not in variants:
+            continue
+        phone = variants["phone"]
+        if not isinstance(phone, dict):
+            errors.append(f"{label}.variants.phone must be a PNG reference object")
+            continue
+        dimensions = (phone.get("width"), phone.get("height"))
+        if (any(type(value) is not int for value in dimensions)
+                or dimensions not in ((400, 225), (400, 400))):
+            errors.append(f"{label}.variants.phone has unsupported geometry. Expected 400x225 or 400x400")
+            continue
+        before = len(errors)
+        current_png(phone, f"{stem}-400.png", dimensions, f"{label}.variants.phone")
+        if dimensions == (400, 400):
+            current_png(asset.get("selected"), f"{stem}-square.png", (1080, 1080), f"{label}.selected")
+            if "square" in variants:
+                current_png(variants["square"], f"{stem}-square.png", (1080, 1080), f"{label}.variants.square")
+        if len(errors) == before:
+            contracts[stem] = dimensions
+    return contracts
+
+
+def validate_variant(package: Path, stem: str, errors: list[str],
+                     phone_dimensions: tuple[int, int] | None = None) -> str | None:
+    if phone_dimensions is None:
+        phone_dimensions = indexed_phone_dimensions(package, [stem], errors).get(stem, (400, 225))
     expected = {
         f"{stem}.png": (1600, 900),
         f"{stem}-square.png": (1080, 1080),
-        f"{stem}-400.png": (400, 225),
+        f"{stem}-400.png": phone_dimensions,
     }
     main_hash: str | None = None
     for relative, dimensions in expected.items():
@@ -337,7 +458,7 @@ def validate_review(package: Path, stems: list[str], hashes: dict[str, str], err
             errors.append(f"stale review hash for {stem}: expected {expected}")
 
 
-def validate_typefully(package: Path, errors: list[str]) -> None:
+def validate_typefully(package: Path, errors: list[str], *, extended_workflow: bool) -> None:
     data = load_json(package / TYPEFULLY_PATH, errors, "Typefully receipt")
     if data is None:
         return
@@ -348,6 +469,11 @@ def validate_typefully(package: Path, errors: list[str]) -> None:
         errors.append("Typefully receipt status must be 'draft'")
     if data.get("scheduled_at") is not None:
         errors.append("Typefully receipt scheduled_at must be null")
+    if extended_workflow:
+        if "published_at" not in data or data["published_at"] is not None:
+            errors.append("Typefully receipt published_at must be null and present")
+        if data.get("publication_authorized") is not False:
+            errors.append("Typefully receipt publication_authorized must be false")
     if data.get("platforms") != ["x", "linkedin"]:
         errors.append("Typefully receipt platforms must equal ['x', 'linkedin']")
     if data.get("content_files") != SOCIAL_FILES:
@@ -357,9 +483,22 @@ def validate_typefully(package: Path, errors: list[str]) -> None:
     draft_id = data.get("draft_id")
     if isinstance(draft_id, bool) or not isinstance(draft_id, (str, int)) or str(draft_id).strip() == "":
         errors.append("Typefully receipt draft_id must be a nonempty string or integer")
+    if extended_workflow:
+        social_set_id = data.get("social_set_id")
+        if isinstance(social_set_id, bool) or not isinstance(social_set_id, (str, int)) or str(social_set_id).strip() == "":
+            errors.append("Typefully receipt social_set_id must be a nonempty string or integer")
     editor_url = data.get("editor_url")
     if not isinstance(editor_url, str) or not re.match(r"^https://", editor_url):
         errors.append("Typefully receipt editor_url must be a nonempty https URL")
+    if extended_workflow:
+        media_ids = data.get("media_ids")
+        if not isinstance(media_ids, list) or not media_ids or any(
+            isinstance(item, bool) or not isinstance(item, (str, int)) or not str(item).strip()
+            for item in media_ids
+        ):
+            errors.append("Typefully receipt media_ids must be a nonempty list of media IDs")
+        elif len({str(item) for item in media_ids}) != len(media_ids):
+            errors.append("Typefully receipt media_ids must not contain duplicates")
 
     shipping = package / "image.png"
     if shipping.is_file() and data.get("image_sha256") != sha256(shipping):
@@ -374,6 +513,29 @@ def validate_typefully(package: Path, errors: list[str]) -> None:
             exact = path.read_text(encoding="utf-8")
             if texts.get(platform) != exact:
                 errors.append(f"Typefully receipt texts.{platform} does not exactly match {relative}")
+
+
+def validate_source_comment(package: Path, errors: list[str]) -> None:
+    path = package / SOURCE_COMMENT_PATH
+    if not path.is_file():
+        return
+    try:
+        body = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeError) as exc:
+        errors.append(f"invalid source-native comment: {exc}")
+        return
+    template = Path(__file__).resolve().parents[1] / "templates/source-comment.md"
+    try:
+        if template.is_file() and path.read_bytes() == template.read_bytes():
+            errors.append("source-comment.md still matches the unfilled template")
+    except OSError as exc:
+        errors.append(f"cannot compare source-comment.md with its template: {exc}")
+    if re.search(r"(?im)^Status:\s*draft\s*(?:,|—|-)\s*unsent\s*$", body) is None:
+        errors.append("source-comment.md must declare 'Status: draft, unsent'")
+    for heading in ("Source context", "Comment draft"):
+        match = re.search(rf"(?ims)^##\s+{re.escape(heading)}\s*$\n(.*?)(?=^##\s+|\Z)", body)
+        if match is None or not match.group(1).strip():
+            errors.append(f"source-comment.md must contain a nonempty '## {heading}' section")
 
 
 def validate_measurement(package: Path, errors: list[str]) -> dict[str, Any] | None:
@@ -759,18 +921,32 @@ def validate_package(package: Path) -> list[str]:
         require_file(package, relative, errors)
     load_json(package / "sources.json", errors, "sources JSON")
 
-    manifest = load_json(package / "manifest.json", errors, "manifest")
+    manifest = load_json(
+        package / "manifest.json",
+        errors,
+        "manifest",
+        reject_duplicates=True,
+    )
     if manifest is None:
         return errors
-    audience_stems, selected, state = validate_manifest(manifest, errors)
+    audience_stems, selected, state, schema_version = validate_manifest(manifest, errors)
+    errors.extend(validate_declared_diagnostic_finding(package, manifest))
+    errors.extend(validate_declared_two_host_functional(package, manifest))
+    extended_workflow = schema_version == 2
+    source_comment_required = schema_version == 2
+    if source_comment_required:
+        require_file(package, SOURCE_COMMENT_PATH, errors)
     if isinstance(manifest, dict) and manifest.get("review_status") in {"PENDING", "REVIEW_BLOCKED"}:
         errors.append("required technical review is " + manifest["review_status"] + "; private preview only")
     stems = [*CONCEPTS, COVER, *audience_stems]
     validate_public_copy(package, stems, errors)
+    if source_comment_required:
+        validate_source_comment(package, errors)
     errors.extend(validate_reader_copy(package))
     hashes: dict[str, str] = {}
+    phone_contracts = indexed_phone_dimensions(package, stems, errors)
     for stem in stems:
-        value = validate_variant(package, stem, errors)
+        value = validate_variant(package, stem, errors, phone_contracts.get(stem, (400, 225)))
         if value:
             hashes[stem] = value
     by_hash: dict[str, list[str]] = {}
@@ -789,7 +965,9 @@ def validate_package(package: Path) -> list[str]:
                 errors.append(f"image{suffix} does not byte-match selected variant {selected}{suffix}")
 
     validate_review(package, stems, hashes, errors)
-    validate_typefully(package, errors)
+    validate_typefully(package, errors, extended_workflow=extended_workflow)
+    if extended_workflow:
+        validate_workflow(package, WORKFLOW_PATH, errors)
     qualified_cpu_receipt: dict[str, Any] | None = None
     if state == "measured":
         qualified_cpu_receipt = validate_measurement(package, errors)
@@ -827,14 +1005,23 @@ def validate_package(package: Path) -> list[str]:
     validate_state(package, state, selected, errors, image_basis, qualified_cpu=qualified_cpu_receipt is not None)
     errors.extend(validate_profile_conventions(package))
     errors.extend(validate_social_preview(package))
+    if isinstance(manifest, dict) and manifest.get("reader_visuals_required") is True and not isinstance(manifest.get("reader_visuals"), dict):
+        errors.append("manifest.reader_visuals_required needs a current reader_visuals declaration and review")
+    errors.extend(validate_reader_visuals(package))
     errors.extend(validate_public_projection(package))
     return errors
 
 
 def main(argv: list[str] | None = None) -> int:
     argv = sys.argv[1:] if argv is None else argv
+    usage = f"usage: python3 {Path(__file__).name} PACKAGE"
+    if "-h" in argv or "--help" in argv:
+        print(usage)
+        print("Check retained package files, evidence hashes and draft readbacks.")
+        print("Does not independently verify execution or publish content.")
+        return 0
     if len(argv) != 1:
-        print("usage: python3 tools/check_package.py posts/<slug>", file=sys.stderr)
+        print(usage, file=sys.stderr)
         return 2
     package = Path(argv[0])
     errors = validate_package(package)
