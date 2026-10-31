@@ -70,9 +70,9 @@ These diagrams follow the same synthetic workload, phase contract and analytical
 
 ![Follow every operand](images/scientific/02-operand-paths.png)
 
-![Scratch can become the bottleneck](images/scientific/03-scratch-traffic.png)
+![Scratch becomes traffic](images/scientific/03-scratch-traffic.png)
 
-![A floor can reject a target](images/scientific/04-target-rejection.png)
+![Transfers alone miss the target](images/scientific/04-target-rejection.png)
 
 ![Test bottlenecks independently](images/scientific/05-independent-budgets.png)
 
@@ -117,20 +117,20 @@ The check regenerates into temporary storage and compares the retained files. It
 <details>
 <summary>Artwork inputs and compact exports</summary>
 
-![Retained scene or compact figure export](images/attention-scenes/factory-source.png)
+![Source card supplying the cropped transfer-scene illustration](images/attention-scenes/factory-source.png)
 
-![Retained scene or compact figure export](images/attention-scenes/warehouse-source.png)
+![Source card supplying the cropped warehouse illustration](images/attention-scenes/warehouse-source.png)
 
-![Retained scene or compact figure export](images/scientific/03-scratch-traffic-297.png)
+![Scratch traffic comparison at 297 pixels](images/scientific/03-scratch-traffic-297.png)
 
-![Retained scene or compact figure export](images/scientific/03-scratch-traffic-312.png)
+![Scratch traffic comparison at 312 pixels](images/scientific/03-scratch-traffic-312.png)
 
-![Retained scene or compact figure export](images/scientific/04-target-rejection-297.png)
+![Calculated transfer floor and target at 297 pixels](images/scientific/04-target-rejection-297.png)
 
-![Retained scene or compact figure export](images/scientific/04-target-rejection-312.png)
+![Calculated transfer floor and target at 312 pixels](images/scientific/04-target-rejection-312.png)
 
-![Retained scene or compact figure export](images/scientific/06-reduction-comparison-297.png)
+![Three accumulation schedules at 297 pixels](images/scientific/06-reduction-comparison-297.png)
 
-![Retained scene or compact figure export](images/scientific/06-reduction-comparison-312.png)
+![Three accumulation schedules at 312 pixels](images/scientific/06-reduction-comparison-312.png)
 
 </details>

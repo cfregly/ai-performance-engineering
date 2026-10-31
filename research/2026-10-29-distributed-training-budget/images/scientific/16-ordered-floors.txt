@@ -1,8 +1,8 @@
 Two ordered lower bounds
 Hypothetical plan · ms per update
 A before · B after
-Before clip
-After clip
+Pre-clip
+Post-clip
 Clipping barrier
 Illustrative 150 ms budget
 A

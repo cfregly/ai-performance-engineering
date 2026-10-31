@@ -6,7 +6,7 @@
       "title": "Placement moves rack traffic",
       "selected": {
         "path": "images/scientific/15-tier-traffic.png",
-        "sha256": "9a6c95cd9c3d1a7b80ac7b2fe18ef06f755a776571739681c1035dbdc55790d9",
+        "sha256": "b1d92cb00fabcacd1238d2d0c91c0711067cbe30d22af3cba3aab007ba80a540",
         "width": 2400,
         "height": 2400
       }
@@ -16,7 +16,7 @@
       "title": "Two ordered lower bounds",
       "selected": {
         "path": "images/scientific/16-ordered-floors.png",
-        "sha256": "db6a38bea6b09b420f05c1a4798f4f4bbb88821f6fdf7e0f897ed2e2d442e73e",
+        "sha256": "c6ed9a46fbdcc02e526cbda595579cbace06687a300a479725d9fc15eab56a5d",
         "width": 2400,
         "height": 2400
       }

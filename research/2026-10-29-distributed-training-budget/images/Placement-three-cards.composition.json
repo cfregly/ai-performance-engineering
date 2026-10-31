@@ -1,15 +1,15 @@
 {
   "schema_version": 1,
   "kind": "lossless_square_image_pdf_composition",
-  "created_at": "2026-10-31T10:57:25.597945+00:00",
+  "created_at": "2026-10-31T18:20:10.947364+00:00",
   "document": {
     "path": "images/Placement-three-cards.pdf",
-    "sha256": "0fecaa292785250220d73c321ba8b8407d936e1b6689d38c2783508e5d1e1532",
+    "sha256": "e01a11ea41c85c150253b4fdb8f8a25e95c6b933a52f8bed569b3e965c010ea6",
     "page_count": 3
   },
   "asset_index": {
     "path": "images/reader-card-index.json",
-    "sha256": "df90c8d2d00562bc7fd18e44954b0f8007d9f3ff9c95a673e977d5c24ad0c0e6"
+    "sha256": "a28c526d4c9a116515ccecbabda79b86bb341bccec9d26274f8522dabcf053b9"
   },
   "composition_receipt": "images/Placement-three-cards.composition.json",
   "page_size_points": {
@@ -39,11 +39,11 @@
       "title": "Placement moves rack traffic",
       "source_png": {
         "path": "images/scientific/15-tier-traffic.png",
-        "sha256": "9a6c95cd9c3d1a7b80ac7b2fe18ef06f755a776571739681c1035dbdc55790d9",
+        "sha256": "b1d92cb00fabcacd1238d2d0c91c0711067cbe30d22af3cba3aab007ba80a540",
         "width": 2400,
         "height": 2400
       },
-      "decoded_rgb_sha256": "6aa6d72cbe82cd52996c457785dbd771e1b2d6ffd77dffd26f345c50aceddb80",
+      "decoded_rgb_sha256": "68bf13ecdd06fef6fc3c20c0cab91406b1c71a443d0ee4c7b609525ff58703e3",
       "page_box_points": [
         0,
         0,
@@ -72,11 +72,11 @@
       "title": "Two ordered lower bounds",
       "source_png": {
         "path": "images/scientific/16-ordered-floors.png",
-        "sha256": "db6a38bea6b09b420f05c1a4798f4f4bbb88821f6fdf7e0f897ed2e2d442e73e",
+        "sha256": "c6ed9a46fbdcc02e526cbda595579cbace06687a300a479725d9fc15eab56a5d",
         "width": 2400,
         "height": 2400
       },
-      "decoded_rgb_sha256": "55e998206eea80d41a02d023ff0c63d46a5826e2af8ed12f2878d863fd872466",
+      "decoded_rgb_sha256": "09583ff3952af2c9961015cc7b5b40db48389b08f8333ec08721fef389aa0556",
       "page_box_points": [
         0,
         0,

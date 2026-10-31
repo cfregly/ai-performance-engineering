@@ -185,35 +185,68 @@ def slides(data: dict, asset_prefix: str = '../attention-scenes') -> list[Slide]
 
     c = Slide(STEMS[2], 'Compare the complete path', asset_prefix)
     c.text(c.title,84,112,64,700)
-    # A retained editorial warehouse/desk strip supplies the mechanism context.
-    # It is not a magnitude chart and its objects do not encode measured counts.
-    c.art('warehouse-source.png', (0,624,2400,738), (84,154,1032,148))
-    rows = [(370,'Store all partials','Simple ownership.','More scratch + traffic.','all'),
-            (596,'Combine smaller batches','Less live scratch.','More coordination.','bounded'),
-            (822,'Accumulate directly','Less staging.','Check synchronization.','direct')]
+    # The mechanism gets the space previously occupied by the decorative strip.
+    # Node and edge metadata keep the qualitative topology independently checkable.
+    def node(identifier, kind, draw):
+        c.parts.append(f'<g data-node-id="{identifier}" data-node-kind="{kind}">')
+        draw()
+        c.parts.append('</g>')
+
+    def edge(source, target, x1, y1, x2, y2, color='blue'):
+        c.parts.append(f'<g data-flow-source="{source}" data-flow-target="{target}">')
+        # Rotate the arrowhead with its edge, including diagonal convergence.
+        dx,dy=x2-x1,y2-y1
+        length=(dx*dx+dy*dy)**0.5
+        ux,uy=dx/length,dy/length
+        c.line(x1,y1,x2,y2,color,5)
+        for side in (-1,1):
+            c.line(x2-12*ux+side*8*uy,y2-12*uy-side*8*ux,x2,y2,color,5)
+        c.parts.append('</g>')
+
+    rows = [(250,'Store all partials','Simple ownership.','More scratch + traffic.','all'),
+            (520,'Combine smaller batches','Less live scratch.','More coordination.','bounded'),
+            (790,'Accumulate directly','Less staging.','Check synchronization.','direct')]
     for y,title,first,second,kind in rows:
         c.text(title,84,y,52,700)
         c.text(first,84,y+66)
         c.text(second,84,y+130)
         # Exact topology only. Widths are not capacity, traffic or timing values.
-        for yy in (y+12,y+62,y+112):
-            c.parts.append(f'<circle cx="865" cy="{yy}" r="14" fill="{C["background"]}" '
-                           f'stroke="{C["blue"]}" stroke-width="4"/>')
+        center=y+82
+        for index,offset in enumerate((-60,0,60),1):
+            yy=center+offset
+            producer=f'{kind}-producer-{index}'
+            node(producer,'partial',lambda yy=yy:
+                 c.parts.append(f'<circle cx="802" cy="{yy}" r="14" '
+                                f'fill="{C["background"]}" stroke="{C["blue"]}" '
+                                'stroke-width="4"/>'))
             if kind=='all':
-                c.arrow(885,yy,955,yy)
-                c.rect(962,yy-16,52,32,'background','orange')
+                buffer=f'all-buffer-{index}'
+                edge(producer,buffer,824,yy,866,yy)
+                node(buffer,'stored-partial',lambda yy=yy:
+                     c.rect(874,yy-19,44,38,'background','orange'))
+                edge(buffer,'all-reducer',926,yy,984,center+offset/5,'ink')
             elif kind=='bounded':
-                c.arrow(885,yy,978,y+62)
+                edge(producer,'bounded-buffer',824,yy,908,center+offset/5)
             else:
-                c.arrow(885,yy,1082,y+62)
+                edge(producer,'direct-output',824,yy,1066,center+offset/5)
         if kind=='all':
-            c.arrow(1026,y+62,1082,y+62,'ink')
+            node('all-reducer','reducer',lambda:
+                 c.rect(992,center-29,46,58,'background','ink'))
+            c.text('Σ',1015,center+18,52,400,anchor='middle')
+            edge('all-reducer','all-output',1046,center,1066,center,'ink')
         elif kind=='bounded':
-            c.rect(986,y+39,40,46,'background','orange')
-            c.arrow(1034,y+62,1082,y+62,'ink')
+            node('bounded-buffer','batch-buffer',lambda:
+                 c.rect(916,center-23,46,46,'background','orange'))
+            edge('bounded-buffer','bounded-reducer',970,center,984,center,'ink')
+            node('bounded-reducer','reducer',lambda:
+                 c.rect(992,center-29,46,58,'background','ink'))
+            c.text('Σ',1015,center+18,52,400,anchor='middle')
+            edge('bounded-reducer','bounded-output',1046,center,1066,center,'ink')
         else:
-            c.line(1042,y,1042,y+125,'orange',7)
-        c.rect(1090,y+37,26,50,'background','blue')
+            node('direct-synchronization','synchronization',lambda:
+                 c.line(1015,center-72,1015,center+72,'orange',7))
+        node(f'{kind}-output','output',lambda:
+             c.rect(1074,center-29,42,58,'background','blue'))
     c.text('Each design needs correctness checks.',84,1041)
     c.text('Sum order can change rounding.',84,1105)
     return [a,b,c]

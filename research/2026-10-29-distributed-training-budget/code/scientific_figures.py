@@ -29,6 +29,7 @@ TOKENS = OUT / "visual-tokens.json"
 FONT = ROOT / "images/fonts/Inter.ttf"
 NS = "http://www.w3.org/2000/svg"
 SIZE, SAFE, MINIMUM = 1200, 84, 52
+LINE_TEXT_CLEARANCE = 10
 
 
 def require(condition, message):
@@ -38,6 +39,40 @@ def require(condition, message):
 
 def digest(data):
     return hashlib.sha256(data).hexdigest()
+
+
+def segment_box_clearance(line, box):
+    """Return the shortest text-box distance from the visible line stroke."""
+    x1, y1, x2, y2 = (line[key] for key in ('x1', 'y1', 'x2', 'y2'))
+    dx, dy = x2 - x1, y2 - y1
+    enter, leave = 0.0, 1.0
+    for p, q in ((-dx, x1 - box['left']), (dx, box['right'] - x1),
+                 (-dy, y1 - box['top']), (dy, box['bottom'] - y1)):
+        if p == 0:
+            if q < 0:
+                break
+        elif p < 0:
+            enter = max(enter, q / p)
+        else:
+            leave = min(leave, q / p)
+    else:
+        if enter <= leave:
+            return -line['stroke_width'] / 2
+
+    def point_segment_distance(x, y):
+        length_squared = dx * dx + dy * dy
+        t = max(0, min(1, ((x - x1) * dx + (y - y1) * dy) / length_squared)) if length_squared else 0
+        return math.hypot(x - x1 - t * dx, y - y1 - t * dy)
+
+    def point_box_distance(x, y):
+        return math.hypot(max(box['left'] - x, 0, x - box['right']),
+                          max(box['top'] - y, 0, y - box['bottom']))
+
+    distance = min(point_box_distance(x1, y1), point_box_distance(x2, y2),
+                   *(point_segment_distance(x, y)
+                     for x in (box['left'], box['right'])
+                     for y in (box['top'], box['bottom'])))
+    return distance - line['stroke_width'] / 2
 
 
 def contrast(foreground, background):
@@ -60,7 +95,7 @@ class Figure:
         for key in ("ink", "blue", "orange"):
             self.parts.append(f'<marker id="{key}" markerWidth="20" markerHeight="18" refX="18" refY="9" orient="auto-start-reverse" markerUnits="userSpaceOnUse"><path d="M 2 2 L 18 9 L 2 16" fill="none" stroke="{colors[key]}" stroke-width="4"/></marker>')
         self.parts.append('</defs><g font-family="Inter">')
-        self.labels, self.text_boxes, self.geometry = [], [], []
+        self.labels, self.text_boxes, self.geometry, self.lines = [], [], [], []
 
     def text(self, x, y, value, size=52, anchor="middle", color="ink", weight=400, surface="background"):
         require(size >= MINIMUM, f"Essential label below {MINIMUM} px: {value}")
@@ -86,12 +121,14 @@ class Figure:
         self.parts.append(f'<rect x="{x:.9f}" y="{y:g}" width="{width:.9f}" height="{height:g}" fill="{self.colors[color]}"{extra}/>')
 
     def line(self, x1, y1, x2, y2, color="ink", sw=3, arrow=False, both=False, dashed=False):
+        require(all(math.isfinite(v) for v in (x1, y1, x2, y2, sw)) and sw > 0, "Invalid line")
         require(min(x1, x2, y1, y2) >= SAFE and max(x1, x2, y1, y2) <= SIZE - SAFE, "Line outside safe margins")
         extra = ' stroke-dasharray="12 10"' if dashed else ''
         if arrow or both:
             extra += f' marker-end="url(#{color})"'
         if both:
             extra += f' marker-start="url(#{color})"'
+        self.lines.append({'x1': x1, 'y1': y1, 'x2': x2, 'y2': y2, 'stroke_width': sw})
         self.parts.append(f'<line x1="{x1:g}" y1="{y1:g}" x2="{x2:g}" y2="{y2:g}" stroke="{self.colors[color]}" stroke-width="{sw}"{extra}/>')
 
     def image(self, name, x, y, width, height, crop=None):
@@ -108,6 +145,11 @@ class Figure:
                 overlap_x = min(first['right'], second['right']) - max(first['left'], second['left'])
                 overlap_y = min(first['bottom'], second['bottom']) - max(first['top'], second['top'])
                 require(not (overlap_x > 0 and overlap_y > 0), f"Text collision: {first['text']} / {second['text']}")
+        for line in self.lines:
+            for box in self.text_boxes:
+                clearance = segment_box_clearance(line, box)
+                require(clearance >= LINE_TEXT_CLEARANCE,
+                        f"Line/text clearance below {LINE_TEXT_CLEARANCE} px: {box['text']} ({clearance:.2f} px)")
         data = ("\n".join(self.parts + ['</g></svg>']) + "\n").encode()
         ET.fromstring(data)
         return data
@@ -127,12 +169,19 @@ def validate_source(source):
 
 
 def traffic_figure(source, colors):
-    figure = Figure('Placement moves rack traffic', 'Hypothetical logical cross-rack payload, both directions combined per update. Artwork explains changing ownership, not quantitative proportions. Both placements have the same total off-node payload.', colors)
+    figure = Figure('Placement moves rack traffic', 'Hypothetical logical cross-rack payload, both directions combined per update. B keeps within-rack loops and a thin symbolic cross-rack pipeline connection. Artwork and connector widths explain placement, not quantitative proportions. Within-rack payload is between nodes. Both placements have the same total off-node payload.', colors)
     figure.text(600, 136, 'Placement moves rack traffic', 64, weight=600)
     figure.text(600, 204, 'Same 64 GPUs · hypothetical update')
     figure.text(382, 268, 'A · before', 60, weight=600)
     figure.text(840, 268, 'B · after', 60, weight=600)
     figure.image('rack-traffic-scene.png', 180, 283, 840, 357.623762376)
+    # One symbolic pipeline connection crosses B's rack boundary. Its fixed
+    # thin stroke is an illustration convention, never a payload scale.
+    figure.line(766, 466, 868, 466, 'blue', 3, arrow=True)
+    figure.geometry.append({'B_illustration_cross_rack_pipeline_connection': True,
+                            'artwork_connector_stroke_px': 3,
+                            'artwork_connector_width_encodes_quantity': False,
+                            'within_rack_loops_retained': True})
     figure.text(600, 692, 'Cross-rack GB · both directions')
     x0, scale = 160, 900 / 30
     for y, name, color in ((720, 'A', 'blue'), (830, 'B', 'orange')):
@@ -156,7 +205,7 @@ def floor_figure(source, colors):
     figure.text(600, 136, 'Two ordered lower bounds', 64, weight=600)
     figure.text(600, 204, 'Hypothetical plan · ms per update')
     figure.text(108, 266, 'A before · B after', anchor='start')
-    for y, label, color in ((326, 'Before clip', 'blue'), (416, 'After clip', 'orange')):
+    for y, label, color in ((326, 'Pre-clip', 'blue'), (416, 'Post-clip', 'orange')):
         figure.rect(108, y - 37, 32, 32, color)
         figure.text(160, y, label, anchor='start')
     figure.image('ordered-barrier-scene.png', 650, 245, 440, 176, '500 0 900 360')
@@ -171,11 +220,12 @@ def floor_figure(source, colors):
         figure.rect(x0 + pre * scale, y, post * scale, 74, 'orange')
         figure.text(110, y + 56, name, 60, weight=600)
         figure.text(x0 + pre * scale / 2, y + 56, f'{pre:.2f}', 56, color='#FFFFFF', surface='blue')
-        figure.text(x0 + (pre + post / 2) * scale, y + 56, f'{post:.2f}', 56, surface='orange')
+        post_label_x = x0 + (pre + post / 2) * scale - (18 if name == 'B' else 0)
+        figure.text(post_label_x, y + 56, f'{post:.2f}', 56, surface='orange')
         figure.text(x0 + total * scale + 18, y + 56, f'{total:.2f}', 60, 'start', weight=600)
         figure.geometry.append({'placement': name, 'pre_ms': pre, 'post_ms': post, 'total_ms': total, 'origin_x': x0, 'pre_width': pre * scale, 'post_width': post * scale, 'px_per_ms': scale, 'zero_baseline': True})
     # Emit the budget after the bars so its trajectory stays visible across them.
-    figure.line(x0 + budget * scale, 558, x0 + budget * scale, 755, dashed=True, sw=4)
+    figure.line(x0 + budget * scale, 570, x0 + budget * scale, 755, dashed=True, sw=4)
     figure.line(x0, 558, x0, 755)
     figure.line(x0, 755, 1040, 755)
     for value in (0, 150, 300):
@@ -189,7 +239,7 @@ def floor_figure(source, colors):
         'Balanced routing · not runtimes',
     )):
         figure.text(600, y, label)
-    figure.geometry.append({'budget_ms': budget, 'budget_x': x0 + budget * scale, 'budget_emitted_after_bars': True, 'illustration_barrier_x_approx': 903, 'illustration_is_not_a_time_axis': True})
+    figure.geometry.append({'budget_ms': budget, 'budget_x': x0 + budget * scale, 'budget_emitted_after_bars': True, 'B_post_clip_label_offset_px': -18, 'illustration_barrier_x_approx': 903, 'illustration_is_not_a_time_axis': True})
     return figure
 
 
@@ -220,7 +270,18 @@ def topology_figure(source, colors):
 BUILDERS = {'14-topology-b': topology_figure, '15-tier-traffic': traffic_figure, '16-ordered-floors': floor_figure}
 
 
-def render_png(svg, config):
+def retained_font_environment(config):
+    env = dict(os.environ, FONTCONFIG_FILE=str(config), LC_ALL='C')
+    matched = subprocess.run(['fc-match', '-f', '%{family}|%{file}', 'Inter'], capture_output=True, text=True, env=env)
+    require(matched.returncode == 0, f'fc-match failed: {matched.stderr}')
+    family, separator, filename = matched.stdout.partition('|')
+    require(separator and family == 'Inter', f'Inter resolution failed: {matched.stdout}')
+    require(Path(filename).resolve() == FONT.resolve(), f'Unexpected Inter file resolved: {filename}')
+    require(digest(Path(filename).read_bytes()) == digest(FONT.read_bytes()), 'Resolved Inter bytes differ')
+    return env
+
+
+def render_png(svg, env):
     # Preserve source geometry byte for byte while resolving only admitted assets.
     resolved = svg.decode()
     for image in ET.fromstring(svg).iter(f'{{{NS}}}image'):
@@ -232,7 +293,6 @@ def render_png(svg, config):
         require(data.startswith(b'\x89PNG\r\n\x1a\n'), f'Retained artwork is not PNG: {name}')
         embedded = base64.b64encode(data).decode()
         resolved = resolved.replace(f'href="{name}"', f'href="data:image/png;base64,{embedded}"')
-    env = dict(os.environ, FONTCONFIG_FILE=str(config), LC_ALL='C')
     result = subprocess.run(['rsvg-convert', '--width', '2400', '--height', '2400'], input=resolved.encode(), capture_output=True, env=env)
     require(result.returncode == 0, f'rsvg-convert failed: {result.stderr.decode(errors="replace")}')
     return result.stdout
@@ -254,25 +314,35 @@ def main():
     with tempfile.TemporaryDirectory(prefix='scientific-figures-') as temp:
         config = Path(temp) / 'fonts.conf'
         config.write_text(f'<?xml version="1.0"?><!DOCTYPE fontconfig SYSTEM "urn:fontconfig:fonts.dtd"><fontconfig><dir>{html.escape(str(FONT.parent))}</dir><cachedir>{html.escape(temp)}</cachedir></fontconfig>')
+        env = retained_font_environment(config)
+        receipt['font_resolution'] = {'family': 'Inter', 'retained_file': 'images/fonts/Inter.ttf', 'exact_path_and_bytes': True}
         for name, builder in BUILDERS.items():
             figure = builder(source, tokens['colors'])
             svg = figure.finish()
-            generated = {'svg': svg, 'png': render_png(svg, config), 'txt': ('\n'.join(figure.labels) + '\n').encode()}
+            # Check semantic outputs before attempting rasterization or PNG
+            # equality, so renderer-stack differences cannot hide TXT drift.
+            generated = {'svg': svg, 'txt': ('\n'.join(figure.labels) + '\n').encode()}
+            if args.check:
+                for extension, data in generated.items():
+                    path = OUT / f'{name}.{extension}'
+                    require(path.is_file(), f'Retained output is missing: {path.name}')
+                    require(path.read_bytes() == data, f'Regeneration differs: {path.name}.')
+            generated['png'] = render_png(svg, env)
             for extension, data in generated.items():
                 path = OUT / f'{name}.{extension}'
-                if args.check:
+                if args.check and extension == 'png':
                     require(path.is_file(), f'Retained output is missing: {path.name}')
-                    hint = f" PNG byte equality depends on the rendering stack. Tested with rsvg-convert 2.62.3 and Pillow 11.3.0; current {receipt['rsvg_version']}. Compare SVG/TXT first." if extension == 'png' else ''
+                    hint = f" PNG byte equality depends on the rendering stack. Tested with rsvg-convert 2.62.3 and Pillow 11.3.0; current {receipt['rsvg_version']}. SVG/TXT already match."
                     require(path.read_bytes() == data, f'Regeneration differs: {path.name}.' + hint)
                 outputs.append((path, data))
-            receipt['figures'].append({'name': name, 'hashes': {key: digest(data) for key, data in generated.items()}, 'viewbox': [0, 0, 1200, 1200], 'essential_font_min_px': min(box['font_size'] for box in figure.text_boxes), 'minimum_at_297_px': min(box['font_size'] for box in figure.text_boxes) * 297 / SIZE, 'minimum_at_312_px': min(box['font_size'] for box in figure.text_boxes) * 312 / SIZE, 'minimum_text_contrast_ratio': min(box['contrast_ratio'] for box in figure.text_boxes), 'text_safe_margins': SAFE, 'text_collision_check': 'pass', 'geometry': figure.geometry})
+            receipt['figures'].append({'name': name, 'hashes': {key: digest(data) for key, data in generated.items()}, 'viewbox': [0, 0, 1200, 1200], 'essential_font_min_px': min(box['font_size'] for box in figure.text_boxes), 'minimum_at_297_px': min(box['font_size'] for box in figure.text_boxes) * 297 / SIZE, 'minimum_at_312_px': min(box['font_size'] for box in figure.text_boxes) * 312 / SIZE, 'minimum_text_contrast_ratio': min(box['contrast_ratio'] for box in figure.text_boxes), 'text_safe_margins': SAFE, 'text_collision_check': 'pass', 'line_text_clearance_min_px': LINE_TEXT_CLEARANCE, 'line_text_clearance_observed_px': min(segment_box_clearance(line, box) for line in figure.lines for box in figure.text_boxes), 'line_text_clearance_check': 'pass', 'geometry': figure.geometry})
     # Validate every figure before writing any output.
     if not args.check:
         for path, data in outputs:
             path.write_bytes(data)
     if args.receipt:
         args.receipt.write_text(json.dumps(receipt, indent=2) + '\n')
-    print(f"{'Verified' if args.check else 'Wrote'} three selected SVG/PNG figures. All text >=52 px, >=12.87 px at 297 px width. Exact values, safe margins and text collisions pass.")
+    print(f"{'Verified' if args.check else 'Wrote'} three selected SVG/PNG figures. All text >=52 px, >=12.87 px at 297 px width. Exact values, safe margins, text collisions and >=10 px line/text clearance pass.")
 
 
 if __name__ == '__main__':

@@ -3,66 +3,149 @@
 <style>@font-face {font-family: Inter; src: url("../attention-scenes/Inter.ttf") format("truetype"); font-weight: 100 900; font-style: normal;}</style>
 <rect width="1200" height="1200" fill="#FBFBF8"/>
 <text x="84" y="112" font-family="Inter" font-size="64" font-weight="700" text-anchor="start" fill="#202326">Compare the complete path</text>
-<svg x="84" y="154" width="1032" height="148" viewBox="0 624 2400 738" overflow="hidden" preserveAspectRatio="xMidYMid meet"><image width="2400" height="2400" xlink:href="../attention-scenes/warehouse-source.png"/></svg>
-<text x="84" y="370" font-family="Inter" font-size="52" font-weight="700" text-anchor="start" fill="#202326">Store all partials</text>
-<text x="84" y="436" font-family="Inter" font-size="52" font-weight="400" text-anchor="start" fill="#202326">Simple ownership.</text>
-<text x="84" y="500" font-family="Inter" font-size="52" font-weight="400" text-anchor="start" fill="#202326">More scratch + traffic.</text>
-<circle cx="865" cy="382" r="14" fill="#FBFBF8" stroke="#3478BA" stroke-width="4"/>
-<line x1="885" y1="382" x2="955" y2="382" stroke="#3478BA" stroke-width="5" />
-<line x1="939" y1="371" x2="955" y2="382" stroke="#3478BA" stroke-width="5" />
-<line x1="939" y1="393" x2="955" y2="382" stroke="#3478BA" stroke-width="5" />
-<rect x="962.000000" y="366.000000" width="52.000000" height="32.000000" fill="#FBFBF8" stroke="#E87823" stroke-width="4" />
-<circle cx="865" cy="432" r="14" fill="#FBFBF8" stroke="#3478BA" stroke-width="4"/>
-<line x1="885" y1="432" x2="955" y2="432" stroke="#3478BA" stroke-width="5" />
-<line x1="939" y1="421" x2="955" y2="432" stroke="#3478BA" stroke-width="5" />
-<line x1="939" y1="443" x2="955" y2="432" stroke="#3478BA" stroke-width="5" />
-<rect x="962.000000" y="416.000000" width="52.000000" height="32.000000" fill="#FBFBF8" stroke="#E87823" stroke-width="4" />
-<circle cx="865" cy="482" r="14" fill="#FBFBF8" stroke="#3478BA" stroke-width="4"/>
-<line x1="885" y1="482" x2="955" y2="482" stroke="#3478BA" stroke-width="5" />
-<line x1="939" y1="471" x2="955" y2="482" stroke="#3478BA" stroke-width="5" />
-<line x1="939" y1="493" x2="955" y2="482" stroke="#3478BA" stroke-width="5" />
-<rect x="962.000000" y="466.000000" width="52.000000" height="32.000000" fill="#FBFBF8" stroke="#E87823" stroke-width="4" />
-<line x1="1026" y1="432" x2="1082" y2="432" stroke="#202326" stroke-width="5" />
-<line x1="1066" y1="421" x2="1082" y2="432" stroke="#202326" stroke-width="5" />
-<line x1="1066" y1="443" x2="1082" y2="432" stroke="#202326" stroke-width="5" />
-<rect x="1090.000000" y="407.000000" width="26.000000" height="50.000000" fill="#FBFBF8" stroke="#3478BA" stroke-width="4" />
-<text x="84" y="596" font-family="Inter" font-size="52" font-weight="700" text-anchor="start" fill="#202326">Combine smaller batches</text>
-<text x="84" y="662" font-family="Inter" font-size="52" font-weight="400" text-anchor="start" fill="#202326">Less live scratch.</text>
-<text x="84" y="726" font-family="Inter" font-size="52" font-weight="400" text-anchor="start" fill="#202326">More coordination.</text>
-<circle cx="865" cy="608" r="14" fill="#FBFBF8" stroke="#3478BA" stroke-width="4"/>
-<line x1="885" y1="608" x2="978" y2="658" stroke="#3478BA" stroke-width="5" />
-<line x1="962" y1="647" x2="978" y2="658" stroke="#3478BA" stroke-width="5" />
-<line x1="962" y1="669" x2="978" y2="658" stroke="#3478BA" stroke-width="5" />
-<circle cx="865" cy="658" r="14" fill="#FBFBF8" stroke="#3478BA" stroke-width="4"/>
-<line x1="885" y1="658" x2="978" y2="658" stroke="#3478BA" stroke-width="5" />
-<line x1="962" y1="647" x2="978" y2="658" stroke="#3478BA" stroke-width="5" />
-<line x1="962" y1="669" x2="978" y2="658" stroke="#3478BA" stroke-width="5" />
-<circle cx="865" cy="708" r="14" fill="#FBFBF8" stroke="#3478BA" stroke-width="4"/>
-<line x1="885" y1="708" x2="978" y2="658" stroke="#3478BA" stroke-width="5" />
-<line x1="962" y1="647" x2="978" y2="658" stroke="#3478BA" stroke-width="5" />
-<line x1="962" y1="669" x2="978" y2="658" stroke="#3478BA" stroke-width="5" />
-<rect x="986.000000" y="635.000000" width="40.000000" height="46.000000" fill="#FBFBF8" stroke="#E87823" stroke-width="4" />
-<line x1="1034" y1="658" x2="1082" y2="658" stroke="#202326" stroke-width="5" />
-<line x1="1066" y1="647" x2="1082" y2="658" stroke="#202326" stroke-width="5" />
-<line x1="1066" y1="669" x2="1082" y2="658" stroke="#202326" stroke-width="5" />
-<rect x="1090.000000" y="633.000000" width="26.000000" height="50.000000" fill="#FBFBF8" stroke="#3478BA" stroke-width="4" />
-<text x="84" y="822" font-family="Inter" font-size="52" font-weight="700" text-anchor="start" fill="#202326">Accumulate directly</text>
-<text x="84" y="888" font-family="Inter" font-size="52" font-weight="400" text-anchor="start" fill="#202326">Less staging.</text>
-<text x="84" y="952" font-family="Inter" font-size="52" font-weight="400" text-anchor="start" fill="#202326">Check synchronization.</text>
-<circle cx="865" cy="834" r="14" fill="#FBFBF8" stroke="#3478BA" stroke-width="4"/>
-<line x1="885" y1="834" x2="1082" y2="884" stroke="#3478BA" stroke-width="5" />
-<line x1="1066" y1="873" x2="1082" y2="884" stroke="#3478BA" stroke-width="5" />
-<line x1="1066" y1="895" x2="1082" y2="884" stroke="#3478BA" stroke-width="5" />
-<circle cx="865" cy="884" r="14" fill="#FBFBF8" stroke="#3478BA" stroke-width="4"/>
-<line x1="885" y1="884" x2="1082" y2="884" stroke="#3478BA" stroke-width="5" />
-<line x1="1066" y1="873" x2="1082" y2="884" stroke="#3478BA" stroke-width="5" />
-<line x1="1066" y1="895" x2="1082" y2="884" stroke="#3478BA" stroke-width="5" />
-<circle cx="865" cy="934" r="14" fill="#FBFBF8" stroke="#3478BA" stroke-width="4"/>
-<line x1="885" y1="934" x2="1082" y2="884" stroke="#3478BA" stroke-width="5" />
-<line x1="1066" y1="873" x2="1082" y2="884" stroke="#3478BA" stroke-width="5" />
-<line x1="1066" y1="895" x2="1082" y2="884" stroke="#3478BA" stroke-width="5" />
-<line x1="1042" y1="822" x2="1042" y2="947" stroke="#E87823" stroke-width="7" />
-<rect x="1090.000000" y="859.000000" width="26.000000" height="50.000000" fill="#FBFBF8" stroke="#3478BA" stroke-width="4" />
+<text x="84" y="250" font-family="Inter" font-size="52" font-weight="700" text-anchor="start" fill="#202326">Store all partials</text>
+<text x="84" y="316" font-family="Inter" font-size="52" font-weight="400" text-anchor="start" fill="#202326">Simple ownership.</text>
+<text x="84" y="380" font-family="Inter" font-size="52" font-weight="400" text-anchor="start" fill="#202326">More scratch + traffic.</text>
+<g data-node-id="all-producer-1" data-node-kind="partial">
+<circle cx="802" cy="272" r="14" fill="#FBFBF8" stroke="#3478BA" stroke-width="4"/>
+</g>
+<g data-flow-source="all-producer-1" data-flow-target="all-buffer-1">
+<line x1="824" y1="272" x2="866" y2="272" stroke="#3478BA" stroke-width="5" />
+<line x1="854.0" y1="280.0" x2="866" y2="272" stroke="#3478BA" stroke-width="5" />
+<line x1="854.0" y1="264.0" x2="866" y2="272" stroke="#3478BA" stroke-width="5" />
+</g>
+<g data-node-id="all-buffer-1" data-node-kind="stored-partial">
+<rect x="874.000000" y="253.000000" width="44.000000" height="38.000000" fill="#FBFBF8" stroke="#E87823" stroke-width="4" />
+</g>
+<g data-flow-source="all-buffer-1" data-flow-target="all-reducer">
+<line x1="926" y1="272" x2="984" y2="320.0" stroke="#202326" stroke-width="5" />
+<line x1="969.6547264342299" y1="318.51234200058684" x2="984" y2="320.0" stroke="#202326" stroke-width="5" />
+<line x1="979.8558098587774" y1="306.1860328625918" x2="984" y2="320.0" stroke="#202326" stroke-width="5" />
+</g>
+<g data-node-id="all-producer-2" data-node-kind="partial">
+<circle cx="802" cy="332" r="14" fill="#FBFBF8" stroke="#3478BA" stroke-width="4"/>
+</g>
+<g data-flow-source="all-producer-2" data-flow-target="all-buffer-2">
+<line x1="824" y1="332" x2="866" y2="332" stroke="#3478BA" stroke-width="5" />
+<line x1="854.0" y1="340.0" x2="866" y2="332" stroke="#3478BA" stroke-width="5" />
+<line x1="854.0" y1="324.0" x2="866" y2="332" stroke="#3478BA" stroke-width="5" />
+</g>
+<g data-node-id="all-buffer-2" data-node-kind="stored-partial">
+<rect x="874.000000" y="313.000000" width="44.000000" height="38.000000" fill="#FBFBF8" stroke="#E87823" stroke-width="4" />
+</g>
+<g data-flow-source="all-buffer-2" data-flow-target="all-reducer">
+<line x1="926" y1="332" x2="984" y2="332.0" stroke="#202326" stroke-width="5" />
+<line x1="972.0" y1="340.0" x2="984" y2="332.0" stroke="#202326" stroke-width="5" />
+<line x1="972.0" y1="324.0" x2="984" y2="332.0" stroke="#202326" stroke-width="5" />
+</g>
+<g data-node-id="all-producer-3" data-node-kind="partial">
+<circle cx="802" cy="392" r="14" fill="#FBFBF8" stroke="#3478BA" stroke-width="4"/>
+</g>
+<g data-flow-source="all-producer-3" data-flow-target="all-buffer-3">
+<line x1="824" y1="392" x2="866" y2="392" stroke="#3478BA" stroke-width="5" />
+<line x1="854.0" y1="400.0" x2="866" y2="392" stroke="#3478BA" stroke-width="5" />
+<line x1="854.0" y1="384.0" x2="866" y2="392" stroke="#3478BA" stroke-width="5" />
+</g>
+<g data-node-id="all-buffer-3" data-node-kind="stored-partial">
+<rect x="874.000000" y="373.000000" width="44.000000" height="38.000000" fill="#FBFBF8" stroke="#E87823" stroke-width="4" />
+</g>
+<g data-flow-source="all-buffer-3" data-flow-target="all-reducer">
+<line x1="926" y1="392" x2="984" y2="344.0" stroke="#202326" stroke-width="5" />
+<line x1="979.8558098587774" y1="357.8139671374082" x2="984" y2="344.0" stroke="#202326" stroke-width="5" />
+<line x1="969.6547264342299" y1="345.48765799941316" x2="984" y2="344.0" stroke="#202326" stroke-width="5" />
+</g>
+<g data-node-id="all-reducer" data-node-kind="reducer">
+<rect x="992.000000" y="303.000000" width="46.000000" height="58.000000" fill="#FBFBF8" stroke="#202326" stroke-width="4" />
+</g>
+<text x="1015" y="350" font-family="Inter" font-size="52" font-weight="400" text-anchor="middle" fill="#202326">Σ</text>
+<g data-flow-source="all-reducer" data-flow-target="all-output">
+<line x1="1046" y1="332" x2="1066" y2="332" stroke="#202326" stroke-width="5" />
+<line x1="1054.0" y1="340.0" x2="1066" y2="332" stroke="#202326" stroke-width="5" />
+<line x1="1054.0" y1="324.0" x2="1066" y2="332" stroke="#202326" stroke-width="5" />
+</g>
+<g data-node-id="all-output" data-node-kind="output">
+<rect x="1074.000000" y="303.000000" width="42.000000" height="58.000000" fill="#FBFBF8" stroke="#3478BA" stroke-width="4" />
+</g>
+<text x="84" y="520" font-family="Inter" font-size="52" font-weight="700" text-anchor="start" fill="#202326">Combine smaller batches</text>
+<text x="84" y="586" font-family="Inter" font-size="52" font-weight="400" text-anchor="start" fill="#202326">Less live scratch.</text>
+<text x="84" y="650" font-family="Inter" font-size="52" font-weight="400" text-anchor="start" fill="#202326">More coordination.</text>
+<g data-node-id="bounded-producer-1" data-node-kind="partial">
+<circle cx="802" cy="542" r="14" fill="#FBFBF8" stroke="#3478BA" stroke-width="4"/>
+</g>
+<g data-flow-source="bounded-producer-1" data-flow-target="bounded-buffer">
+<line x1="824" y1="542" x2="908" y2="590.0" stroke="#3478BA" stroke-width="5" />
+<line x1="893.6119707876518" y1="590.9922778767136" x2="908" y2="590.0" stroke="#3478BA" stroke-width="5" />
+<line x1="901.5501938013612" y1="577.1003876027223" x2="908" y2="590.0" stroke="#3478BA" stroke-width="5" />
+</g>
+<g data-node-id="bounded-producer-2" data-node-kind="partial">
+<circle cx="802" cy="602" r="14" fill="#FBFBF8" stroke="#3478BA" stroke-width="4"/>
+</g>
+<g data-flow-source="bounded-producer-2" data-flow-target="bounded-buffer">
+<line x1="824" y1="602" x2="908" y2="602.0" stroke="#3478BA" stroke-width="5" />
+<line x1="896.0" y1="610.0" x2="908" y2="602.0" stroke="#3478BA" stroke-width="5" />
+<line x1="896.0" y1="594.0" x2="908" y2="602.0" stroke="#3478BA" stroke-width="5" />
+</g>
+<g data-node-id="bounded-producer-3" data-node-kind="partial">
+<circle cx="802" cy="662" r="14" fill="#FBFBF8" stroke="#3478BA" stroke-width="4"/>
+</g>
+<g data-flow-source="bounded-producer-3" data-flow-target="bounded-buffer">
+<line x1="824" y1="662" x2="908" y2="614.0" stroke="#3478BA" stroke-width="5" />
+<line x1="901.5501938013612" y1="626.8996123972777" x2="908" y2="614.0" stroke="#3478BA" stroke-width="5" />
+<line x1="893.6119707876518" y1="613.0077221232864" x2="908" y2="614.0" stroke="#3478BA" stroke-width="5" />
+</g>
+<g data-node-id="bounded-buffer" data-node-kind="batch-buffer">
+<rect x="916.000000" y="579.000000" width="46.000000" height="46.000000" fill="#FBFBF8" stroke="#E87823" stroke-width="4" />
+</g>
+<g data-flow-source="bounded-buffer" data-flow-target="bounded-reducer">
+<line x1="970" y1="602" x2="984" y2="602" stroke="#202326" stroke-width="5" />
+<line x1="972.0" y1="610.0" x2="984" y2="602" stroke="#202326" stroke-width="5" />
+<line x1="972.0" y1="594.0" x2="984" y2="602" stroke="#202326" stroke-width="5" />
+</g>
+<g data-node-id="bounded-reducer" data-node-kind="reducer">
+<rect x="992.000000" y="573.000000" width="46.000000" height="58.000000" fill="#FBFBF8" stroke="#202326" stroke-width="4" />
+</g>
+<text x="1015" y="620" font-family="Inter" font-size="52" font-weight="400" text-anchor="middle" fill="#202326">Σ</text>
+<g data-flow-source="bounded-reducer" data-flow-target="bounded-output">
+<line x1="1046" y1="602" x2="1066" y2="602" stroke="#202326" stroke-width="5" />
+<line x1="1054.0" y1="610.0" x2="1066" y2="602" stroke="#202326" stroke-width="5" />
+<line x1="1054.0" y1="594.0" x2="1066" y2="602" stroke="#202326" stroke-width="5" />
+</g>
+<g data-node-id="bounded-output" data-node-kind="output">
+<rect x="1074.000000" y="573.000000" width="42.000000" height="58.000000" fill="#FBFBF8" stroke="#3478BA" stroke-width="4" />
+</g>
+<text x="84" y="790" font-family="Inter" font-size="52" font-weight="700" text-anchor="start" fill="#202326">Accumulate directly</text>
+<text x="84" y="856" font-family="Inter" font-size="52" font-weight="400" text-anchor="start" fill="#202326">Less staging.</text>
+<text x="84" y="920" font-family="Inter" font-size="52" font-weight="400" text-anchor="start" fill="#202326">Check synchronization.</text>
+<g data-node-id="direct-producer-1" data-node-kind="partial">
+<circle cx="802" cy="812" r="14" fill="#FBFBF8" stroke="#3478BA" stroke-width="4"/>
+</g>
+<g data-flow-source="direct-producer-1" data-flow-target="direct-output">
+<line x1="824" y1="812" x2="1066" y2="860.0" stroke="#3478BA" stroke-width="5" />
+<line x1="1052.6728497830934" y1="865.5124465617374" x2="1066" y2="860.0" stroke="#3478BA" stroke-width="5" />
+<line x1="1055.785760782663" y1="849.8181869389085" x2="1066" y2="860.0" stroke="#3478BA" stroke-width="5" />
+</g>
+<g data-node-id="direct-producer-2" data-node-kind="partial">
+<circle cx="802" cy="872" r="14" fill="#FBFBF8" stroke="#3478BA" stroke-width="4"/>
+</g>
+<g data-flow-source="direct-producer-2" data-flow-target="direct-output">
+<line x1="824" y1="872" x2="1066" y2="872.0" stroke="#3478BA" stroke-width="5" />
+<line x1="1054.0" y1="880.0" x2="1066" y2="872.0" stroke="#3478BA" stroke-width="5" />
+<line x1="1054.0" y1="864.0" x2="1066" y2="872.0" stroke="#3478BA" stroke-width="5" />
+</g>
+<g data-node-id="direct-producer-3" data-node-kind="partial">
+<circle cx="802" cy="932" r="14" fill="#FBFBF8" stroke="#3478BA" stroke-width="4"/>
+</g>
+<g data-flow-source="direct-producer-3" data-flow-target="direct-output">
+<line x1="824" y1="932" x2="1066" y2="884.0" stroke="#3478BA" stroke-width="5" />
+<line x1="1055.785760782663" y1="894.1818130610915" x2="1066" y2="884.0" stroke="#3478BA" stroke-width="5" />
+<line x1="1052.6728497830934" y1="878.4875534382626" x2="1066" y2="884.0" stroke="#3478BA" stroke-width="5" />
+</g>
+<g data-node-id="direct-synchronization" data-node-kind="synchronization">
+<line x1="1015" y1="800" x2="1015" y2="944" stroke="#E87823" stroke-width="7" />
+</g>
+<g data-node-id="direct-output" data-node-kind="output">
+<rect x="1074.000000" y="843.000000" width="42.000000" height="58.000000" fill="#FBFBF8" stroke="#3478BA" stroke-width="4" />
+</g>
 <text x="84" y="1041" font-family="Inter" font-size="52" font-weight="400" text-anchor="start" fill="#202326">Each design needs correctness checks.</text>
 <text x="84" y="1105" font-family="Inter" font-size="52" font-weight="400" text-anchor="start" fill="#202326">Sum order can change rounding.</text>
 </svg>

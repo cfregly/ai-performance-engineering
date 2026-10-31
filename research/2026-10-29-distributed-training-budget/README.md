@@ -28,8 +28,8 @@ The workbook grants arbitrary overlap by taking the maximum resource floor withi
 
 | Placement | Pre-clipping floor | Post-clipping floor | Ordered floor |
 | --- | ---: | ---: | ---: |
-| A | 173.456691 ms | 67.172617 ms | 240.629309 ms |
-| B | 91.761664 ms | 67.172617 ms | 158.934281 ms |
+| A | 173.456691200 ms | 67.172617421 ms | 240.629308621 ms |
+| B | 91.761664000 ms | 67.172617421 ms | 158.934281421 ms |
 
 Norm-scalar service is omitted from this ordered sum and retained in the primary full-step payload screens. Logical directed payload is counted once, without adding received bytes again. Transport headers, retries and physical switch-hop expansion are excluded. Compute floors omit scalar work and software overhead. These optimistic floors reject both placements at 150 ms under the primary DP schedule and FP32 single-owner attention Muon policy. Passing a different budget would establish only that these screens do not reject the design.
 
@@ -42,8 +42,8 @@ The post-clipping maximum grants optimistic overlap between allgather and optimi
 
 | Alternative placement | Necessary floor | Screen at 150 ms |
 | --- | ---: | --- |
-| A | 173.4566912 ms | Excluded |
-| B | 113.8923102208 ms | Not ruled out |
+| A | 173.456691200 ms | Excluded |
+| B | 113.892310221 ms | Not ruled out |
 
 Norm-scalar service is omitted from all alternative screens. An optimizer must wait for every gradient it consumes, so whole-matrix dependencies and the complete execution DAG can raise these floors. B is merely not ruled out. No feasible schedule, attainable runtime or speedup is established. This alternative does not replace the primary plan.
 
@@ -165,6 +165,8 @@ These are the complete reader cards for the same hypothetical construction. The 
 
 ## Compact diagram elements
 
+These SVG components supply geometry for custom figures. In their A/B comparisons, A is before the rack move and B is after it. Use the selected figures below for the complete captions, conditions and larger labels.
+
 Regenerate the four quantitative and schedule cards with `python3 code/card_figures.py`. Use `--check` to compare the retained SVG bytes. The six component diagrams regenerate with `python3 code/visual_elements.py`. These scripts reproduce the scientific geometry and labels, not the complete hosted presentation.
 
 - [muon whole matrix](images/elements/muon-whole-matrix.svg)
@@ -202,6 +204,6 @@ Selected figure rebuilding was checked with Python 3.12.2, Pillow 11.3.0 and rsv
 <details>
 <summary>Artwork inputs and compact exports</summary>
 
-![Retained scene or compact figure export](images/scientific/rack-traffic-scene.png)
+![Conceptual rack-routing illustration cropped into the traffic comparison](images/scientific/rack-traffic-scene.png)
 
 </details>

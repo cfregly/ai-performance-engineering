@@ -2,9 +2,11 @@ Compare the complete path
 Store all partials
 Simple ownership.
 More scratch + traffic.
+Σ
 Combine smaller batches
 Less live scratch.
 More coordination.
+Σ
 Accumulate directly
 Less staging.
 Check synchronization.

@@ -7,6 +7,7 @@ import unittest
 from pathlib import Path
 
 from analyze import analyze
+from screen import summarize
 
 P = Path(__file__).resolve().parents[1]
 
@@ -215,6 +216,113 @@ class EvidenceTests(unittest.TestCase):
         self.rows.remove(self.first('path_sample'))
         with self.assertRaisesRegex(ValueError, 'path samples mismatch'):
             self.altered(self.rows)
+
+
+    def wall_cohort(self, baseline, candidate):
+        """Copy one cell and keep its pair/path evidence mutually consistent."""
+        rows = copy.deepcopy(self.rows)
+        for row in rows:
+            if (row.get('size'), row.get('mode')) != (16, 'static'):
+                continue
+            if row['kind'] == 'pair':
+                row['baseline_wall_ms'] = baseline[row['pair']]
+                row['candidate_wall_ms'] = candidate[row['pair']]
+            elif row['kind'] == 'path_sample':
+                values = baseline if row['path'] == 'A' else candidate
+                row['wall_ms'] = values[row['pair']]
+        samples = [
+            row for row in rows
+            if row['kind'] == 'pair' and (row['size'], row['mode']) == (16, 'static')
+        ]
+        live_summary = summarize(samples, self.plan)
+        result = self.altered(rows)
+        cell = next(
+            cell for cell in result['cells']
+            if (cell['legal_tokens'], cell['set_mode']) == (16, 'static')
+        )
+        return live_summary, cell, result
+
+    def test_gain_threshold_at_neighboring_float_timings(self):
+        # At mathematical 10%, 1 - 9 / 10 is just below the stored 0.10.
+        # Record the existing conservative float behavior without changing it.
+        cases = (
+            ('just_more_gain', math.nextafter(9.0, -math.inf), True),
+            ('mathematical_ten_percent', 9.0, False),
+            ('just_less_gain', math.nextafter(9.0, math.inf), False),
+        )
+        for label, candidate, expected in cases:
+            with self.subTest(case=label):
+                native, cell, result = self.wall_cohort([10.0] * 3, [candidate] * 3)
+                for actual in (native, cell):
+                    self.assertTrue(actual['every_pair_faster'])
+                    self.assertEqual(actual['screen_pass'], expected)
+                self.assertEqual(result['all_cells_pass'], expected)
+                self.assertEqual(sum(c['screen_pass'] for c in result['cells']), 5 + expected)
+
+    def test_every_pair_must_be_strictly_faster_despite_median_gain(self):
+        # All cases retain 20% median gain and meet the 2% p95 allowance.
+        # Only the third matched pair changes across the strict-win boundary.
+        cases = (
+            ('just_faster', math.nextafter(10.0, -math.inf), True),
+            ('equal', 10.0, False),
+            ('slower_within_p95_allowance', 10.1, False),
+        )
+        for label, last_candidate, expected in cases:
+            with self.subTest(case=label):
+                native, cell, result = self.wall_cohort(
+                    [10.0] * 3, [8.0, 8.0, last_candidate],
+                )
+                for actual in (native, cell):
+                    self.assertEqual(actual['every_pair_faster'], expected)
+                    self.assertEqual(actual['screen_pass'], expected)
+                self.assertEqual(result['all_cells_pass'], expected)
+                self.assertEqual(sum(c['screen_pass'] for c in result['cells']), 5 + expected)
+
+    def test_summary_requires_exact_matched_pair_count(self):
+        for count, expected in ((2, False), (3, True), (4, False)):
+            with self.subTest(count=count):
+                samples = [
+                    {'baseline_wall_ms': 10.0, 'candidate_wall_ms': 8.0}
+                    for _ in range(count)
+                ]
+                result = summarize(samples, self.plan)
+                self.assertTrue(result['every_pair_faster'])
+                self.assertEqual(result['sample_count_per_path'], count)
+                self.assertEqual(result['screen_pass'], expected)
+        self.rows.append(copy.deepcopy(self.first('pair', size=16, mode='static')))
+        with self.assertRaisesRegex(ValueError, 'pair indices mismatch'):
+            self.altered(self.rows)
+
+    def test_three_sample_p95_reports_nearest_rank_maximum(self):
+        native, cell, result = self.wall_cohort(
+            [20.0, 10.0, 15.0], [16.0, 8.0, 12.0],
+        )
+        self.assertEqual(native['baseline_p95_block_wall_ms'], 20.0)
+        self.assertEqual(native['candidate_p95_block_wall_ms'], 16.0)
+        self.assertEqual(cell['baseline_p95_block_ms'], 20.0)
+        self.assertEqual(cell['optimized_p95_block_ms'], 16.0)
+        self.assertTrue(result['all_cells_pass'])
+
+    def test_setup_is_reported_separately_from_block_screen(self):
+        # The plan reports setup separately; it defines no setup-size cutoff.
+        for mode in ('static', 'changing'):
+            for setup_ms in (0.0, 1_000_000.0):
+                with self.subTest(mode=mode, setup_ms=setup_ms):
+                    rows = copy.deepcopy(self.rows)
+                    config = next(
+                        row for row in rows
+                        if row['kind'] == 'cell_config'
+                        and (row['size'], row['mode']) == (16, mode)
+                    )
+                    config['static_row_setup_wall_ms'] = setup_ms
+                    result = self.altered(rows)
+                    cell = next(
+                        cell for cell in result['cells']
+                        if (cell['legal_tokens'], cell['set_mode']) == (16, mode)
+                    )
+                    self.assertEqual(cell['row_setup_ms'], setup_ms)
+                    self.assertTrue(cell['screen_pass'])
+                    self.assertTrue(result['all_cells_pass'])
 
 
 if __name__ == '__main__':

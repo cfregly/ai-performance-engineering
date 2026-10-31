@@ -11,9 +11,9 @@
 <text x="600" y="204" font-size="52" font-weight="400" text-anchor="middle" fill="#202326">Hypothetical plan · ms per update</text>
 <text x="108" y="266" font-size="52" font-weight="400" text-anchor="start" fill="#202326">A before · B after</text>
 <rect x="108.000000000" y="289" width="32.000000000" height="32" fill="#3478BA"/>
-<text x="160" y="326" font-size="52" font-weight="400" text-anchor="start" fill="#202326">Before clip</text>
+<text x="160" y="326" font-size="52" font-weight="400" text-anchor="start" fill="#202326">Pre-clip</text>
 <rect x="108.000000000" y="379" width="32.000000000" height="32" fill="#E87823"/>
-<text x="160" y="416" font-size="52" font-weight="400" text-anchor="start" fill="#202326">After clip</text>
+<text x="160" y="416" font-size="52" font-weight="400" text-anchor="start" fill="#202326">Post-clip</text>
 <svg x="650" y="245" width="440" height="176" viewBox="500 0 900 360" overflow="hidden"><image width="1900" height="360" href="ordered-barrier-scene.png"/></svg>
 <text x="898" y="477" font-size="52" font-weight="400" text-anchor="middle" fill="#202326">Clipping barrier</text>
 <text x="600" y="542" font-size="52" font-weight="400" text-anchor="middle" fill="#202326">Illustrative 150 ms budget</text>
@@ -27,9 +27,9 @@
 <rect x="429.167547733" y="670" width="197.039677768" height="74" fill="#E87823"/>
 <text x="110" y="726" font-size="60" font-weight="600" text-anchor="middle" fill="#202326">B</text>
 <text x="294.584" y="726" font-size="56" font-weight="400" text-anchor="middle" fill="#FFFFFF">91.76</text>
-<text x="527.687" y="726" font-size="56" font-weight="400" text-anchor="middle" fill="#202326">67.17</text>
+<text x="509.687" y="726" font-size="56" font-weight="400" text-anchor="middle" fill="#202326">67.17</text>
 <text x="644.207" y="726" font-size="60" font-weight="600" text-anchor="start" fill="#202326">158.93</text>
-<line x1="600" y1="558" x2="600" y2="755" stroke="#202326" stroke-width="4" stroke-dasharray="12 10"/>
+<line x1="600" y1="570" x2="600" y2="755" stroke="#202326" stroke-width="4" stroke-dasharray="12 10"/>
 <line x1="160" y1="558" x2="160" y2="755" stroke="#202326" stroke-width="3"/>
 <line x1="160" y1="755" x2="1040" y2="755" stroke="#202326" stroke-width="3"/>
 <text x="160" y="815" font-size="52" font-weight="400" text-anchor="middle" fill="#202326">0</text>

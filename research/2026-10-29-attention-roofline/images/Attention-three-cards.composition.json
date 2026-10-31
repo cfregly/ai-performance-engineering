@@ -1,15 +1,15 @@
 {
   "schema_version": 1,
   "kind": "lossless_square_image_pdf_composition",
-  "created_at": "2026-10-31T10:57:44.999308+00:00",
+  "created_at": "2026-10-31T18:20:20.183679+00:00",
   "document": {
     "path": "images/Attention-three-cards.pdf",
-    "sha256": "988bc202e2a6bfbd4766830e259bc4526b7cecf0d9bea4a924f1dd9133991207",
+    "sha256": "ec32780e9f718b6a4c235cba904f37477ab288565d3e225ae65b4ebe5eaa5eb9",
     "page_count": 3
   },
   "asset_index": {
     "path": "images/reader-card-index.json",
-    "sha256": "b4de076dc1fa46db3f826fc084f1285fbd724d66fa4020f849944ff7667c3a70"
+    "sha256": "49120a2c807b995dc7ed065576629b8ada38b7178f98124f2c781c9a9302815d"
   },
   "composition_receipt": "images/Attention-three-cards.composition.json",
   "page_size_points": {
@@ -36,7 +36,7 @@
     {
       "page_index": 1,
       "asset_index": 1,
-      "title": "A floor can reject a target",
+      "title": "Transfers alone miss the target",
       "source_png": {
         "path": "images/scientific/04-target-rejection.png",
         "sha256": "9d4e0f9f27884a32ec4cf4864339b7267132e524b0e0db91006310b24588414f",
@@ -69,7 +69,7 @@
     {
       "page_index": 2,
       "asset_index": 2,
-      "title": "Scratch can become the bottleneck",
+      "title": "Scratch becomes traffic",
       "source_png": {
         "path": "images/scientific/03-scratch-traffic.png",
         "sha256": "3d70152c89e122fd781fb67702dd290971c169d2b65f233b3a22d8e7651e70d2",
@@ -105,11 +105,11 @@
       "title": "Compare the complete path",
       "source_png": {
         "path": "images/scientific/06-reduction-comparison.png",
-        "sha256": "d634f066eea64191c5478f1171c38e957274f22d4d5891cd80f3a4e918f7cb45",
+        "sha256": "c65309cdd033ee31c4dea0bf9c7da50f064abb7bf0002985dfe131c340599b53",
         "width": 1200,
         "height": 1200
       },
-      "decoded_rgb_sha256": "2a47471962bc36efab11f3b94bf9f33fe7ddfbe89a4f085ace77c22753307958",
+      "decoded_rgb_sha256": "6ea6c900865cde2b5df07a478e33da9abdb6a44a621f6473030cd6edf500a649",
       "page_box_points": [
         0,
         0,
