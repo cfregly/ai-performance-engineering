@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "purpose": "Private publication/results ledger. Populate explicit draft IDs before ingesting native readbacks. Milestones are targets. Snapshots retain their actual observation age. No causal attribution is implied.",
+  "tracked_drafts": [],
+  "publications": [],
+  "unfilled_example_do_not_ingest": {
+    "tracked_draft": {"draft_id": null, "social_set_id": null, "platforms": ["x", "linkedin"]},
+    "readback_envelope": {
+      "detail": null,
+      "observed_at": null,
+      "source": null,
+      "timestamp_provenance": {"x": null, "linkedin": null}
+    },
+    "metrics_observation": {
+      "platform": null,
+      "native_post_url": null,
+      "observed_at": null,
+      "metrics": {
+        "impressions": null, "likes": null, "reposts": null, "replies": null,
+        "bookmarks": null, "link_clicks": null, "profile_clicks": null
+      },
+      "metrics_source": null,
+      "missing_reason": null,
+      "auto_plug": {"state": "unknown", "reason": "Delivery not observed.", "reply_url": null, "evidence": null}
+    }
+  }
+}

@@ -75,6 +75,31 @@ The package gate also retains its reader, source-comment, scientific-image,
 rendered-preview, and unscheduled-draft dependencies. None of these offline
 tools saves, schedules, publishes, or changes an external account.
 
+## Draft promotion and results
+
+[Draft-specific Auto-Plugs and publication results](AUTOPLUG_AND_RESULTS.md)
+explains how to retain useful follow-up copy, choose a threshold from comparable
+original posts, and record actual-age publication results. Keep completed
+analytics reviews, native readbacks, registries and screenshots private. The
+templates are deliberately incomplete and contain no account configuration.
+
+The offline CSV helper summarizes retained X exports. The results helper
+records separately verified X and LinkedIn publication times and observed
+metrics. Both preserve missing values and evidence limits. These tools do not
+connect accounts, install monitoring, or save, schedule, publish or send posts.
+
+Run the focused tests from this directory:
+
+```sh
+python3 -m unittest -v \
+  tools.test_typefully_workflow \
+  tools.test_typefully_analytics \
+  tools.test_typefully_promotion \
+  tools.test_typefully_results
+
+python3 tools/typefully_results.py --help
+```
+
 ## Source identity and provenance
 
 The projected private source revision is
@@ -89,6 +114,12 @@ private revision contains that path, and its provenance. Public adaptations
 remove private scaffolding and identifiers, preserve public CLI behavior, and
 apply the repository's plain-language policy. Unrelated public workflow files
 remain bound to the public base revision.
+
+Draft promotion and results additions declare `source_revision` on each changed
+entry. That value overrides the manifest's base source revision. Their exact
+private source bytes are bound by `source_sha256`. The offline analytics helper and
+tests bind their follow-up source revision in the same way. Public adaptations
+use synthetic fixtures and standalone guidance.
 
 Verify every staged byte from this directory:
 

@@ -40,3 +40,27 @@ scheduling. If analytics are unavailable, state the blocker and identify any
 editorial judgment used instead.
 
 - Next useful comparison, if any:
+
+## Draft-specific Auto-Plug threshold decision
+
+Follow [the Auto-Plug policy](../AUTOPLUG_AND_RESULTS.md). Keep this decision
+private. Every eligible original X draft retains its own copy. It does not
+change account defaults or an existing live post.
+
+- Exact draft ID/URL and verified X account/target:
+- Eligibility or concrete `not_applicable` reason. Access blocker if unchecked:
+- Exact topic-specific plug text:
+- Verified existing destination, verification time and evidence:
+- Comparable-original selection rule, bounded window and timezone:
+- Unique originals included. Replies/thread parts/duplicates excluded (counts):
+- Publication times, observation times and actual ages for each included post:
+- Source/readback paths, filters, capture time and unavailable metrics:
+- Chosen metric, numeric threshold and actual readback trigger condition:
+- Candidate thresholds and expected trigger coverage in the observed cohort:
+- Baseline evidence path and observation time. Reason to retain/revise pilot:
+- Sparse-sample limits and alternative explanations:
+- Reassessment due: five comparable originals each observed at a post age of
+  at least seven days, or 30 days after baseline observation, whichever comes first:
+- Final edit time, reload time and exact plug/threshold/Auto-Retweet readback:
+- Final `UNCHANGED` guard and evidence of null publication/scheduling fields:
+- Results record/registry reference and future comparison to make:

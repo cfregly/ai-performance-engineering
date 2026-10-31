@@ -15,6 +15,7 @@
   "approval": null,
   "raw_readback": {"path": "", "sha256": ""},
   "guard_receipt": {"path": "", "sha256": ""},
+  "promotion_plan": "social/typefully-promotion-plan.json",
   "media_ids": {
     "x": [],
     "linkedin": []

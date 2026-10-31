@@ -9,7 +9,7 @@
   "production_admissions": "empty",
   "synthetic_example_files": 59,
   "private_scaffold_projected": false,
-  "identity_rule": "Every regular file under public_root is hashed except this manifest. Each entry binds its repository-relative staged_path. Source hashes name bytes at source_revision. Retained public files stay bound to public_base_revision. The enclosing Git commit and tree identify this manifest.",
+  "identity_rule": "Every regular file under public_root is hashed except this manifest. Each entry binds its repository-relative staged_path. Source hashes name bytes at an entry's source_revision when present, otherwise at the manifest source_revision. Retained public files stay bound to public_base_revision. The enclosing Git commit and tree identify this manifest.",
   "files": [
     {
       "path": "PIQ_EXPERIMENT_EVIDENCE.md",
@@ -48,7 +48,7 @@
     {
       "path": "README.md",
       "staged_path": "research/post-workflow/README.md",
-      "sha256": "9c48928f4b26fa3b46649c7dda530f87bd0f002acb69aed39e9e0c8b73d800e7",
+      "sha256": "9fb7a579a7b444933f714df025ff8b6f0cc0874365c77096c37392221c80cdff",
       "public_base_sha256": "acdec6cd5d9f13ffd598128b7404f15d648f340d4813e597e5cfa41f537f6c3c",
       "provenance": "public_snapshot_documentation",
       "adaptations": [
@@ -56,7 +56,9 @@
         "synthetic_only_scope",
         "omit_private_scaffold",
         "public_staged_paths",
-        "plain_language"
+        "plain_language",
+        "draft_promotion_and_results_router",
+        "per_entry_source_revision_overrides"
       ]
     },
     {
@@ -616,10 +618,14 @@
     {
       "path": "templates/typefully-analytics-review.md",
       "staged_path": "research/post-workflow/templates/typefully-analytics-review.md",
-      "sha256": "927be0e86648ae90368094373469acb4ba29049ca67e2b648379fbd1d2a38833",
-      "source_sha256": "927be0e86648ae90368094373469acb4ba29049ca67e2b648379fbd1d2a38833",
+      "sha256": "a75107a843d66fdb371d5cfe7bf2e9b80819926042a42a9528cb780b3b459c66",
+      "source_sha256": "bfd5ad027bc540529743e33156a17a952a07801b8b4892662166e51ea74427be",
       "public_base_sha256": "927be0e86648ae90368094373469acb4ba29049ca67e2b648379fbd1d2a38833",
-      "provenance": "verbatim_source"
+      "provenance": "public_adaptation",
+      "source_revision": "0950b9f23ae845431cafa11ea915649385db3de6",
+      "adaptations": [
+        "plain_language"
+      ]
     },
     {
       "path": "templates/typefully-people-review.md",
@@ -632,10 +638,11 @@
     {
       "path": "templates/typefully-workflow.json",
       "staged_path": "research/post-workflow/templates/typefully-workflow.json",
-      "sha256": "c85de69b5210384dae2c9c8bab4e5cf1c236e26d0499439c9239f65ea9f2384b",
-      "source_sha256": "c85de69b5210384dae2c9c8bab4e5cf1c236e26d0499439c9239f65ea9f2384b",
+      "sha256": "6b51a1880802cbf5d25b1f596c067bdf8ad3c651fd0359595090165ede2787ff",
+      "source_sha256": "6b51a1880802cbf5d25b1f596c067bdf8ad3c651fd0359595090165ede2787ff",
       "public_base_sha256": "c85de69b5210384dae2c9c8bab4e5cf1c236e26d0499439c9239f65ea9f2384b",
-      "provenance": "verbatim_source"
+      "provenance": "verbatim_source",
+      "source_revision": "0950b9f23ae845431cafa11ea915649385db3de6"
     },
     {
       "path": "tools/__init__.py",
@@ -876,10 +883,16 @@
     {
       "path": "tools/test_typefully_workflow.py",
       "staged_path": "research/post-workflow/tools/test_typefully_workflow.py",
-      "sha256": "a12ef6b124156f0f6aaac3123b47561c6399fc4ed69bd2c66987f4d83ba3e2b2",
-      "source_sha256": "d2507b68377468a34e327b8a08d3843abf03fbc2cb1e09b6c10420dfb012d5f7",
+      "sha256": "b18c6316a267039a9b1c8461d1326d487d7580f239afdbcf14ac71e3fa6f332e",
+      "source_sha256": "5d154ff44b363fea97cd0b63415a39dd280baf93242105b18445d1fe12b64149",
       "public_base_sha256": "a12ef6b124156f0f6aaac3123b47561c6399fc4ed69bd2c66987f4d83ba3e2b2",
-      "provenance": "retained_public_base"
+      "provenance": "public_adaptation",
+      "source_revision": "0950b9f23ae845431cafa11ea915649385db3de6",
+      "adaptations": [
+        "plain_language",
+        "synthetic_identifiers",
+        "retain_current_public_fixture"
+      ]
     },
     {
       "path": "tools/typefully_draft_guard.py",
@@ -892,16 +905,117 @@
     {
       "path": "tools/typefully_workflow.py",
       "staged_path": "research/post-workflow/tools/typefully_workflow.py",
-      "sha256": "945091d9ab8197f432d49e70dc9d84369456ddb127a78eb9583ccdbcbf4335a0",
-      "source_sha256": "0238cdc85b5bcf0f1118680e1f9739b2995f45248f918a59d6dc6f5d146f4920",
+      "sha256": "a4fb592ea663c311186116b4e75cb9cf832abbdb4746bae0249f9e3c77c09a89",
+      "source_sha256": "9ead8afd2b3cca92bc0a959d7262d8f1680aceb6b3e7e45afd3507d45f17463a",
       "public_base_sha256": "945091d9ab8197f432d49e70dc9d84369456ddb127a78eb9583ccdbcbf4335a0",
-      "provenance": "retained_public_base"
+      "provenance": "public_adaptation",
+      "source_revision": "0950b9f23ae845431cafa11ea915649385db3de6",
+      "adaptations": [
+        "plain_language",
+        "retain_current_public_validator",
+        "add_promotion_plan_validation"
+      ]
     },
     {
       "path": "trust/piq-v2-two-host-admissions.json",
       "staged_path": "research/post-workflow/trust/piq-v2-two-host-admissions.json",
       "sha256": "f694344574484a096926cf4ed073cc526a7ed83b82b7c2ebfaa9fd459bf2a6e3",
       "source_sha256": "f694344574484a096926cf4ed073cc526a7ed83b82b7c2ebfaa9fd459bf2a6e3",
+      "provenance": "verbatim_source"
+    },
+    {
+      "path": "AUTOPLUG_AND_RESULTS.md",
+      "staged_path": "research/post-workflow/AUTOPLUG_AND_RESULTS.md",
+      "sha256": "7c1c468ff18156bb0ff827f237248022df1c40e42d5a799943694e1a2c0fff79",
+      "source_revision": "0950b9f23ae845431cafa11ea915649385db3de6",
+      "source_sha256": "204d4d57b16143f5c09af1966fd3fb6a5752eb793e3cae67e26c61924f1c7451",
+      "provenance": "public_adaptation",
+      "adaptations": [
+        "plain_language",
+        "author_neutral_guidance",
+        "omit_private_monitors",
+        "no_installed_automation_claim"
+      ]
+    },
+    {
+      "path": "templates/typefully-promotion-plan.json",
+      "staged_path": "research/post-workflow/templates/typefully-promotion-plan.json",
+      "sha256": "ccd3b2df9f367672f5db0d6767b8d1dc0b45db553d980bf6f3ef2f8debf9a397",
+      "source_revision": "0950b9f23ae845431cafa11ea915649385db3de6",
+      "source_sha256": "ccd3b2df9f367672f5db0d6767b8d1dc0b45db553d980bf6f3ef2f8debf9a397",
+      "provenance": "verbatim_source"
+    },
+    {
+      "path": "templates/typefully-results.json",
+      "staged_path": "research/post-workflow/templates/typefully-results.json",
+      "sha256": "025a17774ad2fb7b227255a85b852411d8ea8e688421634fe046393234dce7bb",
+      "source_revision": "0950b9f23ae845431cafa11ea915649385db3de6",
+      "source_sha256": "cf0b3a6c56914f3fd00aa708745dce1fc6dbf97872c5b755fe711aaf495a8644",
+      "provenance": "public_adaptation",
+      "adaptations": [
+        "plain_language"
+      ]
+    },
+    {
+      "path": "tools/typefully_promotion.py",
+      "staged_path": "research/post-workflow/tools/typefully_promotion.py",
+      "sha256": "a545c604f3d9f77180de7f99c628e8dbe078c76097d47ff47a98283c02baba7d",
+      "source_revision": "0950b9f23ae845431cafa11ea915649385db3de6",
+      "source_sha256": "c7f026f7ade3c8cee45b44e67d59e0714cee6cded4575f215a12d3cf8b3dbaf8",
+      "provenance": "public_adaptation",
+      "adaptations": [
+        "plain_language"
+      ]
+    },
+    {
+      "path": "tools/test_typefully_promotion.py",
+      "staged_path": "research/post-workflow/tools/test_typefully_promotion.py",
+      "sha256": "466ea3735b2437017ea53df83217ca90b99b7b46b90345c126eeaa32cc94ed51",
+      "source_revision": "0950b9f23ae845431cafa11ea915649385db3de6",
+      "source_sha256": "c40ffc4dba87454b6e864b04d788a7c59e4d84e9151f36a12e8b228b5d23310e",
+      "provenance": "public_adaptation",
+      "adaptations": [
+        "plain_language",
+        "synthetic_identifiers"
+      ]
+    },
+    {
+      "path": "tools/typefully_results.py",
+      "staged_path": "research/post-workflow/tools/typefully_results.py",
+      "sha256": "63ad7adad2039ca30719207dc86cd6498ea249fef15582bbe3444d7698c829ce",
+      "source_revision": "0950b9f23ae845431cafa11ea915649385db3de6",
+      "source_sha256": "5536ba5259281873c02f787f3cea1d79026293891e5f71ae6a0ef2188ced5e3c",
+      "provenance": "public_adaptation",
+      "adaptations": [
+        "plain_language"
+      ]
+    },
+    {
+      "path": "tools/test_typefully_results.py",
+      "staged_path": "research/post-workflow/tools/test_typefully_results.py",
+      "sha256": "e722953ff5e7b48e5df95dcdca8690cb3cb342692ec756acd98dcab73ab4e232",
+      "source_revision": "0950b9f23ae845431cafa11ea915649385db3de6",
+      "source_sha256": "8b34f6d9dd99292347da0ff0b60af724018506847748e61c0c6bf27b3a623456",
+      "provenance": "public_adaptation",
+      "adaptations": [
+        "plain_language",
+        "synthetic_identifiers"
+      ]
+    },
+    {
+      "path": "tools/typefully_analytics.py",
+      "staged_path": "research/post-workflow/tools/typefully_analytics.py",
+      "sha256": "89237037eff02cf69f2d0291c58a11423550cb1d11550a00f85fafc85f7198a9",
+      "source_revision": "4a5471a3d1ea1a8bf298f76b04abbf4e378fa4c6",
+      "source_sha256": "89237037eff02cf69f2d0291c58a11423550cb1d11550a00f85fafc85f7198a9",
+      "provenance": "verbatim_source"
+    },
+    {
+      "path": "tools/test_typefully_analytics.py",
+      "staged_path": "research/post-workflow/tools/test_typefully_analytics.py",
+      "sha256": "779b888311e8e6a2115d16ea0b50fab1cb7be67c9b573acbd3e71a5e4f8ea5de",
+      "source_revision": "4a5471a3d1ea1a8bf298f76b04abbf4e378fa4c6",
+      "source_sha256": "779b888311e8e6a2115d16ea0b50fab1cb7be67c9b573acbd3e71a5e4f8ea5de",
       "provenance": "verbatim_source"
     }
   ]

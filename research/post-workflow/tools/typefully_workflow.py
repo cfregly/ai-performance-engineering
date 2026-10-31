@@ -18,8 +18,10 @@ from typing import Any
 
 if __package__:
     from .typefully_draft_guard import GuardInputError, fingerprint, readback_fingerprint
+    from .typefully_promotion import validate_promotion
 else:
     from typefully_draft_guard import GuardInputError, fingerprint, readback_fingerprint
+    from typefully_promotion import validate_promotion
 
 
 WORKFLOW_PATH = "social/typefully-workflow.json"
@@ -442,6 +444,13 @@ def validate_workflow(package: Path, relative: str, errors: list[str]) -> None:
             fail(f"{label}.checked_at is later than verified_at")
     if not text(data.get("reviewer")):
         fail("reviewer must name the person or agent who reviewed the artifacts")
+    if "promotion_plan" in data:
+        relative_plan = data["promotion_plan"]
+        plan_data = read_json(path_for(relative_plan, "promotion_plan"), "promotion_plan")
+        for field in ("draft_id", "social_set_id"):
+            if str(plan_data.get(field)) != str(data.get(field)):
+                fail(f"promotion_plan.{field} does not match workflow receipt")
+        validate_promotion(package, relative_plan, errors)
 
 
 if __name__ == "__main__":

@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "draft_id": null,
+  "social_set_id": null,
+  "raw_readback": {"path": "", "sha256": ""},
+  "auto_plug": {
+    "state": "configured",
+    "reply_text": "",
+    "destination_reason": "",
+    "metric": "likes",
+    "threshold": null,
+    "threshold_decision": {"path": "", "sha256": ""},
+    "evidence": {"path": "", "sha256": ""},
+    "checked_at": null
+  },
+  "results_tracking": {
+    "mode": "read_only",
+    "registry_path": "",
+    "draft_id": null,
+    "social_set_id": null,
+    "milestones_hours": [24, 168],
+    "state": "awaiting_publication"
+  }
+}

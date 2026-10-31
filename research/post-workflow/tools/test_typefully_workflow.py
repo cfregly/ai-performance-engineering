@@ -393,6 +393,17 @@ Status: unavailable
         self.assertTrue(errors)
         self.assertIn("state must be verified", "\n".join(errors))
 
+    def test_declared_promotion_plan_is_required(self) -> None:
+        self.receipt["promotion_plan"] = "social/typefully-promotion-plan.json"
+        errors = "\n".join(self.check())
+        self.assertIn("promotion_plan", errors)
+        self.assertIn("Typefully promotion:", errors)
+
+    def test_promotion_plan_must_match_workflow_identity(self) -> None:
+        self.receipt["promotion_plan"] = "social/typefully-promotion-plan.json"
+        self.write_json(self.receipt["promotion_plan"], {"draft_id": 999, "social_set_id": 123})
+        self.assertIn("promotion_plan.draft_id does not match", "\n".join(self.check()))
+
 
 if __name__ == "__main__":
     unittest.main()
