@@ -11,7 +11,6 @@ import base64
 import hashlib
 import json
 import math
-import re
 import os
 from pathlib import Path
 import shutil
@@ -109,11 +108,6 @@ class Slide:
                           'preserveAspectRatio="xMidYMid meet">'
                           f'<image width="2400" height="2400" '
                           f'xlink:href="{escape(self.asset_prefix)}/{escape(source)}"/></svg>')
-
-    def arrow(self, x1, y1, x2, y2, color='blue'):
-        self.line(x1, y1, x2, y2, color, 5)
-        self.line(x2-16, y2-11, x2, y2, color, 5)
-        self.line(x2-16, y2+11, x2, y2, color, 5)
 
     def result(self):
         return ('\n'.join(self.parts) + '\n</svg>\n').encode()
@@ -406,10 +400,6 @@ def glyph_box(row: dict, env: dict) -> tuple[int, int, int, int]:
                  input=raster, env=env).decode().split()
     require(len(values) == 4, 'Expected actual Inter glyph bounds')
     return tuple(map(int, values))
-
-
-def glyph_width(row: dict, env: dict) -> int:
-    return glyph_box(row, env)[0]
 
 
 def validate_edge_geometry(root, ns):

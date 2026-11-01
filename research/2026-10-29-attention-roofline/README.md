@@ -186,19 +186,19 @@ The audience cards above also have landscape layouts. These retained landscape i
 
 ![Buffer lifetimes and storage reuse at 400 pixels](images/aud-kernel-engineer-400.png)
 
-![Buffer lifetimes and storage reuse, landscape layout](images/aud-kernel-engineer.png)
+![Qualitative buffer lifetimes overlap. Add the live buffers’ bytes during overlap and reuse storage only after its last reader.](images/aud-kernel-engineer.png)
 
 ![Materialize partials or combine smaller batches at 400 pixels](images/aud-ml-engineer-400.png)
 
-![Materialize partials or combine smaller batches, landscape layout](images/aud-ml-engineer.png)
+![Keep each producer’s output separate for a simpler schedule, or combine smaller batches to reduce scratch while adding coordination.](images/aud-ml-engineer.png)
 
 ![Screen compute and traffic separately at 400 pixels](images/aud-performance-engineer-400.png)
 
-![Screen compute and traffic separately, landscape layout](images/aud-performance-engineer.png)
+![Check work divided by compute rate and traffic divided by bandwidth separately. Dependencies can push real time above both floors.](images/aud-performance-engineer.png)
 
 ![Compare the complete update path at 400 pixels](images/aud-platform-operations-400.png)
 
-![Compare the complete update path, landscape layout](images/aud-platform-operations.png)
+![Compare designs at equal math, quality, load and resources, then include the complete update path.](images/aud-platform-operations.png)
 
 ![Compare the transfer floor with the target at 400 pixels](images/b-400.png)
 

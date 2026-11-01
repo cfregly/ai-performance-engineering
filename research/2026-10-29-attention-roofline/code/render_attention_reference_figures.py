@@ -44,7 +44,7 @@ def font_env(temp):
 
 class Diagram:
     def __init__(self,stem,title,w=1080,h=1080):
-        self.stem,self.title,self.w,self.h=stem,title,w,h;self.labels=[];self.edges=[];self.bars=[];self.lines=[];self.nodes={}
+        self.stem,self.title,self.w,self.h=stem,title,w,h;self.labels=[];self.edges=[];self.bars=[];self.nodes={}
         self.parts=[f'<svg xmlns="http://www.w3.org/2000/svg" width="{w}" height="{h}" viewBox="0 0 {w} {h}"><title>{escape(title)}</title>',f'<style>@font-face{{font-family:Inter;src:url("__RETAINED_INTER_FONT__") format("truetype");font-weight:100 900}}</style>',f'<rect width="{w}" height="{h}" fill="{C["background"]}"/>']
     def text(self,t,x,y,size=None,weight=400,color='ink',anchor='start'):
         size=size or (64 if self.w==1600 else 48 if self.w==1080 else 52)
@@ -58,7 +58,6 @@ class Diagram:
         self.parts.append(f'<g data-node-id="{identifier}">');self.rect(x,y,w,h);self.parts.append('</g>')
     def line(self,x1,y1,x2,y2,color='ink',width=4,dash='',extra=''):
         self.parts.append(f'<line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" stroke="{C[color]}" stroke-width="{width}"'+(f' stroke-dasharray="{dash}"' if dash else '')+' '+extra+'/>')
-        self.lines.append(dict(x1=x1,y1=y1,x2=x2,y2=y2,width=width))
     def arrow(self,x1,y1,x2,y2,color='blue',name=None,source=None,target=None):
         self.route([(x1,y1),(x2,y2)],color,name,source,target)
     def route(self,points,color='ink',name=None,source=None,target=None):
