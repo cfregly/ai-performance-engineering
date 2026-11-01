@@ -10,7 +10,7 @@ My advice: use full scoring if the caller needs every token's score, or if makin
 
 The retained run used Linux, Python 3.12.3, PyTorch 2.14.1+cu130, CUDA 13.0, NVIDIA driver 580.173.02 and one NVIDIA B200 reporting a 1000 W power limit. FP32 matmul precision was `highest` and TF32 was disabled. Dimensions and the fixed decision rule are in [plan.json](plan.json).
 
-From the benchmark directory, recompute the six cells and run the evidence tests without importing PyTorch or using a GPU:
+From the package root, `research/2026-10-27-pm-candidate-logits/` (not its `code/` directory), recompute the six cells and run the evidence tests without importing PyTorch or using a GPU:
 
 ```sh
 python3 code/analyze.py
