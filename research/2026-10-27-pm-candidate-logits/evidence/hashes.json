@@ -191,19 +191,19 @@
       "bytes": 1072
     },
     "images/aud-performance-engineer.png": {
-      "sha256": "a1baf14fd15a73557f631f183c10c28fed6574622e531cddd2bac86f656a6ec2",
-      "bytes": 195249
+      "sha256": "78d7b3d7f872659ced921f2c6015c3ef104428796fbc13b5b0be302a55e2c98e",
+      "bytes": 195223
     },
     "images/aud-performance-engineer.svg": {
-      "sha256": "d304785a8b83137154b2743e05cd884be6698c29a38307e69b7852cf474226bf",
+      "sha256": "7599008903b6ea55a517d444acf65c4c94c089d92d8939ae95628d51dc4e7290",
       "bytes": 4347
     },
     "images/aud-performance-engineer-square.png": {
-      "sha256": "4b352b7398c316fc9ddf7d66624364dc46096103714377b60a05bfa487d98986",
+      "sha256": "a7c00bb9f87804b52b38234d6aec2fed457b198e4e3df9dd044bec83683c1bde",
       "bytes": 153300
     },
     "images/aud-performance-engineer-square.svg": {
-      "sha256": "b964a38be5419a7315ca6a0ee47bca62c38cea6d1bf2bfc5ffff2c9688ac5b3d",
+      "sha256": "b060dc04b69bb3e1d6638b8c56dcb4f9ac01a61c4cd0e7fa063cf67221b776d3",
       "bytes": 4438
     },
     "images/aud-performance-engineer.txt": {
@@ -211,20 +211,20 @@
       "bytes": 1093
     },
     "images/aud-kernel-engineer.png": {
-      "sha256": "962196967368d59ff5d57999d8097b9d3781c28d1e6bfc4406515bddfac1d4a9",
-      "bytes": 137886
+      "sha256": "55d47896f5ee958d4c427cbeeb2216d8b8342bb006e960abad6a6d12c7921342",
+      "bytes": 138245
     },
     "images/aud-kernel-engineer.svg": {
-      "sha256": "3ce5b9840e34602819e33dcec5b458e84ae6163a803e06dab6197f0db5720f09",
-      "bytes": 3253
+      "sha256": "f4d9d8464b15a4180afa869ecec2dbd7921112f9f94cd1b6cbd78d18d074cd86",
+      "bytes": 3254
     },
     "images/aud-kernel-engineer-square.png": {
-      "sha256": "7a878b7340f8de29901cdf253ab9687f6f1b3456c80da1e6ec872525a12c7b41",
-      "bytes": 111981
+      "sha256": "607c9b0026426032c8da3597f73935364908ef62e2cc933e910071d4d91222b8",
+      "bytes": 112047
     },
     "images/aud-kernel-engineer-square.svg": {
-      "sha256": "5206d111fe6b18bcd9018063ab2f32c96f061f0dd9c15071bc3cded409e5255a",
-      "bytes": 3247
+      "sha256": "333a17426820c6570328e293d4b02d12f8170f27e4182cf1291215f72778eb0c",
+      "bytes": 3243
     },
     "images/aud-kernel-engineer.txt": {
       "sha256": "3e317095641fb36ee0045740826ee79d1c44fbeaf05d58d45f9db55227301117",
@@ -335,8 +335,8 @@
       "bytes": 75
     },
     "images/render_illustrations.py": {
-      "sha256": "6006ce68aedf6869979539bab9e62e8551f50fbb0f231f881b26d6af75c73aa5",
-      "bytes": 32491
+      "sha256": "cbe44bf33dc07707acd60fd3e2e55687a190b917e1d50b139cbea6c65e131525",
+      "bytes": 33627
     },
     "images/visual-tokens.json": {
       "sha256": "677886666cf02f359a6ae23ff762185985e34c655f9335dfc969e38265a87b33",

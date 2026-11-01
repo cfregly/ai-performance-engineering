@@ -186,6 +186,26 @@ def check_text_bar_clearance(texts, marks, minimum=20):
     return {'minimum_required_px':minimum,'minimum_observed_px':min(gaps),'checked_pairs':len(gaps)}
 
 
+def check_paragraph_gaps(board):
+    """Keep the result, comparison sections and evidence footer visually distinct."""
+    pairs=[]
+    if board.stem=='aud-performance-engineer':
+        ratio=next(label for _,label in board.boxes if label.endswith('ratio of retained medians'))
+        pairs=[(ratio,'Full scoring + filter',32)]
+    elif board.stem=='aud-kernel-engineer':
+        pairs=[('8 × 2048  @  2048 × 131072','64 allowed outputs',32),
+               ('8 × 2048  @  2048 × 64','FP32 weights used: 1 GiB → 512 KiB',64)]
+    checked=[]
+    for first,second,minimum in pairs:
+        a=[box for box,label in board.boxes if label==first]
+        b=[box for box,label in board.boxes if label==second]
+        require(len(a)==len(b)==1,'Paragraph labels must be unique')
+        actual=b[0][1]-a[0][3]
+        require(actual>=minimum,'Paragraph separation too small: '+first+' / '+second)
+        checked.append({'first':first,'second':second,'minimum_px':minimum,'actual_px':actual})
+    return checked
+
+
 def comparison(square):
     b=Board('b','Six warm-block comparisons','Synthetic strict-FP32 output-head stage',square)
     legend_size = 36 if square else 48
@@ -326,7 +346,7 @@ def performance(square):
     b=Board('aud-performance-engineer','Include gathering in timing','64 changing allowed IDs · warm 16-step blocks',square)
     c=next(c for c in SUMMARY['cells'] if c['size']==64 and c['mode']=='changing')
     ratios=[r['baseline_wall_ms']/r['candidate_wall_ms'] for r in PAIRS if r['size']==64 and r['mode']=='changing']
-    b.text(b.w/2,310 if square else 250,f"{c['speedup']:.2f}× ratio of retained medians",36 if square else 48,b.orange,'middle')
+    b.text(b.w/2,300 if square else 232,f"{c['speedup']:.2f}× ratio of retained medians",36 if square else 48,b.orange,'middle')
     x0,width=(100,700) if square else (100,1080)
     for y,series,label in zip((400,555) if square else (330,455),('baseline','candidate'),('Full scoring + filter','Allowed rows first')):
         color=b.blue if series=='baseline' else b.orange
@@ -351,13 +371,13 @@ def kernel(square):
     b=Board('aud-kernel-engineer','Reduce the output dimension','Same inputs, fewer allowed weight rows',square)
     if square:
         for y,title,col,w,shape in ((345,'Full output projection',b.blue,700,'8 × 2048  @  2048 × 131072'),(650,'64 allowed outputs',b.orange,250,'8 × 2048  @  2048 × 64')):
-            b.text(55,y,title,42,col);b.matrix(80,y+45,w,100,col);b.text(540,y+207,shape,38,anchor='middle')
+            b.text(55,y,title,42,col);b.matrix(80,y+45,w,100,col);b.text(80,y+207,shape,38)
         b.foot(['FP32 weights used: 1 GiB → 512 KiB','Full weight matrix stays resident','Derived sizes · traffic unmeasured'])
     else:
-        for y,title,col,w,shape in ((280,'Full output projection',b.blue,1000,'8 × 2048  @  2048 × 131072'),(515,'64 allowed outputs',b.orange,300,'8 × 2048  @  2048 × 64')):
+        for y,title,col,w,shape in ((250,'Full output projection',b.blue,1000,'8 × 2048  @  2048 × 131072'),(515,'64 allowed outputs',b.orange,300,'8 × 2048  @  2048 × 64')):
             b.text(70,y,title,48,col)
             b.matrix(80,y+35,w,80,col)
-            b.text(80,y+180,shape,48)
+            b.text(80 if col==b.blue else 440,y+180 if col==b.blue else y+95,shape,48)
         b.foot(['FP32 weights used: 1 GiB → 512 KiB','Full weight matrix stays resident','Derived sizes · traffic unmeasured'])
 
     return b
@@ -448,6 +468,7 @@ def main():
                 bars=[t for t in tree.iter() if t.get('data-science')=='bar']
                 require(len(bars)==len(board.chart),'Scientific bar metadata missing')
                 clearance=check_text_bar_clearance(board.boxes,bars) if board.stem=='b' else None
+                paragraphs=check_paragraph_gaps(board)
                 for node,row in zip(bars,board.chart):
                     require(abs(float(node.get('width'))-row['scale_px_per_ms']*row['median_ms'])<1e-9,'Median bar geometry changed')
                     require(node.get('fill')==(board.blue if row['series']=='baseline' else board.orange),'Series color changed')
@@ -463,7 +484,7 @@ def main():
                 entries[str(path.relative_to(out))]={'sha256':sha(path),'bytes':path.stat().st_size}
                 for png in copies:entries[str(png.relative_to(out))]={'sha256':sha(png),'bytes':png.stat().st_size}
                 copy += board.copy
-                checks.append({'stem':stem,'square':square,'text_boxes_checked':len(board.boxes),'regular_Inter_only':True,'text_nonoverlap':True,'text_bar_clearance':clearance,'minimum_text_px_at_400':min(float(t.get('font-size'))*400/board.w for t in tree.iter() if t.tag.endswith('text'))})
+                checks.append({'stem':stem,'square':square,'text_boxes_checked':len(board.boxes),'regular_Inter_only':True,'text_nonoverlap':True,'text_bar_clearance':clearance,'paragraph_separation':paragraphs,'minimum_text_px_at_400':min(float(t.get('font-size'))*400/board.w for t in tree.iter() if t.tag.endswith('text'))})
                 geometry_rows.append({'stem':stem,'square':square,'bars':board.chart})
             setup={c['size']:c['row_setup_wall_ms'] for c in SUMMARY['cells'] if c['mode']=='static'}
             side=out/(target_stem(stem)+'.txt')

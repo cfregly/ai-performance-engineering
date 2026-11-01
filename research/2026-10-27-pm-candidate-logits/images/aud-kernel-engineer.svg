@@ -3,16 +3,16 @@
 <defs><marker id="arrow" viewBox="0 0 12 12" refX="10" refY="6" markerWidth="5" markerHeight="5" orient="auto"><path d="M2 2 L10 6 L2 10" fill="none" stroke="context-stroke" stroke-width="2"/></marker></defs>
 <text x="64" y="82.0" font-family="Inter" font-size="64" font-weight="400" font-style="normal" fill="#202326" text-anchor="start">Reduce the output dimension</text>
 <text x="64" y="152.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#202326" text-anchor="start">Same inputs, fewer allowed weight rows</text>
-<text x="70" y="280.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#3478BA" text-anchor="start">Full output projection</text>
-<rect x="80" y="315" width="1000" height="80" rx="0" fill="none" stroke="#3478BA" stroke-width="3"/>
-<line x1="80" y1="335.0" x2="1080" y2="335.0" stroke="#3478BA" stroke-width="1.5"/>
-<line x1="80" y1="355.0" x2="1080" y2="355.0" stroke="#3478BA" stroke-width="1.5"/>
-<line x1="80" y1="375.0" x2="1080" y2="375.0" stroke="#3478BA" stroke-width="1.5"/>
-<line x1="280.0" y1="315" x2="280.0" y2="395" stroke="#3478BA" stroke-width="1.5"/>
-<line x1="480.0" y1="315" x2="480.0" y2="395" stroke="#3478BA" stroke-width="1.5"/>
-<line x1="680.0" y1="315" x2="680.0" y2="395" stroke="#3478BA" stroke-width="1.5"/>
-<line x1="880.0" y1="315" x2="880.0" y2="395" stroke="#3478BA" stroke-width="1.5"/>
-<text x="80" y="460.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#202326" text-anchor="start">8 × 2048  @  2048 × 131072</text>
+<text x="70" y="250.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#3478BA" text-anchor="start">Full output projection</text>
+<rect x="80" y="285" width="1000" height="80" rx="0" fill="none" stroke="#3478BA" stroke-width="3"/>
+<line x1="80" y1="305.0" x2="1080" y2="305.0" stroke="#3478BA" stroke-width="1.5"/>
+<line x1="80" y1="325.0" x2="1080" y2="325.0" stroke="#3478BA" stroke-width="1.5"/>
+<line x1="80" y1="345.0" x2="1080" y2="345.0" stroke="#3478BA" stroke-width="1.5"/>
+<line x1="280.0" y1="285" x2="280.0" y2="365" stroke="#3478BA" stroke-width="1.5"/>
+<line x1="480.0" y1="285" x2="480.0" y2="365" stroke="#3478BA" stroke-width="1.5"/>
+<line x1="680.0" y1="285" x2="680.0" y2="365" stroke="#3478BA" stroke-width="1.5"/>
+<line x1="880.0" y1="285" x2="880.0" y2="365" stroke="#3478BA" stroke-width="1.5"/>
+<text x="80" y="430.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#202326" text-anchor="start">8 × 2048  @  2048 × 131072</text>
 <text x="70" y="515.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#E87823" text-anchor="start">64 allowed outputs</text>
 <rect x="80" y="550" width="300" height="80" rx="0" fill="none" stroke="#E87823" stroke-width="3"/>
 <line x1="80" y1="570.0" x2="380" y2="570.0" stroke="#E87823" stroke-width="1.5"/>
@@ -22,7 +22,7 @@
 <line x1="200.0" y1="550" x2="200.0" y2="630" stroke="#E87823" stroke-width="1.5"/>
 <line x1="260.0" y1="550" x2="260.0" y2="630" stroke="#E87823" stroke-width="1.5"/>
 <line x1="320.0" y1="550" x2="320.0" y2="630" stroke="#E87823" stroke-width="1.5"/>
-<text x="80" y="695.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#202326" text-anchor="start">8 × 2048  @  2048 × 64</text>
+<text x="440" y="610.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#202326" text-anchor="start">8 × 2048  @  2048 × 64</text>
 <text x="64" y="759.6" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#202326" text-anchor="start">FP32 weights used: 1 GiB → 512 KiB</text>
 <text x="64" y="814.8000000000001" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#202326" text-anchor="start">Full weight matrix stays resident</text>
 <text x="64" y="870.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#202326" text-anchor="start">Derived sizes · traffic unmeasured</text>

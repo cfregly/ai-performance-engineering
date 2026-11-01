@@ -3,7 +3,7 @@
 <defs><marker id="arrow" viewBox="0 0 12 12" refX="10" refY="6" markerWidth="5" markerHeight="5" orient="auto"><path d="M2 2 L10 6 L2 10" fill="none" stroke="context-stroke" stroke-width="2"/></marker></defs>
 <text x="64" y="82.0" font-family="Inter" font-size="64" font-weight="400" font-style="normal" fill="#202326" text-anchor="start">Include gathering in timing</text>
 <text x="64" y="152.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#202326" text-anchor="start">64 changing allowed IDs · warm 16-step blocks</text>
-<text x="800.0" y="250.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#E87823" text-anchor="middle">12.84× ratio of retained medians</text>
+<text x="800.0" y="232.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#E87823" text-anchor="middle">12.84× ratio of retained medians</text>
 <text x="100" y="302.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#3478BA" text-anchor="start">Full scoring + filter</text>
 <rect data-science="bar" data-series="baseline" data-mode="changing" data-size="64" x="100" y="330" width="971.8647832050920" height="24" fill="#3478BA"/>
 <line x1="1070.7272332161665" y1="342.0" x2="1073.5262021422386" y2="342.0" stroke="#202326" stroke-width="2"/>
