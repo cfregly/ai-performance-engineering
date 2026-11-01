@@ -868,7 +868,11 @@ def normalize_gpu_attempt(design: dict, group: dict, envelope: dict,
         errors.append("GPU attempt quality must retain shared-initial and final BF16 operands")
     else:
         _quality_record(quality["initial_bf16"], "GPU initial quality", errors)
-        _quality_record(quality["final_bf16"], "GPU final quality", errors)
+        if admission:
+            if quality["final_bf16"] is not None:
+                errors.append("GPU admission probe must not fabricate final BF16 evaluation")
+        else:
+            _quality_record(quality["final_bf16"], "GPU final quality", errors)
     if admission:
         if raw.get("checkpoint") is not None:
             errors.append("GPU admission probe must not fabricate checkpoint/restart evidence")
@@ -986,8 +990,14 @@ def evaluate_gpu_study(design: dict, attempts: list[dict],
     nll_gaps: list[Fraction] = []
     accuracy_gaps: list[Fraction] = []
     arm_times = {"baseline": [], "candidate": []}
-    shared_initial: dict | None = None
-    quality_inputs_passed = True
+    shared_initial = (attempts[0].get("quality", {}).get("initial_bf16")
+                      if attempts else None)
+    quality_inputs_passed = len(attempts) == 10 and shared_initial is not None and all(
+        item.get("quality", {}).get("initial_bf16") == shared_initial
+        for item in attempts
+    )
+    if not quality_inputs_passed:
+        errors.append("GPU study must share one initial BF16 quality oracle across all ten attempts")
     for pair_id in PAIR_IDS:
         members = {item.get("role"): item for item in attempts if item.get("group_id") == pair_id}
         if set(members) != {"baseline", "candidate"}:
@@ -1012,13 +1022,6 @@ def evaluate_gpu_study(design: dict, attempts: list[dict],
         if p95_ratio > Fraction(102, 100):
             errors.append(f"GPU study {pair_id} candidate p95 ratio exceeds 1.02")
 
-        base_initial = baseline["quality"]["initial_bf16"]
-        candidate_initial = candidate["quality"]["initial_bf16"]
-        if shared_initial is None:
-            shared_initial = base_initial
-        if base_initial != shared_initial or candidate_initial != shared_initial:
-            errors.append("GPU study arms do not share one initial BF16 quality oracle")
-            quality_inputs_passed = False
         for role, attempt in members.items():
             initial = attempt["quality"]["initial_bf16"]
             final = attempt["quality"]["final_bf16"]

@@ -136,6 +136,14 @@ invented run per arm is allowed. Any failed, timed-out, OOM, unsupported,
 unaccepted, or incomplete attempt makes the deterministic report
 `INCONCLUSIVE`.
 
+Admission retains the same pre-existing `quality.initial_bf16` oracle as all
+eight full attempts, but performs zero validation windows. Its required
+`quality.final_bf16` field is explicitly `null`. A numeric final record would
+invent an evaluation and is rejected. Every full attempt still requires the
+complete final 512-window BF16 operands. Admission contributes no learning,
+quality-gap, gain, or latency-repeat arithmetic. This corrects the consumer's
+contradictory admission requirement. None of the full-job gates changes.
+
 ## Complete job and exact gates
 
 The primary clock starts before the initial checkpoint is opened and stops only

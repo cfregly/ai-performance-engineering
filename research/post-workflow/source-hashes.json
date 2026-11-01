@@ -10,6 +10,19 @@
   "synthetic_example_files": 59,
   "private_scaffold_projected": false,
   "identity_rule": "Every regular file under public_root is hashed except this manifest. Each entry binds its repository-relative staged_path. Source hashes name bytes at an entry's source_revision when present, otherwise at the manifest source_revision. Retained public files stay bound to public_base_revision. The enclosing Git commit and tree identify this manifest.",
+  "source_updates": [
+    {
+      "source_revision": "74049e74f4e3736c7d1de154761521dd0c243046",
+      "source_tree": "2d70f78d4ec686872b7b6e575907977d75c20d85",
+      "source_base_revision": "d5b7a064a56a8fefad5610e11554f4e1d093c03a",
+      "source_base_tree": "9aa046ed937e3f015bbd62ac9219e5c0d9b351a9",
+      "paths": [
+        "QUALIFIED_GPU_TRAINING_EVIDENCE.md",
+        "tools/qualified_gpu_training.py",
+        "tools/test_qualified_gpu_training.py"
+      ]
+    }
+  ],
   "files": [
     {
       "path": "PIQ_EXPERIMENT_EVIDENCE.md",
@@ -35,8 +48,9 @@
     {
       "path": "QUALIFIED_GPU_TRAINING_EVIDENCE.md",
       "staged_path": "research/post-workflow/QUALIFIED_GPU_TRAINING_EVIDENCE.md",
-      "sha256": "469698e849395e196cf532696429b03740298515642e8829233ecaa4bac46668",
-      "source_sha256": "315534a385f5d705544237707711f93d8e328406c5aaadb5694faba2382f6d91",
+      "sha256": "de66f5593f7e53a392f5bd0c828cbf44681b76a8cc939490ecc70f4c45ef71f9",
+      "source_revision": "74049e74f4e3736c7d1de154761521dd0c243046",
+      "source_sha256": "e929ec24c3736844b34d2edc943a32fc799ee348c70a30a7a995506441fdb57e",
       "provenance": "public_source_adaptation",
       "adaptations": [
         "synthetic_only_scope",
@@ -48,7 +62,7 @@
     {
       "path": "README.md",
       "staged_path": "research/post-workflow/README.md",
-      "sha256": "631ac320788dac336aabe06aebf22d4798d990fa1e743edf18e51ef21e5dea71",
+      "sha256": "01bca182439dec32db1ac1763b835360554692c442e42823ef163b6b0a8df4e4",
       "public_base_sha256": "acdec6cd5d9f13ffd598128b7404f15d648f340d4813e597e5cfa41f537f6c3c",
       "provenance": "public_snapshot_documentation",
       "adaptations": [
@@ -757,8 +771,9 @@
     {
       "path": "tools/qualified_gpu_training.py",
       "staged_path": "research/post-workflow/tools/qualified_gpu_training.py",
-      "sha256": "f966fe6eb05b02f469198ae6fc7f67bad52e05b4d2baafee6865cda457113832",
-      "source_sha256": "7f6c51fc407510c80ac4354cc8715f7d12e0e5a5f81f6500c59fdf3ea6d1d651",
+      "sha256": "60eb0c6034b34ff8c12f8c3d7daddb29a3a18b27ce02b817b385c5815fc91c20",
+      "source_revision": "74049e74f4e3736c7d1de154761521dd0c243046",
+      "source_sha256": "24d4ec784d49cd9626e346f7433edc5cc838b6108ef3f4262e2680e4ed50ad53",
       "provenance": "public_source_adaptation",
       "adaptations": [
         "plain_language"
@@ -866,8 +881,9 @@
     {
       "path": "tools/test_qualified_gpu_training.py",
       "staged_path": "research/post-workflow/tools/test_qualified_gpu_training.py",
-      "sha256": "4891187fca4fe38d8cc9ea5823c9bfa39608df02a6140bbb65e1643f5362e5f0",
-      "source_sha256": "4176cde122784195db20315fc1295d47769cdd10c78690abcee9b536e819dd2b",
+      "sha256": "d74fe022263dac69f9ef7c7d212616eddef617c61fe93f219dbd833d9fa71809",
+      "source_revision": "74049e74f4e3736c7d1de154761521dd0c243046",
+      "source_sha256": "2d27f3bc935c32ac918c21a3b0ead4dc7c1d2b2439159faf5e1ffb9c9ae5e7a6",
       "provenance": "public_source_adaptation",
       "adaptations": [
         "plain_language"
