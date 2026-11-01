@@ -48,7 +48,7 @@
     {
       "path": "README.md",
       "staged_path": "research/post-workflow/README.md",
-      "sha256": "9fb7a579a7b444933f714df025ff8b6f0cc0874365c77096c37392221c80cdff",
+      "sha256": "631ac320788dac336aabe06aebf22d4798d990fa1e743edf18e51ef21e5dea71",
       "public_base_sha256": "acdec6cd5d9f13ffd598128b7404f15d648f340d4813e597e5cfa41f537f6c3c",
       "provenance": "public_snapshot_documentation",
       "adaptations": [
@@ -58,7 +58,8 @@
         "public_staged_paths",
         "plain_language",
         "draft_promotion_and_results_router",
-        "per_entry_source_revision_overrides"
+        "per_entry_source_revision_overrides",
+        "share_optimization_router"
       ]
     },
     {
@@ -1017,6 +1018,32 @@
       "source_revision": "4a5471a3d1ea1a8bf298f76b04abbf4e378fa4c6",
       "source_sha256": "779b888311e8e6a2115d16ea0b50fab1cb7be67c9b573acbd3e71a5e4f8ea5de",
       "provenance": "verbatim_source"
+    },
+    {
+      "path": "SHARE_OPTIMIZATION.md",
+      "staged_path": "research/post-workflow/SHARE_OPTIMIZATION.md",
+      "sha256": "7c81fcf8b56f2f59eb1970987074be291c72d4bd61c2f20ab11f8c2f92656b10",
+      "source_revision": "9d9e0b07a3373834e67ff2b299f7ca6d58b796ef",
+      "source_sha256": "8c222a0c40cfe947157deb5085d204858ed5c9f3a0a99c6e8fc4dec42a9d3fb0",
+      "provenance": "public_source_adaptation",
+      "adaptations": [
+        "author_owned_publication",
+        "standalone_documentation_links",
+        "plain_language"
+      ]
+    },
+    {
+      "path": "TYPEFULLY_WORKFLOW.md",
+      "staged_path": "research/post-workflow/TYPEFULLY_WORKFLOW.md",
+      "sha256": "4a57c7908839377e0938f02831fa682c5b1045c4db7c14c061a532628a2d51a3",
+      "source_revision": "9d9e0b07a3373834e67ff2b299f7ca6d58b796ef",
+      "source_sha256": "6290efd8a47479a079a8ded5a9ec10b23e368eb0d4c924bf5e3b560d1a8b738f",
+      "provenance": "public_source_adaptation",
+      "adaptations": [
+        "author_owned_publication",
+        "standalone_documentation_links",
+        "plain_language"
+      ]
     }
   ]
 }

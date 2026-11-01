@@ -75,6 +75,16 @@ The package gate also retains its reader, source-comment, scientific-image,
 rendered-preview, and unscheduled-draft dependencies. None of these offline
 tools saves, schedules, publishes, or changes an external account.
 
+## Share-focused drafts
+
+[The share-optimization check](SHARE_OPTIMIZATION.md) and
+[the X and LinkedIn draft workflow](TYPEFULLY_WORKFLOW.md) require a useful
+reader decision, an early payoff with its material tradeoff, verified relevant
+attribution and a topic-specific follow-up. These are general preparation rules.
+Keep account analytics, private copy, identity research and native receipts out
+of the public snapshot. Draft work does not authorize publication, scheduling,
+sending replies or changing live promotion.
+
 ## Draft promotion and results
 
 [Draft-specific Auto-Plugs and publication results](AUTOPLUG_AND_RESULTS.md)
@@ -118,7 +128,8 @@ remain bound to the public base revision.
 Draft promotion and results additions declare `source_revision` on each changed
 entry. That value overrides the manifest's base source revision. Their exact
 private source bytes are bound by `source_sha256`. The offline analytics helper and
-tests bind their follow-up source revision in the same way. Public adaptations
+tests bind their follow-up source revision in the same way. The share-optimization
+guides also bind their source revision per entry. Public adaptations
 use synthetic fixtures and standalone guidance.
 
 Verify every staged byte from this directory:
