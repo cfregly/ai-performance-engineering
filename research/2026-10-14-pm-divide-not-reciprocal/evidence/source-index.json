@@ -46,7 +46,7 @@
       "url": "https://docs.pytorch.org/docs/stable/generated/torch.allclose.html",
       "title": "PyTorch allclose",
       "fetched": "2026-10-31",
-      "scope": "Current interface reference, separate from the source experiment\u2019s PyTorch2.13.0 runtime and recorded tolerances.",
+      "scope": "Current interface reference, separate from the source experiment\u2019s PyTorch 2.13.0 runtime and recorded tolerances.",
       "type": "official_documentation"
     },
     {

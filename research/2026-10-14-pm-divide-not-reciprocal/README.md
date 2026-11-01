@@ -1,10 +1,10 @@
 # Division by six: choose the numerical contract
 
-Choose whether your reference must match bit for bit or stay within a justified error budget before replacing division with a stored reciprocal. Matching bits can require precise arithmetic. A tolerance can accept different outputs, so the application owner still needs to justify that error.
+My advice: before replacing division with a stored reciprocal, decide whether the optimized kernel must match the reference bit for bit, stay within a justified error bound, or meet a downstream quality target. Matching bits can require precise arithmetic, which can cost throughput. A tolerance accepts different outputs, so the application owner must justify that error.
 
-![Historical float32 census: 1,403,693,404 of 4,211,081,216 finite inputs with magnitude at least 2^-123 differ by one representable step.](images/c-square.png)
+![Source-reported float32 census, October 24, 2026: 1,403,693,404 of 4,211,081,216 finite inputs with magnitude at least 2^-123 differ by one representable step.](images/c-square.png)
 
-The earlier B200 source records show a useful distinction: **33.3% of this input-bit census differs by one step**, while the recorded reciprocal-multiply tolerance comparison passes. A uniform bit census is not a model's value distribution, and these counts do not establish a speedup or task quality.
+The B200 source records dated October 24, 2026 show a useful distinction: **33.3% of this input-bit census differs by one step**, while the recorded reciprocal-multiply tolerance comparison passed. A uniform bit census is not a model's value distribution, and these counts do not establish a speedup or task quality.
 
 Start with the [lab's methods and setup](code/README.md). The maintained lab separates CUDA and Triton numerical comparisons, a hardsigmoid example, and optional component timing. Its maintained bytes did not produce the historical counts, and no fresh GPU result is claimed here.
 

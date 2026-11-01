@@ -13,7 +13,7 @@ This is a uniform census of input bit patterns. It does not estimate the frequen
 
 Both records identify NVIDIA B200, driver 580.173.02, CUDA and nvcc 13.0, PyTorch 2.13.0+cu130 and Triton 3.7.1. The displayed CUDA row uses the default build and expression `x * (1.0f / 6.0f)` against inline `div.rn.f32`.
 
-The [machine-readable census](numerical-census.json) retains each original JSON and Markdown SHA-256, run identity, measurement attribution and exact field selection. The original reports do not embed an executed-source digest. Archived source identity is not an execution-time source attestation. The maintained successor did not produce these historical counts.
+The [machine-readable census](numerical-census.json) retains each original JSON and Markdown SHA-256, run identity, measurement attribution and selected values under renamed keys. The original reports do not embed an executed-source digest. Archived source identity is not an execution-time source attestation. The maintained successor did not produce these historical counts.
 
 ## Derived chart values
 
@@ -24,7 +24,7 @@ These values are computed from the retained counts, rather than newly measured:
 - Same: `4,211,081,216 - 1,403,693,404 = 2,807,387,812`.
 - Rounded to one decimal place: **33.3% different**, **66.7% same**. The exact different share is slightly below one third.
 
-## Why a tolerance check can still pass
+## A separate tolerance observation
 
 The separate recorded Triton reciprocal-multiply comparison reported zero finite-input failures of `torch.isclose` at the recorded `torch.allclose` defaults, `rtol=1e-5` and `atol=1e-8`. Its reference was `torch.div(x, six)` with a float32 tensor divisor. That finite-input coverage includes the displayed cohort. This is a distinct source observation from the CUDA bit census, not a new compiler-lowering or GPU result.
 

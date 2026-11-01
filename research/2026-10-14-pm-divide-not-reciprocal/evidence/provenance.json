@@ -13,8 +13,8 @@
   "source_files": [
     {
       "path": "code/README.md",
-      "maintained_sha256": "5e4ec3f75a35ea32125014ea15cade0f00410be8e40ffa237be5c9130ef1e6be",
-      "git_blob_sha1": "18b0323347051a0e3e3218a5cfbf25394a23415c",
+      "maintained_sha256": "53f9e8d2e4b266c6a616c19058adeb5a96f25cc6bb116903a051bb89907dfe93",
+      "git_blob_sha1": "2fc039ff281954b4af22048a77a106225f3b4fc4",
       "original_sha256": "73218305c321dfd6cb4e880512cde883b042682d9407aafea8d2c049614fd8d9",
       "relationship": "SEMANTIC_SUCCESSOR"
     },
@@ -168,7 +168,7 @@
     },
     {
       "path": "evidence/numerical-census.md",
-      "sha256": "b28701006a0168794edcf20356910f744b807827377ab6e33699eb0ec7578f17"
+      "sha256": "7f469da8bb26e7146e703b749657690f2c96e03e72defedc3fd7cd6c1cca06bf"
     },
     {
       "path": "evidence/antje-b200-summary.md",
@@ -177,6 +177,14 @@
     {
       "path": "evidence/antje-b200-run2-summary.md",
       "sha256": "02513108cf39db956bb736db531620f0c6ea1e6fdacea9c34d9d8ce29f68cb0a"
+    },
+    {
+      "path": "README.md",
+      "sha256": "77723ec6675f40c27bc0bedb00b3e5e7081d2c933f9d927afc8be86170168849"
+    },
+    {
+      "path": "evidence/source-index.json",
+      "sha256": "60b7291c27e4d8b72a6554c2279ed8972cf7f0d170064381880db4b50360bc07"
     }
   ],
   "curation_scope": "Numerical count cohort and finite-input tolerance observation only. Ratios and percentages are labeled computed derivations. Original timing, profiler, instruction-count and unrelated experiment data are not reproduced.",
@@ -214,14 +222,15 @@
     "font_licence_scope": "Font OFL records are separate and do not establish a licence for these code packages.",
     "target_repository_license": {
       "repository": "cfregly/ai-performance-engineering",
-      "commit": "275419650b448e2aedc461531dc28d2e86a995c7",
+      "commit": "0e80e0576c7785da6f7caebef43bbc2473b05c3a",
       "path": "LICENSE",
-      "title": "Apache License Version2.0,January2004",
+      "title": "Apache License Version 2.0, January 2004",
       "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4"
     },
     "target_licence_is_not_a_donor_permission_attestation": true,
     "new_source_licence_added": false,
     "rights_determination": "Not performed. This is a factual record of retained documentation, not a new approval gate or inferred grant."
   },
-  "public_reference_index": "source-index.json"
+  "public_reference_index": "source-index.json",
+  "relative_path_base": "package root"
 }
