@@ -1,4 +1,4 @@
-Include gathering in the timed path
+Include gathering in timing
 64 changing allowed IDs · warm 16-step blocks
 12.84× ratio of retained medians
 Full scoring + filter
@@ -14,7 +14,5 @@ Static setup: 64 IDs 3.252 ms (unexplained outlier)
 Static 16/256 IDs: 0.035/0.022 ms · setup excluded
 FP32 · B8 · H2048 · V131072 · TF32 off
 3 pairs, one process · paired ratios: 12.81–13.05×
-Include gathering in the timed
-path
 
 Retained methods: synthetic strict FP32 output head. Batch 8, hidden 2048, vocabulary 131072. One shared device-resident allowed set. TF32 off. Median warm blocks contain 16 steps. Three paired blocks per cell in one process. Whiskers are observed min–max, not confidence intervals. Changing sets include each gather. Static sets reuse gathered weights after one-time setup. Static setup for 16/64/256 IDs: 0.034720 / 3.252477 / 0.022130 ms. The 64-ID setup is an unexplained outlier. Cold-start benefit and break-even were not measured. Whole-model and serving gains were not measured. Different per-request sets and BF16 are untested. Ratios use retained unrounded medians.

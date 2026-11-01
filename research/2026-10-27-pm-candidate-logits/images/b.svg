@@ -8,85 +8,85 @@
 <rect data-role="legend-swatch" data-series="candidate" x="841.0" y="190.24" width="28" height="28" fill="#E87823"/>
 <text x="887.0" y="220.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#E87823" text-anchor="start">Allowed rows first</text>
 <text x="70" y="292.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#202326" text-anchor="start">Static IDs</text>
-<line x1="205.0" y1="315" x2="205.0" y2="625" stroke="#D3D6D9" stroke-width="1"/>
-<text x="205.0" y="645.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#202326" text-anchor="middle">0</text>
-<line x1="405.0" y1="315" x2="405.0" y2="625" stroke="#D3D6D9" stroke-width="1"/>
-<text x="405.0" y="645.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#202326" text-anchor="middle">3</text>
-<line x1="605.0" y1="315" x2="605.0" y2="625" stroke="#D3D6D9" stroke-width="1"/>
-<text x="605.0" y="645.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#202326" text-anchor="middle">6</text>
-<text x="70" y="369.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#202326" text-anchor="start">16</text>
-<rect data-science="bar" data-series="baseline" data-mode="static" data-size="16" x="205" y="335" width="365.9311216324568" height="14" fill="#3478BA"/>
-<line x1="570.6832035630941" y1="342.0" x2="571.1958655963342" y2="342.0" stroke="#202326" stroke-width="2"/>
-<line x1="570.6832035630941" y1="335.0" x2="570.6832035630941" y2="349.0" stroke="#202326" stroke-width="2"/>
-<line x1="571.1958655963342" y1="335.0" x2="571.1958655963342" y2="349.0" stroke="#202326" stroke-width="2"/>
-<text x="582.9311216324568" y="349.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#3478BA" text-anchor="start">5.489</text>
-<rect data-science="bar" data-series="candidate" data-mode="static" data-size="16" x="205" y="373" width="22.2744109729926" height="14" fill="#E87823"/>
-<line x1="227.14366880555949" y1="380.0" x2="227.88507918516794" y2="380.0" stroke="#202326" stroke-width="2"/>
-<line x1="227.14366880555949" y1="373.0" x2="227.14366880555949" y2="387.0" stroke="#202326" stroke-width="2"/>
-<line x1="227.88507918516794" y1="373.0" x2="227.88507918516794" y2="387.0" stroke="#202326" stroke-width="2"/>
-<text x="239.27441097299257" y="387.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#E87823" text-anchor="start">0.334</text>
-<text x="70" y="473.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#202326" text-anchor="start">64</text>
-<rect data-science="bar" data-series="baseline" data-mode="static" data-size="64" x="205" y="439" width="360.5839485923449" height="14" fill="#3478BA"/>
-<line x1="565.0206070890029" y1="446.0" x2="565.6038788954418" y2="446.0" stroke="#202326" stroke-width="2"/>
-<line x1="565.0206070890029" y1="439.0" x2="565.0206070890029" y2="453.0" stroke="#202326" stroke-width="2"/>
-<line x1="565.6038788954418" y1="439.0" x2="565.6038788954418" y2="453.0" stroke="#202326" stroke-width="2"/>
-<text x="577.583948592345" y="453.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#3478BA" text-anchor="start">5.409</text>
-<rect data-science="bar" data-series="candidate" data-mode="static" data-size="64" x="205" y="477" width="23.2883263379335" height="14" fill="#E87823"/>
-<line x1="228.21233041584492" y1="484.0" x2="229.86039884388447" y2="484.0" stroke="#202326" stroke-width="2"/>
-<line x1="228.21233041584492" y1="477.0" x2="228.21233041584492" y2="491.0" stroke="#202326" stroke-width="2"/>
-<line x1="229.86039884388447" y1="477.0" x2="229.86039884388447" y2="491.0" stroke="#202326" stroke-width="2"/>
-<text x="240.28832633793354" y="491.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#E87823" text-anchor="start">0.349</text>
-<text x="70" y="577.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#202326" text-anchor="start">256</text>
-<rect data-science="bar" data-series="baseline" data-mode="static" data-size="256" x="205" y="543" width="364.3985372036695" height="14" fill="#3478BA"/>
-<line x1="569.26253306369" y1="550.0" x2="569.4678741693497" y2="550.0" stroke="#202326" stroke-width="2"/>
-<line x1="569.26253306369" y1="543.0" x2="569.26253306369" y2="557.0" stroke="#202326" stroke-width="2"/>
-<line x1="569.4678741693497" y1="543.0" x2="569.4678741693497" y2="557.0" stroke="#202326" stroke-width="2"/>
-<text x="581.3985372036695" y="557.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#3478BA" text-anchor="start">5.466</text>
-<rect data-science="bar" data-series="candidate" data-mode="static" data-size="256" x="205" y="581" width="23.3049970120192" height="14" fill="#E87823"/>
-<line x1="228.16907048225403" y1="588.0" x2="228.5916736225287" y2="588.0" stroke="#202326" stroke-width="2"/>
-<line x1="228.16907048225403" y1="581.0" x2="228.16907048225403" y2="595.0" stroke="#202326" stroke-width="2"/>
-<line x1="228.5916736225287" y1="581.0" x2="228.5916736225287" y2="595.0" stroke="#202326" stroke-width="2"/>
-<text x="240.30499701201916" y="595.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#E87823" text-anchor="start">0.350</text>
+<line x1="205.0" y1="305" x2="205.0" y2="604" stroke="#D3D6D9" stroke-width="1"/>
+<text x="205.0" y="652.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#202326" text-anchor="middle">0</text>
+<line x1="405.0" y1="305" x2="405.0" y2="604" stroke="#D3D6D9" stroke-width="1"/>
+<text x="405.0" y="652.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#202326" text-anchor="middle">3</text>
+<line x1="605.0" y1="305" x2="605.0" y2="604" stroke="#D3D6D9" stroke-width="1"/>
+<text x="605.0" y="652.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#202326" text-anchor="middle">6</text>
+<text x="70" y="364.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#202326" text-anchor="start">16</text>
+<rect data-science="bar" data-series="baseline" data-mode="static" data-size="16" x="205" y="330" width="365.9311216324568" height="14" fill="#3478BA"/>
+<line x1="570.6832035630941" y1="337.0" x2="571.1958655963342" y2="337.0" stroke="#202326" stroke-width="2"/>
+<line x1="570.6832035630941" y1="330.0" x2="570.6832035630941" y2="344.0" stroke="#202326" stroke-width="2"/>
+<line x1="571.1958655963342" y1="330.0" x2="571.1958655963342" y2="344.0" stroke="#202326" stroke-width="2"/>
+<text x="637" y="355.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#3478BA" text-anchor="start">5.489</text>
+<rect data-science="bar" data-series="candidate" data-mode="static" data-size="16" x="205" y="378" width="22.2744109729926" height="14" fill="#E87823"/>
+<line x1="227.14366880555949" y1="385.0" x2="227.88507918516794" y2="385.0" stroke="#202326" stroke-width="2"/>
+<line x1="227.14366880555949" y1="378.0" x2="227.14366880555949" y2="392.0" stroke="#202326" stroke-width="2"/>
+<line x1="227.88507918516794" y1="378.0" x2="227.88507918516794" y2="392.0" stroke="#202326" stroke-width="2"/>
+<text x="637" y="403.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#E87823" text-anchor="start">0.334</text>
+<text x="70" y="460.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#202326" text-anchor="start">64</text>
+<rect data-science="bar" data-series="baseline" data-mode="static" data-size="64" x="205" y="426" width="360.5839485923449" height="14" fill="#3478BA"/>
+<line x1="565.0206070890029" y1="433.0" x2="565.6038788954418" y2="433.0" stroke="#202326" stroke-width="2"/>
+<line x1="565.0206070890029" y1="426.0" x2="565.0206070890029" y2="440.0" stroke="#202326" stroke-width="2"/>
+<line x1="565.6038788954418" y1="426.0" x2="565.6038788954418" y2="440.0" stroke="#202326" stroke-width="2"/>
+<text x="637" y="451.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#3478BA" text-anchor="start">5.409</text>
+<rect data-science="bar" data-series="candidate" data-mode="static" data-size="64" x="205" y="474" width="23.2883263379335" height="14" fill="#E87823"/>
+<line x1="228.21233041584492" y1="481.0" x2="229.86039884388447" y2="481.0" stroke="#202326" stroke-width="2"/>
+<line x1="228.21233041584492" y1="474.0" x2="228.21233041584492" y2="488.0" stroke="#202326" stroke-width="2"/>
+<line x1="229.86039884388447" y1="474.0" x2="229.86039884388447" y2="488.0" stroke="#202326" stroke-width="2"/>
+<text x="637" y="499.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#E87823" text-anchor="start">0.349</text>
+<text x="70" y="556.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#202326" text-anchor="start">256</text>
+<rect data-science="bar" data-series="baseline" data-mode="static" data-size="256" x="205" y="522" width="364.3985372036695" height="14" fill="#3478BA"/>
+<line x1="569.26253306369" y1="529.0" x2="569.4678741693497" y2="529.0" stroke="#202326" stroke-width="2"/>
+<line x1="569.26253306369" y1="522.0" x2="569.26253306369" y2="536.0" stroke="#202326" stroke-width="2"/>
+<line x1="569.4678741693497" y1="522.0" x2="569.4678741693497" y2="536.0" stroke="#202326" stroke-width="2"/>
+<text x="637" y="547.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#3478BA" text-anchor="start">5.466</text>
+<rect data-science="bar" data-series="candidate" data-mode="static" data-size="256" x="205" y="570" width="23.3049970120192" height="14" fill="#E87823"/>
+<line x1="228.16907048225403" y1="577.0" x2="228.5916736225287" y2="577.0" stroke="#202326" stroke-width="2"/>
+<line x1="228.16907048225403" y1="570.0" x2="228.16907048225403" y2="584.0" stroke="#202326" stroke-width="2"/>
+<line x1="228.5916736225287" y1="570.0" x2="228.5916736225287" y2="584.0" stroke="#202326" stroke-width="2"/>
+<text x="637" y="595.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#E87823" text-anchor="start">0.350</text>
 <text x="860" y="292.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#202326" text-anchor="start">Changing IDs</text>
-<line x1="995.0" y1="315" x2="995.0" y2="625" stroke="#D3D6D9" stroke-width="1"/>
-<text x="995.0" y="645.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#202326" text-anchor="middle">0</text>
-<line x1="1195.0" y1="315" x2="1195.0" y2="625" stroke="#D3D6D9" stroke-width="1"/>
-<text x="1195.0" y="645.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#202326" text-anchor="middle">3</text>
-<line x1="1395.0" y1="315" x2="1395.0" y2="625" stroke="#D3D6D9" stroke-width="1"/>
-<text x="1395.0" y="645.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#202326" text-anchor="middle">6</text>
-<text x="860" y="369.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#202326" text-anchor="start">16</text>
-<rect data-science="bar" data-series="baseline" data-mode="changing" data-size="16" x="995" y="335" width="366.2665219356616" height="14" fill="#3478BA"/>
-<line x1="1359.8784787704546" y1="342.0" x2="1361.56119239827" y2="342.0" stroke="#202326" stroke-width="2"/>
-<line x1="1359.8784787704546" y1="335.0" x2="1359.8784787704546" y2="349.0" stroke="#202326" stroke-width="2"/>
-<line x1="1361.56119239827" y1="335.0" x2="1361.56119239827" y2="349.0" stroke="#202326" stroke-width="2"/>
-<text x="1373.2665219356616" y="349.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#3478BA" text-anchor="start">5.494</text>
-<rect data-science="bar" data-series="candidate" data-mode="changing" data-size="16" x="995" y="373" width="37.3281383266052" height="14" fill="#E87823"/>
-<line x1="1026.7515339702368" y1="380.0" x2="1032.546797345082" y2="380.0" stroke="#202326" stroke-width="2"/>
-<line x1="1026.7515339702368" y1="373.0" x2="1026.7515339702368" y2="387.0" stroke="#202326" stroke-width="2"/>
-<line x1="1032.546797345082" y1="373.0" x2="1032.546797345082" y2="387.0" stroke="#202326" stroke-width="2"/>
-<text x="1044.328138326605" y="387.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#E87823" text-anchor="start">0.560</text>
-<text x="860" y="473.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#202326" text-anchor="start">64</text>
-<rect data-science="bar" data-series="baseline" data-mode="changing" data-size="64" x="995" y="439" width="359.9499197055896" height="14" fill="#3478BA"/>
-<line x1="1354.5286048948765" y1="446.0" x2="1355.565260052681" y2="446.0" stroke="#202326" stroke-width="2"/>
-<line x1="1354.5286048948765" y1="439.0" x2="1354.5286048948765" y2="453.0" stroke="#202326" stroke-width="2"/>
-<line x1="1355.565260052681" y1="439.0" x2="1355.565260052681" y2="453.0" stroke="#202326" stroke-width="2"/>
-<text x="1366.9499197055895" y="453.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#3478BA" text-anchor="start">5.399</text>
-<rect data-science="bar" data-series="candidate" data-mode="changing" data-size="64" x="995" y="477" width="28.0383198211590" height="14" fill="#E87823"/>
-<line x1="1022.6395274947087" y1="484.0" x2="1023.072933976849" y2="484.0" stroke="#202326" stroke-width="2"/>
-<line x1="1022.6395274947087" y1="477.0" x2="1022.6395274947087" y2="491.0" stroke="#202326" stroke-width="2"/>
-<line x1="1023.072933976849" y1="477.0" x2="1023.072933976849" y2="491.0" stroke="#202326" stroke-width="2"/>
-<text x="1035.038319821159" y="491.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#E87823" text-anchor="start">0.421</text>
-<text x="860" y="577.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#202326" text-anchor="start">256</text>
-<rect data-science="bar" data-series="baseline" data-mode="changing" data-size="256" x="995" y="543" width="364.7257884343465" height="14" fill="#3478BA"/>
-<line x1="1359.0984650701284" y1="550.0" x2="1360.0485382725794" y2="550.0" stroke="#202326" stroke-width="2"/>
-<line x1="1359.0984650701284" y1="543.0" x2="1359.0984650701284" y2="557.0" stroke="#202326" stroke-width="2"/>
-<line x1="1360.0485382725794" y1="543.0" x2="1360.0485382725794" y2="557.0" stroke="#202326" stroke-width="2"/>
-<text x="1371.7257884343464" y="557.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#3478BA" text-anchor="start">5.471</text>
-<rect data-science="bar" data-series="candidate" data-mode="changing" data-size="256" x="995" y="581" width="28.0729960650206" height="14" fill="#E87823"/>
-<line x1="1022.8642556319634" y1="588.0" x2="1023.2736650357643" y2="588.0" stroke="#202326" stroke-width="2"/>
-<line x1="1022.8642556319634" y1="581.0" x2="1022.8642556319634" y2="595.0" stroke="#202326" stroke-width="2"/>
-<line x1="1023.2736650357643" y1="581.0" x2="1023.2736650357643" y2="595.0" stroke="#202326" stroke-width="2"/>
-<text x="1035.0729960650206" y="595.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#E87823" text-anchor="start">0.421</text>
+<line x1="995.0" y1="305" x2="995.0" y2="604" stroke="#D3D6D9" stroke-width="1"/>
+<text x="995.0" y="652.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#202326" text-anchor="middle">0</text>
+<line x1="1195.0" y1="305" x2="1195.0" y2="604" stroke="#D3D6D9" stroke-width="1"/>
+<text x="1195.0" y="652.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#202326" text-anchor="middle">3</text>
+<line x1="1395.0" y1="305" x2="1395.0" y2="604" stroke="#D3D6D9" stroke-width="1"/>
+<text x="1395.0" y="652.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#202326" text-anchor="middle">6</text>
+<text x="860" y="364.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#202326" text-anchor="start">16</text>
+<rect data-science="bar" data-series="baseline" data-mode="changing" data-size="16" x="995" y="330" width="366.2665219356616" height="14" fill="#3478BA"/>
+<line x1="1359.8784787704546" y1="337.0" x2="1361.56119239827" y2="337.0" stroke="#202326" stroke-width="2"/>
+<line x1="1359.8784787704546" y1="330.0" x2="1359.8784787704546" y2="344.0" stroke="#202326" stroke-width="2"/>
+<line x1="1361.56119239827" y1="330.0" x2="1361.56119239827" y2="344.0" stroke="#202326" stroke-width="2"/>
+<text x="1427" y="355.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#3478BA" text-anchor="start">5.494</text>
+<rect data-science="bar" data-series="candidate" data-mode="changing" data-size="16" x="995" y="378" width="37.3281383266052" height="14" fill="#E87823"/>
+<line x1="1026.7515339702368" y1="385.0" x2="1032.546797345082" y2="385.0" stroke="#202326" stroke-width="2"/>
+<line x1="1026.7515339702368" y1="378.0" x2="1026.7515339702368" y2="392.0" stroke="#202326" stroke-width="2"/>
+<line x1="1032.546797345082" y1="378.0" x2="1032.546797345082" y2="392.0" stroke="#202326" stroke-width="2"/>
+<text x="1427" y="403.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#E87823" text-anchor="start">0.560</text>
+<text x="860" y="460.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#202326" text-anchor="start">64</text>
+<rect data-science="bar" data-series="baseline" data-mode="changing" data-size="64" x="995" y="426" width="359.9499197055896" height="14" fill="#3478BA"/>
+<line x1="1354.5286048948765" y1="433.0" x2="1355.565260052681" y2="433.0" stroke="#202326" stroke-width="2"/>
+<line x1="1354.5286048948765" y1="426.0" x2="1354.5286048948765" y2="440.0" stroke="#202326" stroke-width="2"/>
+<line x1="1355.565260052681" y1="426.0" x2="1355.565260052681" y2="440.0" stroke="#202326" stroke-width="2"/>
+<text x="1427" y="451.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#3478BA" text-anchor="start">5.399</text>
+<rect data-science="bar" data-series="candidate" data-mode="changing" data-size="64" x="995" y="474" width="28.0383198211590" height="14" fill="#E87823"/>
+<line x1="1022.6395274947087" y1="481.0" x2="1023.072933976849" y2="481.0" stroke="#202326" stroke-width="2"/>
+<line x1="1022.6395274947087" y1="474.0" x2="1022.6395274947087" y2="488.0" stroke="#202326" stroke-width="2"/>
+<line x1="1023.072933976849" y1="474.0" x2="1023.072933976849" y2="488.0" stroke="#202326" stroke-width="2"/>
+<text x="1427" y="499.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#E87823" text-anchor="start">0.421</text>
+<text x="860" y="556.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#202326" text-anchor="start">256</text>
+<rect data-science="bar" data-series="baseline" data-mode="changing" data-size="256" x="995" y="522" width="364.7257884343465" height="14" fill="#3478BA"/>
+<line x1="1359.0984650701284" y1="529.0" x2="1360.0485382725794" y2="529.0" stroke="#202326" stroke-width="2"/>
+<line x1="1359.0984650701284" y1="522.0" x2="1359.0984650701284" y2="536.0" stroke="#202326" stroke-width="2"/>
+<line x1="1360.0485382725794" y1="522.0" x2="1360.0485382725794" y2="536.0" stroke="#202326" stroke-width="2"/>
+<text x="1427" y="547.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#3478BA" text-anchor="start">5.471</text>
+<rect data-science="bar" data-series="candidate" data-mode="changing" data-size="256" x="995" y="570" width="28.0729960650206" height="14" fill="#E87823"/>
+<line x1="1022.8642556319634" y1="577.0" x2="1023.2736650357643" y2="577.0" stroke="#202326" stroke-width="2"/>
+<line x1="1022.8642556319634" y1="570.0" x2="1022.8642556319634" y2="584.0" stroke="#202326" stroke-width="2"/>
+<line x1="1023.2736650357643" y1="570.0" x2="1023.2736650357643" y2="584.0" stroke="#202326" stroke-width="2"/>
+<text x="1427" y="595.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#E87823" text-anchor="start">0.421</text>
 <text x="800" y="700.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#202326" text-anchor="middle">Milliseconds per warm 16-step block</text>
 <text x="64" y="759.6" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#202326" text-anchor="start">Median bars · min–max whiskers · 3 pairs in one process</text>
 <text x="64" y="814.8000000000001" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#202326" text-anchor="start">Batch 8 · hidden 2048 · vocabulary 131072 · TF32 off</text>

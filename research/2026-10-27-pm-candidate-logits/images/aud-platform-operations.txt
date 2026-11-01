@@ -1,5 +1,5 @@
-Does the batch share one allowed set?
-One device-resident shared set was tested
+Does the batch share one set?
+Only one shared allowed set was tested
 Batch 8 → one allowed set
 Gather rows → score
 Different IDs per request?
@@ -9,8 +9,6 @@ Set 3
 Set 4
 Per-request sets need a different implementation
 Measure preparation and full request time
-Does the batch share one allowed
-set?
 Gather rows
 then score
 

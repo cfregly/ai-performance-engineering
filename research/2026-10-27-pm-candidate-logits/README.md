@@ -182,14 +182,14 @@ The explanatory figures were produced with Python 3.12.14 and Pillow 12.3.0. The
 
 </details>
 
-### Include gathering in the timed path
+### Include gathering in timing
 
-![Include gathering in the timed path](images/aud-performance-engineer.png)
+![Include gathering in timing](images/aud-performance-engineer.png)
 
 <details>
 <summary>Square version</summary>
 
-![Include gathering in the timed path: square](images/aud-performance-engineer-square.png)
+![Include gathering in timing: square](images/aud-performance-engineer-square.png)
 
 </details>
 
@@ -204,14 +204,14 @@ The explanatory figures were produced with Python 3.12.14 and Pillow 12.3.0. The
 
 </details>
 
-### Check when allowed tokens are known
+### Does the batch share one set?
 
-![Check when allowed tokens are known](images/aud-platform-operations.png)
+![Does the batch share one set?](images/aud-platform-operations.png)
 
 <details>
 <summary>Square version</summary>
 
-![Check when allowed tokens are known: square](images/aud-platform-operations-square.png)
+![Does the batch share one set?: square](images/aud-platform-operations-square.png)
 
 </details>
 
@@ -253,8 +253,10 @@ The earlier comparison and row-selection artwork support the retained
 result-scene renderer. They use the same synthetic FP32 output-head
 measurements and scope described above.
 
+The code gathers only the allowed vocabulary rows. Their token IDs do not have to be adjacent.
+
 ![Earlier output-head comparison](images/result-scene.png)
 
-![Row-selection artwork used by the earlier renderer](images/result-scene/matrix-cut-art.png)
+![Selecting allowed vocabulary rows](images/result-scene/matrix-cut-art.png)
 
 </details>

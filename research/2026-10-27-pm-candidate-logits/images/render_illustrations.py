@@ -172,6 +172,20 @@ def mechanism(square):
     return b
 
 
+def check_text_bar_clearance(texts, marks, minimum=20):
+    """Require a visible gutter between actual text bounds and emitted timing bars."""
+    gaps=[]
+    for (left,top,right,bottom), label in texts:
+        for mark in marks:
+            x,y,width,height=(float(mark.get(key)) for key in ('x','y','width','height'))
+            horizontal=max(left-(x+width), x-right)
+            vertical=max(top-(y+height), y-bottom)
+            clearance=max(horizontal,vertical)
+            require(clearance >= minimum, 'Text too close to timing bar: '+label)
+            gaps.append(clearance)
+    return {'minimum_required_px':minimum,'minimum_observed_px':min(gaps),'checked_pairs':len(gaps)}
+
+
 def comparison(square):
     b=Board('b','Six warm-block comparisons','Synthetic strict-FP32 output-head stage',square)
     legend_size = 36 if square else 48
@@ -185,18 +199,18 @@ def comparison(square):
         b.text(left + swatch + gap, baseline, label, legend_size, color)
         left += swatch + gap + font(legend_size).getlength(label) + between
     if square:
-        x0,width,top,pitch=320,440,332,78
+        x0,width,top,pitch=320,440,310,88
         for tick in (0,3,6):
             x=x0+width*tick/6;b.line(x,310,x,top+pitch*5+58,'#D3D6D9',1)
-            b.text(x,810,str(tick),36,anchor='middle')
+            b.text(x,854,str(tick),36,anchor='middle')
         for n,cell in enumerate(SUMMARY['cells']):
             y=top+n*pitch
             b.text(55,y+29,[str(cell['size']),cell['mode']],36,gap=1.0)
-            for series,offset in (('baseline',0),('candidate',32)):
+            for series,offset in (('baseline',0),('candidate',44)):
                 end=b.bar(cell,series,x0,y+offset,width,12)
                 value=cell['baseline_median_wall_ms' if series=='baseline' else 'candidate_median_wall_ms']
-                b.text(end+12,y+offset+12,f'{value:.3f}',36,b.blue if series=='baseline' else b.orange)
-        b.text(540,865,'Milliseconds per warm 16-step block',36,anchor='middle')
+                b.text(x0+width+32,y+offset+20,f'{value:.3f}',36,b.blue if series=='baseline' else b.orange)
+        b.text(540,900,'Milliseconds per warm 16-step block',36,anchor='middle')
         b.foot(['Median bars · min–max whiskers · 3 pairs in one process',
                 'Batch 8 · hidden 2048 · vocabulary 131072 · TF32 off',
                 'Changing includes gather. Static setup is separate.'])
@@ -205,15 +219,15 @@ def comparison(square):
             left=70+panel*790;x0=left+135;width=400
             b.text(left,292,mode.capitalize()+' IDs',48)
             for tick in (0,3,6):
-                x=x0+width*tick/6;b.line(x,315,x,625,'#D3D6D9',1)
-                b.text(x,645,str(tick),48,anchor='middle')
+                x=x0+width*tick/6;b.line(x,305,x,604,'#D3D6D9',1)
+                b.text(x,652,str(tick),48,anchor='middle')
             for n,cell in enumerate(c for c in SUMMARY['cells'] if c['mode']==mode):
-                y=335+n*104
+                y=330+n*96
                 b.text(left,y+34,str(cell['size']),48)
-                for series,offset in (('baseline',0),('candidate',38)):
+                for series,offset in (('baseline',0),('candidate',48)):
                     end=b.bar(cell,series,x0,y+offset,width,14)
                     value=cell['baseline_median_wall_ms' if series=='baseline' else 'candidate_median_wall_ms']
-                    b.text(end+12,y+offset+14,f'{value:.3f}',48,b.blue if series=='baseline' else b.orange)
+                    b.text(x0+width+32,y+offset+25,f'{value:.3f}',48,b.blue if series=='baseline' else b.orange)
         b.text(800,700,'Milliseconds per warm 16-step block',48,anchor='middle')
         b.foot(['Median bars · min–max whiskers · 3 pairs in one process',
                 'Batch 8 · hidden 2048 · vocabulary 131072 · TF32 off',
@@ -309,7 +323,7 @@ def detail(square,stem='creative-v2/matrix-cut'):
 
 
 def performance(square):
-    b=Board('aud-performance-engineer','Include gathering in the timed path','64 changing allowed IDs · warm 16-step blocks',square)
+    b=Board('aud-performance-engineer','Include gathering in timing','64 changing allowed IDs · warm 16-step blocks',square)
     c=next(c for c in SUMMARY['cells'] if c['size']==64 and c['mode']=='changing')
     ratios=[r['baseline_wall_ms']/r['candidate_wall_ms'] for r in PAIRS if r['size']==64 and r['mode']=='changing']
     b.text(b.w/2,310 if square else 250,f"{c['speedup']:.2f}× ratio of retained medians",36 if square else 48,b.orange,'middle')
@@ -338,19 +352,19 @@ def kernel(square):
     if square:
         for y,title,col,w,shape in ((345,'Full output projection',b.blue,700,'8 × 2048  @  2048 × 131072'),(650,'64 allowed outputs',b.orange,250,'8 × 2048  @  2048 × 64')):
             b.text(55,y,title,42,col);b.matrix(80,y+45,w,100,col);b.text(540,y+207,shape,38,anchor='middle')
-        b.foot(['FP32 weight storage: 1 GiB → 512 KiB','Derived storage, not measured traffic · not to scale'])
+        b.foot(['FP32 weights used: 1 GiB → 512 KiB','Full weight matrix stays resident','Derived sizes · traffic unmeasured'])
     else:
-        for y,title,col,w,shape in ((280,'Full output projection',b.blue,1000,'8 × 2048  @  2048 × 131072'),(555,'64 allowed outputs',b.orange,300,'8 × 2048  @  2048 × 64')):
+        for y,title,col,w,shape in ((280,'Full output projection',b.blue,1000,'8 × 2048  @  2048 × 131072'),(515,'64 allowed outputs',b.orange,300,'8 × 2048  @  2048 × 64')):
             b.text(70,y,title,48,col)
             b.matrix(80,y+35,w,80,col)
             b.text(80,y+180,shape,48)
-        b.foot(['FP32 weight storage: 1 GiB → 512 KiB','Derived storage, not measured traffic · not to scale'])
+        b.foot(['FP32 weights used: 1 GiB → 512 KiB','Full weight matrix stays resident','Derived sizes · traffic unmeasured'])
 
     return b
 
 
 def platform(square):
-    b=Board('aud-platform-operations','Does the batch share one allowed set?','One device-resident shared set was tested',square)
+    b=Board('aud-platform-operations','Does the batch share one set?','Only one shared allowed set was tested',square)
     if square:
         b.text(55,340,'Batch 8 → one allowed set',42,b.orange)
         for n in range(8):b.rect(80+n%4*95,390+n//4*70,65,45,b.orange)
@@ -433,6 +447,7 @@ def main():
                 require(all(t.get('font-family')=='Inter' and t.get('font-weight')=='400' for t in tree.iter() if t.tag.endswith('text')),'Nonregular Inter text')
                 bars=[t for t in tree.iter() if t.get('data-science')=='bar']
                 require(len(bars)==len(board.chart),'Scientific bar metadata missing')
+                clearance=check_text_bar_clearance(board.boxes,bars) if board.stem=='b' else None
                 for node,row in zip(bars,board.chart):
                     require(abs(float(node.get('width'))-row['scale_px_per_ms']*row['median_ms'])<1e-9,'Median bar geometry changed')
                     require(node.get('fill')==(board.blue if row['series']=='baseline' else board.orange),'Series color changed')
@@ -448,7 +463,7 @@ def main():
                 entries[str(path.relative_to(out))]={'sha256':sha(path),'bytes':path.stat().st_size}
                 for png in copies:entries[str(png.relative_to(out))]={'sha256':sha(png),'bytes':png.stat().st_size}
                 copy += board.copy
-                checks.append({'stem':stem,'square':square,'text_boxes_checked':len(board.boxes),'regular_Inter_only':True,'text_nonoverlap':True,'minimum_text_px_at_400':min(float(t.get('font-size'))*400/board.w for t in tree.iter() if t.tag.endswith('text'))})
+                checks.append({'stem':stem,'square':square,'text_boxes_checked':len(board.boxes),'regular_Inter_only':True,'text_nonoverlap':True,'text_bar_clearance':clearance,'minimum_text_px_at_400':min(float(t.get('font-size'))*400/board.w for t in tree.iter() if t.tag.endswith('text'))})
                 geometry_rows.append({'stem':stem,'square':square,'bars':board.chart})
             setup={c['size']:c['row_setup_wall_ms'] for c in SUMMARY['cells'] if c['mode']=='static'}
             side=out/(target_stem(stem)+'.txt')

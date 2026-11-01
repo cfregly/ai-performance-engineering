@@ -4,7 +4,8 @@ Full output projection
 8 × 2048  @  2048 × 131072
 64 allowed outputs
 8 × 2048  @  2048 × 64
-FP32 weight storage: 1 GiB → 512 KiB
-Derived storage, not measured traffic · not to scale
+FP32 weights used: 1 GiB → 512 KiB
+Full weight matrix stays resident
+Derived sizes · traffic unmeasured
 
 Retained methods: synthetic strict FP32 output head. Batch 8, hidden 2048, vocabulary 131072. One shared device-resident allowed set. TF32 off. Median warm blocks contain 16 steps. Three paired blocks per cell in one process. Whiskers are observed min–max, not confidence intervals. Changing sets include each gather. Static sets reuse gathered weights after one-time setup. Static setup for 16/64/256 IDs: 0.034720 / 3.252477 / 0.022130 ms. The 64-ID setup is an unexplained outlier. Cold-start benefit and break-even were not measured. Whole-model and serving gains were not measured. Different per-request sets and BF16 are untested. Ratios use retained unrounded medians.

@@ -3,8 +3,8 @@
   "scope": "Current explicit scientific projection. The original executed analyzer is retained separately. This ledger is not the historical run-source ledger.",
   "files": {
     "README.md": {
-      "sha256": "b85c602b8d2622da01bd23e5c8f0fcb5ee7b4810a70a0744470aa4110c383429",
-      "bytes": 13654
+      "sha256": "1e7e502e214743db4cbc39904dc4126c6a54e7fe8323fd6f2cf1cdc25d391953",
+      "bytes": 13691
     },
     "code/README.md": {
       "sha256": "4090c7da1343077374da5975ab765a64d55258b84722f98a64069d8cddd3aed6",
@@ -111,20 +111,20 @@
       "bytes": 1090
     },
     "images/b.png": {
-      "sha256": "27777313838956cfda9b00e93e35d03d2d1733b65461e1040c40432b0d39ae24",
-      "bytes": 217805
+      "sha256": "b25b104af671c47a36aa77eb42e22d77f72426144fb3d8d152e8d777cb8f66fd",
+      "bytes": 211737
     },
     "images/b.svg": {
-      "sha256": "6509c26b7b3434fa2e54250462389f9305b4cd5632eec6d5905a26057eee47a5",
-      "bytes": 12294
+      "sha256": "f401569fe807ca58f3cffd39a837c6106b514c05442f4f0d92ddac09836e9928",
+      "bytes": 12126
     },
     "images/b-square.png": {
-      "sha256": "f3705729e1f10d7d7ac049ee3040fc1c656a4bcad0d00e3d2a301af7f3cb4aa2",
-      "bytes": 183286
+      "sha256": "0183607503f707bf32c059750352e2dae876f3593fc3df6f5e7e37097115a113",
+      "bytes": 183369
     },
     "images/b-square.svg": {
-      "sha256": "2798e1893ae31984b130aa403add2afc0b01f973f61129e638af47a7f6d9577d",
-      "bytes": 12160
+      "sha256": "09008eed2217a67f3f20d0a9f42b9a57491a02f724b4fb9ee8f6c40a64392fab",
+      "bytes": 11991
     },
     "images/b.txt": {
       "sha256": "93713baecf5ff8c19aee6049c097d414525531196f10ae7a707af59adf9f50da",
@@ -191,64 +191,64 @@
       "bytes": 1072
     },
     "images/aud-performance-engineer.png": {
-      "sha256": "0ed8d8f3bcba55fb014c0dd435e6c34dae4cbb162e6aa34a6f80b4bd586a64c7",
-      "bytes": 198835
+      "sha256": "a1baf14fd15a73557f631f183c10c28fed6574622e531cddd2bac86f656a6ec2",
+      "bytes": 195249
     },
     "images/aud-performance-engineer.svg": {
-      "sha256": "2d04bbb8dd87edc0aba5c56f5ca43903dc3046bc60549c45e6bd7af4c662d9c7",
-      "bytes": 4355
+      "sha256": "d304785a8b83137154b2743e05cd884be6698c29a38307e69b7852cf474226bf",
+      "bytes": 4347
     },
     "images/aud-performance-engineer-square.png": {
-      "sha256": "a98e996fb493f21be22b54a4834e5e771ef60d313c1454086e23582dac1df482",
-      "bytes": 157066
+      "sha256": "4b352b7398c316fc9ddf7d66624364dc46096103714377b60a05bfa487d98986",
+      "bytes": 153300
     },
     "images/aud-performance-engineer-square.svg": {
-      "sha256": "bf40b5d99acfe2b93f7bc15eac0444c0b01f0196437511f3532399431c4bd1ff",
-      "bytes": 4584
+      "sha256": "b964a38be5419a7315ca6a0ee47bca62c38cea6d1bf2bfc5ffff2c9688ac5b3d",
+      "bytes": 4438
     },
     "images/aud-performance-engineer.txt": {
-      "sha256": "998b945ef5d34e66dec5c47d7455ce56aa17f5dd76cca353a8c7d8dfac93d4b3",
-      "bytes": 1137
+      "sha256": "08f1781fdac84e61645cf81e738c45f0564a104832dadbcbaf7b3d791c522005",
+      "bytes": 1093
     },
     "images/aud-kernel-engineer.png": {
-      "sha256": "02f59bbdfcd98bbedf870c98b1c83470540d2e838d864e66fa44742ba81e6395",
-      "bytes": 131501
+      "sha256": "962196967368d59ff5d57999d8097b9d3781c28d1e6bfc4406515bddfac1d4a9",
+      "bytes": 137886
     },
     "images/aud-kernel-engineer.svg": {
-      "sha256": "0853adeab158e0689169ba3109dcad01d6a99e566e42fc531ce369a20ac81b97",
-      "bytes": 3089
+      "sha256": "3ce5b9840e34602819e33dcec5b458e84ae6163a803e06dab6197f0db5720f09",
+      "bytes": 3253
     },
     "images/aud-kernel-engineer-square.png": {
-      "sha256": "a9881409106aa0302c7a19a9c775cacdc30c78d9ebe9a896f3be13217b14082c",
-      "bytes": 106653
+      "sha256": "7a878b7340f8de29901cdf253ab9687f6f1b3456c80da1e6ec872525a12c7b41",
+      "bytes": 111981
     },
     "images/aud-kernel-engineer-square.svg": {
-      "sha256": "f92014f5c27de04c8d1fac8640daee83ca8ff2d01e3e0b697c4dc21e8f8ac968",
-      "bytes": 3095
+      "sha256": "5206d111fe6b18bcd9018063ab2f32c96f061f0dd9c15071bc3cded409e5255a",
+      "bytes": 3247
     },
     "images/aud-kernel-engineer.txt": {
-      "sha256": "4a2da8ad735da6bf0cde4a9d4bef3a3b9414eabe5c179b8a73b84d2d8416a7aa",
-      "bytes": 935
+      "sha256": "3e317095641fb36ee0045740826ee79d1c44fbeaf05d58d45f9db55227301117",
+      "bytes": 949
     },
     "images/aud-platform-operations.png": {
-      "sha256": "90b138e2baab9fe2729874000ff1e1d01bef41062436d417860516f0cebd9a51",
-      "bytes": 137511
+      "sha256": "5fa96ef88d6f8cd7b85b285fcec26703160a74c6a8843bf9cbaa85e7098dd843",
+      "bytes": 131876
     },
     "images/aud-platform-operations.svg": {
-      "sha256": "a7e15cbe48110a1e4e9b746a1144cf60c88ccbc733728ec3ad0ad81d0e067d2a",
-      "bytes": 3460
+      "sha256": "2ae67e8562a50737a1f6aa1cb9f462bbb3d747ebb3c146ab865163a6b0cae8c7",
+      "bytes": 3449
     },
     "images/aud-platform-operations-square.png": {
-      "sha256": "6ba50fa8d96476723bfa630fa2418a625b76f6d87bb7c498c258184bfda3bcb6",
-      "bytes": 115523
+      "sha256": "feb8ad504182ec91fed4560210fe79aa142b6298082204980ab078362671549a",
+      "bytes": 108846
     },
     "images/aud-platform-operations-square.svg": {
-      "sha256": "a9e8c411e90cc6f840bff8bbdfab5efd249b0a898031f615f6ce012e2ef4c90a",
-      "bytes": 3742
+      "sha256": "2c31a0ad135d64b74f2e0d127ef78b4dacf2969f1f384a3cd600163c4e07b21e",
+      "bytes": 3593
     },
     "images/aud-platform-operations.txt": {
-      "sha256": "848e7001a95a7e1eba6672171b564872cc4312778e7ae383648822f6391ed713",
-      "bytes": 1012
+      "sha256": "2fa9361079fb5da22c13fab86607de73d25f79590162471b9125f2a9bf2c381f",
+      "bytes": 963
     },
     "images/aud-business-capacity.png": {
       "sha256": "c372e73215c48aa95c64c4ff0d326dddf7e0c3ae1b17038f590e85228bcbc60e",
@@ -335,8 +335,8 @@
       "bytes": 75
     },
     "images/render_illustrations.py": {
-      "sha256": "9759be8ccde16f69533b9f5ff6e138ead07e5ef694d0a70296f133f553aa07a6",
-      "bytes": 31649
+      "sha256": "6006ce68aedf6869979539bab9e62e8551f50fbb0f231f881b26d6af75c73aa5",
+      "bytes": 32491
     },
     "images/visual-tokens.json": {
       "sha256": "677886666cf02f359a6ae23ff762185985e34c655f9335dfc969e38265a87b33",

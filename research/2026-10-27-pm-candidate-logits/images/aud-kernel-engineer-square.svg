@@ -23,6 +23,7 @@
 <line x1="230.0" y1="695" x2="230.0" y2="795" stroke="#E87823" stroke-width="1.5"/>
 <line x1="280.0" y1="695" x2="280.0" y2="795" stroke="#E87823" stroke-width="1.5"/>
 <text x="540" y="857.0" font-family="Inter" font-size="38" font-weight="400" font-style="normal" fill="#202326" text-anchor="middle">8 × 2048  @  2048 × 64</text>
-<text x="48" y="1008.6" font-family="Inter" font-size="36" font-weight="400" font-style="normal" fill="#202326" text-anchor="start">FP32 weight storage: 1 GiB → 512 KiB</text>
-<text x="48" y="1050.0" font-family="Inter" font-size="36" font-weight="400" font-style="normal" fill="#202326" text-anchor="start">Derived storage, not measured traffic · not to scale</text>
+<text x="48" y="967.2" font-family="Inter" font-size="36" font-weight="400" font-style="normal" fill="#202326" text-anchor="start">FP32 weights used: 1 GiB → 512 KiB</text>
+<text x="48" y="1008.6" font-family="Inter" font-size="36" font-weight="400" font-style="normal" fill="#202326" text-anchor="start">Full weight matrix stays resident</text>
+<text x="48" y="1050.0" font-family="Inter" font-size="36" font-weight="400" font-style="normal" fill="#202326" text-anchor="start">Derived sizes · traffic unmeasured</text>
 </svg>
