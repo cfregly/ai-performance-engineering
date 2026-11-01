@@ -2,18 +2,18 @@
 <style>@font-face{font-family:Inter;src:url("attention-scenes/Inter.ttf") format("truetype");font-weight:100 900}</style>
 <rect width="1600" height="900" fill="#FBFBF8"/>
 <text x="80" y="112" font-family="Inter" font-size="76" font-weight="700" text-anchor="start" fill="#202326">Add bytes while lifetimes overlap</text>
-<text x="80" y="380" font-family="Inter" font-size="64" font-weight="600" text-anchor="start" fill="#202326">Buffer A</text>
-<text x="80" y="530" font-family="Inter" font-size="64" font-weight="600" text-anchor="start" fill="#202326">Buffer B</text>
-<rect x="370" y="310" width="754.8000000000001" height="100" fill="#3478BA" stroke="#3478BA" stroke-width="3" />
-<rect x="814.0" y="460" width="666.0" height="100" fill="#E87823" stroke="#E87823" stroke-width="3" />
-<line x1="814.0" y1="285" x2="814.0" y2="595" stroke="#202326" stroke-width="3" stroke-dasharray="10 10"/>
-<line x1="1124.8000000000002" y1="285" x2="1124.8000000000002" y2="595" stroke="#202326" stroke-width="3" stroke-dasharray="10 10"/>
-<g data-edge="time">
-<line x1="370" y1="635" x2="1480" y2="635" stroke="#202326" stroke-width="5"/>
-<line x1="1462.0" y1="646.0" x2="1480" y2="635" stroke="#202326" stroke-width="5"/>
-<line x1="1462.0" y1="624.0" x2="1480" y2="635" stroke="#202326" stroke-width="5"/>
+<text x="80" y="320" font-family="Inter" font-size="64" font-weight="600" text-anchor="start" fill="#202326">Buffer A</text>
+<text x="80" y="470" font-family="Inter" font-size="64" font-weight="600" text-anchor="start" fill="#202326">Buffer B</text>
+<rect x="370" y="250" width="754.8000000000001" height="100" fill="#3478BA" stroke="#3478BA" stroke-width="3" />
+<rect x="814.0" y="400" width="666.0" height="100" fill="#E87823" stroke="#E87823" stroke-width="3" />
+<line x1="814.0" y1="225" x2="814.0" y2="535" stroke="#202326" stroke-width="3" stroke-dasharray="10 10" />
+<line x1="1124.8000000000002" y1="225" x2="1124.8000000000002" y2="535" stroke="#202326" stroke-width="3" stroke-dasharray="10 10" />
+<g data-edge="time" data-source="" data-target="">
+<line x1="370" y1="575" x2="1480" y2="575" stroke="#202326" stroke-width="5" />
+<line x1="1462.0" y1="586.0" x2="1480" y2="575" stroke="#202326" stroke-width="5" />
+<line x1="1462.0" y1="564.0" x2="1480" y2="575" stroke="#202326" stroke-width="5" />
 </g>
-<text x="370" y="690" font-family="Inter" font-size="64" font-weight="500" text-anchor="start" fill="#202326">Time → (qualitative)</text>
+<text x="370" y="660" font-family="Inter" font-size="64" font-weight="500" text-anchor="start" fill="#202326">Time → (qualitative)</text>
 <text x="80" y="770" font-family="Inter" font-size="64" font-weight="400" text-anchor="start" fill="#202326">In the overlap, count A + B.</text>
 <text x="80" y="850" font-family="Inter" font-size="64" font-weight="400" text-anchor="start" fill="#202326">Reuse storage only after its last reader.</text>
 </svg>

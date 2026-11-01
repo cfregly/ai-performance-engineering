@@ -91,15 +91,15 @@ class Slide:
         self.labels.append(dict(text=value, x=x, y=y, font_px=size,
                                 weight=weight, anchor=anchor))
 
-    def rect(self, x, y, w, h, color, stroke=None):
+    def rect(self, x, y, w, h, color, stroke=None, extra=''):
         self.parts.append(f'<rect x="{x:.6f}" y="{y:.6f}" width="{w:.6f}" '
                           f'height="{h:.6f}" fill="{C[color]}" '
-                          + (f'stroke="{C[stroke]}" stroke-width="4" ' if stroke else '') + '/>')
+                          + (f'stroke="{C[stroke]}" stroke-width="4" ' if stroke else '') + extra + '/>')
 
-    def line(self, x1, y1, x2, y2, color='ink', width=3, dash=''):
+    def line(self, x1, y1, x2, y2, color='ink', width=3, dash='', extra=''):
         self.parts.append(f'<line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" '
                           f'stroke="{C[color]}" stroke-width="{width}" '
-                          + (f'stroke-dasharray="{dash}" ' if dash else '') + '/>')
+                          + (f'stroke-dasharray="{dash}" ' if dash else '') + extra + '/>')
 
     def art(self, source: str, crop: tuple[int, int, int, int],
             destination: tuple[int, int, int, int]):
@@ -166,8 +166,9 @@ def slides(data: dict, asset_prefix: str = '../attention-scenes') -> list[Slide]
             (1856, '≥1,856 MiB out + back', 'orange')]
     for y, (value, label, color) in zip((557, 669, 781), rows):
         a.text(label, 84, y, 52, 600)
-        a.rect(84, y+22, 1032*value/2048, 27, color)
-    a.line(84, 837, 1116, 837)
+        a.rect(84, y+22, 1032*value/2048, 27, color,
+               extra=f'data-bar-value="{value}" data-bar-unit="MiB" data-axis-max="2048"')
+    a.line(84, 837, 1116, 837, extra='data-quantitative-axis="MiB" data-axis-max="2048"')
     for value, label, anchor in ((0,'0','start'), (1024,'1,024','middle'), (2048,'2,048 MiB','end')):
         x = 84+1032*value/2048
         a.line(x, 837, x, 849)
@@ -185,13 +186,14 @@ def slides(data: dict, asset_prefix: str = '../attention-scenes') -> list[Slide]
     for y, value, label, color in ((586,.2,'Target 0.200 ms','blue'),
                                   (732,floor,'Transfer floor ≥0.243 ms','orange')):
         b.text(label, 84, y, 52, 600)
-        b.rect(84, y+22, 1032*value/.25, 36, color)
-    b.line(84, 816, 1116, 816)
+        b.rect(84, y+22, 1032*value/.25, 36, color,
+               extra=f'data-bar-value="{value}" data-bar-unit="ms" data-axis-max="0.25"')
+    b.line(84, 816, 1116, 816, extra='data-quantitative-axis="ms" data-axis-max="0.25"')
     for value, label, anchor in ((0,'0','start'),(.125,'0.125','middle'),(.25,'0.250 ms','end')):
         x=84+1032*value/.25
         b.line(x,816,x,828)
         b.text(label,x,884,anchor=anchor)
-    b.text('1,856 MiB ÷ assumed 8 TB/s.',84,977)
+    b.text('Calculated: 1,856 MiB ÷ 8 TB/s.',84,977)
     b.text('Transfers alone exceed this target.',84,1041)
     b.text('Compute and other traffic excluded.',84,1105)
 
@@ -267,6 +269,7 @@ def slides(data: dict, asset_prefix: str = '../attention-scenes') -> list[Slide]
 def validate_svg(slide: Slide, svg: bytes, env: dict) -> dict:
     root=ET.fromstring(svg)
     ns={'s':'http://www.w3.org/2000/svg'}
+    quantitative = validate_bar_geometry(slide.name, root)
     topology = None
     if slide.name == STEMS[2]:
         expected_nodes = {f'{kind}-producer-{index}': 'partial'
@@ -315,7 +318,38 @@ def validate_svg(slide: Slide, svg: bytes, env: dict) -> dict:
             'minimum_at_297_px':min(r['font_px']*297/SIZE for r in slide.labels),
             'minimum_at_312_px':min(r['font_px']*312/SIZE for r in slide.labels),
             'safe_margin_checked_px':80,'labels':slide.labels,
-            **({'topology': topology} if topology is not None else {})}
+            **({'topology': topology} if topology is not None else {}),
+            **({'quantitative_geometry': quantitative} if quantitative else {})}
+
+
+def validate_bar_geometry(name, root):
+    """Check emitted rect attributes against retained values and the zero axis."""
+    if name == STEMS[0]:
+        expected = [(1056, 579, 27), (128, 691, 27), (1856, 803, 27)]
+        unit, maximum = 'MiB', 2048
+    elif name == STEMS[1]:
+        expected = [(.2, 608, 36), (.243269632, 754, 36)]
+        unit, maximum = 'ms', .25
+    else:
+        return None
+    bars = [node for node in root.iter() if 'data-bar-value' in node.attrib]
+    require(len(bars) == len(expected), 'Emitted quantitative bar inventory changed')
+    axes = [node for node in root.iter() if 'data-quantitative-axis' in node.attrib]
+    require(len(axes) == 1, 'Emitted quantitative axis inventory changed')
+    axis = axes[0].attrib
+    require(axis['data-quantitative-axis'] == unit and float(axis['data-axis-max']) == maximum
+            and float(axis['x1']) == 84 and float(axis['x2']) == 1116
+            and float(axis['y1']) == float(axis['y2']) == (837 if name == STEMS[0] else 816),
+            'Emitted quantitative axis origin or extent changed')
+    for node, (value, y, height) in zip(bars, expected):
+        require(node.tag.endswith('rect') and node.attrib.get('data-bar-unit') == unit, 'Quantitative bar kind or unit changed')
+        actual = {key: float(node.attrib[key]) for key in ['x', 'y', 'width', 'height']}
+        require(all(math.isfinite(v) for v in actual.values()), 'Non-finite emitted bar geometry')
+        require(float(node.attrib['data-bar-value']) == value and float(node.attrib['data-axis-max']) == maximum, 'Emitted bar value or axis changed')
+        require(actual['x'] == 84 and actual['y'] == y and actual['height'] == height
+                and abs(actual['width'] - 1032 * value / maximum) <= 1e-5,
+                'Emitted quantitative bar is not on its retained zero-based scale')
+    return {'emitted_rects_checked': len(bars), 'zero_origin_x': 84, 'plot_width': 1032, 'axis_max': maximum, 'unit': unit}
 
 
 def glyph_width(row: dict, env: dict) -> int:
@@ -359,8 +393,12 @@ def validate_edge_geometry(root, ns):
                              ('target',(float(shaft['x2']),float(shaft['y2'])))]:
             key = edge.attrib['data-flow-'+field]
             require(key in bounds, 'Edge has no drawn endpoint node: '+key)
-            require(boundary_distance(point,bounds[key]) <= 25,
+            distance = boundary_distance(point, bounds[key])
+            require(distance <= 10,
                     'Reduction edge endpoint is detached from node: '+key)
+            require(all(distance < boundary_distance(point, shape) - 1e-6
+                        for other, shape in bounds.items() if other != key),
+                    'Reduction edge endpoint is nearer a different drawn node: '+key)
 
 
 def atomic_receipt(path: Path | None, value: dict) -> None:

@@ -1,7 +1,8 @@
 Write it out. Read it back.
 On-chip
 workspace
-HBM
+Off-chip memory
+(HBM)
 Write results out
 Reread them later
 Here, the final sum waits for every piece.

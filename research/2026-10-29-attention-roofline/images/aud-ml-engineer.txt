@@ -1,7 +1,7 @@
 Choose when to combine results
 Keep outputs separate
 Combine in batches
-Simple producer schedule
+Simpler schedule
 Less scratch space
 More scratch + traffic
 More coordination

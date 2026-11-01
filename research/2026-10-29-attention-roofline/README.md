@@ -73,29 +73,29 @@ These diagrams follow the same synthetic workload, phase contract and analytical
 
 ### Memory paths and traffic
 
-![Even if it fits, count the traffic.](images/fun-square.png)
+![A small workspace, memory path and stored partials: write results out to memory, then reread them. Fitting workspace does not establish a fast kernel.](images/fun-square.png)
 
-![Common Blackwell tcgen05 route: shared memory supplies MMA operands, tensor cores read and write accumulators in TMEM, and threads move TMEM values through registers. A may also come from TMEM.](images/scientific/02-operand-paths.png)
+![Ink arrows trace HBM to shared memory and back, shared-memory operands to tensor cores, tensor-core reads and writes to TMEM, and transfers between TMEM and thread registers. A may also come from TMEM.](images/scientific/02-operand-paths.png)
 
-![The complete-producer-then-reducer example produces 1,056 MiB, retains at most 128 MiB on chip and forces at least 1,856 MiB of HBM writes plus rereads.](images/scientific/03-scratch-traffic.png)
+![One layer and one device produce 1,056 MiB of FP32 partials. With at most 128 MiB retained on chip at the full-producer boundary, at least 928 MiB is written out and at least 928 MiB reread for the later reduction.](images/scientific/03-scratch-traffic.png)
 
-![At assumed aggregate 8 TB/s, the 0.243 ms calculated transfer floor exceeds the illustrative 0.200 ms target for one layer on one device.](images/scientific/04-target-rejection.png)
+![Calculated transfer floor at least 0.243 ms versus a 0.200 ms target for one layer, one device and FP32 results at assumed 8 TB/s read-plus-write bandwidth. Compute and other traffic are excluded.](images/scientific/04-target-rejection.png)
 
-![For the same 1,856 MiB of traffic, assumed aggregate 8 and 6.4 TB/s give calculated floors of 0.243 and 0.304 ms. Both exceed the 0.200 ms target.](images/scientific/05-independent-budgets.png)
+![The same 1,856 MiB (1.946 GB) gives calculated floors at least 0.243 ms at assumed 8 TB/s and 0.304 ms at assumed 6.4 TB/s, against a 0.200 ms target. The zero-based time bars share one scale.](images/scientific/05-independent-budgets.png)
 
 ![Three reduction designs: keep each producer’s output separate, combine smaller batches, or accumulate directly. Each changes scratch, coordination and synchronization responsibilities.](images/scientific/06-reduction-comparison.png)
 
 ### Concept cards
 
-![Producers finish their results into HBM scratch, then a separate reducer reads them back. Smaller batches need a different schedule.](images/a-square.png)
+![Producers finish, write scratch to off-chip memory (HBM), and the reducer rereads it. Writing now and reading later pays two transfers.](images/a-square.png)
 
-![The calculated transfer floor of 0.243 ms exceeds the illustrative target of 0.200 ms at assumed aggregate 8 TB/s.](images/b-square.png)
+![One layer and one device: the calculated 0.243 ms transfer floor exceeds the 0.200 ms target at assumed 8 TB/s.](images/b-square.png)
 
-![Check where partials live](images/c-square.png)
+![For each intermediate, count bytes, lifetime, writers and readers. Ask whether reduction can start sooner, then profile the proposed dataflow.](images/c-square.png)
 
 ### Ways to apply the calculation
 
-![A small on-chip workspace writes results to HBM and rereads them later. The final sum waits until every piece is finished.](images/aud-curious-square.png)
+![Write temporary results from on-chip workspace to off-chip memory (HBM), then reread them before the final combination.](images/aud-curious-square.png)
 
 [Landscape card](images/aud-curious.png) · [Editable square diagram](images/aud-curious-square.svg) · [Editable landscape diagram](images/aud-curious.svg)
 
@@ -115,7 +115,7 @@ These diagrams follow the same synthetic workload, phase contract and analytical
 
 [Landscape card](images/aud-platform-operations.png) · [Editable square diagram](images/aud-platform-operations-square.svg) · [Editable landscape diagram](images/aud-platform-operations.svg)
 
-![If a resource floor exceeds the target, reject the design. If it passes the screen, implement and measure the complete path.](images/aud-business-capacity-square.png)
+![If the necessary floor exceeds the target, reject the design. If it does not, implement and measure. Passing the screen does not guarantee runtime.](images/aud-business-capacity-square.png)
 
 [Landscape card](images/aud-business-capacity.png) · [Editable square diagram](images/aud-business-capacity-square.svg) · [Editable landscape diagram](images/aud-business-capacity.svg)
 
@@ -140,10 +140,10 @@ The calculator inputs and results are unchanged. The floor bars render the retai
 The selected three cards use Inter labels of at least 52 px on a 1200 px canvas. Rebuilding requires the retained font and artwork, rsvg-convert 2.62.3, ImageMagick 7.1.2-26 and Fontconfig (`fc-match`). SVG artwork and font links are relative. An isolated Fontconfig configuration resolves the retained Inter font. The selected renderer preserves its existing default Pango/Cairo backend. The receipt records available rendering-library versions. A failed or interrupted invocation replaces any prior PASS receipt with FAIL or INTERRUPTED, then propagates the error.
 
 ```sh
-python3 code/render_attention_figures.py --check
+python3 code/render_attention_figures.py --check --receipt selected-check.json
 ```
 
-The check regenerates into temporary storage and compares the retained files. It does not overwrite them. PNG byte equality depends on the rendering stack. To regenerate intentionally, omit `--check` or use `--output-dir` for a separate directory. This renders retained analytical values and performs no GPU experiment.
+A successful check prints a JSON receipt with `status: PASS` and exits zero. With `--receipt selected-check.json`, it also writes that receipt. Without `--receipt`, no receipt file is written. The receipt starts at `INCOMPLETE`, so an abruptly killed run is not a PASS. The check regenerates into temporary storage and compares the retained files. It does not overwrite them. PNG byte equality depends on the rendering stack. To regenerate intentionally, omit `--check` or use `--output-dir` for a separate directory. This renders retained analytical values and performs no GPU experiment.
 
 <details>
 <summary>Artwork inputs and compact exports</summary>
@@ -170,19 +170,19 @@ The check regenerates into temporary storage and compares the retained files. It
 <details>
 <summary>Landscape diagrams and compact previews</summary>
 
-The audience cards above also have landscape layouts. These retained landscape images and 400-pixel previews are produced by the reference renderer, with the same assumptions and captions as their square counterparts.
+The audience cards above also have landscape layouts. These retained landscape images and 400-pixel previews are produced by the reference renderer, with the same assumptions as their square counterparts.
 
 ![Write and reread materialized partials at 400 pixels](images/a-400.png)
 
-![Write and reread materialized partials, landscape layout](images/a.png)
+![Producers finish, write scratch to off-chip memory (HBM), and the reducer rereads it. Writing now and reading later pays two transfers.](images/a.png)
 
 ![Reject a design or build and measure it at 400 pixels](images/aud-business-capacity-400.png)
 
-![Reject a design or build and measure it, landscape layout](images/aud-business-capacity.png)
+![If the necessary floor exceeds the target, reject the design. If it does not, implement and measure. Passing the screen does not guarantee runtime.](images/aud-business-capacity.png)
 
 ![On-chip storage and HBM traffic at 400 pixels](images/aud-curious-400.png)
 
-![On-chip storage and HBM traffic, landscape layout](images/aud-curious.png)
+![Write temporary results from on-chip workspace to off-chip memory (HBM), then reread them before the final combination.](images/aud-curious.png)
 
 ![Buffer lifetimes and storage reuse at 400 pixels](images/aud-kernel-engineer-400.png)
 
@@ -202,7 +202,7 @@ The audience cards above also have landscape layouts. These retained landscape i
 
 ![Compare the transfer floor with the target at 400 pixels](images/b-400.png)
 
-![Compare the transfer floor with the target, landscape layout](images/b.png)
+![One layer and one device: the calculated 0.243 ms transfer floor exceeds the 0.200 ms target at assumed 8 TB/s.](images/b.png)
 
 </details>
 

@@ -2,9 +2,9 @@ Screen the design
 before building
 Floor ≤ target?
 NO
-Reject this
+Reject
 design
 YES
 Implement
 + measure
-Passing proves no runtime.
+Passing is no runtime guarantee.

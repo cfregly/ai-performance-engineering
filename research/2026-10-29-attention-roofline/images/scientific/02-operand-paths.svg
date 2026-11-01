@@ -4,56 +4,66 @@
 <text x="84" y="112" font-family="Inter" font-size="64" font-weight="700" text-anchor="start" fill="#202326">Trace a Blackwell</text>
 <text x="84" y="192" font-family="Inter" font-size="64" font-weight="700" text-anchor="start" fill="#202326">tensor-core path</text>
 <text x="84" y="292" font-family="Inter" font-size="52" font-weight="400" text-anchor="start" fill="#202326">Common tcgen05 SMEM-operand route</text>
+<g data-node-id="HBM">
 <rect x="84" y="365" width="220" height="145" fill="#FBFBF8" stroke="#202326" stroke-width="3" />
+</g>
 <text x="194" y="453" font-family="Inter" font-size="52" font-weight="600" text-anchor="middle" fill="#202326">HBM</text>
+<g data-node-id="SMEM">
 <rect x="424" y="365" width="290" height="145" fill="#FBFBF8" stroke="#202326" stroke-width="3" />
+</g>
 <text x="569" y="423" font-family="Inter" font-size="52" font-weight="600" text-anchor="middle" fill="#202326">Shared</text>
 <text x="569" y="483" font-family="Inter" font-size="52" font-weight="600" text-anchor="middle" fill="#202326">memory</text>
+<g data-node-id="MMA">
 <rect x="856" y="365" width="260" height="145" fill="#FBFBF8" stroke="#202326" stroke-width="3" />
+</g>
 <text x="986" y="423" font-family="Inter" font-size="52" font-weight="600" text-anchor="middle" fill="#202326">Tensor</text>
 <text x="986" y="483" font-family="Inter" font-size="52" font-weight="600" text-anchor="middle" fill="#202326">cores</text>
-<g data-edge="HBM-to-SMEM">
-<line x1="320" y1="400" x2="408" y2="400" stroke="#3478BA" stroke-width="5"/>
-<line x1="390.0" y1="411.0" x2="408" y2="400" stroke="#3478BA" stroke-width="5"/>
-<line x1="390.0" y1="389.0" x2="408" y2="400" stroke="#3478BA" stroke-width="5"/>
+<g data-edge="HBM-to-SMEM" data-source="HBM" data-target="SMEM">
+<line x1="320" y1="400" x2="408" y2="400" stroke="#202326" stroke-width="5" />
+<line x1="390.0" y1="411.0" x2="408" y2="400" stroke="#202326" stroke-width="5" />
+<line x1="390.0" y1="389.0" x2="408" y2="400" stroke="#202326" stroke-width="5" />
 </g>
-<g data-edge="SMEM-to-HBM">
-<line x1="408" y1="480" x2="320" y2="480" stroke="#E87823" stroke-width="5"/>
-<line x1="338.0" y1="469.0" x2="320" y2="480" stroke="#E87823" stroke-width="5"/>
-<line x1="338.0" y1="491.0" x2="320" y2="480" stroke="#E87823" stroke-width="5"/>
+<g data-edge="SMEM-to-HBM" data-source="SMEM" data-target="HBM">
+<line x1="408" y1="480" x2="320" y2="480" stroke="#202326" stroke-width="5" />
+<line x1="338.0" y1="469.0" x2="320" y2="480" stroke="#202326" stroke-width="5" />
+<line x1="338.0" y1="491.0" x2="320" y2="480" stroke="#202326" stroke-width="5" />
 </g>
-<g data-edge="SMEM-operands-to-MMA">
-<line x1="730" y1="437" x2="840" y2="437" stroke="#3478BA" stroke-width="5"/>
-<line x1="822.0" y1="448.0" x2="840" y2="437" stroke="#3478BA" stroke-width="5"/>
-<line x1="822.0" y1="426.0" x2="840" y2="437" stroke="#3478BA" stroke-width="5"/>
+<g data-edge="SMEM-operands-to-MMA" data-source="SMEM" data-target="MMA">
+<line x1="730" y1="437" x2="840" y2="437" stroke="#202326" stroke-width="5" />
+<line x1="822.0" y1="448.0" x2="840" y2="437" stroke="#202326" stroke-width="5" />
+<line x1="822.0" y1="426.0" x2="840" y2="437" stroke="#202326" stroke-width="5" />
 </g>
-<text x="780" y="570" font-family="Inter" font-size="52" font-weight="500" text-anchor="middle" fill="#202326">A + B</text>
+<text x="785" y="506" font-family="Inter" font-size="52" font-weight="500" text-anchor="middle" fill="#202326">A + B</text>
+<g data-node-id="TMEM">
 <rect x="716" y="730" width="400" height="150" fill="#FBFBF8" stroke="#202326" stroke-width="3" />
+</g>
 <text x="916" y="792" font-family="Inter" font-size="52" font-weight="600" text-anchor="middle" fill="#202326">TMEM</text>
 <text x="916" y="854" font-family="Inter" font-size="52" font-weight="600" text-anchor="middle" fill="#202326">accumulator</text>
+<g data-node-id="registers">
 <rect x="84" y="730" width="360" height="150" fill="#FBFBF8" stroke="#202326" stroke-width="3" />
+</g>
 <text x="264" y="792" font-family="Inter" font-size="52" font-weight="600" text-anchor="middle" fill="#202326">Thread</text>
 <text x="264" y="854" font-family="Inter" font-size="52" font-weight="600" text-anchor="middle" fill="#202326">registers</text>
-<g data-edge="MMA-writes-TMEM">
-<line x1="950" y1="526" x2="950" y2="714" stroke="#E87823" stroke-width="5"/>
-<line x1="939.0" y1="696.0" x2="950" y2="714" stroke="#E87823" stroke-width="5"/>
-<line x1="961.0" y1="696.0" x2="950" y2="714" stroke="#E87823" stroke-width="5"/>
+<g data-edge="MMA-writes-TMEM" data-source="MMA" data-target="TMEM">
+<line x1="950" y1="526" x2="950" y2="714" stroke="#202326" stroke-width="5" />
+<line x1="939.0" y1="696.0" x2="950" y2="714" stroke="#202326" stroke-width="5" />
+<line x1="961.0" y1="696.0" x2="950" y2="714" stroke="#202326" stroke-width="5" />
 </g>
-<g data-edge="MMA-reads-TMEM">
-<line x1="1040" y1="714" x2="1040" y2="526" stroke="#3478BA" stroke-width="5"/>
-<line x1="1051.0" y1="544.0" x2="1040" y2="526" stroke="#3478BA" stroke-width="5"/>
-<line x1="1029.0" y1="544.0" x2="1040" y2="526" stroke="#3478BA" stroke-width="5"/>
+<g data-edge="MMA-reads-TMEM" data-source="TMEM" data-target="MMA">
+<line x1="1040" y1="714" x2="1040" y2="526" stroke="#202326" stroke-width="5" />
+<line x1="1051.0" y1="544.0" x2="1040" y2="526" stroke="#202326" stroke-width="5" />
+<line x1="1029.0" y1="544.0" x2="1040" y2="526" stroke="#202326" stroke-width="5" />
 </g>
-<text x="84" y="645" font-family="Inter" font-size="52" font-weight="500" text-anchor="start" fill="#202326">MMA reads + writes</text>
-<g data-edge="TMEM-load-to-registers">
-<line x1="700" y1="768" x2="460" y2="768" stroke="#E87823" stroke-width="5"/>
-<line x1="478.0" y1="757.0" x2="460" y2="768" stroke="#E87823" stroke-width="5"/>
-<line x1="478.0" y1="779.0" x2="460" y2="768" stroke="#E87823" stroke-width="5"/>
+<text x="925" y="645" font-family="Inter" font-size="52" font-weight="500" text-anchor="end" fill="#202326">MMA reads + writes</text>
+<g data-edge="TMEM-load-to-registers" data-source="TMEM" data-target="registers">
+<line x1="700" y1="768" x2="460" y2="768" stroke="#202326" stroke-width="5" />
+<line x1="478.0" y1="757.0" x2="460" y2="768" stroke="#202326" stroke-width="5" />
+<line x1="478.0" y1="779.0" x2="460" y2="768" stroke="#202326" stroke-width="5" />
 </g>
-<g data-edge="register-store-to-TMEM">
-<line x1="460" y1="842" x2="700" y2="842" stroke="#3478BA" stroke-width="5"/>
-<line x1="682.0" y1="853.0" x2="700" y2="842" stroke="#3478BA" stroke-width="5"/>
-<line x1="682.0" y1="831.0" x2="700" y2="842" stroke="#3478BA" stroke-width="5"/>
+<g data-edge="register-store-to-TMEM" data-source="registers" data-target="TMEM">
+<line x1="460" y1="842" x2="700" y2="842" stroke="#202326" stroke-width="5" />
+<line x1="682.0" y1="853.0" x2="700" y2="842" stroke="#202326" stroke-width="5" />
+<line x1="682.0" y1="831.0" x2="700" y2="842" stroke="#202326" stroke-width="5" />
 </g>
 <text x="580" y="953" font-family="Inter" font-size="52" font-weight="500" text-anchor="middle" fill="#202326">tcgen05.ld / st</text>
 <text x="84" y="1040" font-family="Inter" font-size="52" font-weight="400" text-anchor="start" fill="#202326">A can also come from TMEM.</text>

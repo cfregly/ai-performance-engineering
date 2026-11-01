@@ -2,31 +2,31 @@
 <style>@font-face{font-family:Inter;src:url("attention-scenes/Inter.ttf") format("truetype");font-weight:100 900}</style>
 <rect width="1600" height="900" fill="#FBFBF8"/>
 <text x="80" y="112" font-family="Inter" font-size="76" font-weight="700" text-anchor="start" fill="#202326">Screen the design before building</text>
-<polygon points="800,185 1240,320 800,455 360,320" fill="#FBFBF8" stroke="#202326" stroke-width="4"/>
-<text x="800" y="342" font-family="Inter" font-size="64" font-weight="600" text-anchor="middle" fill="#202326">Floor ≤ target?</text>
-<g data-edge="fail-start">
-<line x1="360" y1="320" x2="250" y2="320" stroke="#E87823" stroke-width="5"/>
-<line x1="268.0" y1="309.0" x2="250" y2="320" stroke="#E87823" stroke-width="5"/>
-<line x1="268.0" y1="331.0" x2="250" y2="320" stroke="#E87823" stroke-width="5"/>
+<g data-node-id="decision"><polygon points="800,165 1240,270 800,375 360,270" fill="#FBFBF8" stroke="#202326" stroke-width="4"/></g>
+<text x="800" y="292" font-family="Inter" font-size="64" font-weight="600" text-anchor="middle" fill="#202326">Floor ≤ target?</text>
+<g data-node-id="fail-outcome">
+<rect x="80" y="470" width="340" height="270" fill="#FBFBF8" stroke="#202326" stroke-width="3" />
 </g>
-<g data-edge="fail-end">
-<line x1="250" y1="320" x2="250" y2="570" stroke="#E87823" stroke-width="5"/>
-<line x1="239.0" y1="552.0" x2="250" y2="570" stroke="#E87823" stroke-width="5"/>
-<line x1="261.0" y1="552.0" x2="250" y2="570" stroke="#E87823" stroke-width="5"/>
+<g data-node-id="pass-outcome">
+<rect x="1150" y="470" width="400" height="270" fill="#FBFBF8" stroke="#202326" stroke-width="3" />
 </g>
-<g data-edge="pass-start">
-<line x1="1240" y1="320" x2="1350" y2="320" stroke="#3478BA" stroke-width="5"/>
-<line x1="1332.0" y1="331.0" x2="1350" y2="320" stroke="#3478BA" stroke-width="5"/>
-<line x1="1332.0" y1="309.0" x2="1350" y2="320" stroke="#3478BA" stroke-width="5"/>
+<g data-edge="fail-end" data-source="decision" data-target="fail-outcome">
+<line x1="344" y1="270" x2="250" y2="270" stroke="#E87823" stroke-width="5" />
+<line x1="250" y1="270" x2="250" y2="450" stroke="#E87823" stroke-width="5" />
+<line x1="239.0" y1="432.0" x2="250" y2="450" stroke="#E87823" stroke-width="5" />
+<line x1="261.0" y1="432.0" x2="250" y2="450" stroke="#E87823" stroke-width="5" />
 </g>
-<g data-edge="pass-end">
-<line x1="1350" y1="320" x2="1350" y2="570" stroke="#3478BA" stroke-width="5"/>
-<line x1="1339.0" y1="552.0" x2="1350" y2="570" stroke="#3478BA" stroke-width="5"/>
-<line x1="1361.0" y1="552.0" x2="1350" y2="570" stroke="#3478BA" stroke-width="5"/>
+<g data-edge="pass-end" data-source="decision" data-target="pass-outcome">
+<line x1="1256" y1="270" x2="1350" y2="270" stroke="#3478BA" stroke-width="5" />
+<line x1="1350" y1="270" x2="1350" y2="450" stroke="#3478BA" stroke-width="5" />
+<line x1="1339.0" y1="432.0" x2="1350" y2="450" stroke="#3478BA" stroke-width="5" />
+<line x1="1361.0" y1="432.0" x2="1350" y2="450" stroke="#3478BA" stroke-width="5" />
 </g>
-<text x="120" y="505" font-family="Inter" font-size="64" font-weight="600" text-anchor="start" fill="#E87823">NO</text>
-<text x="1400" y="505" font-family="Inter" font-size="64" font-weight="600" text-anchor="start" fill="#3478BA">YES</text>
-<text x="80" y="665" font-family="Inter" font-size="64" font-weight="600" text-anchor="start" fill="#E87823">Reject this design</text>
-<text x="800" y="665" font-family="Inter" font-size="64" font-weight="600" text-anchor="start" fill="#3478BA">Implement + measure</text>
-<text x="80" y="810" font-family="Inter" font-size="64" font-weight="400" text-anchor="start" fill="#202326">Passing the screen is no runtime guarantee.</text>
+<text x="250" y="535" font-family="Inter" font-size="64" font-weight="600" text-anchor="middle" fill="#E87823">NO</text>
+<text x="250" y="625" font-family="Inter" font-size="64" font-weight="600" text-anchor="middle" fill="#E87823">Reject</text>
+<text x="250" y="715" font-family="Inter" font-size="64" font-weight="600" text-anchor="middle" fill="#E87823">design</text>
+<text x="1350" y="535" font-family="Inter" font-size="64" font-weight="600" text-anchor="middle" fill="#3478BA">YES</text>
+<text x="1350" y="625" font-family="Inter" font-size="64" font-weight="600" text-anchor="middle" fill="#3478BA">Implement</text>
+<text x="1350" y="715" font-family="Inter" font-size="64" font-weight="600" text-anchor="middle" fill="#3478BA">+ measure</text>
+<text x="80" y="850" font-family="Inter" font-size="64" font-weight="400" text-anchor="start" fill="#202326">Passing is no runtime guarantee.</text>
 </svg>

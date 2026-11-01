@@ -2,18 +2,19 @@
 <style>@font-face{font-family:Inter;src:url("attention-scenes/Inter.ttf") format("truetype");font-weight:100 900}</style>
 <rect width="1600" height="900" fill="#FBFBF8"/>
 <text x="80" y="112" font-family="Inter" font-size="76" font-weight="700" text-anchor="start" fill="#202326">Transfers alone miss the target</text>
-<text x="80" y="350" font-family="Inter" font-size="64" font-weight="600" text-anchor="start" fill="#202326">Target</text>
-<text x="1520" y="350" font-family="Inter" font-size="64" font-weight="600" text-anchor="end" fill="#3478BA">0.200 ms</text>
+<text x="80" y="346" font-family="Inter" font-size="64" font-weight="600" text-anchor="start" fill="#202326">Target</text>
+<text x="1520" y="346" font-family="Inter" font-size="64" font-weight="600" text-anchor="end" fill="#3478BA">0.200 ms</text>
 <rect x="80" y="380" width="960.0" height="40" fill="#3478BA" stroke="#3478BA" stroke-width="3" data-value-ms="0.2" data-axis-max-ms="0.3"/>
-<text x="80" y="545" font-family="Inter" font-size="64" font-weight="600" text-anchor="start" fill="#202326">Calculated floor</text>
-<text x="1520" y="545" font-family="Inter" font-size="64" font-weight="600" text-anchor="end" fill="#E87823">0.243 ms</text>
+<text x="80" y="541" font-family="Inter" font-size="64" font-weight="600" text-anchor="start" fill="#202326">Calculated floor</text>
+<text x="1520" y="541" font-family="Inter" font-size="64" font-weight="600" text-anchor="end" fill="#E87823">0.243 ms</text>
 <rect x="80" y="575" width="1167.6942336" height="40" fill="#E87823" stroke="#E87823" stroke-width="3" data-value-ms="0.243269632" data-axis-max-ms="0.3"/>
-<line x1="80" y1="680" x2="1520" y2="680" stroke="#202326" stroke-width="4"/>
-<line x1="80.0" y1="680" x2="80.0" y2="692" stroke="#202326" stroke-width="4"/>
+<line x1="80" y1="680" x2="1520" y2="680" stroke="#202326" stroke-width="4" data-quantitative-axis="ms" data-axis-max-ms="0.3"/>
+<line x1="80.0" y1="680" x2="80.0" y2="692" stroke="#202326" stroke-width="4" />
 <text x="80.0" y="758" font-family="Inter" font-size="64" font-weight="400" text-anchor="start" fill="#202326">0.00</text>
-<line x1="800.0" y1="680" x2="800.0" y2="692" stroke="#202326" stroke-width="4"/>
+<line x1="800.0" y1="680" x2="800.0" y2="692" stroke="#202326" stroke-width="4" />
 <text x="800.0" y="758" font-family="Inter" font-size="64" font-weight="400" text-anchor="middle" fill="#202326">0.15</text>
-<line x1="1520.0" y1="680" x2="1520.0" y2="692" stroke="#202326" stroke-width="4"/>
+<line x1="1520.0" y1="680" x2="1520.0" y2="692" stroke="#202326" stroke-width="4" />
 <text x="1520.0" y="758" font-family="Inter" font-size="64" font-weight="400" text-anchor="end" fill="#202326">0.30</text>
-<text x="80" y="830" font-family="Inter" font-size="64" font-weight="400" text-anchor="start" fill="#202326">Time (ms) · assumed 8 TB/s · one layer / device</text>
+<text x="80" y="240" font-family="Inter" font-size="64" font-weight="400" text-anchor="start" fill="#202326">One layer · one device</text>
+<text x="80" y="830" font-family="Inter" font-size="64" font-weight="400" text-anchor="start" fill="#202326">Time (ms) · assumed 8 TB/s · calculated</text>
 </svg>

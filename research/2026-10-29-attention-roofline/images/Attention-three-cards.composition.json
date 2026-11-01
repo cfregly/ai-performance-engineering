@@ -1,15 +1,15 @@
 {
   "schema_version": 1,
   "kind": "lossless_square_image_pdf_composition",
-  "created_at": "2026-11-01T01:12:59.012076+00:00",
+  "created_at": "2026-11-01T03:11:26.404772+00:00",
   "document": {
     "path": "images/Attention-three-cards.pdf",
-    "sha256": "45392e83ae65b1b449cbed7c0d9bcb617f2b08a58686a062f9504d850fd6f1c5",
+    "sha256": "b0c58931b135954144b47e6932f2b8f9ab488bb616e8b8e171f4511cef0fe6d9",
     "page_count": 3
   },
   "asset_index": {
     "path": "images/reader-card-index.json",
-    "sha256": "9c280bde097860e80901a908810a4a300780aecb691befae278192cdbd29a8ce"
+    "sha256": "7d6635ab37c17944c7b49c19143c55fbc004e42e842e41ff39d6d79be67ca4b5"
   },
   "composition_receipt": "images/Attention-three-cards.composition.json",
   "page_size_points": {
@@ -39,11 +39,11 @@
       "title": "Transfers alone miss the target",
       "source_png": {
         "path": "images/scientific/04-target-rejection.png",
-        "sha256": "753246743af10efac7785b9f17818c23e7ec6265fd15dcbfd9bdef0e3b125c78",
+        "sha256": "3b3abbcfc4a2c1ecf0cf99275da01559b4cc736a7de215213bebb0a9074fa038",
         "width": 1200,
         "height": 1200
       },
-      "decoded_rgb_sha256": "6a7b7747ea17f8d6ec54ad21b802cb136868c55a882bd465a8bfcd3817321899",
+      "decoded_rgb_sha256": "6f71a3162ebec62b1d91d88d4775865ace11f49d6cd7313b04403a5410a4587a",
       "page_box_points": [
         0,
         0,

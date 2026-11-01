@@ -9,15 +9,15 @@
 <text x="540" y="593" font-family="Inter" font-size="48" font-weight="600" text-anchor="middle" fill="#202326">Scratch in HBM</text>
 <rect x="100" y="750" width="880" height="120" fill="#FBFBF8" stroke="#202326" stroke-width="3" />
 <text x="540" y="828" font-family="Inter" font-size="48" font-weight="600" text-anchor="middle" fill="#202326">Reducer combines</text>
-<g data-edge="0">
-<line x1="540" y1="420" x2="540" y2="495" stroke="#3478BA" stroke-width="5"/>
-<line x1="529.0" y1="477.0" x2="540" y2="495" stroke="#3478BA" stroke-width="5"/>
-<line x1="551.0" y1="477.0" x2="540" y2="495" stroke="#3478BA" stroke-width="5"/>
+<g data-edge="0" data-source="" data-target="">
+<line x1="540" y1="420" x2="540" y2="495" stroke="#3478BA" stroke-width="5" />
+<line x1="529.0" y1="477.0" x2="540" y2="495" stroke="#3478BA" stroke-width="5" />
+<line x1="551.0" y1="477.0" x2="540" y2="495" stroke="#3478BA" stroke-width="5" />
 </g>
-<g data-edge="1">
-<line x1="540" y1="655" x2="540" y2="730" stroke="#E87823" stroke-width="5"/>
-<line x1="529.0" y1="712.0" x2="540" y2="730" stroke="#E87823" stroke-width="5"/>
-<line x1="551.0" y1="712.0" x2="540" y2="730" stroke="#E87823" stroke-width="5"/>
+<g data-edge="1" data-source="" data-target="">
+<line x1="540" y1="655" x2="540" y2="730" stroke="#E87823" stroke-width="5" />
+<line x1="529.0" y1="712.0" x2="540" y2="730" stroke="#E87823" stroke-width="5" />
+<line x1="551.0" y1="712.0" x2="540" y2="730" stroke="#E87823" stroke-width="5" />
 </g>
 <text x="72" y="972" font-family="Inter" font-size="48" font-weight="400" text-anchor="start" fill="#202326">Write out, then read back.</text>
 </svg>

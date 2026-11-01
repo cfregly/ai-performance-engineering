@@ -1,7 +1,9 @@
 Screen the design before building
 Floor ≤ target?
 NO
+Reject
+design
 YES
-Reject this design
-Implement + measure
-Passing the screen is no runtime guarantee.
+Implement
++ measure
+Passing is no runtime guarantee.

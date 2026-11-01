@@ -3,10 +3,10 @@
 <rect width="1600" height="900" fill="#FBFBF8"/>
 <text x="80" y="112" font-family="Inter" font-size="76" font-weight="700" text-anchor="start" fill="#202326">Choose when to combine results</text>
 <text x="80" y="320" font-family="Inter" font-size="64" font-weight="600" text-anchor="start" fill="#202326">Keep outputs separate</text>
-<text x="830" y="320" font-family="Inter" font-size="64" font-weight="600" text-anchor="start" fill="#202326">Combine in batches</text>
-<text x="80" y="440" font-family="Inter" font-size="64" font-weight="400" text-anchor="start" fill="#202326">Simple producer schedule</text>
-<text x="830" y="440" font-family="Inter" font-size="64" font-weight="400" text-anchor="start" fill="#202326">Less scratch space</text>
+<text x="880" y="320" font-family="Inter" font-size="64" font-weight="600" text-anchor="start" fill="#202326">Combine in batches</text>
+<text x="80" y="440" font-family="Inter" font-size="64" font-weight="400" text-anchor="start" fill="#202326">Simpler schedule</text>
+<text x="880" y="440" font-family="Inter" font-size="64" font-weight="400" text-anchor="start" fill="#202326">Less scratch space</text>
 <text x="80" y="555" font-family="Inter" font-size="64" font-weight="500" text-anchor="start" fill="#E87823">More scratch + traffic</text>
-<text x="830" y="555" font-family="Inter" font-size="64" font-weight="500" text-anchor="start" fill="#E87823">More coordination</text>
+<text x="880" y="555" font-family="Inter" font-size="64" font-weight="500" text-anchor="start" fill="#E87823">More coordination</text>
 <text x="80" y="790" font-family="Inter" font-size="64" font-weight="400" text-anchor="start" fill="#202326">Use the simpler path when it meets your budget.</text>
 </svg>

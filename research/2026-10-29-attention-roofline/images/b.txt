@@ -6,4 +6,5 @@ Calculated floor
 0.00
 0.15
 0.30
-Time (ms) · assumed 8 TB/s · one layer / device
+One layer · one device
+Time (ms) · assumed 8 TB/s · calculated
