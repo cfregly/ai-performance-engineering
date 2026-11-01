@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900" role="img"><title>Unit-service pipeline schedule. Blank slots are idle. Slots are not milliseconds.</title>
+<image href="article-sources/aud-performance-engineer.png" x="0" y="0" width="1600" height="900"/>
+<rect x="1004" y="765" width="174" height="50" fill="#FBFBF8"/>
+<text x="1007.4074074074075" y="801.3888888888889" font-family="Inter" font-weight="400" font-size="27.407407407407405" fill="#202326">Blank: idle</text>
+</svg>

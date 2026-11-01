@@ -1,0 +1,303 @@
+{
+  "schema_version": 1,
+  "kind": "EXACT_ANNOTATION_ONLY_SOURCE_IMAGE_DERIVATIVES",
+  "font": {
+    "path": "images/fonts/Inter.ttf",
+    "sha256": "29160a80ff49ddcab2c97711247e08b1fab27a484a329ce8b813d820dc559031",
+    "weight": 400
+  },
+  "outputs": [
+    {
+      "target": "images/aud-performance-engineer.png",
+      "source": "images/article-sources/aud-performance-engineer.png",
+      "source_sha256": "ab421db741336f51da5c434f3ad8c267bdb8c16fa3d2201530ff10684f4b4372",
+      "dimensions": [
+        1600,
+        900
+      ],
+      "erase_regions": [
+        [
+          1004,
+          765,
+          1178,
+          815
+        ]
+      ],
+      "blank_idle_legend": {
+        "x": 1007.4074074074075,
+        "baseline_y": 801.3888888888889,
+        "font_size": 27.407407407407405
+      },
+      "description": "Unit-service pipeline schedule. Blank slots are idle. Slots are not milliseconds."
+    },
+    {
+      "target": "images/aud-performance-engineer-square.png",
+      "source": "images/article-sources/aud-performance-engineer-square.png",
+      "source_sha256": "8c50cd2050539d7b5a87d73af480a7ad44a33c89e2151d5e8c40082626cbf3a3",
+      "dimensions": [
+        1080,
+        1080
+      ],
+      "erase_regions": [
+        [
+          785,
+          919,
+          993,
+          978
+        ]
+      ],
+      "blank_idle_legend": {
+        "x": 788.8888888888889,
+        "baseline_y": 961.6666666666666,
+        "font_size": 32.888888888888886
+      },
+      "description": "Unit-service pipeline schedule. Blank slots are idle. Slots are not milliseconds."
+    },
+    {
+      "target": "images/article/02-topology-a.png",
+      "source": "images/scientific/02-topology-a.png",
+      "source_sha256": "2c6ce245fa46d640b2d9b55db60ca5203a4c1b3229012241b753d66d5189b7a1",
+      "dimensions": [
+        2400,
+        2400
+      ],
+      "erase_regions": [
+        [
+          2162,
+          2275,
+          2185,
+          2309
+        ]
+      ],
+      "description": "Article figure without the original carousel corner number."
+    },
+    {
+      "target": "images/article/aud-curious-square.png",
+      "source": "images/aud-curious-square.png",
+      "source_sha256": "7c35c25dd6f4e95982c8d8beeeecae6a2f2d22dff9e548ab000966075d0a3a05",
+      "dimensions": [
+        1080,
+        1080
+      ],
+      "erase_regions": [
+        [
+          969,
+          1021,
+          986,
+          1043
+        ]
+      ],
+      "description": "Article figure without the original carousel corner number."
+    },
+    {
+      "target": "images/article/07-context-policy.png",
+      "source": "images/scientific/07-context-policy.png",
+      "source_sha256": "9bdd38d634195edbb58b96f683cc68017826232f6d254c567e7e1f615db5d4e7",
+      "dimensions": [
+        2400,
+        2400
+      ],
+      "erase_regions": [
+        [
+          2163,
+          2275,
+          2186,
+          2309
+        ]
+      ],
+      "description": "Article figure without the original carousel corner number."
+    },
+    {
+      "target": "images/article/a-square.png",
+      "source": "images/a-square.png",
+      "source_sha256": "f72c7cb976af02d1d00869bb9bd1a2b8a394ecbfe2f77d1b6d3f2f484069eb7e",
+      "dimensions": [
+        1080,
+        1080
+      ],
+      "erase_regions": [
+        [
+          970,
+          1021,
+          986,
+          1042
+        ]
+      ],
+      "description": "Article figure without the original carousel corner number."
+    },
+    {
+      "target": "images/article/06-routing-skew.png",
+      "source": "images/scientific/06-routing-skew.png",
+      "source_sha256": "e2a139dfdbb0c0ff1ce0c3a3c9b29da72246de0aa035f1d92206359c9d4babf8",
+      "dimensions": [
+        2400,
+        2400
+      ],
+      "erase_regions": [
+        [
+          2161,
+          2275,
+          2186,
+          2310
+        ]
+      ],
+      "description": "Article figure without the original carousel corner number."
+    },
+    {
+      "target": "images/article/aud-ml-engineer-square.png",
+      "source": "images/aud-ml-engineer-square.png",
+      "source_sha256": "32c50e8bd6f1919bd4cd50c3bf990ebcef052c98551e92baa8f546682c66386f",
+      "dimensions": [
+        1080,
+        1080
+      ],
+      "erase_regions": [
+        [
+          969,
+          1021,
+          985,
+          1042
+        ]
+      ],
+      "description": "Article figure without the original carousel corner number."
+    },
+    {
+      "target": "images/article/aud-performance-engineer-square.png",
+      "source": "images/article-sources/aud-performance-engineer-square.png",
+      "source_sha256": "8c50cd2050539d7b5a87d73af480a7ad44a33c89e2151d5e8c40082626cbf3a3",
+      "dimensions": [
+        1080,
+        1080
+      ],
+      "erase_regions": [
+        [
+          969,
+          1021,
+          986,
+          1042
+        ],
+        [
+          785,
+          919,
+          993,
+          978
+        ]
+      ],
+      "description": "Article figure without the original carousel corner number.",
+      "blank_idle_legend": {
+        "x": 788.8888888888889,
+        "baseline_y": 961.6666666666666,
+        "font_size": 32.888888888888886
+      }
+    },
+    {
+      "target": "images/article/b-square.png",
+      "source": "images/b-square.png",
+      "source_sha256": "c6b9f179e45fe385e995e9373ed7550fe550b4a357637052aef322eceb0778fc",
+      "dimensions": [
+        1080,
+        1080
+      ],
+      "erase_regions": [
+        [
+          969,
+          1021,
+          986,
+          1042
+        ]
+      ],
+      "description": "Article figure without the original carousel corner number."
+    },
+    {
+      "target": "images/article/aud-platform-operations-square.png",
+      "source": "images/aud-platform-operations-square.png",
+      "source_sha256": "53bc3c02eaa343b205ebe6046d17b1cd94c6db8921d1110e331cad2aa1d83103",
+      "dimensions": [
+        1080,
+        1080
+      ],
+      "erase_regions": [
+        [
+          961,
+          1021,
+          986,
+          1042
+        ]
+      ],
+      "description": "Article figure without the original carousel corner number."
+    },
+    {
+      "target": "images/article/11-gradient-barrier.png",
+      "source": "images/scientific/11-gradient-barrier.png",
+      "source_sha256": "d679a1d7bb65dd2bd97ccd10cd1c8e7ceb93b3d426ee93a975a5843ae325515e",
+      "dimensions": [
+        2400,
+        2400
+      ],
+      "erase_regions": [
+        [
+          2152,
+          2275,
+          2184,
+          2309
+        ]
+      ],
+      "description": "Article figure without the original carousel corner number."
+    },
+    {
+      "target": "images/article/c-square.png",
+      "source": "images/c-square.png",
+      "source_sha256": "071067c938eb4f9fb128622162fdba85ad15b74556db1f76e99952c5872d2bed",
+      "dimensions": [
+        1080,
+        1080
+      ],
+      "erase_regions": [
+        [
+          961,
+          1021,
+          986,
+          1042
+        ]
+      ],
+      "description": "Article figure without the original carousel corner number."
+    },
+    {
+      "target": "images/article/aud-kernel-engineer-square.png",
+      "source": "images/aud-kernel-engineer-square.png",
+      "source_sha256": "293e22bb41fb2ae6863ac54d12ad6424c26bd4bfe3c487bfca762b9b05e703c6",
+      "dimensions": [
+        1080,
+        1080
+      ],
+      "erase_regions": [
+        [
+          961,
+          1021,
+          986,
+          1043
+        ]
+      ],
+      "description": "Article figure without the original carousel corner number."
+    },
+    {
+      "target": "images/article/aud-business-capacity-square.png",
+      "source": "images/aud-business-capacity-square.png",
+      "source_sha256": "2911a3bbcc4fd05fe5126ba29bac1f2bd2161875fc87783bd765ba9ce8fc74e5",
+      "dimensions": [
+        1080,
+        1080
+      ],
+      "erase_regions": [
+        [
+          962,
+          1021,
+          987,
+          1042
+        ]
+      ],
+      "description": "Article figure without the original carousel corner number."
+    }
+  ],
+  "limits": "Original designed data pixels remain source raster evidence, not a claim that this wrapper reconstructs their chart geometry. Complete native diagram elements remain separately retained. Only isolated carousel badge or legend annotation regions change; every other source pixel must compare exactly."
+}

@@ -208,15 +208,14 @@ def pipeline_1f1b(source):
             for col, token in enumerate(row[start:start + 11]):
                 x = x0 + col * pitch
                 color = BLUE if token.startswith("F") else ORANGE if token.startswith("B") else INK
-                s.rect(x, y, 70, 62, color, color if token != ".." else BG, 0.13 if token != ".." else None, 2)
                 if token != "..":
+                    s.rect(x, y, 70, 62, color, color, 0.13, 2)
                     s.text(x + 35, y + 45, token, 42, anchor="middle", weight=600)
     s.rect(100, 950, 46, 46, BLUE, BLUE, 0.13, 2)
     s.text(165, 990, "F forward", 42)
     s.rect(430, 950, 46, 46, ORANGE, ORANGE, 0.13, 2)
     s.text(495, 990, "B backward", 42)
-    s.rect(790, 950, 46, 46, INK, BG, sw=2)
-    s.text(855, 990, "Idle", 42)
+    s.text(780, 990, "Blank: idle", 37)
     s.text(500, 1065, "Equal unit service · not milliseconds", 42, anchor="middle")
     return s
 

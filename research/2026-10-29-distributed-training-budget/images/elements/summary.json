@@ -6,7 +6,7 @@
   },
   "text_authority": {
     "path": "code/README.md",
-    "sha256": "94fdc1d10e14f92e2a5278ef1eb472c96a737ff6b6e52b6d7434076694768072"
+    "sha256": "4568598e7cb8a085fc7a979f9793661c65c628728a233963b7865e9218711e8d"
   },
   "source_field_hash_format": "sha256 of UTF-8 JSON, sorted keys, compact separators, ensure_ascii=False",
   "default_viewbox": [
@@ -155,7 +155,7 @@
         1100
       ],
       "purpose": "Project one exact 22-slot four-stage schedule as two stacked 11-slot continuation panels, with operation labels and unit-service limits.",
-      "sha256": "0809c8f80d98d78cfd724a1eb92abd04a3f7dfa80b081ac0cb80daf8aeff1c0e",
+      "sha256": "4b0995931aabfd1f31dd5329e262b499632b58bad09a550492bcf4513941c169",
       "source_fields": [
         {
           "pointer": "/unit_1F1B/rows",
@@ -182,7 +182,7 @@
         "xml_parse": "pass",
         "geometry_safe_inset_px": 20,
         "bounds": "pass",
-        "minimum_font_px": 42
+        "minimum_font_px": 37
       }
     },
     {

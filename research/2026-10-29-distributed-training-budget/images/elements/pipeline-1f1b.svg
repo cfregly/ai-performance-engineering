@@ -28,9 +28,6 @@
 <text x="325" y="195" font-family="Inter" font-size="42" font-weight="600" text-anchor="middle" fill="#202326">F2</text>
 <rect x="365" y="150" width="70" height="62" fill="#3478BA" fill-opacity="0.13" stroke="#3478BA" stroke-width="2"/>
 <text x="400" y="195" font-family="Inter" font-size="42" font-weight="600" text-anchor="middle" fill="#202326">F3</text>
-<rect x="440" y="150" width="70" height="62" fill="#FBFBF8" stroke="#202326" stroke-width="2"/>
-<rect x="515" y="150" width="70" height="62" fill="#FBFBF8" stroke="#202326" stroke-width="2"/>
-<rect x="590" y="150" width="70" height="62" fill="#FBFBF8" stroke="#202326" stroke-width="2"/>
 <rect x="665" y="150" width="70" height="62" fill="#E87823" fill-opacity="0.13" stroke="#E87823" stroke-width="2"/>
 <text x="700" y="195" font-family="Inter" font-size="42" font-weight="600" text-anchor="middle" fill="#202326">B0</text>
 <rect x="740" y="150" width="70" height="62" fill="#3478BA" fill-opacity="0.13" stroke="#3478BA" stroke-width="2"/>
@@ -40,15 +37,12 @@
 <rect x="890" y="150" width="70" height="62" fill="#3478BA" fill-opacity="0.13" stroke="#3478BA" stroke-width="2"/>
 <text x="925" y="195" font-family="Inter" font-size="42" font-weight="600" text-anchor="middle" fill="#202326">F5</text>
 <text x="80" y="272" font-family="Inter" font-size="48" font-weight="600" text-anchor="middle" fill="#202326">P1</text>
-<rect x="140" y="225" width="70" height="62" fill="#FBFBF8" stroke="#202326" stroke-width="2"/>
 <rect x="215" y="225" width="70" height="62" fill="#3478BA" fill-opacity="0.13" stroke="#3478BA" stroke-width="2"/>
 <text x="250" y="270" font-family="Inter" font-size="42" font-weight="600" text-anchor="middle" fill="#202326">F0</text>
 <rect x="290" y="225" width="70" height="62" fill="#3478BA" fill-opacity="0.13" stroke="#3478BA" stroke-width="2"/>
 <text x="325" y="270" font-family="Inter" font-size="42" font-weight="600" text-anchor="middle" fill="#202326">F1</text>
 <rect x="365" y="225" width="70" height="62" fill="#3478BA" fill-opacity="0.13" stroke="#3478BA" stroke-width="2"/>
 <text x="400" y="270" font-family="Inter" font-size="42" font-weight="600" text-anchor="middle" fill="#202326">F2</text>
-<rect x="440" y="225" width="70" height="62" fill="#FBFBF8" stroke="#202326" stroke-width="2"/>
-<rect x="515" y="225" width="70" height="62" fill="#FBFBF8" stroke="#202326" stroke-width="2"/>
 <rect x="590" y="225" width="70" height="62" fill="#E87823" fill-opacity="0.13" stroke="#E87823" stroke-width="2"/>
 <text x="625" y="270" font-family="Inter" font-size="42" font-weight="600" text-anchor="middle" fill="#202326">B0</text>
 <rect x="665" y="225" width="70" height="62" fill="#3478BA" fill-opacity="0.13" stroke="#3478BA" stroke-width="2"/>
@@ -60,13 +54,10 @@
 <rect x="890" y="225" width="70" height="62" fill="#E87823" fill-opacity="0.13" stroke="#E87823" stroke-width="2"/>
 <text x="925" y="270" font-family="Inter" font-size="42" font-weight="600" text-anchor="middle" fill="#202326">B2</text>
 <text x="80" y="347" font-family="Inter" font-size="48" font-weight="600" text-anchor="middle" fill="#202326">P2</text>
-<rect x="140" y="300" width="70" height="62" fill="#FBFBF8" stroke="#202326" stroke-width="2"/>
-<rect x="215" y="300" width="70" height="62" fill="#FBFBF8" stroke="#202326" stroke-width="2"/>
 <rect x="290" y="300" width="70" height="62" fill="#3478BA" fill-opacity="0.13" stroke="#3478BA" stroke-width="2"/>
 <text x="325" y="345" font-family="Inter" font-size="42" font-weight="600" text-anchor="middle" fill="#202326">F0</text>
 <rect x="365" y="300" width="70" height="62" fill="#3478BA" fill-opacity="0.13" stroke="#3478BA" stroke-width="2"/>
 <text x="400" y="345" font-family="Inter" font-size="42" font-weight="600" text-anchor="middle" fill="#202326">F1</text>
-<rect x="440" y="300" width="70" height="62" fill="#FBFBF8" stroke="#202326" stroke-width="2"/>
 <rect x="515" y="300" width="70" height="62" fill="#E87823" fill-opacity="0.13" stroke="#E87823" stroke-width="2"/>
 <text x="550" y="345" font-family="Inter" font-size="42" font-weight="600" text-anchor="middle" fill="#202326">B0</text>
 <rect x="590" y="300" width="70" height="62" fill="#3478BA" fill-opacity="0.13" stroke="#3478BA" stroke-width="2"/>
@@ -80,9 +71,6 @@
 <rect x="890" y="300" width="70" height="62" fill="#3478BA" fill-opacity="0.13" stroke="#3478BA" stroke-width="2"/>
 <text x="925" y="345" font-family="Inter" font-size="42" font-weight="600" text-anchor="middle" fill="#202326">F4</text>
 <text x="80" y="422" font-family="Inter" font-size="48" font-weight="600" text-anchor="middle" fill="#202326">P3</text>
-<rect x="140" y="375" width="70" height="62" fill="#FBFBF8" stroke="#202326" stroke-width="2"/>
-<rect x="215" y="375" width="70" height="62" fill="#FBFBF8" stroke="#202326" stroke-width="2"/>
-<rect x="290" y="375" width="70" height="62" fill="#FBFBF8" stroke="#202326" stroke-width="2"/>
 <rect x="365" y="375" width="70" height="62" fill="#3478BA" fill-opacity="0.13" stroke="#3478BA" stroke-width="2"/>
 <text x="400" y="420" font-family="Inter" font-size="42" font-weight="600" text-anchor="middle" fill="#202326">F0</text>
 <rect x="440" y="375" width="70" height="62" fill="#E87823" fill-opacity="0.13" stroke="#E87823" stroke-width="2"/>
@@ -122,13 +110,10 @@
 <text x="400" y="660" font-family="Inter" font-size="42" font-weight="600" text-anchor="middle" fill="#202326">F7</text>
 <rect x="440" y="615" width="70" height="62" fill="#E87823" fill-opacity="0.13" stroke="#E87823" stroke-width="2"/>
 <text x="475" y="660" font-family="Inter" font-size="42" font-weight="600" text-anchor="middle" fill="#202326">B4</text>
-<rect x="515" y="615" width="70" height="62" fill="#FBFBF8" stroke="#202326" stroke-width="2"/>
 <rect x="590" y="615" width="70" height="62" fill="#E87823" fill-opacity="0.13" stroke="#E87823" stroke-width="2"/>
 <text x="625" y="660" font-family="Inter" font-size="42" font-weight="600" text-anchor="middle" fill="#202326">B5</text>
-<rect x="665" y="615" width="70" height="62" fill="#FBFBF8" stroke="#202326" stroke-width="2"/>
 <rect x="740" y="615" width="70" height="62" fill="#E87823" fill-opacity="0.13" stroke="#E87823" stroke-width="2"/>
 <text x="775" y="660" font-family="Inter" font-size="42" font-weight="600" text-anchor="middle" fill="#202326">B6</text>
-<rect x="815" y="615" width="70" height="62" fill="#FBFBF8" stroke="#202326" stroke-width="2"/>
 <rect x="890" y="615" width="70" height="62" fill="#E87823" fill-opacity="0.13" stroke="#E87823" stroke-width="2"/>
 <text x="925" y="660" font-family="Inter" font-size="42" font-weight="600" text-anchor="middle" fill="#202326">B7</text>
 <text x="80" y="737" font-family="Inter" font-size="48" font-weight="600" text-anchor="middle" fill="#202326">P1</text>
@@ -144,13 +129,10 @@
 <text x="475" y="735" font-family="Inter" font-size="42" font-weight="600" text-anchor="middle" fill="#202326">F7</text>
 <rect x="515" y="690" width="70" height="62" fill="#E87823" fill-opacity="0.13" stroke="#E87823" stroke-width="2"/>
 <text x="550" y="735" font-family="Inter" font-size="42" font-weight="600" text-anchor="middle" fill="#202326">B5</text>
-<rect x="590" y="690" width="70" height="62" fill="#FBFBF8" stroke="#202326" stroke-width="2"/>
 <rect x="665" y="690" width="70" height="62" fill="#E87823" fill-opacity="0.13" stroke="#E87823" stroke-width="2"/>
 <text x="700" y="735" font-family="Inter" font-size="42" font-weight="600" text-anchor="middle" fill="#202326">B6</text>
-<rect x="740" y="690" width="70" height="62" fill="#FBFBF8" stroke="#202326" stroke-width="2"/>
 <rect x="815" y="690" width="70" height="62" fill="#E87823" fill-opacity="0.13" stroke="#E87823" stroke-width="2"/>
 <text x="850" y="735" font-family="Inter" font-size="42" font-weight="600" text-anchor="middle" fill="#202326">B7</text>
-<rect x="890" y="690" width="70" height="62" fill="#FBFBF8" stroke="#202326" stroke-width="2"/>
 <text x="80" y="812" font-family="Inter" font-size="48" font-weight="600" text-anchor="middle" fill="#202326">P2</text>
 <rect x="140" y="765" width="70" height="62" fill="#E87823" fill-opacity="0.13" stroke="#E87823" stroke-width="2"/>
 <text x="175" y="810" font-family="Inter" font-size="42" font-weight="600" text-anchor="middle" fill="#202326">B3</text>
@@ -166,11 +148,8 @@
 <text x="550" y="810" font-family="Inter" font-size="42" font-weight="600" text-anchor="middle" fill="#202326">F7</text>
 <rect x="590" y="765" width="70" height="62" fill="#E87823" fill-opacity="0.13" stroke="#E87823" stroke-width="2"/>
 <text x="625" y="810" font-family="Inter" font-size="42" font-weight="600" text-anchor="middle" fill="#202326">B6</text>
-<rect x="665" y="765" width="70" height="62" fill="#FBFBF8" stroke="#202326" stroke-width="2"/>
 <rect x="740" y="765" width="70" height="62" fill="#E87823" fill-opacity="0.13" stroke="#E87823" stroke-width="2"/>
 <text x="775" y="810" font-family="Inter" font-size="42" font-weight="600" text-anchor="middle" fill="#202326">B7</text>
-<rect x="815" y="765" width="70" height="62" fill="#FBFBF8" stroke="#202326" stroke-width="2"/>
-<rect x="890" y="765" width="70" height="62" fill="#FBFBF8" stroke="#202326" stroke-width="2"/>
 <text x="80" y="887" font-family="Inter" font-size="48" font-weight="600" text-anchor="middle" fill="#202326">P3</text>
 <rect x="140" y="840" width="70" height="62" fill="#3478BA" fill-opacity="0.13" stroke="#3478BA" stroke-width="2"/>
 <text x="175" y="885" font-family="Inter" font-size="42" font-weight="600" text-anchor="middle" fill="#202326">F4</text>
@@ -188,14 +167,10 @@
 <text x="625" y="885" font-family="Inter" font-size="42" font-weight="600" text-anchor="middle" fill="#202326">F7</text>
 <rect x="665" y="840" width="70" height="62" fill="#E87823" fill-opacity="0.13" stroke="#E87823" stroke-width="2"/>
 <text x="700" y="885" font-family="Inter" font-size="42" font-weight="600" text-anchor="middle" fill="#202326">B7</text>
-<rect x="740" y="840" width="70" height="62" fill="#FBFBF8" stroke="#202326" stroke-width="2"/>
-<rect x="815" y="840" width="70" height="62" fill="#FBFBF8" stroke="#202326" stroke-width="2"/>
-<rect x="890" y="840" width="70" height="62" fill="#FBFBF8" stroke="#202326" stroke-width="2"/>
 <rect x="100" y="950" width="46" height="46" fill="#3478BA" fill-opacity="0.13" stroke="#3478BA" stroke-width="2"/>
 <text x="165" y="990" font-family="Inter" font-size="42" font-weight="400" text-anchor="start" fill="#202326">F forward</text>
 <rect x="430" y="950" width="46" height="46" fill="#E87823" fill-opacity="0.13" stroke="#E87823" stroke-width="2"/>
 <text x="495" y="990" font-family="Inter" font-size="42" font-weight="400" text-anchor="start" fill="#202326">B backward</text>
-<rect x="790" y="950" width="46" height="46" fill="#FBFBF8" stroke="#202326" stroke-width="2"/>
-<text x="855" y="990" font-family="Inter" font-size="42" font-weight="400" text-anchor="start" fill="#202326">Idle</text>
+<text x="780" y="990" font-family="Inter" font-size="37" font-weight="400" text-anchor="start" fill="#202326">Blank: idle</text>
 <text x="500" y="1065" font-family="Inter" font-size="42" font-weight="400" text-anchor="middle" fill="#202326">Equal unit service · not milliseconds</text>
 </svg>

@@ -1,0 +1,423 @@
+{
+  "kind": "PRESENTATION_ANNOTATION_REPAIR_ONLY",
+  "manifest_sha256": "c0a226ca45be9809a2a80c49e54d5e21824d7c75d27966fb34a3e0e9be97cb58",
+  "renderer_sha256": "c484d6319bce02a11a531f0f7888dbf7a721428609a4eab2611fa20fdab669c9",
+  "font_sha256": "29160a80ff49ddcab2c97711247e08b1fab27a484a329ce8b813d820dc559031",
+  "Pillow": "12.3.0",
+  "rsvg_version": "rsvg-convert version 2.62.3",
+  "scientific_calculations_run": 0,
+  "new_mathematical_PASS": false,
+  "rows": [
+    {
+      "target": "images/aud-performance-engineer.png",
+      "source": "images/article-sources/aud-performance-engineer.png",
+      "source_sha256": "ab421db741336f51da5c434f3ad8c267bdb8c16fa3d2201530ff10684f4b4372",
+      "png_sha256": "1922af6e6906eb9d4450c30c1297e9139e15767e829b3bc4c18729468d8033c7",
+      "svg_sha256": "ea3677100c19033d535302b2b59c6a6c7c45176319c7112633c78bae20aed9cb",
+      "edits": [
+        [
+          1004,
+          765,
+          1178,
+          815
+        ]
+      ],
+      "changed_pixel_bbox": [
+        1009,
+        767,
+        1131,
+        808
+      ],
+      "outside_annotation_pixels_identical": true,
+      "source_and_output_dimensions": [
+        1600,
+        900
+      ],
+      "scientific_diagram_pixels_outside_annotation_identical": true
+    },
+    {
+      "target": "images/aud-performance-engineer-square.png",
+      "source": "images/article-sources/aud-performance-engineer-square.png",
+      "source_sha256": "8c50cd2050539d7b5a87d73af480a7ad44a33c89e2151d5e8c40082626cbf3a3",
+      "png_sha256": "127a6a522c7d27ca5c9093813e26825468a369229ef07e3fea56bb25abb8f323",
+      "svg_sha256": "b0f61f7b0d446e9f2309cf19a0c8a1a98e5920eca94bbdca34cf29096c7c9832",
+      "edits": [
+        [
+          785,
+          919,
+          993,
+          978
+        ]
+      ],
+      "changed_pixel_bbox": [
+        791,
+        921,
+        933,
+        969
+      ],
+      "outside_annotation_pixels_identical": true,
+      "source_and_output_dimensions": [
+        1080,
+        1080
+      ],
+      "scientific_diagram_pixels_outside_annotation_identical": true
+    },
+    {
+      "target": "images/article/02-topology-a.png",
+      "source": "images/scientific/02-topology-a.png",
+      "source_sha256": "2c6ce245fa46d640b2d9b55db60ca5203a4c1b3229012241b753d66d5189b7a1",
+      "png_sha256": "b1bf153408f7396d9aace6b198866a948392cb5d0ce1561096303b28951e66f9",
+      "svg_sha256": "5af964e7fb707d4312768e807ff43ee14c572188888e4eaefa1bffba5e4b135a",
+      "edits": [
+        [
+          2162,
+          2275,
+          2185,
+          2309
+        ]
+      ],
+      "changed_pixel_bbox": [
+        2163,
+        2276,
+        2184,
+        2308
+      ],
+      "outside_annotation_pixels_identical": true,
+      "source_and_output_dimensions": [
+        2400,
+        2400
+      ],
+      "scientific_diagram_pixels_outside_annotation_identical": true
+    },
+    {
+      "target": "images/article/aud-curious-square.png",
+      "source": "images/aud-curious-square.png",
+      "source_sha256": "7c35c25dd6f4e95982c8d8beeeecae6a2f2d22dff9e548ab000966075d0a3a05",
+      "png_sha256": "9e71fee1aa9003815bc05cf362319d7ec4d96e2152ecacc142b101767293e196",
+      "svg_sha256": "1929a8df1d73f26db27c8ed1415763c1a22cf4989fbdbd4d4a2e4520254c7eef",
+      "edits": [
+        [
+          969,
+          1021,
+          986,
+          1043
+        ]
+      ],
+      "changed_pixel_bbox": [
+        970,
+        1022,
+        985,
+        1042
+      ],
+      "outside_annotation_pixels_identical": true,
+      "source_and_output_dimensions": [
+        1080,
+        1080
+      ],
+      "scientific_diagram_pixels_outside_annotation_identical": true
+    },
+    {
+      "target": "images/article/07-context-policy.png",
+      "source": "images/scientific/07-context-policy.png",
+      "source_sha256": "9bdd38d634195edbb58b96f683cc68017826232f6d254c567e7e1f615db5d4e7",
+      "png_sha256": "f4a75f56a2132f2dfbcb40bf92edfc45236552e7a896e85d38a5ea855b449320",
+      "svg_sha256": "bd5d06e98a16b38bca025e4a01bbe22e5238168e827d7428b9424b25d40a16cb",
+      "edits": [
+        [
+          2163,
+          2275,
+          2186,
+          2309
+        ]
+      ],
+      "changed_pixel_bbox": [
+        2164,
+        2276,
+        2185,
+        2308
+      ],
+      "outside_annotation_pixels_identical": true,
+      "source_and_output_dimensions": [
+        2400,
+        2400
+      ],
+      "scientific_diagram_pixels_outside_annotation_identical": true
+    },
+    {
+      "target": "images/article/a-square.png",
+      "source": "images/a-square.png",
+      "source_sha256": "f72c7cb976af02d1d00869bb9bd1a2b8a394ecbfe2f77d1b6d3f2f484069eb7e",
+      "png_sha256": "cd10b4e188b6b870fb3f80e339d98294c5e12406c6bbdb4ff0b80dddbac3e05f",
+      "svg_sha256": "6d6e8dbf70da1cf5018fbe77b50c4276889eafb2977d269ef8f09c82f4fcc8fa",
+      "edits": [
+        [
+          970,
+          1021,
+          986,
+          1042
+        ]
+      ],
+      "changed_pixel_bbox": [
+        971,
+        1022,
+        985,
+        1041
+      ],
+      "outside_annotation_pixels_identical": true,
+      "source_and_output_dimensions": [
+        1080,
+        1080
+      ],
+      "scientific_diagram_pixels_outside_annotation_identical": true
+    },
+    {
+      "target": "images/article/06-routing-skew.png",
+      "source": "images/scientific/06-routing-skew.png",
+      "source_sha256": "e2a139dfdbb0c0ff1ce0c3a3c9b29da72246de0aa035f1d92206359c9d4babf8",
+      "png_sha256": "5a91d0ffa6105abb0ca78d0410c344273e548ba0ea20fdb21022612fae3cc2ab",
+      "svg_sha256": "f5a9dfa475edb5618e4e56927f7d2cedcfa3fb9773da5a54f54680ad00d8f0a5",
+      "edits": [
+        [
+          2161,
+          2275,
+          2186,
+          2310
+        ]
+      ],
+      "changed_pixel_bbox": [
+        2162,
+        2276,
+        2185,
+        2309
+      ],
+      "outside_annotation_pixels_identical": true,
+      "source_and_output_dimensions": [
+        2400,
+        2400
+      ],
+      "scientific_diagram_pixels_outside_annotation_identical": true
+    },
+    {
+      "target": "images/article/aud-ml-engineer-square.png",
+      "source": "images/aud-ml-engineer-square.png",
+      "source_sha256": "32c50e8bd6f1919bd4cd50c3bf990ebcef052c98551e92baa8f546682c66386f",
+      "png_sha256": "b2034018744dc381532f22e734826dbc279dacd1ea79f46950a7b424bdabc075",
+      "svg_sha256": "ec9784e9f3b5650d201102029ebb7301155778191591dc9209b50ce20939291a",
+      "edits": [
+        [
+          969,
+          1021,
+          985,
+          1042
+        ]
+      ],
+      "changed_pixel_bbox": [
+        970,
+        1022,
+        984,
+        1041
+      ],
+      "outside_annotation_pixels_identical": true,
+      "source_and_output_dimensions": [
+        1080,
+        1080
+      ],
+      "scientific_diagram_pixels_outside_annotation_identical": true
+    },
+    {
+      "target": "images/article/aud-performance-engineer-square.png",
+      "source": "images/article-sources/aud-performance-engineer-square.png",
+      "source_sha256": "8c50cd2050539d7b5a87d73af480a7ad44a33c89e2151d5e8c40082626cbf3a3",
+      "png_sha256": "a0348492cbbc8f6243d4424378e52eafda4f3acea5f6582495e5cace994a08b3",
+      "svg_sha256": "865067403543c008f202a9d392f6156fa39519ab903e8f5481515d7bff019919",
+      "edits": [
+        [
+          969,
+          1021,
+          986,
+          1042
+        ],
+        [
+          785,
+          919,
+          993,
+          978
+        ]
+      ],
+      "changed_pixel_bbox": [
+        791,
+        921,
+        985,
+        1041
+      ],
+      "outside_annotation_pixels_identical": true,
+      "source_and_output_dimensions": [
+        1080,
+        1080
+      ],
+      "scientific_diagram_pixels_outside_annotation_identical": true
+    },
+    {
+      "target": "images/article/b-square.png",
+      "source": "images/b-square.png",
+      "source_sha256": "c6b9f179e45fe385e995e9373ed7550fe550b4a357637052aef322eceb0778fc",
+      "png_sha256": "3ba0ff6caa3afa73e57338918e65e550ccd763e53f75cfac8c0736ed52e80271",
+      "svg_sha256": "233d8209fb544a0dbf1fcae0d124a81c73941f0b652ef399d9b6c1dc755e9a09",
+      "edits": [
+        [
+          969,
+          1021,
+          986,
+          1042
+        ]
+      ],
+      "changed_pixel_bbox": [
+        970,
+        1022,
+        985,
+        1041
+      ],
+      "outside_annotation_pixels_identical": true,
+      "source_and_output_dimensions": [
+        1080,
+        1080
+      ],
+      "scientific_diagram_pixels_outside_annotation_identical": true
+    },
+    {
+      "target": "images/article/aud-platform-operations-square.png",
+      "source": "images/aud-platform-operations-square.png",
+      "source_sha256": "53bc3c02eaa343b205ebe6046d17b1cd94c6db8921d1110e331cad2aa1d83103",
+      "png_sha256": "09031c4d785b0d52fe7435725128ba58162ff2528a27caee5acb4b1befd9a063",
+      "svg_sha256": "f17570a31f1975df2a772d1b8167b7cd8c9a50418e32058b7ed164445e42817c",
+      "edits": [
+        [
+          961,
+          1021,
+          986,
+          1042
+        ]
+      ],
+      "changed_pixel_bbox": [
+        962,
+        1022,
+        985,
+        1041
+      ],
+      "outside_annotation_pixels_identical": true,
+      "source_and_output_dimensions": [
+        1080,
+        1080
+      ],
+      "scientific_diagram_pixels_outside_annotation_identical": true
+    },
+    {
+      "target": "images/article/11-gradient-barrier.png",
+      "source": "images/scientific/11-gradient-barrier.png",
+      "source_sha256": "d679a1d7bb65dd2bd97ccd10cd1c8e7ceb93b3d426ee93a975a5843ae325515e",
+      "png_sha256": "d7e05d0dd97afeefe720052a12021762e53dd33205a806c9eb9a99a3809807f7",
+      "svg_sha256": "fb5497009d92289eca41cc517cc5f921abcf23db41892ac16b1cc9f4eab1a856",
+      "edits": [
+        [
+          2152,
+          2275,
+          2184,
+          2309
+        ]
+      ],
+      "changed_pixel_bbox": [
+        2153,
+        2276,
+        2183,
+        2308
+      ],
+      "outside_annotation_pixels_identical": true,
+      "source_and_output_dimensions": [
+        2400,
+        2400
+      ],
+      "scientific_diagram_pixels_outside_annotation_identical": true
+    },
+    {
+      "target": "images/article/c-square.png",
+      "source": "images/c-square.png",
+      "source_sha256": "071067c938eb4f9fb128622162fdba85ad15b74556db1f76e99952c5872d2bed",
+      "png_sha256": "6653df8931a65148a44ace89d79e98412507379da5b79ed4dc8cbcdf0bc3c2f9",
+      "svg_sha256": "c427d4335d1d2d9ce112787729c44a6e841b5994b28f0a4b60f1d716c9476167",
+      "edits": [
+        [
+          961,
+          1021,
+          986,
+          1042
+        ]
+      ],
+      "changed_pixel_bbox": [
+        962,
+        1022,
+        985,
+        1041
+      ],
+      "outside_annotation_pixels_identical": true,
+      "source_and_output_dimensions": [
+        1080,
+        1080
+      ],
+      "scientific_diagram_pixels_outside_annotation_identical": true
+    },
+    {
+      "target": "images/article/aud-kernel-engineer-square.png",
+      "source": "images/aud-kernel-engineer-square.png",
+      "source_sha256": "293e22bb41fb2ae6863ac54d12ad6424c26bd4bfe3c487bfca762b9b05e703c6",
+      "png_sha256": "58fe684cb87a5779699a52bada328a2c0ae92a2e379fed4e1d44133162b472f0",
+      "svg_sha256": "3746cafbe944442ff86bbf43284b8b87612fd918896d46394ec93a9fa0a98da7",
+      "edits": [
+        [
+          961,
+          1021,
+          986,
+          1043
+        ]
+      ],
+      "changed_pixel_bbox": [
+        962,
+        1022,
+        985,
+        1042
+      ],
+      "outside_annotation_pixels_identical": true,
+      "source_and_output_dimensions": [
+        1080,
+        1080
+      ],
+      "scientific_diagram_pixels_outside_annotation_identical": true
+    },
+    {
+      "target": "images/article/aud-business-capacity-square.png",
+      "source": "images/aud-business-capacity-square.png",
+      "source_sha256": "2911a3bbcc4fd05fe5126ba29bac1f2bd2161875fc87783bd765ba9ce8fc74e5",
+      "png_sha256": "a4f1338520d04d4edbb68b26fb87a66cca9568a9e074b8f93c74b2b1aa405b1e",
+      "svg_sha256": "7a8db20d58e5095c72db24b71f282c13154769df0e78bbb091113369c411b672",
+      "edits": [
+        [
+          962,
+          1021,
+          987,
+          1042
+        ]
+      ],
+      "changed_pixel_bbox": [
+        963,
+        1022,
+        986,
+        1041
+      ],
+      "outside_annotation_pixels_identical": true,
+      "source_and_output_dimensions": [
+        1080,
+        1080
+      ],
+      "scientific_diagram_pixels_outside_annotation_identical": true
+    }
+  ]
+}

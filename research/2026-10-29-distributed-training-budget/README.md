@@ -49,11 +49,13 @@ Norm-scalar service is omitted from all alternative screens. An optimizer must w
 
 ## What the choices cost
 
+The declared layout changes send 10 MiB per rank, per layer and per microbatch across forward and backward. MiB means `2^20` bytes. Expert dispatch and combine traffic is counted separately.
+
 Placement A keeps each replica within one rack, avoiding cross-rack pipeline transfers while sending all data-parallel gradient pairs across racks. Placement B keeps those gradient pairs within a rack and moves the middle pipeline boundary across racks. It reduces rack pressure but leaves node NIC service and optimizer work. A real comparison needs measured collectives, contention and a dependency-respecting schedule.
 
 The explicit Muon policy gathers whole attention matrices to a canonical stage owner for five finite FP32 Newton–Schulz iterations, then scatters and publishes state. Whole expert matrices already reside on their owners. This creates owner imbalance and communication. Its FP32 recurrence differs from the pinned Muon reference's BF16 iteration. Another optimizer precision, ownership or distributed recurrence requires a new calculation. Muon FLOPs remain separate from training FLOPs and cannot inflate an MFU numerator.
 
-The pipeline illustration uses equal unit forward/backward service and zero handoff latency. Its 22 slots are not milliseconds. The actual output head creates stage imbalance. Chunked expert routing bounds transient staging, while retained backward tensors and extra serial work under skew remain. No tokens are dropped. The allocation ledger excludes framework contexts, allocator reserve and fragmentation, extra library/transport workspaces and checkpoint buffers, so it does not prove implementation fit on an 80 GB device.
+The pipeline illustration uses equal unit forward/backward service and zero handoff latency. Its 22 slots are not milliseconds. The actual output head creates stage imbalance. Chunked expert routing bounds transient staging, while retained backward tensors and extra serial work under skew remain. No tokens are dropped. Across the four stages, the declared totals range from 2.13 to 2.59 GB per rank under balanced routing and 2.59 to 3.41 GB per rank under worst routing skew. GB means `10^9` bytes here, not GiB. These are the stage-wise minimum and maximum ledger totals, rounded to two decimals, not measured peaks. The allocation ledger excludes framework contexts, allocator reserve and fragmentation, extra library/transport workspaces and checkpoint buffers, so it does not prove implementation fit on an 80 GB device.
 
 Use the simpler placement and execution policy when it meets the required budget. Change a binding resource, ownership policy or dependency only after accounting for the costs that the change introduces.
 
@@ -96,55 +98,55 @@ These are the complete reader cards for the same hypothetical construction. The 
 
 ### Same GPUs. Different traffic.
 
-![Same GPUs. Different traffic.](images/fun-square.png)
+![Commentary cover with Fregly's take branding, Same GPUs. Different traffic., and a conceptual rack-and-cable illustration](images/fun-square.png)
 
 ### Place the whole training graph
 
-![Place the whole training graph](images/scientific/02-topology-a.png)
+![Place the whole training graph](images/article/02-topology-a.png)
 
 ### Eight GPUs. Two execution views.
 
-![Eight GPUs. Two execution views.](images/aud-curious-square.png)
+![Eight GPUs. Two execution views.](images/article/aud-curious-square.png)
 
 ### The full head adds work
 
-![The full head adds work](images/aud-ml-engineer-square.png)
+![The full head adds work](images/article/aud-ml-engineer-square.png)
 
 ### Pay for changing layouts
 
-![Pay for changing layouts](images/a-square.png)
+![Pay for changing layouts](images/article/a-square.png)
 
 ### Keep tokens. Count overflow work.
 
-![Keep tokens. Count overflow work.](images/scientific/06-routing-skew.png)
+![Keep tokens. Count overflow work.](images/article/06-routing-skew.png)
 
 ### Context parallelism moves data too
 
-![Context parallelism moves data too](images/scientific/07-context-policy.png)
+![Context parallelism moves data too](images/article/07-context-policy.png)
 
 ### Pipeline slots are not milliseconds
 
-![Pipeline slots are not milliseconds](images/aud-performance-engineer-square.png)
+![Pipeline slots are not milliseconds](images/article/aud-performance-engineer-square.png)
 
 ### Memory depends on what stays live
 
-![Memory depends on what stays live](images/b-square.png)
+![Memory depends on what stays live](images/article/b-square.png)
 
 ### Model state is only the start
 
-![Model state is only the start](images/aud-platform-operations-square.png)
+![Model state is only the start](images/article/aud-platform-operations-square.png)
 
 ### A ready bucket can start reducing
 
-![A ready bucket can start reducing](images/scientific/11-gradient-barrier.png)
+![A ready bucket can start reducing](images/article/11-gradient-barrier.png)
 
 ### Same norm. Different waiting.
 
-![Same norm. Different waiting.](images/c-square.png)
+![Same norm. Different waiting.](images/article/c-square.png)
 
 ### Muon needs the whole matrix
 
-![Muon needs the whole matrix](images/aud-kernel-engineer-square.png)
+![Muon needs the whole matrix](images/article/aud-kernel-engineer-square.png)
 
 ### Placement B: pair replicas within each rack
 
@@ -160,7 +162,7 @@ These are the complete reader cards for the same hypothetical construction. The 
 
 ### Decide what to build next
 
-![Decide what to build next](images/aud-business-capacity-square.png)
+![Decide what to build next](images/article/aud-business-capacity-square.png)
 
 
 ## Rebuild the selected figures
@@ -188,5 +190,57 @@ Selected figure rebuilding was checked with Python 3.12.2, Pillow 11.3.0 and rsv
 <summary>Artwork inputs and compact exports</summary>
 
 ![Conceptual rack-routing illustration cropped into the traffic comparison](images/scientific/rack-traffic-scene.png)
+
+</details>
+
+
+## Rebuild the article annotations
+
+The article figures use the retained designed PNGs as source artwork. The annotation renderer removes isolated carousel numbers and corrects the pipeline idle legend. Its SVGs link to those original PNGs and keep the annotation shapes and text editable. It does not reconstruct the scientific chart marks. The [input declaration](images/article/render-inputs.json) and [render receipt](images/article/render-receipt.json) bind the source images and the fifteen outputs.
+
+From this package root, check the retained annotation outputs:
+
+```sh
+python3 code/article_figures.py --check
+```
+
+This presentation check uses Pillow 12.3.0, rsvg-convert 2.62.3 and Fontconfig with `fc-match`. It resolves the packaged Inter Regular font. These presentation tools are separate from the standard-library analytical workbook and the selected-figure rendering stack above. To render a separate preview tree, use `python3 code/article_figures.py --write --output-root /tmp/main-article-figures`. This changes annotations only and performs no scientific calculation.
+
+<details>
+<summary>Source artwork for article annotation rendering</summary>
+
+The figures above use these retained inputs. Numbered deck images supply the underlying chart pixels. The original pipeline inputs supply the artwork before its idle-legend annotation is applied.
+
+![Changing layouts source artwork](images/a-square.png)
+
+![Original pipeline schedule source artwork](images/article-sources/aud-performance-engineer-square.png)
+
+![Original landscape pipeline source artwork](images/article-sources/aud-performance-engineer.png)
+
+![Build decision source artwork](images/aud-business-capacity-square.png)
+
+![Eight-rank execution views source artwork](images/aud-curious-square.png)
+
+![Whole-matrix optimizer source artwork](images/aud-kernel-engineer-square.png)
+
+![Full output-head work source artwork](images/aud-ml-engineer-square.png)
+
+![Pipeline schedule source artwork with the blank idle legend](images/aud-performance-engineer-square.png)
+
+![Landscape pipeline source artwork with the blank idle legend](images/aud-performance-engineer.png)
+
+![Model-state allocation source artwork](images/aud-platform-operations-square.png)
+
+![Live-allocation source artwork](images/b-square.png)
+
+![Norm-schedule source artwork](images/c-square.png)
+
+![Placement A source artwork](images/scientific/02-topology-a.png)
+
+![Expert-routing source artwork](images/scientific/06-routing-skew.png)
+
+![Context-parallel source artwork](images/scientific/07-context-policy.png)
+
+![Gradient-barrier source artwork](images/scientific/11-gradient-barrier.png)
 
 </details>
