@@ -1,92 +1,30 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900">
 <rect width="100%" height="100%" fill="#FBFBF8"/>
-<defs><marker id="arrow" viewBox="0 0 12 12" refX="9" refY="6" markerWidth="5" markerHeight="5" orient="auto"><path d="M1 1 L10 6 L1 11" fill="none" stroke="context-stroke" stroke-width="2"/></marker>
-<pattern id="hatch" width="18" height="18" patternUnits="userSpaceOnUse"><path d="M-4 18 L18 -4 M8 26 L26 8" stroke="#E87823" stroke-width="2" opacity=".35"/></pattern></defs>
-<text x="85" y="93" font-family="Bradley Hand" font-size="72" fill="#202326" text-anchor="start" font-weight="normal">
-<tspan x="85" dy="0">Shrink the output dimension first</tspan>
-</text>
-<text x="89" y="154" font-family="Arial, Helvetica, sans-serif" font-size="43" fill="#202326" text-anchor="start" font-weight="normal">
-<tspan x="89" dy="0">Batch 8 · hidden 2048 · strict FP32</tspan>
-</text>
-<path d="M89 174.0 Q480 168.0 1080 176.0" fill="none" stroke="#202326" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-<text x="90" y="279" font-family="Bradley Hand" font-size="49" fill="#E87823" text-anchor="start" font-weight="normal">
-<tspan x="90" dy="0">Full output projection</tspan>
-</text>
-<rect x="100" y="325" width="155" height="115" rx="8" fill="#FBFBF8" stroke="#202326" stroke-width="4"/>
-<path d="M112 328 Q169.75 323 243 328" fill="none" stroke="#202326" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M103 353.75 Q179.5 351.75 252 353.75" fill="none" stroke="#202326" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M103 382.5 Q179.5 380.5 252 382.5" fill="none" stroke="#202326" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M103 411.25 Q179.5 409.25 252 411.25" fill="none" stroke="#202326" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M131.0 328 Q133.0 380.5 131.0 437" fill="none" stroke="#202326" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M162.0 328 Q164.0 380.5 162.0 437" fill="none" stroke="#202326" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M193.0 328 Q195.0 380.5 193.0 437" fill="none" stroke="#202326" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M224.0 328 Q226.0 380.5 224.0 437" fill="none" stroke="#202326" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<text x="320" y="403" font-family="Arial, Helvetica, sans-serif" font-size="60" fill="#202326" text-anchor="middle" font-weight="normal">
-<tspan x="320" dy="0">×</tspan>
-</text>
-<rect x="390" y="311" width="1095" height="145" rx="8" fill="#FBFBF8" stroke="#E87823" stroke-width="4"/>
-<path d="M402 314 Q882.75 309 1473 314" fill="none" stroke="#E87823" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M393 340.0 Q939.5 338.0 1482 340.0" fill="none" stroke="#E87823" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M393 369.0 Q939.5 367.0 1482 369.0" fill="none" stroke="#E87823" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M393 398.0 Q939.5 396.0 1482 398.0" fill="none" stroke="#E87823" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M393 427.0 Q939.5 425.0 1482 427.0" fill="none" stroke="#E87823" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M439.77272727272725 314 Q441.77272727272725 381.5 439.77272727272725 453" fill="none" stroke="#E87823" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M489.54545454545456 314 Q491.54545454545456 381.5 489.54545454545456 453" fill="none" stroke="#E87823" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M539.3181818181818 314 Q541.3181818181818 381.5 539.3181818181818 453" fill="none" stroke="#E87823" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M589.0909090909091 314 Q591.0909090909091 381.5 589.0909090909091 453" fill="none" stroke="#E87823" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M638.8636363636364 314 Q640.8636363636364 381.5 638.8636363636364 453" fill="none" stroke="#E87823" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M688.6363636363636 314 Q690.6363636363636 381.5 688.6363636363636 453" fill="none" stroke="#E87823" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M738.409090909091 314 Q740.409090909091 381.5 738.409090909091 453" fill="none" stroke="#E87823" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M788.1818181818182 314 Q790.1818181818182 381.5 788.1818181818182 453" fill="none" stroke="#E87823" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M837.9545454545455 314 Q839.9545454545455 381.5 837.9545454545455 453" fill="none" stroke="#E87823" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M887.7272727272727 314 Q889.7272727272727 381.5 887.7272727272727 453" fill="none" stroke="#E87823" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M937.5 314 Q939.5 381.5 937.5 453" fill="none" stroke="#E87823" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M987.2727272727273 314 Q989.2727272727273 381.5 987.2727272727273 453" fill="none" stroke="#E87823" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M1037.0454545454545 314 Q1039.0454545454545 381.5 1037.0454545454545 453" fill="none" stroke="#E87823" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M1086.818181818182 314 Q1088.818181818182 381.5 1086.818181818182 453" fill="none" stroke="#E87823" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M1136.590909090909 314 Q1138.590909090909 381.5 1136.590909090909 453" fill="none" stroke="#E87823" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M1186.3636363636365 314 Q1188.3636363636365 381.5 1186.3636363636365 453" fill="none" stroke="#E87823" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M1236.1363636363635 314 Q1238.1363636363635 381.5 1236.1363636363635 453" fill="none" stroke="#E87823" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M1285.909090909091 314 Q1287.909090909091 381.5 1285.909090909091 453" fill="none" stroke="#E87823" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M1335.681818181818 314 Q1337.681818181818 381.5 1335.681818181818 453" fill="none" stroke="#E87823" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M1385.4545454545455 314 Q1387.4545454545455 381.5 1385.4545454545455 453" fill="none" stroke="#E87823" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M1435.2272727272727 314 Q1437.2272727272727 381.5 1435.2272727272727 453" fill="none" stroke="#E87823" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<text x="790" y="519" font-family="Arial, Helvetica, sans-serif" font-size="51" fill="#202326" text-anchor="middle" font-weight="normal">
-<tspan x="790" dy="0">8 × 2048  ×  2048 × 131072</tspan>
-</text>
-<text x="90" y="611" font-family="Bradley Hand" font-size="49" fill="#3478BA" text-anchor="start" font-weight="normal">
-<tspan x="90" dy="0">64 legal outputs</tspan>
-</text>
-<rect x="100" y="652" width="155" height="115" rx="8" fill="#FBFBF8" stroke="#202326" stroke-width="4"/>
-<path d="M112 655 Q169.75 650 243 655" fill="none" stroke="#202326" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M103 680.75 Q179.5 678.75 252 680.75" fill="none" stroke="#202326" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M103 709.5 Q179.5 707.5 252 709.5" fill="none" stroke="#202326" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M103 738.25 Q179.5 736.25 252 738.25" fill="none" stroke="#202326" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M131.0 655 Q133.0 707.5 131.0 764" fill="none" stroke="#202326" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M162.0 655 Q164.0 707.5 162.0 764" fill="none" stroke="#202326" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M193.0 655 Q195.0 707.5 193.0 764" fill="none" stroke="#202326" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M224.0 655 Q226.0 707.5 224.0 764" fill="none" stroke="#202326" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<text x="320" y="730" font-family="Arial, Helvetica, sans-serif" font-size="60" fill="#202326" text-anchor="middle" font-weight="normal">
-<tspan x="320" dy="0">×</tspan>
-</text>
-<rect x="390" y="638" width="245" height="145" rx="8" fill="#EFF5FA" stroke="#3478BA" stroke-width="4"/>
-<path d="M402 641 Q500.25 636 623 641" fill="none" stroke="#3478BA" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M393 667.0 Q514.5 665.0 632 667.0" fill="none" stroke="#3478BA" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M393 696.0 Q514.5 694.0 632 696.0" fill="none" stroke="#3478BA" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M393 725.0 Q514.5 723.0 632 725.0" fill="none" stroke="#3478BA" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M393 754.0 Q514.5 752.0 632 754.0" fill="none" stroke="#3478BA" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M430.8333333333333 641 Q432.8333333333333 708.5 430.8333333333333 780" fill="none" stroke="#3478BA" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M471.6666666666667 641 Q473.6666666666667 708.5 471.6666666666667 780" fill="none" stroke="#3478BA" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M512.5 641 Q514.5 708.5 512.5 780" fill="none" stroke="#3478BA" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M553.3333333333334 641 Q555.3333333333334 708.5 553.3333333333334 780" fill="none" stroke="#3478BA" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M594.1666666666666 641 Q596.1666666666666 708.5 594.1666666666666 780" fill="none" stroke="#3478BA" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<text x="950" y="695" font-family="Arial, Helvetica, sans-serif" font-size="46" fill="#202326" text-anchor="middle" font-weight="normal">
-<tspan x="950" dy="0">8 × 2048  ×  2048 × 64</tspan>
-</text>
-<text x="950" y="766" font-family="Arial, Helvetica, sans-serif" font-size="43" fill="#202326" text-anchor="middle" font-weight="normal">
-<tspan x="950" dy="0">FP32 weights: 1 GiB → 512 KiB</tspan>
-</text>
-<text x="89" y="865.0" font-family="Arial, Helvetica, sans-serif" font-size="36" fill="#202326" text-anchor="start" font-weight="normal">
-<tspan x="89" dy="0">Derived tensor storage; not measured memory traffic · shape sketches are schematic</tspan>
-</text>
+<defs><marker id="arrow" viewBox="0 0 12 12" refX="10" refY="6" markerWidth="5" markerHeight="5" orient="auto"><path d="M2 2 L10 6 L2 10" fill="none" stroke="context-stroke" stroke-width="2"/></marker></defs>
+<text x="64" y="82.0" font-family="Inter" font-size="64" font-weight="400" font-style="normal" fill="#202326" text-anchor="start">Reduce the output dimension</text>
+<text x="64" y="152.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#202326" text-anchor="start">Same inputs, fewer allowed weight rows</text>
+<text x="70" y="280.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#3478BA" text-anchor="start">Full output projection</text>
+<rect x="80" y="315" width="1000" height="90" rx="0" fill="none" stroke="#3478BA" stroke-width="3"/>
+<line x1="80" y1="337.5" x2="1080" y2="337.5" stroke="#3478BA" stroke-width="1.5"/>
+<line x1="80" y1="360.0" x2="1080" y2="360.0" stroke="#3478BA" stroke-width="1.5"/>
+<line x1="80" y1="382.5" x2="1080" y2="382.5" stroke="#3478BA" stroke-width="1.5"/>
+<line x1="280.0" y1="315" x2="280.0" y2="405" stroke="#3478BA" stroke-width="1.5"/>
+<line x1="480.0" y1="315" x2="480.0" y2="405" stroke="#3478BA" stroke-width="1.5"/>
+<line x1="680.0" y1="315" x2="680.0" y2="405" stroke="#3478BA" stroke-width="1.5"/>
+<line x1="880.0" y1="315" x2="880.0" y2="405" stroke="#3478BA" stroke-width="1.5"/>
+<text x="1350" y="380.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#202326" text-anchor="middle">FP32</text>
+<text x="1350" y="437.6" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#202326" text-anchor="middle">weights</text>
+<text x="70" y="470.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#202326" text-anchor="start">8 × 2048  @  2048 × 131072</text>
+<text x="70" y="535.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#E87823" text-anchor="start">64 allowed outputs</text>
+<rect x="80" y="570" width="300" height="90" rx="0" fill="none" stroke="#E87823" stroke-width="3"/>
+<line x1="80" y1="592.5" x2="380" y2="592.5" stroke="#E87823" stroke-width="1.5"/>
+<line x1="80" y1="615.0" x2="380" y2="615.0" stroke="#E87823" stroke-width="1.5"/>
+<line x1="80" y1="637.5" x2="380" y2="637.5" stroke="#E87823" stroke-width="1.5"/>
+<line x1="140.0" y1="570" x2="140.0" y2="660" stroke="#E87823" stroke-width="1.5"/>
+<line x1="200.0" y1="570" x2="200.0" y2="660" stroke="#E87823" stroke-width="1.5"/>
+<line x1="260.0" y1="570" x2="260.0" y2="660" stroke="#E87823" stroke-width="1.5"/>
+<line x1="320.0" y1="570" x2="320.0" y2="660" stroke="#E87823" stroke-width="1.5"/>
+<text x="900" y="635.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#202326" text-anchor="middle">8 × 2048  @  2048 × 64</text>
+<text x="64" y="814.8" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#202326" text-anchor="start">FP32 weight storage: 1 GiB → 512 KiB · derived, not measured</text>
+<text x="64" y="870.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#202326" text-anchor="start">traffic</text>
 </svg>

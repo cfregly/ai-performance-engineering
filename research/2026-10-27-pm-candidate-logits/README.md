@@ -1,4 +1,10 @@
-# Project through the allowed token rows
+# Score only the choices that are allowed
+
+Suppose a router may answer only A, B or C. Why score the rest? I reproduced [Murali Manohar's idea](https://gitlostmurali.com/blog/structured-generation-optimizations/): gather the allowed tokens' weights first, then score them.
+
+The catch is that the allowed set must be ready before scoring. The usual path needs it only when filtering scores afterward. Creating and transferring the set were excluded from both timed paths. My advice: keep full scoring if earlier selection and weight gathering erase the saving, or if the caller needs every token's score.
+
+A token ID is the model's numeric label for a token and its output-weight row. Allowed token IDs identify the tokens the app permits at the next step.
 
 A synthetic output-head benchmark compares two ways to return allowed token scores and their greedy winner. The dense baseline computes `H @ W.T`, gathers the allowed scores, and selects their maximum. The candidate gathers allowed weight rows first, computes `H @ W[S, :].T`, and uses the same selection path.
 
@@ -12,6 +18,8 @@ One NVIDIA B200 ran strict FP32 with TF32 disabled, batch 8, hidden width 2,048 
 | 64 | Changing | 5.399 | 0.421 | 12.84× | 0.004 |
 | 256 | Static | 5.466 | 0.350 | 15.64× | 0.022 |
 | 256 | Changing | 5.471 | 0.421 | 12.99× | 0.004 |
+
+Speedups are ratios of the unrounded median block times.
 
 Times are medians of three matched warm blocks, each containing 16 projection/filter/selection steps and final device synchronization. Pair order was dense-first, candidate-first, then dense-first after two warmup blocks per path. Every one of the 18 pairs favored selected rows. The nearest-rank p95 of three samples is the largest block, rather than request tail latency. The fixed order and three pairs do not separate execution order from sample position. In the 64-ID changing-set cell, the candidate-first block took 0.414593 ms, versus 0.420575 and 0.421094 ms for its two candidate-second blocks. These retained samples support this within-process screen, rather than a broad repeatability claim.
 
@@ -42,161 +50,211 @@ API contracts: [PyTorch matrix product](https://docs.pytorch.org/docs/2.14/gener
 
 ## Trade-offs
 
-- Allowed tokens must be known before projection. This test starts with sorted, device-resident IDs, excluding grammar/tokenizer work, ID production and transfer.
+- Both paths need the allowed set. Selecting weight rows needs it before projection and gathers those weights first. Dense scoring needs the set when filtering its scores afterward. This test starts with sorted, device-resident IDs and excludes grammar/tokenizer work, ID production and transfer from both paths.
 - Changing-set weight gathering is additional work and is included in its timings. Static reuse pays separate setup outside warm ratios, including the retained 3.252 ms interval at 64 IDs. Cold-start benefit and break-even were not measured.
 - All batch rows shared one allowed set. Different sets per request, near-full-vocabulary sets and other precisions remain untested here.
-- Only allowed scores and their greedy winner are returned. The full weight tensor remains resident. No memory saving or complete-request gain is established.
+- Both tested paths return allowed scores and their greedy winner under the same output contract. Use full scoring when the caller needs every vocabulary score or full-vocabulary probabilities. The full weight tensor remains resident. No memory saving or complete-request gain is established.
 
 ## Prior work
 
 [Underpinning study by Murali Manohar](https://gitlostmurali.com/blog/structured-generation-optimizations/) explains allowed-token weight slicing and batching limitations. The [GSP working paper](https://github.com/StealthEyeLLC/grammar-sparse-projection/blob/30a9d0ed82f26dc53ec74b4f0985e1d213a18625/paper/draft.md) develops packed-mask projection, heterogeneous batching and an end-to-end evaluation. Those authors’ results are separate from this controlled B200 reproduction. The core mechanism is established.
 
-## Concise stage comparison
+## Measured output-head comparison
 
-The complete configuration and methods are above. This figure summarizes the same measured changing-set case.
+The figure uses the same changing-set case and methods above. The allowed set
+must be available before scoring. Gathering its weights is included in the
+reported time. Creating and transferring that set are excluded from both paths.
 
-![Output-head stage comparison with weight gathering included](images/result-scene.png)
+![Full plus filter takes 5.399 ms versus 0.421 ms for allowed rows per warm 16-step block. The 12.84× gain is output-head only.](images/gamma-evidence/comparison.png)
 
-The selected figure combines retained conceptual artwork with the unchanged measured values. Its [editable SVG](images/result-scene.svg) and [renderer](images/result-scene/render_result_scene.py) retain the text and exact bar geometry. To rebuild it, use an environment with Pillow, librsvg (`rsvg-convert`) and Fontconfig already installed:
+Rebuild the exact editable chart from the retained summary and paired samples:
 
 ```sh
-python3 images/result-scene/render_result_scene.py --check
+python3 images/gamma-evidence/render_evidence.py --check
 ```
 
-This read-only command regenerates into temporary storage and checks the canonical SVG, PNG and text. It does not run the GPU benchmark. Use `--overwrite` to regenerate intentionally. That also creates 312 px and 400 px preview images and a provenance receipt, which are generated side files excluded by the companion `.gitignore`.
+This checks SVG, PNG, text and preview bytes in temporary storage. Use
+`--overwrite` to intentionally regenerate this figure, or
+`--output-root /tmp/candidate-output-head-chart` to render a separate copy.
+Existing Python 3 with Pillow, librsvg (`rsvg-convert`) and Fontconfig (`fc-match`)
+are required. The renderer resolves the packaged regular Inter font and retains
+the original upright Fregly's take stamp. No network or GPU work is performed.
 
-Exact PNG rebuilding was checked with Python 3.12.2, Pillow 11.3.0, rsvg-convert 2.62.3, Cairo 1.18.4, Pango 1.57.1, Harfbuzz 14.2.1 and Fontconfig 2.18.1. A different stack can change PNG bytes even when SVG and text agree. Inspect those sources before regeneration.
+Exact PNG checks for the current comparison and cover variants used Python 3.12.2
+and Pillow 11.3.0. PNG encoding can differ between Pillow versions even when
+the decoded pixels are identical.
+
+The tested raster stack is rsvg-convert 2.62.3, Cairo 1.18.4, Pango 1.57.1,
+HarfBuzz 14.2.1 and Fontconfig 2.18.1, with `PANGOCAIRO_BACKEND=fc`. A different
+stack may change PNG bytes. Inspect the editable SVG and source data when
+reproducing on another stack.
+
+The landscape and square cover variants present the same comparison and
+conditions, with a deliberate layout for each aspect ratio. Rebuild them with:
+
+```sh
+python3 images/render_data_covers.py --check
+```
+
+Use `--output-root /tmp/candidate-data-covers` to render a separate set of cover
+variants. This renderer uses the same retained data, evidence renderer, Inter
+font and upright stamp.
+
+## Rebuild the explanatory figures
+
+The [figure renderer](images/render_illustrations.py) uses the paired samples and summary above. It needs Python 3 with Pillow, librsvg (`rsvg-convert`) and Fontconfig (`fc-match`), plus the packaged Inter font and [visual tokens](images/visual-tokens.json).
+
+Render to a separate directory for inspection:
+
+```sh
+python3 images/render_illustrations.py --public-layout --output-root /tmp/candidate-plain-graphics
+```
+
+Omit `--output-root` to replace the canonical figures. The command writes the ten landscape/square figure families and their previews, text and export metadata. If it fails, the chosen output directory may contain partial output. Resolve the reported source, font or layout error before using those figures. It does not run the benchmark or recompute the measurements.
+
+The tested renderer stack is the librsvg, Cairo, Pango, HarfBuzz and Fontconfig stack listed above, with `PANGOCAIRO_BACKEND=fc` and the packaged regular Inter face. Different stacks may produce different PNG bytes.
 
 ## Figures
 
-The cover illustration is conceptual. Tile counts and drawn proportions do not encode the benchmark dimensions. Numerical figures state their conditions and describe observed block timings.
+### Output-head comparison and tradeoff
 
-### Choose first. Multiply less.
-
-![Choose first. Multiply less.](images/fun.png)
+![Output-head comparison and tradeoff](images/fun.png)
 
 <details>
 <summary>Square version</summary>
 
-![Choose first. Multiply less.: square](images/fun-square.png)
+![Output-head comparison and tradeoff: square](images/fun-square.png)
 
 </details>
 
-### Select rows before multiplying
+### Select allowed rows before scoring
 
-![Select rows before multiplying](images/a.png)
+![Select allowed rows before scoring](images/a.png)
 
 <details>
 <summary>Square version</summary>
 
-![Select rows before multiplying: square](images/a-square.png)
+![Select allowed rows before scoring: square](images/a-square.png)
 
 </details>
 
-### Six measured output-head comparisons
+### Six warm-block comparisons
 
-![Six measured output-head comparisons](images/b.png)
+![Six warm-block comparisons](images/b.png)
 
 <details>
 <summary>Square version</summary>
 
-![Six measured output-head comparisons: square](images/b-square.png)
+![Six warm-block comparisons: square](images/b-square.png)
 
 </details>
 
-### Where to inspect a decoder
+### Know which tokens are allowed before scoring?
 
-![Where to inspect a decoder](images/c.png)
+![Know which tokens are allowed before scoring?](images/c.png)
 
 <details>
 <summary>Square version</summary>
 
-![Where to inspect a decoder: square](images/c-square.png)
+![Know which tokens are allowed before scoring?: square](images/c-square.png)
 
 </details>
 
-### A smaller set of possible answers
+### Why score tokens you cannot emit?
 
-![A smaller set of possible answers](images/aud-curious.png)
+![Why score tokens you cannot emit?](images/aud-curious.png)
 
 <details>
 <summary>Square version</summary>
 
-![A smaller set of possible answers: square](images/aud-curious-square.png)
+![Why score tokens you cannot emit?: square](images/aud-curious-square.png)
 
 </details>
 
-### The output contract matters
+### Select weights, then score
 
-![The output contract matters](images/aud-ml-engineer.png)
+![Select weights, then score](images/aud-ml-engineer.png)
 
 <details>
 <summary>Square version</summary>
 
-![The output contract matters: square](images/aud-ml-engineer-square.png)
+![Select weights, then score: square](images/aud-ml-engineer-square.png)
 
 </details>
 
-### Read the paired block timings
+### Include gathering in the timed path
 
-![Read the paired block timings](images/aud-performance-engineer.png)
+![Include gathering in the timed path](images/aud-performance-engineer.png)
 
 <details>
 <summary>Square version</summary>
 
-![Read the paired block timings: square](images/aud-performance-engineer-square.png)
+![Include gathering in the timed path: square](images/aud-performance-engineer-square.png)
 
 </details>
 
-### Avoid projecting unused rows
+### Reduce the output dimension
 
-![Avoid projecting unused rows](images/aud-kernel-engineer.png)
+![Reduce the output dimension](images/aud-kernel-engineer.png)
 
 <details>
 <summary>Square version</summary>
 
-![Avoid projecting unused rows: square](images/aud-kernel-engineer-square.png)
+![Reduce the output dimension: square](images/aud-kernel-engineer-square.png)
 
 </details>
 
-### Where integration time can return
+### Check when allowed tokens are known
 
-![Where integration time can return](images/aud-platform-operations.png)
+![Check when allowed tokens are known](images/aud-platform-operations.png)
 
 <details>
 <summary>Square version</summary>
 
-![Where integration time can return: square](images/aud-platform-operations-square.png)
+![Check when allowed tokens are known: square](images/aud-platform-operations-square.png)
 
 </details>
 
-### Stage gains and whole-system gains
+### Measure requests before promising capacity
 
-![Stage gains and whole-system gains](images/aud-business-capacity.png)
+![Measure requests before promising capacity](images/aud-business-capacity.png)
 
 <details>
 <summary>Square version</summary>
 
-![Stage gains and whole-system gains: square](images/aud-business-capacity-square.png)
+![Measure requests before promising capacity: square](images/aud-business-capacity-square.png)
 
 </details>
 
-### Changing allowed sets: the observed stage gain
+### Compare the complete output-head stage
 
-![Changing allowed sets: the observed stage gain](images/comparison-detail.png)
+![Compare the complete output-head stage](images/comparison-detail.png)
 
 <details>
 <summary>Square version</summary>
 
-![Changing allowed sets: the observed stage gain: square](images/comparison-detail-square.png)
+![Compare the complete output-head stage: square](images/comparison-detail-square.png)
 
 </details>
 
 <details>
-<summary>Conceptual artwork used by the editable result scene</summary>
+<summary>Renderer resources and earlier comparison</summary>
 
-This retained illustration supplies the row-selection scene. Its drawn dimensions do not encode benchmark dimensions or the count of allowed tokens. The renderer adds the verified text and measured chart separately.
+The chart previews and upright stamp are retained so the renderer can check
+its complete output and resolve the same image resource.
 
-![Conceptual weight-row selection artwork](images/result-scene/matrix-cut-art.png)
+![Chart preview at 306 pixels](images/gamma-evidence/comparison-306px.png)
+
+![Chart preview at 400 pixels](images/gamma-evidence/comparison-400px.png)
+
+<img src="images/gamma-evidence/fregly-take-stamp.png" alt="Upright Fregly's take stamp" width="188">
+
+The earlier comparison and row-selection artwork support the retained
+result-scene renderer. They use the same synthetic FP32 output-head
+measurements and scope described above.
+
+![Earlier output-head comparison](images/result-scene.png)
+
+![Row-selection artwork used by the earlier renderer](images/result-scene/matrix-cut-art.png)
 
 </details>

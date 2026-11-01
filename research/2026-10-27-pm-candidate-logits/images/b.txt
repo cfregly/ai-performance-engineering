@@ -1,40 +1,32 @@
 Six warm-block comparisons
-
-All six medians are milliseconds per warm block of 16 projection/filter/argmax steps. Bars show medians and whiskers show the minimum to maximum of the three paired blocks in each cell. These are three blocks in one process, not independent processes or seeds. Changing mode includes each gather; static mode reuses gathered rows after setup. Static one-time row setup is 0.034720 ms for 16 IDs, 3.252477 ms for 64 IDs, and 0.022130 ms for 256 IDs. These setup costs are outside the displayed warm-block times. The synthetic strict-FP32 stage uses batch 8, hidden width 2048, vocabulary 131072, one shared device-resident legal set, and TF32 disabled.
-
-Less output work, shorter warm blocks
 Synthetic strict-FP32 output-head stage
-Full head → filter
-Legal rows first
+Full + filter
+Allowed rows first
+Static IDs
 0
-2
-4
+3
 6
-16 static
-0.334
+16
 5.489
-16 changing
-0.560
-5.494
-64 static
-0.349
+0.334
+64
 5.409
-64 changing
-0.421
-5.399
-256 static
-0.350
+0.349
+256
 5.466
-256 changing
+0.350
+Changing IDs
+5.494
+0.560
+5.399
+0.421
 5.471
-Milliseconds per 16-step block
-Median bars · min–max whiskers · 3 paired blocks / cell · one process
-Batch 8 · hidden 2048 · vocab 131072 · shared IDs · TF32 off
-Changing includes gather. Static reuses rows; 64-ID setup: 3.252 ms, excluded.
-Less work, shorter
-warm blocks
-Median bars · min–max whiskers
-3 paired blocks / cell · one process
-Batch 8 · hidden 2048 · vocab 131072
-Shared IDs · TF32 off · changing includes gather
-Static reuses rows; 64-ID setup 3.252 ms excluded
+Milliseconds per warm 16-step block
+Median bars · min–max whiskers · 3 pairs in one process
+Batch 8 · hidden 2048 · vocabulary 131072 · TF32 off
+Changing includes gather. Static setup is separate.
+Allowed rows
+static
+changing
+
+Retained methods: synthetic strict FP32 output head. Batch 8, hidden 2048, vocabulary 131072. One shared device-resident allowed set. TF32 off. Median warm blocks contain 16 steps. Three paired blocks per cell in one process. Whiskers are observed min–max, not confidence intervals. Changing sets include each gather. Static sets reuse gathered weights after one-time setup. Static setup for 16/64/256 IDs: 0.034720 / 3.252477 / 0.022130 ms. The 64-ID setup is an unexplained outlier. Cold-start benefit and break-even were not measured. Whole-model and serving gains were not measured. Different per-request sets and BF16 are untested. Ratios use retained unrounded medians.

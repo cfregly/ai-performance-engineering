@@ -1,24 +1,22 @@
-Gather the rows, then multiply
-
-For the 64-ID case, H has shape 8 by 2048, W[ids].T has shape 2048 by 64, and the result has shape 8 by 64. One legal set is shared across the batch. Compute H @ W[ids].T, take the legal argmax and map the selected position to the token ID. Preserve legal-ID ordering and tie rules. Check logit tolerance and exact selected-token agreement. The tested stage is strict FP32 with TF32 disabled.
-
-Gather the rows, then multiply
-One shared legal set across the batch
+Select weights, then score
+One allowed set shared across the batch
 H @ W[ids].T
-H (8 × 2048)
-×
+H: 8 × 2048
 W[ids].T: 2048 × 64
-Logits: 8 × 64
-Legal argmax → map back to token IDs
-Preserve ID order + tie rules
-64 legal IDs · strict FP32 · TF32 off · check logit tolerance and exact token agreement
-Gather the rows,
-then multiply
+Scores: 8 × 64
+×
+Allowed argmax → token ID · preserve ID order and tie rules
+64 allowed IDs · strict FP32 · TF32 off · check exact token
+agreement
 H
 8 × 2048
 W[ids].T
 2048 × 64
-Logits
+Scores
 8 × 64
-64 legal IDs · strict FP32 · TF32 off
-Check logit tolerance and exact token agreement
+Allowed argmax → token ID
+Preserve ID order and tie rules
+64 allowed IDs · strict FP32 · TF32 off
+Check score tolerance and exact token agreement
+
+Retained methods: synthetic strict FP32 output head. Batch 8, hidden 2048, vocabulary 131072. One shared device-resident allowed set. TF32 off. Median warm blocks contain 16 steps. Three paired blocks per cell in one process. Whiskers are observed min–max, not confidence intervals. Changing sets include each gather. Static sets reuse gathered weights after one-time setup. Static setup for 16/64/256 IDs: 0.034720 / 3.252477 / 0.022130 ms. The 64-ID setup is an unexplained outlier. Cold-start benefit and break-even were not measured. Whole-model and serving gains were not measured. Different per-request sets and BF16 are untested. Ratios use retained unrounded medians.

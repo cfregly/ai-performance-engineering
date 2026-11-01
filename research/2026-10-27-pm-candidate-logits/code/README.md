@@ -1,6 +1,12 @@
 # Reproduce the allowed-row projection benchmark
 
+A token ID is the model's numeric label for a token and its output-weight row. Allowed token IDs identify the tokens the app permits at the next step.
+
 This benchmark measures a synthetic output-head projection/filter/allowed-argmax stage. It uses eager PyTorch CUDA `torch.mm` with preallocated output buffers. Both paths use the same synthetic weights, hidden states and allowed IDs. Each has its own `[8, K]` allowed-score buffer, where `K` is the allowed-set size. The dense path also uses an `[8, 131072]` full-vocabulary buffer. It does not run a language model or a server. In code identifiers and evidence fields, `legal` means the article's allowed IDs.
+
+The catch: the allowed set must be ready before scoring, so its weights can be gathered first. The usual path needs the set only when filtering scores afterward. Both timers start with the allowed set already on the GPU. Creating, sorting and transferring it were excluded from both paths.
+
+My advice: use full scoring if the caller needs every token's score, or if making the set ready early and gathering its weights erases the saving. Both tested paths return allowed scores and their greedy winner. Floating-point near-ties remain a separate precision-validation question.
 
 The retained run used Linux, Python 3.12.3, PyTorch 2.14.1+cu130, CUDA 13.0, NVIDIA driver 580.173.02 and one NVIDIA B200 reporting a 1000 W power limit. FP32 matmul precision was `highest` and TF32 was disabled. Dimensions and the fixed decision rule are in [plan.json](plan.json).
 

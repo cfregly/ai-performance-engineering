@@ -1,22 +1,23 @@
-Spot an early legal set
-
-Find whether legal IDs are available before output projection. Gather the legal rows before the multiply and time gather, projection, and legal argmax together. Include each gather when the set changes. Report one-time setup separately when a static set is reused.
-
-Are legal IDs ready early?
-How to spot a smaller projection
+Know which tokens are allowed before scoring?
+Find the point where selection can move earlier
 1
-Find the boundary
-Are legal IDs known
-before the output head?
+Identify allowed
+tokens
 2
-Move the selection
-Gather legal rows
-before the multiply
+Select their
+weights
 3
-Time the whole path
-Gather + projection
-+ legal argmax
-Changing sets: include each gather
-Static sets: report one-time setup separately
-Are legal IDs
-ready early?
+Measure gathering
++ scoring
+Measure gathering, scoring and choosing the highest-scoring
+allowed token
+Changing sets: gather each time · static sets: report setup
+separately
+Know which tokens are allowed
+before scoring?
+Measure gathering, scoring and choosing the
+highest-scoring allowed token
+Changing sets: gather each time
+Static sets: report setup separately
+
+Retained methods: synthetic strict FP32 output head. Batch 8, hidden 2048, vocabulary 131072. One shared device-resident allowed set. TF32 off. Median warm blocks contain 16 steps. Three paired blocks per cell in one process. Whiskers are observed min–max, not confidence intervals. Changing sets include each gather. Static sets reuse gathered weights after one-time setup. Static setup for 16/64/256 IDs: 0.034720 / 3.252477 / 0.022130 ms. The 64-ID setup is an unexplained outlier. Cold-start benefit and break-even were not measured. Whole-model and serving gains were not measured. Different per-request sets and BF16 are untested. Ratios use retained unrounded medians.

@@ -1,7 +1,19 @@
-INFERENCE / OUTPUT HEAD
-CHOOSE FIRST.
-Multiply less.
-Score only allowed tokens.
-Skip scores you will discard.
-Fregly’s take
-@cfregly
+Skip scores you'll discard
+12.84× faster · output head only
+Synthetic strict FP32 · B200
+Full scoring + filter
+5.399 ms
+Allowed rows first
+0.421 ms
+0
+2
+4
+6
+Median ms per warm 16-step block
+Whiskers: min–max of 3 paired blocks
+Allowed set ready BEFORE scoring
+Weight gathering included in timing
+64 shared allowed tokens · new set each step
+Creating/transferring the set excluded
+from BOTH paths
+Whole-model gains unmeasured

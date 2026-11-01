@@ -1,28 +1,20 @@
-Measure requests before capacity
-
-The changing 64-ID synthetic strict-FP32 output-head stage was 12.84x faster by the ratio of median warm 16-step blocks, including gather. The three individual paired baseline/candidate ratios span 12.806948x to 13.045276x, displayed as an observed 12.81–13.05x range. This is the min–max of three paired ratios in one process, not a confidence interval. This is a stage gain, not a capacity result. Measure the stage share in real requests and measure end-to-end throughput and latency before promising capacity. No cost, capacity or SLA result is inferred.
-
-Measure the share before promising capacity
-Synthetic output-head gain → request measurement
+Measure requests before promising capacity
+A stage gain does not measure request capacity
 12.84×
 Stage gain
-Observed range
-12.81–13.05×
-3 paired ratios
-Measure request share
-Throughput
-+ latency
-Measure end to end before a capacity promise
-Changing 64 IDs · gather included · median 16-step warm blocks
-Synthetic strict-FP32 stage · batch 8 · hidden 2048 · vocab 131072
-Shared IDs · TF32 off · 3 paired blocks / cell · one process
-Measure the share
-before promising capacity
-Measure requests
-How much request time is in this stage?
-Measure throughput + latency
-before making a capacity promise
-Changing 64 IDs · gather included · 16-step blocks
-Synthetic FP32 · batch 8 · hidden 2048 · vocab 131072
-Shared IDs · TF32 off
-3 paired blocks / cell · one process
+Measure real requests
+Paired range: 12.81–13.05× · 3 pairs in one process
+64 changing IDs · gather included · warm 16-step blocks
+FP32 · B8 · H2048 · V131072 · TF32 off
+3 paired blocks, one process · whole requests unmeasured
+Measure requests before
+promising capacity
+Measure
+requests
+Paired range: 12.81–13.05×
+How much request time
+is in the output head?
+64 changing IDs · gather included · 16-step blocks
+3 pairs in one process · requests unmeasured
+
+Retained methods: synthetic strict FP32 output head. Batch 8, hidden 2048, vocabulary 131072. One shared device-resident allowed set. TF32 off. Median warm blocks contain 16 steps. Three paired blocks per cell in one process. Whiskers are observed min–max, not confidence intervals. Changing sets include each gather. Static sets reuse gathered weights after one-time setup. Static setup for 16/64/256 IDs: 0.034720 / 3.252477 / 0.022130 ms. The 64-ID setup is an unexplained outlier. Cold-start benefit and break-even were not measured. Whole-model and serving gains were not measured. Different per-request sets and BF16 are untested. Ratios use retained unrounded medians.

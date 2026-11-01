@@ -1,77 +1,33 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1080" viewBox="0 0 1080 1080">
 <rect width="100%" height="100%" fill="#FBFBF8"/>
-<defs><marker id="arrow" viewBox="0 0 12 12" refX="9" refY="6" markerWidth="5" markerHeight="5" orient="auto"><path d="M1 1 L10 6 L1 11" fill="none" stroke="context-stroke" stroke-width="2"/></marker>
-<pattern id="hatch" width="18" height="18" patternUnits="userSpaceOnUse"><path d="M-4 18 L18 -4 M8 26 L26 8" stroke="#E87823" stroke-width="2" opacity=".35"/></pattern></defs>
-<text x="65" y="85" font-family="Bradley Hand" font-size="59" fill="#202326" text-anchor="start" font-weight="normal">
-<tspan x="65" dy="0">Time the gather</tspan>
-<tspan x="65" dy="66.08000000000001">inside the block</tspan>
-</text>
-<text x="68" y="212.08" font-family="Arial, Helvetica, sans-serif" font-size="35" fill="#202326" text-anchor="start" font-weight="normal">
-<tspan x="68" dy="0">Changing 64 legal IDs · gather included</tspan>
-</text>
-<path d="M68 232.08 Q350 226.08 770 234.08" fill="none" stroke="#202326" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-<text x="540" y="360" font-family="Arial, Helvetica, sans-serif" font-size="65" fill="#202326" text-anchor="middle" font-weight="bold">
-<tspan x="540" dy="0">5.399 → 0.421 ms</tspan>
-</text>
-<text x="540" y="453" font-family="Bradley Hand" font-size="87" fill="#3478BA" text-anchor="middle" font-weight="normal">
-<tspan x="540" dy="0">12.84×</tspan>
-</text>
-<text x="540" y="508" font-family="Arial, Helvetica, sans-serif" font-size="35" fill="#202326" text-anchor="middle" font-weight="normal">
-<tspan x="540" dy="0">Median 16-step warm block</tspan>
-</text>
-<text x="1000" y="538" font-family="Arial, Helvetica, sans-serif" font-size="29" fill="#202326" text-anchor="end" font-weight="normal">
-<tspan x="1000" dy="0">3-block min–max</tspan>
-</text>
-<text x="105" y="568" font-family="Arial, Helvetica, sans-serif" font-size="35" fill="#E87823" text-anchor="start" font-weight="normal">
-<tspan x="105" dy="0">Full head → filter</tspan>
-</text>
-<rect x="105" y="588" width="710.9010914185395" height="19" fill="#E87823" stroke="none" stroke-width="1"/>
-<path d="M815.068994667381 598 Q818.092691635713 596.0 817.1163886040449 598" fill="none" stroke="#202326" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M815.068994667381 589 Q817.068994667381 596.0 815.068994667381 607" fill="none" stroke="#202326" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M817.1163886040449 589 Q819.1163886040449 596.0 817.1163886040449 607" fill="none" stroke="#202326" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<text x="1000" y="568" font-family="Arial, Helvetica, sans-serif" font-size="33" fill="#E87823" text-anchor="end" font-weight="normal">
-<tspan x="1000" dy="0">5.393–5.408 ms</tspan>
-</text>
-<text x="105" y="655" font-family="Arial, Helvetica, sans-serif" font-size="35" fill="#3478BA" text-anchor="start" font-weight="normal">
-<tspan x="105" dy="0">Gather → legal head</tspan>
-</text>
-<rect x="105" y="675" width="55.37568164678911" height="19" fill="#3478BA" stroke="none" stroke-width="1"/>
-<path d="M159.58806680204967 685 Q162.01605570316315 683.0 160.44404460427663 685" fill="none" stroke="#202326" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M159.58806680204967 676 Q161.58806680204967 683.0 159.58806680204967 694" fill="none" stroke="#202326" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M160.44404460427663 676 Q162.44404460427663 683.0 160.44404460427663 694" fill="none" stroke="#202326" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<text x="1000" y="655" font-family="Arial, Helvetica, sans-serif" font-size="33" fill="#3478BA" text-anchor="end" font-weight="normal">
-<tspan x="1000" dy="0">0.415–0.421 ms</tspan>
-</text>
-<path d="M105.0 715 Q107.0 718.0 105.0 725" fill="none" stroke="#202326" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<text x="105.0" y="755" font-family="Arial, Helvetica, sans-serif" font-size="29" fill="#202326" text-anchor="middle" font-weight="normal">
-<tspan x="105.0" dy="0">0</tspan>
-</text>
-<path d="M368.3333333333333 715 Q370.3333333333333 718.0 368.3333333333333 725" fill="none" stroke="#202326" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<text x="368.3333333333333" y="755" font-family="Arial, Helvetica, sans-serif" font-size="29" fill="#202326" text-anchor="middle" font-weight="normal">
-<tspan x="368.3333333333333" dy="0">2</tspan>
-</text>
-<path d="M631.6666666666666 715 Q633.6666666666666 718.0 631.6666666666666 725" fill="none" stroke="#202326" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<text x="631.6666666666666" y="755" font-family="Arial, Helvetica, sans-serif" font-size="29" fill="#202326" text-anchor="middle" font-weight="normal">
-<tspan x="631.6666666666666" dy="0">4</tspan>
-</text>
-<path d="M895.0 715 Q897.0 718.0 895.0 725" fill="none" stroke="#202326" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<text x="895.0" y="755" font-family="Arial, Helvetica, sans-serif" font-size="29" fill="#202326" text-anchor="middle" font-weight="normal">
-<tspan x="895.0" dy="0">6</tspan>
-</text>
-<text x="945" y="755" font-family="Arial, Helvetica, sans-serif" font-size="29" fill="#202326" text-anchor="start" font-weight="normal">
-<tspan x="945" dy="0">ms</tspan>
-</text>
-<rect x="83" y="771" width="915" height="162" rx="16" fill="#FCF1E8" stroke="#E87823" stroke-width="4"/>
-<path d="M95 774 Q494.75 769 986 774" fill="none" stroke="#E87823" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<text x="118" y="826" font-family="Arial, Helvetica, sans-serif" font-size="40" fill="#E87823" text-anchor="start" font-weight="bold">
-<tspan x="118" dy="0">Static 64-ID setup: 3.252 ms</tspan>
-</text>
-<text x="118" y="887" font-family="Arial, Helvetica, sans-serif" font-size="34" fill="#202326" text-anchor="start" font-weight="normal">
-<tspan x="118" dy="0">Separate one-time cost; outside warm ratio</tspan>
-</text>
-<text x="68" y="970.6" font-family="Arial, Helvetica, sans-serif" font-size="31" fill="#202326" text-anchor="start" font-weight="normal">
-<tspan x="68" dy="0">Synthetic FP32 stage · batch 8 · TF32 off</tspan>
-<tspan x="68" dy="37.199999999999996">Hidden 2048 · vocab 131072 · shared legal set</tspan>
-<tspan x="68" dy="37.199999999999996">3 paired blocks / cell · one process</tspan>
-</text>
+<defs><marker id="arrow" viewBox="0 0 12 12" refX="10" refY="6" markerWidth="5" markerHeight="5" orient="auto"><path d="M2 2 L10 6 L2 10" fill="none" stroke="context-stroke" stroke-width="2"/></marker></defs>
+<text x="48" y="82.0" font-family="Inter" font-size="60" font-weight="400" font-style="normal" fill="#202326" text-anchor="start">Include gathering in the timed</text>
+<text x="48" y="149.2" font-family="Inter" font-size="60" font-weight="400" font-style="normal" fill="#202326" text-anchor="start">path</text>
+<text x="48" y="219.2" font-family="Inter" font-size="36" font-weight="400" font-style="normal" fill="#202326" text-anchor="start">64 changing allowed IDs · warm 16-step blocks</text>
+<text x="540.0" y="310.0" font-family="Inter" font-size="36" font-weight="400" font-style="normal" fill="#E87823" text-anchor="middle">12.84× ratio of retained medians</text>
+<text x="100" y="372.0" font-family="Inter" font-size="40" font-weight="400" font-style="normal" fill="#3478BA" text-anchor="start">Full scoring + filter</text>
+<rect data-science="bar" data-series="baseline" data-mode="changing" data-size="64" x="100" y="400" width="629.9123594847819" height="24" fill="#3478BA"/>
+<line x1="729.1750585660338" y1="412.0" x2="730.9892050921917" y2="412.0" stroke="#202326" stroke-width="2"/>
+<line x1="729.1750585660338" y1="405.0" x2="729.1750585660338" y2="419.0" stroke="#202326" stroke-width="2"/>
+<line x1="730.9892050921917" y1="405.0" x2="730.9892050921917" y2="419.0" stroke="#202326" stroke-width="2"/>
+<text x="747.9123594847819" y="424.0" font-family="Inter" font-size="40" font-weight="400" font-style="normal" fill="#3478BA" text-anchor="start">5.399 ms</text>
+<text x="100" y="527.0" font-family="Inter" font-size="40" font-weight="400" font-style="normal" fill="#E87823" text-anchor="start">Allowed rows first</text>
+<rect data-science="bar" data-series="candidate" data-mode="changing" data-size="64" x="100" y="555" width="49.0670596870283" height="24" fill="#E87823"/>
+<line x1="148.3691731157402" y1="567.0" x2="149.12763445948562" y2="567.0" stroke="#202326" stroke-width="2"/>
+<line x1="148.3691731157402" y1="560.0" x2="148.3691731157402" y2="574.0" stroke="#202326" stroke-width="2"/>
+<line x1="149.12763445948562" y1="560.0" x2="149.12763445948562" y2="574.0" stroke="#202326" stroke-width="2"/>
+<text x="167.06705968702832" y="579.0" font-family="Inter" font-size="40" font-weight="400" font-style="normal" fill="#E87823" text-anchor="start">0.421 ms</text>
+<line x1="100.0" y1="638" x2="100.0" y2="650" stroke="#202326" stroke-width="2"/>
+<text x="100.0" y="700.0" font-family="Inter" font-size="36" font-weight="400" font-style="normal" fill="#202326" text-anchor="middle">0</text>
+<line x1="333.33333333333337" y1="638" x2="333.33333333333337" y2="650" stroke="#202326" stroke-width="2"/>
+<text x="333.33333333333337" y="700.0" font-family="Inter" font-size="36" font-weight="400" font-style="normal" fill="#202326" text-anchor="middle">2</text>
+<line x1="566.6666666666667" y1="638" x2="566.6666666666667" y2="650" stroke="#202326" stroke-width="2"/>
+<text x="566.6666666666667" y="700.0" font-family="Inter" font-size="36" font-weight="400" font-style="normal" fill="#202326" text-anchor="middle">4</text>
+<line x1="800.0" y1="638" x2="800.0" y2="650" stroke="#202326" stroke-width="2"/>
+<text x="800.0" y="700.0" font-family="Inter" font-size="36" font-weight="400" font-style="normal" fill="#202326" text-anchor="middle">6</text>
+<text x="540.0" y="758.0" font-family="Inter" font-size="36" font-weight="400" font-style="normal" fill="#202326" text-anchor="middle">Milliseconds per warm 16-step block</text>
+<text x="48" y="925.8" font-family="Inter" font-size="36" font-weight="400" font-style="normal" fill="#202326" text-anchor="start">Static 64-ID setup: 3.252 ms, an unexplained outlier</text>
+<text x="48" y="967.1999999999999" font-family="Inter" font-size="36" font-weight="400" font-style="normal" fill="#202326" text-anchor="start">16/256-ID setup: 0.035/0.022 ms, outside warm ratios</text>
+<text x="48" y="1008.5999999999999" font-family="Inter" font-size="36" font-weight="400" font-style="normal" fill="#202326" text-anchor="start">FP32 · B8 · H2048 · V131072 · TF32 off</text>
+<text x="48" y="1050.0" font-family="Inter" font-size="36" font-weight="400" font-style="normal" fill="#202326" text-anchor="start">3 pairs, one process · paired ratios: 12.81–13.05×</text>
 </svg>

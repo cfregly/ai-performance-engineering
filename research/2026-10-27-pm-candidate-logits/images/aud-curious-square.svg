@@ -1,70 +1,32 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1080" viewBox="0 0 1080 1080">
 <rect width="100%" height="100%" fill="#FBFBF8"/>
-<defs><marker id="arrow" viewBox="0 0 12 12" refX="9" refY="6" markerWidth="5" markerHeight="5" orient="auto"><path d="M1 1 L10 6 L1 11" fill="none" stroke="context-stroke" stroke-width="2"/></marker>
-<pattern id="hatch" width="18" height="18" patternUnits="userSpaceOnUse"><path d="M-4 18 L18 -4 M8 26 L26 8" stroke="#E87823" stroke-width="2" opacity=".35"/></pattern></defs>
-<text x="65" y="85" font-family="Bradley Hand" font-size="59" fill="#202326" text-anchor="start" font-weight="normal">
-<tspan x="65" dy="0">Why score tokens</tspan>
-<tspan x="65" dy="66.08000000000001">you cannot emit?</tspan>
-</text>
-<text x="68" y="212.08" font-family="Arial, Helvetica, sans-serif" font-size="35" fill="#202326" text-anchor="start" font-weight="normal">
-<tspan x="68" dy="0">Example: only YES or NO can be emitted</tspan>
-</text>
-<path d="M68 232.08 Q350 226.08 770 234.08" fill="none" stroke="#202326" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-<text x="72" y="341" font-family="Bradley Hand" font-size="46" fill="#E87823" text-anchor="start" font-weight="normal">
-<tspan x="72" dy="0">Score everything</tspan>
-</text>
-<rect x="78" y="374" width="280" height="79" rx="16" fill="#EFF5FA" stroke="#3478BA" stroke-width="4"/>
-<path d="M90 377 Q204.0 372 346 377" fill="none" stroke="#3478BA" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<text x="218" y="426" font-family="Arial, Helvetica, sans-serif" font-size="38" fill="#3478BA" text-anchor="middle" font-weight="normal">
-<tspan x="218" dy="0">YES</tspan>
-</text>
-<rect x="398" y="374" width="280" height="79" rx="16" fill="#FBFBF8" stroke="#E87823" stroke-width="4"/>
-<path d="M410 377 Q524.0 372 666 377" fill="none" stroke="#E87823" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<text x="538" y="426" font-family="Arial, Helvetica, sans-serif" font-size="38" fill="#E87823" text-anchor="middle" font-weight="normal">
-<tspan x="538" dy="0">road</tspan>
-</text>
-<path d="M418 392 Q540.0 411.5 658 435" fill="none" stroke="#E87823" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-<rect x="718" y="374" width="280" height="79" rx="16" fill="#FBFBF8" stroke="#E87823" stroke-width="4"/>
-<path d="M730 377 Q844.0 372 986 377" fill="none" stroke="#E87823" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<text x="858" y="426" font-family="Arial, Helvetica, sans-serif" font-size="38" fill="#E87823" text-anchor="middle" font-weight="normal">
-<tspan x="858" dy="0">apple</tspan>
-</text>
-<path d="M738 392 Q860.0 411.5 978 435" fill="none" stroke="#E87823" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-<rect x="78" y="478" width="280" height="79" rx="16" fill="#EFF5FA" stroke="#3478BA" stroke-width="4"/>
-<path d="M90 481 Q204.0 476 346 481" fill="none" stroke="#3478BA" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<text x="218" y="530" font-family="Arial, Helvetica, sans-serif" font-size="38" fill="#3478BA" text-anchor="middle" font-weight="normal">
-<tspan x="218" dy="0">NO</tspan>
-</text>
-<rect x="398" y="478" width="280" height="79" rx="16" fill="#FBFBF8" stroke="#E87823" stroke-width="4"/>
-<path d="M410 481 Q524.0 476 666 481" fill="none" stroke="#E87823" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<text x="538" y="530" font-family="Arial, Helvetica, sans-serif" font-size="38" fill="#E87823" text-anchor="middle" font-weight="normal">
-<tspan x="538" dy="0">blue</tspan>
-</text>
-<path d="M418 496 Q540.0 515.5 658 539" fill="none" stroke="#E87823" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-<rect x="718" y="478" width="280" height="79" rx="16" fill="#FBFBF8" stroke="#E87823" stroke-width="4"/>
-<path d="M730 481 Q844.0 476 986 481" fill="none" stroke="#E87823" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<text x="858" y="530" font-family="Arial, Helvetica, sans-serif" font-size="38" fill="#E87823" text-anchor="middle" font-weight="normal">
-<tspan x="858" dy="0">river</tspan>
-</text>
-<path d="M738 496 Q860.0 515.5 978 539" fill="none" stroke="#E87823" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M540 600 Q542.0 628.5 540 661" fill="none" stroke="#202326" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow)"/>
-<text x="540" y="724" font-family="Bradley Hand" font-size="54" fill="#3478BA" text-anchor="middle" font-weight="normal">
-<tspan x="540" dy="0">Select first</tspan>
-</text>
-<rect x="230" y="763" width="260" height="96" rx="16" fill="#EFF5FA" stroke="#3478BA" stroke-width="4"/>
-<path d="M242 766 Q347.0 761 478 766" fill="none" stroke="#3478BA" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<text x="360" y="827" font-family="Arial, Helvetica, sans-serif" font-size="49" fill="#3478BA" text-anchor="middle" font-weight="normal">
-<tspan x="360" dy="0">YES</tspan>
-</text>
-<rect x="590" y="763" width="260" height="96" rx="16" fill="#EFF5FA" stroke="#3478BA" stroke-width="4"/>
-<path d="M602 766 Q707.0 761 838 766" fill="none" stroke="#3478BA" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<text x="720" y="827" font-family="Arial, Helvetica, sans-serif" font-size="49" fill="#3478BA" text-anchor="middle" font-weight="normal">
-<tspan x="720" dy="0">NO</tspan>
-</text>
-<text x="540" y="938" font-family="Arial, Helvetica, sans-serif" font-size="48" fill="#202326" text-anchor="middle" font-weight="normal">
-<tspan x="540" dy="0">Score only legal tokens</tspan>
-</text>
-<text x="68" y="1045.0" font-family="Arial, Helvetica, sans-serif" font-size="31" fill="#202326" text-anchor="start" font-weight="normal">
-<tspan x="68" dy="0">The legal choices must be known before scoring</tspan>
-</text>
+<defs><marker id="arrow" viewBox="0 0 12 12" refX="10" refY="6" markerWidth="5" markerHeight="5" orient="auto"><path d="M2 2 L10 6 L2 10" fill="none" stroke="context-stroke" stroke-width="2"/></marker></defs>
+<text x="48" y="82.0" font-family="Inter" font-size="60" font-weight="400" font-style="normal" fill="#202326" text-anchor="start">Why score tokens you cannot</text>
+<text x="48" y="149.2" font-family="Inter" font-size="60" font-weight="400" font-style="normal" fill="#202326" text-anchor="start">emit?</text>
+<text x="48" y="219.2" font-family="Inter" font-size="36" font-weight="400" font-style="normal" fill="#202326" text-anchor="start">Example: only YES or NO is allowed</text>
+<text x="55" y="335.0" font-family="Inter" font-size="44" font-weight="400" font-style="normal" fill="#3478BA" text-anchor="start">Score everything</text>
+<rect x="60" y="380" width="290" height="78" rx="0" fill="none" stroke="#3478BA" stroke-width="3"/>
+<text x="205" y="432.0" font-family="Inter" font-size="40" font-weight="400" font-style="normal" fill="#3478BA" text-anchor="middle">YES</text>
+<rect x="390" y="380" width="290" height="78" rx="0" fill="none" stroke="#3478BA" stroke-width="3"/>
+<text x="535" y="432.0" font-family="Inter" font-size="40" font-weight="400" font-style="normal" fill="#3478BA" text-anchor="middle">road</text>
+<line x1="410" y1="395" x2="660" y2="445" stroke="#202326" stroke-width="2"/>
+<rect x="720" y="380" width="290" height="78" rx="0" fill="none" stroke="#3478BA" stroke-width="3"/>
+<text x="865" y="432.0" font-family="Inter" font-size="40" font-weight="400" font-style="normal" fill="#3478BA" text-anchor="middle">apple</text>
+<line x1="740" y1="395" x2="990" y2="445" stroke="#202326" stroke-width="2"/>
+<rect x="60" y="485" width="290" height="78" rx="0" fill="none" stroke="#3478BA" stroke-width="3"/>
+<text x="205" y="537.0" font-family="Inter" font-size="40" font-weight="400" font-style="normal" fill="#3478BA" text-anchor="middle">NO</text>
+<rect x="390" y="485" width="290" height="78" rx="0" fill="none" stroke="#3478BA" stroke-width="3"/>
+<text x="535" y="537.0" font-family="Inter" font-size="40" font-weight="400" font-style="normal" fill="#3478BA" text-anchor="middle">blue</text>
+<line x1="410" y1="500" x2="660" y2="550" stroke="#202326" stroke-width="2"/>
+<rect x="720" y="485" width="290" height="78" rx="0" fill="none" stroke="#3478BA" stroke-width="3"/>
+<text x="865" y="537.0" font-family="Inter" font-size="40" font-weight="400" font-style="normal" fill="#3478BA" text-anchor="middle">river</text>
+<line x1="740" y1="500" x2="990" y2="550" stroke="#202326" stroke-width="2"/>
+<line x1="540" y1="610" x2="540" y2="680" stroke="#E87823" stroke-width="3" marker-end="url(#arrow)"/>
+<text x="540" y="745.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#E87823" text-anchor="middle">Select first</text>
+<rect x="225" y="790" width="260" height="88" rx="0" fill="none" stroke="#E87823" stroke-width="3"/>
+<text x="355" y="850.0" font-family="Inter" font-size="44" font-weight="400" font-style="normal" fill="#E87823" text-anchor="middle">YES</text>
+<rect x="595" y="790" width="260" height="88" rx="0" fill="none" stroke="#E87823" stroke-width="3"/>
+<text x="725" y="850.0" font-family="Inter" font-size="44" font-weight="400" font-style="normal" fill="#E87823" text-anchor="middle">NO</text>
+<text x="48" y="1008.6" font-family="Inter" font-size="36" font-weight="400" font-style="normal" fill="#202326" text-anchor="start">Allowed choices must be known before scoring</text>
+<text x="48" y="1050.0" font-family="Inter" font-size="36" font-weight="400" font-style="normal" fill="#202326" text-anchor="start">Toy words explain the idea, not the test inputs</text>
 </svg>

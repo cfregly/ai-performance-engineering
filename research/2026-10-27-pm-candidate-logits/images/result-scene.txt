@@ -2,7 +2,6 @@ Select allowed rows
 before scoring
 Full weights
 Allowed rows
-Conceptual view · rows not to scale
 12.84× faster · output head only
 Median per warm 16-step block
 Full + filter

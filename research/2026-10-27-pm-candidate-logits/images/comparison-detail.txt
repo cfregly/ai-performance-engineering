@@ -1,0 +1,19 @@
+Compare the complete output-head stage
+64 changing allowed IDs · gathering included
+Full scoring + filter
+5.399 ms
+Allowed rows first
+0.421 ms
+0
+2
+4
+6
+Milliseconds per warm 16-step block
+12.84× median ratio · 12.81–13.05× paired range
+Median bars · min–max whiskers · 3 pairs in one process
+Synthetic FP32 · B8 · H2048 · V131072 · TF32 off
+Compare the complete
+output-head stage
+Synthetic FP32 · batch 8 · TF32 off
+
+Retained methods: synthetic strict FP32 output head. Batch 8, hidden 2048, vocabulary 131072. One shared device-resident allowed set. TF32 off. Median warm blocks contain 16 steps. Three paired blocks per cell in one process. Whiskers are observed min–max, not confidence intervals. Changing sets include each gather. Static sets reuse gathered weights after one-time setup. Static setup for 16/64/256 IDs: 0.034720 / 3.252477 / 0.022130 ms. The 64-ID setup is an unexplained outlier. Cold-start benefit and break-even were not measured. Whole-model and serving gains were not measured. Different per-request sets and BF16 are untested. Ratios use retained unrounded medians.

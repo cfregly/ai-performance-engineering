@@ -1,0 +1,208 @@
+{
+  "schema_version": 1,
+  "version": "1.1.0",
+  "name": "Gamma Data-First Technical Editorial",
+  "authority": "style/gamma-editorial.md",
+  "gamma": {
+    "theme_name": null,
+    "select_direction_per_asset": true,
+    "inspect_saved_theme_before_use": true,
+    "account_wide_default_changes": false
+  },
+  "creative_brief": {
+    "required": [
+      "reader_and_decision",
+      "hook",
+      "practical_payoff",
+      "real_tradeoff",
+      "visible_mechanism_or_contrast",
+      "reason_to_save_share_or_reply",
+      "source_and_limits"
+    ],
+    "topic_specific_concept": true,
+    "fixed_composition_required": false,
+    "fixed_palette_required": false,
+    "engagement_promise_allowed": false,
+    "lead_with": "actual_chart_data_and_reader_decision",
+    "illustration_role": "optional_supporting_mechanism"
+  },
+  "palette_policy": {
+    "choose_for_topic": true,
+    "consistent_state_meaning_within_related_assets": true,
+    "state_requires_words_or_shapes": true,
+    "ordinary_text_contrast_target": 4.5,
+    "data_region_has_quiet_contrasting_background": true,
+    "examples_are_optional": true
+  },
+  "optional_palette_examples": [
+    {
+      "name": "Coral and midnight",
+      "background": "#FFF7EF",
+      "ink": "#18243A",
+      "accents": [
+        "#F05D4E",
+        "#3478C8",
+        "#F4BB44"
+      ]
+    },
+    {
+      "name": "Lagoon and marigold",
+      "background": "#F2FAF7",
+      "ink": "#153B3C",
+      "accents": [
+        "#087F8C",
+        "#F4B942",
+        "#D45D79"
+      ]
+    },
+    {
+      "name": "Plum and electric blue",
+      "background": "#FCF6FF",
+      "ink": "#31213E",
+      "accents": [
+        "#7F45B4",
+        "#2378C8",
+        "#ED8D43"
+      ]
+    }
+  ],
+  "typography": {
+    "font_family": "Inter",
+    "font_file": "style/fonts/Inter.ttf",
+    "allowed_weights": [
+      400,
+      500,
+      600,
+      700
+    ],
+    "default_weight": 400,
+    "allow_mixed_families": false,
+    "allow_handwritten": false,
+    "hierarchy_uses": [
+      "weight_within_Inter",
+      "size",
+      "space",
+      "placement",
+      "contrast"
+    ],
+    "reference_canvas_px": 1200,
+    "roles_px": {
+      "heading": 78,
+      "body": 42,
+      "chart_label": 36,
+      "caption": 36,
+      "key_value": 72
+    },
+    "minimum_phone_px": {
+      "essential_label": 12,
+      "material_condition": 12,
+      "source_credit": 12
+    },
+    "keep_value_with_unit": true,
+    "actual_platform_viewport_must_be_checked": true
+  },
+  "spacing": {
+    "reference_canvas_px": 1200,
+    "scale_px": [
+      12,
+      18,
+      24,
+      36,
+      48,
+      72,
+      96
+    ],
+    "safe_margin_px": 84,
+    "region_gap_px": 36,
+    "label_gap_px": 18,
+    "scale_with_canvas": true,
+    "platform_viewer_margins_required": true,
+    "square_is_deliberate_composition_not_assumed_crop": true
+  },
+  "composition": {
+    "default_family": null,
+    "optional_approaches": [
+      "direct_measured_comparison",
+      "annotated_profile",
+      "resource_budget",
+      "measured_mechanism_flow",
+      "chart_with_practical_tradeoff"
+    ],
+    "other_topic_specific_approaches_allowed": true,
+    "clear_focal_point": true,
+    "visible_action_or_relationship": true,
+    "payoff_and_tradeoff_visible": true,
+    "fixed_box_grid_required": false,
+    "fixed_panel_count_required": false,
+    "after_rejection_change_concept_or_composition": true,
+    "audience_variants_change_explanation_not_only_color": true,
+    "data_first": true,
+    "distracting_metaphors_allowed": false
+  },
+  "illustration": {
+    "style": "optional clear supporting explanation",
+    "generate_text": false,
+    "generate_numbers": false,
+    "generate_chart_marks": false,
+    "generate_equations": false,
+    "generate_citation_text": false,
+    "generate_replacement_portraits": false,
+    "texture_or_perspective_in_art_allowed": true,
+    "metaphor_does_not_imply_measured_proportions": true,
+    "generic_technology_wallpaper_is_not_default": true,
+    "programmatic_geometry_alone_proves_creative_idea": false,
+    "default_to_generated_artwork": false
+  },
+  "chart_requirements": {
+    "native_editable_geometry": true,
+    "dimensions": 2,
+    "geometry_uses_retained_unrounded_values": true,
+    "display_rounding_is_documented": true,
+    "preserve_source_values": true,
+    "preserve_series_identity": true,
+    "preserve_source_scale": true,
+    "preserve_units": true,
+    "preserve_uncertainty": true,
+    "preserve_timing_scope": true,
+    "magnitude_bar_zero_baseline": true,
+    "readable_axes_and_units": true,
+    "editable_regular_Inter_labels": true,
+    "error_bars_require_evidence": true,
+    "color_alone_encodes_state": false,
+    "sketch_effect": false,
+    "jitter": false,
+    "perspective": false,
+    "texture_on_data_marks": false,
+    "unknown_quantity_has_quantitative_length": false,
+    "scope_and_analytical_conditions_visible": true,
+    "independent_constraints_are_not_additive": true,
+    "component_result_is_not_system_result": true,
+    "retained_profile_capture_is_not_synthetic_redraw": true
+  },
+  "commentary_stamp": {
+    "asset_reference": "assets/commentary-stamp-v2/fregly-take-stamp.png",
+    "source": "existing retained asset",
+    "label": "Fregly's take",
+    "rotation_degrees": 0,
+    "mirror": false,
+    "skew_degrees": 0,
+    "regenerate": false,
+    "avoid_faces_titles_credit_and_data": true,
+    "source_sha256": "f456e86072e455924bb45aca4500b27cf02d4210297c55d24179097700a946ec"
+  },
+  "review": {
+    "phone_preview_width_px": 400,
+    "verify_exported_dimensions": true,
+    "actual_platform_preview_required": true,
+    "show_viewer_controls": true,
+    "check_all_selected_document_pages": true,
+    "changed_visual_invalidates_affected_review_binding": true,
+    "X_and_LinkedIn_share_approved_creative_basis": true,
+    "reuse_unchanged_evidence_at_actual_scope": true,
+    "renderer_consumption_requires_verification": true,
+    "old_pinned_tokens_are_not_mutated": true,
+    "visual_refresh_authorizes_publication": false,
+    "visual_refresh_authorizes_scheduling": false,
+    "creative_approval_replaces_scientific_review": false
+  }
+}

@@ -1,51 +1,19 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1080" viewBox="0 0 1080 1080">
 <rect width="100%" height="100%" fill="#FBFBF8"/>
-<defs><marker id="arrow" viewBox="0 0 12 12" refX="9" refY="6" markerWidth="5" markerHeight="5" orient="auto"><path d="M1 1 L10 6 L1 11" fill="none" stroke="context-stroke" stroke-width="2"/></marker>
-<pattern id="hatch" width="18" height="18" patternUnits="userSpaceOnUse"><path d="M-4 18 L18 -4 M8 26 L26 8" stroke="#E87823" stroke-width="2" opacity=".35"/></pattern></defs>
-<text x="65" y="85" font-family="Bradley Hand" font-size="59" fill="#202326" text-anchor="start" font-weight="normal">
-<tspan x="65" dy="0">Measure the share</tspan>
-<tspan x="65" dy="66.08000000000001">before promising capacity</tspan>
-</text>
-<text x="68" y="212.08" font-family="Arial, Helvetica, sans-serif" font-size="35" fill="#202326" text-anchor="start" font-weight="normal">
-<tspan x="68" dy="0">Synthetic output-head gain → request measurement</tspan>
-</text>
-<path d="M68 232.08 Q350 226.08 770 234.08" fill="none" stroke="#202326" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-<ellipse cx="250" cy="422" rx="122" ry="118.34" fill="#EFF5FA" stroke="#3478BA" stroke-width="4"/>
-<text x="250" y="424" font-family="Bradley Hand" font-size="64" fill="#3478BA" text-anchor="middle" font-weight="normal">
-<tspan x="250" dy="0">12.84×</tspan>
-</text>
-<text x="250" y="475" font-family="Arial, Helvetica, sans-serif" font-size="32" fill="#202326" text-anchor="middle" font-weight="normal">
-<tspan x="250" dy="0">Stage gain</tspan>
-</text>
-<text x="250" y="580" font-family="Arial, Helvetica, sans-serif" font-size="29" fill="#202326" text-anchor="middle" font-weight="normal">
-<tspan x="250" dy="0">Observed range</tspan>
-</text>
-<text x="250" y="622" font-family="Arial, Helvetica, sans-serif" font-size="40" fill="#3478BA" text-anchor="middle" font-weight="normal">
-<tspan x="250" dy="0">12.81–13.05×</tspan>
-</text>
-<text x="250" y="660" font-family="Arial, Helvetica, sans-serif" font-size="29" fill="#202326" text-anchor="middle" font-weight="normal">
-<tspan x="250" dy="0">3 paired ratios</tspan>
-</text>
-<path d="M418 423 Q485.0 421.0 548 423" fill="none" stroke="#202326" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow)"/>
-<ellipse cx="790" cy="422" rx="122" ry="118.34" fill="#FBFBF8" stroke="#202326" stroke-width="4"/>
-<path d="M790 422 Q792.0 384.5 790 351" fill="none" stroke="#202326" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M790 422 Q818.0 433.0 842 448" fill="none" stroke="#202326" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
-<text x="790" y="592" font-family="Bradley Hand" font-size="40" fill="#202326" text-anchor="middle" font-weight="normal">
-<tspan x="790" dy="0">Measure requests</tspan>
-</text>
-<text x="540" y="735" font-family="Arial, Helvetica, sans-serif" font-size="41" fill="#202326" text-anchor="middle" font-weight="normal">
-<tspan x="540" dy="0">How much request time is in this stage?</tspan>
-</text>
-<rect x="80" y="779" width="920" height="116" rx="16" fill="#FCF1E8" stroke="#E87823" stroke-width="4"/>
-<path d="M92 782 Q494.0 777 988 782" fill="none" stroke="#E87823" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<text x="540" y="826" font-family="Arial, Helvetica, sans-serif" font-size="38" fill="#202326" text-anchor="middle" font-weight="normal">
-<tspan x="540" dy="0">Measure throughput + latency</tspan>
-<tspan x="540" dy="45.6">before making a capacity promise</tspan>
-</text>
-<text x="68" y="933.4" font-family="Arial, Helvetica, sans-serif" font-size="31" fill="#202326" text-anchor="start" font-weight="normal">
-<tspan x="68" dy="0">Changing 64 IDs · gather included · 16-step blocks</tspan>
-<tspan x="68" dy="37.199999999999996">Synthetic FP32 · batch 8 · hidden 2048 · vocab 131072</tspan>
-<tspan x="68" dy="37.199999999999996">Shared IDs · TF32 off</tspan>
-<tspan x="68" dy="37.199999999999996">3 paired blocks / cell · one process</tspan>
-</text>
+<defs><marker id="arrow" viewBox="0 0 12 12" refX="10" refY="6" markerWidth="5" markerHeight="5" orient="auto"><path d="M2 2 L10 6 L2 10" fill="none" stroke="context-stroke" stroke-width="2"/></marker></defs>
+<text x="48" y="82.0" font-family="Inter" font-size="60" font-weight="400" font-style="normal" fill="#202326" text-anchor="start">Measure requests before</text>
+<text x="48" y="149.2" font-family="Inter" font-size="60" font-weight="400" font-style="normal" fill="#202326" text-anchor="start">promising capacity</text>
+<text x="48" y="219.2" font-family="Inter" font-size="36" font-weight="400" font-style="normal" fill="#202326" text-anchor="start">A stage gain does not measure request capacity</text>
+<circle cx="270" cy="440" r="135" fill="none" stroke="#E87823" stroke-width="3"/>
+<text x="270" y="438.0" font-family="Inter" font-size="60" font-weight="400" font-style="normal" fill="#E87823" text-anchor="middle">12.84×</text>
+<text x="270" y="500.0" font-family="Inter" font-size="36" font-weight="400" font-style="normal" fill="#202326" text-anchor="middle">Stage gain</text>
+<line x1="455" y1="440" x2="610" y2="440" stroke="#202326" stroke-width="3" marker-end="url(#arrow)"/>
+<text x="820" y="415.0" font-family="Inter" font-size="42" font-weight="400" font-style="normal" fill="#202326" text-anchor="middle">Measure</text>
+<text x="820" y="465.4" font-family="Inter" font-size="42" font-weight="400" font-style="normal" fill="#202326" text-anchor="middle">requests</text>
+<text x="540" y="680.0" font-family="Inter" font-size="40" font-weight="400" font-style="normal" fill="#202326" text-anchor="middle">Paired range: 12.81–13.05×</text>
+<text x="540" y="790.0" font-family="Inter" font-size="42" font-weight="400" font-style="normal" fill="#202326" text-anchor="middle">How much request time</text>
+<text x="540" y="840.4" font-family="Inter" font-size="42" font-weight="400" font-style="normal" fill="#202326" text-anchor="middle">is in the output head?</text>
+<text x="48" y="967.2" font-family="Inter" font-size="36" font-weight="400" font-style="normal" fill="#202326" text-anchor="start">64 changing IDs · gather included · 16-step blocks</text>
+<text x="48" y="1008.6" font-family="Inter" font-size="36" font-weight="400" font-style="normal" fill="#202326" text-anchor="start">FP32 · B8 · H2048 · V131072 · TF32 off</text>
+<text x="48" y="1050.0" font-family="Inter" font-size="36" font-weight="400" font-style="normal" fill="#202326" text-anchor="start">3 pairs in one process · requests unmeasured</text>
 </svg>

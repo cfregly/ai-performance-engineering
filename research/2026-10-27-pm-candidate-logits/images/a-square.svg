@@ -1,78 +1,41 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1080" viewBox="0 0 1080 1080">
 <rect width="100%" height="100%" fill="#FBFBF8"/>
-<defs><marker id="arrow" viewBox="0 0 12 12" refX="9" refY="6" markerWidth="5" markerHeight="5" orient="auto"><path d="M1 1 L10 6 L1 11" fill="none" stroke="context-stroke" stroke-width="2"/></marker>
-<pattern id="hatch" width="18" height="18" patternUnits="userSpaceOnUse"><path d="M-4 18 L18 -4 M8 26 L26 8" stroke="#E87823" stroke-width="2" opacity=".35"/></pattern></defs>
-<text x="65" y="85" font-family="Bradley Hand" font-size="59" fill="#202326" text-anchor="start" font-weight="normal">
-<tspan x="65" dy="0">Select rows before</tspan>
-<tspan x="65" dy="66.08000000000001">projection</tspan>
-</text>
-<text x="68" y="212.08" font-family="Arial, Helvetica, sans-serif" font-size="35" fill="#202326" text-anchor="start" font-weight="normal">
-<tspan x="68" dy="0">Keep only the legal output scores</tspan>
-</text>
-<path d="M68 232.08 Q350 226.08 770 234.08" fill="none" stroke="#202326" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-<text x="68" y="336" font-family="Bradley Hand" font-size="47" fill="#E87823" text-anchor="start" font-weight="normal">
-<tspan x="68" dy="0">Full head, then filter</tspan>
-</text>
-<rect x="75" y="370" width="170" height="150" rx="8" fill="#FBFBF8" stroke="#E87823" stroke-width="4"/>
-<path d="M87 373 Q151.5 368 233 373" fill="none" stroke="#E87823" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M78 391.42857142857144 Q162.0 389.42857142857144 242 391.42857142857144" fill="none" stroke="#E87823" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M78 412.85714285714283 Q162.0 410.85714285714283 242 412.85714285714283" fill="none" stroke="#E87823" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M78 434.2857142857143 Q162.0 432.2857142857143 242 434.2857142857143" fill="none" stroke="#E87823" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M78 455.7142857142857 Q162.0 453.7142857142857 242 455.7142857142857" fill="none" stroke="#E87823" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M78 477.1428571428571 Q162.0 475.1428571428571 242 477.1428571428571" fill="none" stroke="#E87823" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M78 498.57142857142856 Q162.0 496.57142857142856 242 498.57142857142856" fill="none" stroke="#E87823" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M99.28571428571428 373 Q101.28571428571428 443.0 99.28571428571428 517" fill="none" stroke="#E87823" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M123.57142857142857 373 Q125.57142857142857 443.0 123.57142857142857 517" fill="none" stroke="#E87823" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M147.85714285714286 373 Q149.85714285714286 443.0 147.85714285714286 517" fill="none" stroke="#E87823" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M172.14285714285714 373 Q174.14285714285714 443.0 172.14285714285714 517" fill="none" stroke="#E87823" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M196.42857142857144 373 Q198.42857142857144 443.0 196.42857142857144 517" fill="none" stroke="#E87823" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M220.71428571428572 373 Q222.71428571428572 443.0 220.71428571428572 517" fill="none" stroke="#E87823" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<text x="160" y="565" font-family="Arial, Helvetica, sans-serif" font-size="37" fill="#202326" text-anchor="middle" font-weight="normal">
-<tspan x="160" dy="0">All rows</tspan>
-</text>
-<path d="M282 446 Q343.0 444.0 400 446" fill="none" stroke="#E87823" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow)"/>
-<rect x="435" y="385" width="240" height="120" rx="16" fill="#FCF1E8" stroke="#E87823" stroke-width="4"/>
-<path d="M447 388 Q543.0 383 663 388" fill="none" stroke="#E87823" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<text x="555" y="457" font-family="Arial, Helvetica, sans-serif" font-size="38" fill="#202326" text-anchor="middle" font-weight="normal">
-<tspan x="555" dy="0">Project all</tspan>
-</text>
-<path d="M705 446 Q749.5 444.0 790 446" fill="none" stroke="#E87823" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow)"/>
-<text x="901" y="430" font-family="Arial, Helvetica, sans-serif" font-size="38" fill="#202326" text-anchor="middle" font-weight="normal">
-<tspan x="901" dy="0">Filter</tspan>
-<tspan x="901" dy="45.6">scores</tspan>
-</text>
-<text x="68" y="649" font-family="Bradley Hand" font-size="47" fill="#3478BA" text-anchor="start" font-weight="normal">
-<tspan x="68" dy="0">Select rows, then project</tspan>
-</text>
-<rect x="75" y="693" width="170" height="88" rx="8" fill="#EFF5FA" stroke="#3478BA" stroke-width="4"/>
-<path d="M87 696 Q151.5 691 233 696" fill="none" stroke="#3478BA" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M78 722.3333333333334 Q162.0 720.3333333333334 242 722.3333333333334" fill="none" stroke="#3478BA" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M78 751.6666666666666 Q162.0 749.6666666666666 242 751.6666666666666" fill="none" stroke="#3478BA" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M99.28571428571428 696 Q101.28571428571428 735.0 99.28571428571428 778" fill="none" stroke="#3478BA" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M123.57142857142857 696 Q125.57142857142857 735.0 123.57142857142857 778" fill="none" stroke="#3478BA" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M147.85714285714286 696 Q149.85714285714286 735.0 147.85714285714286 778" fill="none" stroke="#3478BA" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M172.14285714285714 696 Q174.14285714285714 735.0 172.14285714285714 778" fill="none" stroke="#3478BA" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M196.42857142857144 696 Q198.42857142857144 735.0 196.42857142857144 778" fill="none" stroke="#3478BA" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M220.71428571428572 696 Q222.71428571428572 735.0 220.71428571428572 778" fill="none" stroke="#3478BA" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<text x="160" y="831" font-family="Arial, Helvetica, sans-serif" font-size="37" fill="#202326" text-anchor="middle" font-weight="normal">
-<tspan x="160" dy="0">Legal rows</tspan>
-</text>
-<path d="M282 740 Q343.0 738.0 400 740" fill="none" stroke="#3478BA" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow)"/>
-<rect x="435" y="680" width="280" height="120" rx="16" fill="#EFF5FA" stroke="#3478BA" stroke-width="4"/>
-<path d="M447 683 Q561.0 678 703 683" fill="none" stroke="#3478BA" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<text x="575" y="753" font-family="Arial, Helvetica, sans-serif" font-size="38" fill="#202326" text-anchor="middle" font-weight="normal">
-<tspan x="575" dy="0">Project legal</tspan>
-</text>
-<path d="M745 740 Q787.0 738.0 825 740" fill="none" stroke="#3478BA" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow)"/>
-<text x="918" y="724" font-family="Arial, Helvetica, sans-serif" font-size="36" fill="#202326" text-anchor="middle" font-weight="normal">
-<tspan x="918" dy="0">Legal</tspan>
-<tspan x="918" dy="43.199999999999996">argmax</tspan>
-</text>
-<text x="540" y="924" font-family="Bradley Hand" font-size="42" fill="#202326" text-anchor="middle" font-weight="normal">
-<tspan x="540" dy="0">The selection moves upstream</tspan>
-</text>
-<text x="68" y="1007.8" font-family="Arial, Helvetica, sans-serif" font-size="31" fill="#202326" text-anchor="start" font-weight="normal">
-<tspan x="68" dy="0">Shared legal set across batch 8</tspan>
-<tspan x="68" dy="37.199999999999996">Strict FP32 output-head stage · TF32 off</tspan>
-</text>
+<defs><marker id="arrow" viewBox="0 0 12 12" refX="10" refY="6" markerWidth="5" markerHeight="5" orient="auto"><path d="M2 2 L10 6 L2 10" fill="none" stroke="context-stroke" stroke-width="2"/></marker></defs>
+<text x="48" y="82.0" font-family="Inter" font-size="60" font-weight="400" font-style="normal" fill="#202326" text-anchor="start">Select allowed rows before</text>
+<text x="48" y="149.2" font-family="Inter" font-size="60" font-weight="400" font-style="normal" fill="#202326" text-anchor="start">scoring</text>
+<text x="48" y="219.2" font-family="Inter" font-size="36" font-weight="400" font-style="normal" fill="#202326" text-anchor="start">Compare the same allowed-token outputs</text>
+<text x="55" y="340.0" font-family="Inter" font-size="44" font-weight="400" font-style="normal" fill="#3478BA" text-anchor="start">Full scoring + filter</text>
+<rect x="70" y="380" width="170" height="132" rx="0" fill="none" stroke="#3478BA" stroke-width="3"/>
+<line x1="70" y1="396.5" x2="240" y2="396.5" stroke="#3478BA" stroke-width="1.5"/>
+<line x1="70" y1="413.0" x2="240" y2="413.0" stroke="#3478BA" stroke-width="1.5"/>
+<line x1="70" y1="429.5" x2="240" y2="429.5" stroke="#3478BA" stroke-width="1.5"/>
+<line x1="70" y1="446.0" x2="240" y2="446.0" stroke="#3478BA" stroke-width="1.5"/>
+<line x1="70" y1="462.5" x2="240" y2="462.5" stroke="#3478BA" stroke-width="1.5"/>
+<line x1="70" y1="479.0" x2="240" y2="479.0" stroke="#3478BA" stroke-width="1.5"/>
+<line x1="70" y1="495.5" x2="240" y2="495.5" stroke="#3478BA" stroke-width="1.5"/>
+<line x1="104.0" y1="380" x2="104.0" y2="512" stroke="#3478BA" stroke-width="1.5"/>
+<line x1="138.0" y1="380" x2="138.0" y2="512" stroke="#3478BA" stroke-width="1.5"/>
+<line x1="172.0" y1="380" x2="172.0" y2="512" stroke="#3478BA" stroke-width="1.5"/>
+<line x1="206.0" y1="380" x2="206.0" y2="512" stroke="#3478BA" stroke-width="1.5"/>
+<line x1="265" y1="444" x2="335" y2="444" stroke="#3478BA" stroke-width="3" marker-end="url(#arrow)"/>
+<rect x="365" y="395" width="345" height="100" rx="0" fill="none" stroke="#3478BA" stroke-width="3"/>
+<text x="538" y="455.0" font-family="Inter" font-size="40" font-weight="400" font-style="normal" fill="#3478BA" text-anchor="middle">Score all rows</text>
+<line x1="735" y1="444" x2="810" y2="444" stroke="#3478BA" stroke-width="3" marker-end="url(#arrow)"/>
+<text x="900" y="434.0" font-family="Inter" font-size="36" font-weight="400" font-style="normal" fill="#3478BA" text-anchor="middle">Filter +</text>
+<text x="900" y="477.2" font-family="Inter" font-size="36" font-weight="400" font-style="normal" fill="#3478BA" text-anchor="middle">choose</text>
+<text x="55" y="650.0" font-family="Inter" font-size="44" font-weight="400" font-style="normal" fill="#E87823" text-anchor="start">Allowed rows first</text>
+<rect x="70" y="721" width="170" height="66" rx="0" fill="none" stroke="#E87823" stroke-width="3"/>
+<line x1="70" y1="754.0" x2="240" y2="754.0" stroke="#E87823" stroke-width="1.5"/>
+<line x1="104.0" y1="721" x2="104.0" y2="787" stroke="#E87823" stroke-width="1.5"/>
+<line x1="138.0" y1="721" x2="138.0" y2="787" stroke="#E87823" stroke-width="1.5"/>
+<line x1="172.0" y1="721" x2="172.0" y2="787" stroke="#E87823" stroke-width="1.5"/>
+<line x1="206.0" y1="721" x2="206.0" y2="787" stroke="#E87823" stroke-width="1.5"/>
+<line x1="265" y1="754" x2="335" y2="754" stroke="#E87823" stroke-width="3" marker-end="url(#arrow)"/>
+<rect x="365" y="705" width="345" height="100" rx="0" fill="none" stroke="#E87823" stroke-width="3"/>
+<text x="538" y="765.0" font-family="Inter" font-size="40" font-weight="400" font-style="normal" fill="#E87823" text-anchor="middle">Score rows</text>
+<line x1="735" y1="754" x2="810" y2="754" stroke="#E87823" stroke-width="3" marker-end="url(#arrow)"/>
+<text x="900" y="744.0" font-family="Inter" font-size="36" font-weight="400" font-style="normal" fill="#E87823" text-anchor="middle">Choose</text>
+<text x="900" y="787.2" font-family="Inter" font-size="36" font-weight="400" font-style="normal" fill="#E87823" text-anchor="middle">token</text>
+<text x="48" y="1008.6" font-family="Inter" font-size="36" font-weight="400" font-style="normal" fill="#202326" text-anchor="start">One shared allowed set across batch 8</text>
+<text x="48" y="1050.0" font-family="Inter" font-size="36" font-weight="400" font-style="normal" fill="#202326" text-anchor="start">Strict FP32 output head · TF32 off</text>
 </svg>

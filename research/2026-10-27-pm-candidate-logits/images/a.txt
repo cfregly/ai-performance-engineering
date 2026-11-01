@@ -1,29 +1,19 @@
-Select rows before projection
+Select allowed rows before scoring
+Compare the same allowed-token outputs
+Full scoring + filter
+Score all rows
+Filter +
+choose
+Allowed rows first
+Score selected rows
+Choose
+token
+Shared allowed set across batch 8 · strict FP32 output head
+TF32 off · both paths return allowed-token scores
+Select allowed rows before
+scoring
+Score rows
+One shared allowed set across batch 8
+Strict FP32 output head · TF32 off
 
-Move the legal-ID selection ahead of the output-head matrix multiply. The full path projects all vocabulary rows, then filters scores. The candidate gathers legal weight rows first, projects only those rows, and takes the legal argmax. The tested stage uses one shared legal set across batch 8, strict FP32 and TF32 disabled.
-
-Select rows before projection
-Keep only the legal output scores
-Full head, then filter
-All weight rows
-Project every token
-Filter scores
-+ legal argmax
-Select rows, then project
-Legal rows only
-Project legal tokens
-Legal argmax
-Shared legal set across batch 8 · strict FP32 output-head stage · TF32 off
-Select rows before
-projection
-All rows
-Project all
-Filter
-scores
-Legal rows
-Project legal
-Legal
-argmax
-The selection moves upstream
-Shared legal set across batch 8
-Strict FP32 output-head stage · TF32 off
+Retained methods: synthetic strict FP32 output head. Batch 8, hidden 2048, vocabulary 131072. One shared device-resident allowed set. TF32 off. Median warm blocks contain 16 steps. Three paired blocks per cell in one process. Whiskers are observed min–max, not confidence intervals. Changing sets include each gather. Static sets reuse gathered weights after one-time setup. Static setup for 16/64/256 IDs: 0.034720 / 3.252477 / 0.022130 ms. The 64-ID setup is an unexplained outlier. Cold-start benefit and break-even were not measured. Whole-model and serving gains were not measured. Different per-request sets and BF16 are untested. Ratios use retained unrounded medians.

@@ -1,9 +1,5 @@
-Score the choices you can emit
-
-Example: when only YES and NO can be emitted, move selection before scoring rather than computing scores for all tokens and discarding most. The legal choices must be known before scoring. The words in this drawing explain the mechanism; they are not benchmark inputs.
-
 Why score tokens you cannot emit?
-Example: only YES or NO can be emitted
+Example: only YES or NO is allowed
 Score everything
 YES
 road
@@ -12,9 +8,9 @@ NO
 blue
 river
 Select first
-Score only
-legal tokens
-The legal choices must be known before scoring
-Why score tokens
-you cannot emit?
-Score only legal tokens
+Allowed choices must be known before scoring
+Toy words explain the idea, not the test inputs
+Why score tokens you cannot
+emit?
+
+Retained methods: synthetic strict FP32 output head. Batch 8, hidden 2048, vocabulary 131072. One shared device-resident allowed set. TF32 off. Median warm blocks contain 16 steps. Three paired blocks per cell in one process. Whiskers are observed min–max, not confidence intervals. Changing sets include each gather. Static sets reuse gathered weights after one-time setup. Static setup for 16/64/256 IDs: 0.034720 / 3.252477 / 0.022130 ms. The 64-ID setup is an unexplained outlier. Cold-start benefit and break-even were not measured. Whole-model and serving gains were not measured. Different per-request sets and BF16 are untested. Ratios use retained unrounded medians.

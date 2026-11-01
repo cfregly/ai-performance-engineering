@@ -122,7 +122,6 @@ def render(overwrite: bool = False, check: bool = False):
     arrow("M 390 342 L 555 362")
     text(100, 480, "Allowed rows", body, 600)
     arrow("M 420 491 L 505 520")
-    text(margin, 709, "Conceptual view · rows not to scale", body)
     text(margin, 779, f"{ratio:.2f}× faster · output head only", body, 700)
     text(margin, 837, "Median per warm 16-step block", body)
     text(margin, 905, "Full + filter", body, 600, palette["blue"])

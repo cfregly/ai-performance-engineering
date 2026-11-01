@@ -1,146 +1,92 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900">
 <rect width="100%" height="100%" fill="#FBFBF8"/>
-<defs><marker id="arrow" viewBox="0 0 12 12" refX="9" refY="6" markerWidth="5" markerHeight="5" orient="auto"><path d="M1 1 L10 6 L1 11" fill="none" stroke="context-stroke" stroke-width="2"/></marker>
-<pattern id="hatch" width="18" height="18" patternUnits="userSpaceOnUse"><path d="M-4 18 L18 -4 M8 26 L26 8" stroke="#E87823" stroke-width="2" opacity=".35"/></pattern></defs>
-<text x="85" y="93" font-family="Bradley Hand" font-size="72" fill="#202326" text-anchor="start" font-weight="normal">
-<tspan x="85" dy="0">Less output work, shorter warm blocks</tspan>
-</text>
-<text x="89" y="154" font-family="Arial, Helvetica, sans-serif" font-size="43" fill="#202326" text-anchor="start" font-weight="normal">
-<tspan x="89" dy="0">Synthetic strict-FP32 output-head stage</tspan>
-</text>
-<path d="M89 174.0 Q480 168.0 1080 176.0" fill="none" stroke="#202326" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M89 218 Q121.0 216.0 149 218" fill="none" stroke="#E87823" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
-<text x="167" y="230" font-family="Arial, Helvetica, sans-serif" font-size="41" fill="#E87823" text-anchor="start" font-weight="normal">
-<tspan x="167" dy="0">Full head → filter</tspan>
-</text>
-<path d="M815 218 Q847.0 216.0 875 218" fill="none" stroke="#3478BA" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
-<text x="893" y="230" font-family="Arial, Helvetica, sans-serif" font-size="41" fill="#3478BA" text-anchor="start" font-weight="normal">
-<tspan x="893" dy="0">Legal rows first</tspan>
-</text>
-<path d="M455.0 267 Q457.0 441.5 455.0 620" fill="none" stroke="#202326" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="12 10"/>
-<text x="455.0" y="675" font-family="Arial, Helvetica, sans-serif" font-size="43" fill="#202326" text-anchor="middle" font-weight="normal">
-<tspan x="455.0" dy="0">0</tspan>
-</text>
-<path d="M685.0 267 Q687.0 441.5 685.0 620" fill="none" stroke="#202326" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="12 10"/>
-<text x="685.0" y="675" font-family="Arial, Helvetica, sans-serif" font-size="43" fill="#202326" text-anchor="middle" font-weight="normal">
-<tspan x="685.0" dy="0">2</tspan>
-</text>
-<path d="M915.0 267 Q917.0 441.5 915.0 620" fill="none" stroke="#202326" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="12 10"/>
-<text x="915.0" y="675" font-family="Arial, Helvetica, sans-serif" font-size="43" fill="#202326" text-anchor="middle" font-weight="normal">
-<tspan x="915.0" dy="0">4</tspan>
-</text>
-<path d="M1145.0 267 Q1147.0 441.5 1145.0 620" fill="none" stroke="#202326" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="12 10"/>
-<text x="1145.0" y="675" font-family="Arial, Helvetica, sans-serif" font-size="43" fill="#202326" text-anchor="middle" font-weight="normal">
-<tspan x="1145.0" dy="0">6</tspan>
-</text>
-<text x="89" y="310" font-family="Arial, Helvetica, sans-serif" font-size="48" fill="#202326" text-anchor="start" font-weight="normal">
-<tspan x="89" dy="0">16 static</tspan>
-</text>
-<rect x="455" y="277" width="631.231184815988" height="10" fill="#E87823" stroke="none" stroke-width="1"/>
-<rect x="455" y="299" width="38.4233589284122" height="12" fill="#3478BA" stroke="none" stroke-width="1"/>
-<path d="M1085.8035261463374 282 Q1088.245697150007 280.0 1086.6878681536764 282" fill="none" stroke="#202326" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M1085.8035261463374 275 Q1087.8035261463374 280.0 1085.8035261463374 289" fill="none" stroke="#202326" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M1086.6878681536764 275 Q1088.6878681536764 280.0 1086.6878681536764 289" fill="none" stroke="#202326" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M493.1978286895901 305 Q495.8372951420024 303.0 494.4767615944147 305" fill="none" stroke="#202326" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M493.1978286895901 298 Q495.1978286895901 303.0 493.1978286895901 312" fill="none" stroke="#202326" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M494.4767615944147 298 Q496.4767615944147 303.0 494.4767615944147 312" fill="none" stroke="#202326" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<text x="506.4233589284122" y="333" font-family="Arial, Helvetica, sans-serif" font-size="48" fill="#3478BA" text-anchor="start" font-weight="bold">
-<tspan x="506.4233589284122" dy="0">0.334</tspan>
-</text>
-<text x="1102.231184815988" y="296" font-family="Arial, Helvetica, sans-serif" font-size="48" fill="#E87823" text-anchor="start" font-weight="normal">
-<tspan x="1102.231184815988" dy="0">5.489</tspan>
-</text>
-<text x="89" y="370" font-family="Arial, Helvetica, sans-serif" font-size="48" fill="#202326" text-anchor="start" font-weight="normal">
-<tspan x="89" dy="0">16 changing</tspan>
-</text>
-<rect x="455" y="337" width="631.8097503390163" height="10" fill="#E87823" stroke="none" stroke-width="1"/>
-<rect x="455" y="359" width="64.3910386133939" height="12" fill="#3478BA" stroke="none" stroke-width="1"/>
-<path d="M1084.4153758790344 342 Q1087.866716383025 340.0 1087.3180568870157 342" fill="none" stroke="#202326" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M1084.4153758790344 335 Q1086.4153758790344 340.0 1084.4153758790344 349" fill="none" stroke="#202326" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M1087.3180568870157 335 Q1089.3180568870157 340.0 1087.3180568870157 349" fill="none" stroke="#202326" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M509.77139609865844 365 Q516.7698107594624 363.0 519.7682254202664 365" fill="none" stroke="#202326" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M509.77139609865844 358 Q511.77139609865844 363.0 509.77139609865844 372" fill="none" stroke="#202326" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M519.7682254202664 358 Q521.7682254202664 363.0 519.7682254202664 372" fill="none" stroke="#202326" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<text x="532.3910386133939" y="393" font-family="Arial, Helvetica, sans-serif" font-size="48" fill="#3478BA" text-anchor="start" font-weight="bold">
-<tspan x="532.3910386133939" dy="0">0.560</tspan>
-</text>
-<text x="1102.8097503390163" y="356" font-family="Arial, Helvetica, sans-serif" font-size="48" fill="#E87823" text-anchor="start" font-weight="normal">
-<tspan x="1102.8097503390163" dy="0">5.494</tspan>
-</text>
-<text x="89" y="430" font-family="Arial, Helvetica, sans-serif" font-size="48" fill="#202326" text-anchor="start" font-weight="normal">
-<tspan x="89" dy="0">64 static</tspan>
-</text>
-<rect x="455" y="397" width="622.007311321795" height="10" fill="#E87823" stroke="none" stroke-width="1"/>
-<rect x="455" y="419" width="40.17236293293536" height="12" fill="#3478BA" stroke="none" stroke-width="1"/>
-<path d="M1076.03554722853 402 Q1078.5386191615835 400.0 1077.041691094637 402" fill="none" stroke="#202326" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M1076.03554722853 395 Q1078.03554722853 400.0 1076.03554722853 409" fill="none" stroke="#202326" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M1077.041691094637 395 Q1079.041691094637 400.0 1077.041691094637 409" fill="none" stroke="#202326" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M495.0412699673325 425 Q498.4627289865166 423.0 497.8841880057007 425" fill="none" stroke="#202326" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M495.0412699673325 418 Q497.0412699673325 423.0 495.0412699673325 432" fill="none" stroke="#202326" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M497.8841880057007 418 Q499.8841880057007 423.0 497.8841880057007 432" fill="none" stroke="#202326" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<text x="508.17236293293536" y="453" font-family="Arial, Helvetica, sans-serif" font-size="48" fill="#3478BA" text-anchor="start" font-weight="bold">
-<tspan x="508.17236293293536" dy="0">0.349</tspan>
-</text>
-<text x="1093.007311321795" y="416" font-family="Arial, Helvetica, sans-serif" font-size="48" fill="#E87823" text-anchor="start" font-weight="normal">
-<tspan x="1093.007311321795" dy="0">5.409</tspan>
-</text>
-<text x="89" y="490" font-family="Arial, Helvetica, sans-serif" font-size="48" fill="#202326" text-anchor="start" font-weight="normal">
-<tspan x="89" dy="0">64 changing</tspan>
-</text>
-<rect x="455" y="457" width="620.9136114921421" height="10" fill="#E87823" stroke="none" stroke-width="1"/>
-<rect x="455" y="479" width="48.36610169149935" height="12" fill="#3478BA" stroke="none" stroke-width="1"/>
-<path d="M1075.186843443662 462 Q1078.0809585172683 460.0 1076.9750735908747 462" fill="none" stroke="#202326" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M1075.186843443662 455 Q1077.186843443662 460.0 1075.186843443662 469" fill="none" stroke="#202326" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M1076.9750735908747 455 Q1078.9750735908747 460.0 1076.9750735908747 469" fill="none" stroke="#202326" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M502.6781849283725 485 Q505.05199801921844 483.0 503.4258111100644 485" fill="none" stroke="#202326" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M502.6781849283725 478 Q504.6781849283725 483.0 502.6781849283725 492" fill="none" stroke="#202326" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M503.4258111100644 478 Q505.4258111100644 483.0 503.4258111100644 492" fill="none" stroke="#202326" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<text x="516.3661016914994" y="513" font-family="Arial, Helvetica, sans-serif" font-size="48" fill="#3478BA" text-anchor="start" font-weight="bold">
-<tspan x="516.3661016914994" dy="0">0.421</tspan>
-</text>
-<text x="1091.913611492142" y="476" font-family="Arial, Helvetica, sans-serif" font-size="48" fill="#E87823" text-anchor="start" font-weight="normal">
-<tspan x="1091.913611492142" dy="0">5.399</tspan>
-</text>
-<text x="89" y="550" font-family="Arial, Helvetica, sans-serif" font-size="48" fill="#202326" text-anchor="start" font-weight="normal">
-<tspan x="89" dy="0">256 static</tspan>
-</text>
-<rect x="455" y="517" width="628.58747667633" height="10" fill="#E87823" stroke="none" stroke-width="1"/>
-<rect x="455" y="539" width="40.20111984573305" height="12" fill="#3478BA" stroke="none" stroke-width="1"/>
-<path d="M1083.352869534865 522 Q1085.5299762384966 520.0 1083.7070829421282 522" fill="none" stroke="#202326" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M1083.352869534865 515 Q1085.352869534865 520.0 1083.352869534865 529" fill="none" stroke="#202326" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M1083.7070829421282 515 Q1085.7070829421282 520.0 1083.7070829421282 529" fill="none" stroke="#202326" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M494.9666465818882 545 Q497.3311417903751 543.0 495.695636998862 545" fill="none" stroke="#202326" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M494.9666465818882 538 Q496.9666465818882 543.0 494.9666465818882 552" fill="none" stroke="#202326" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M495.695636998862 538 Q497.695636998862 543.0 495.695636998862 552" fill="none" stroke="#202326" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<text x="508.20111984573305" y="573" font-family="Arial, Helvetica, sans-serif" font-size="48" fill="#3478BA" text-anchor="start" font-weight="bold">
-<tspan x="508.20111984573305" dy="0">0.350</tspan>
-</text>
-<text x="1099.58747667633" y="536" font-family="Arial, Helvetica, sans-serif" font-size="48" fill="#E87823" text-anchor="start" font-weight="normal">
-<tspan x="1099.58747667633" dy="0">5.466</tspan>
-</text>
-<text x="89" y="610" font-family="Arial, Helvetica, sans-serif" font-size="48" fill="#202326" text-anchor="start" font-weight="normal">
-<tspan x="89" dy="0">256 changing</tspan>
-</text>
-<rect x="455" y="577" width="629.1519850492477" height="10" fill="#E87823" stroke="none" stroke-width="1"/>
-<rect x="455" y="599" width="48.42591821216047" height="12" fill="#3478BA" stroke="none" stroke-width="1"/>
-<path d="M1083.0698522459716 582 Q1085.8892903830856 580.0 1084.7087285201997 582" fill="none" stroke="#202326" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M1083.0698522459716 575 Q1085.0698522459716 580.0 1083.0698522459716 589" fill="none" stroke="#202326" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M1084.7087285201997 575 Q1086.7087285201997 580.0 1084.7087285201997 589" fill="none" stroke="#202326" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M503.0658409651369 605 Q505.4189565759152 603.0 503.77207218669355 605" fill="none" stroke="#202326" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M503.0658409651369 598 Q505.0658409651369 603.0 503.0658409651369 612" fill="none" stroke="#202326" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M503.77207218669355 598 Q505.77207218669355 603.0 503.77207218669355 612" fill="none" stroke="#202326" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<text x="516.4259182121605" y="633" font-family="Arial, Helvetica, sans-serif" font-size="48" fill="#3478BA" text-anchor="start" font-weight="bold">
-<tspan x="516.4259182121605" dy="0">0.421</tspan>
-</text>
-<text x="1100.1519850492477" y="596" font-family="Arial, Helvetica, sans-serif" font-size="48" fill="#E87823" text-anchor="start" font-weight="normal">
-<tspan x="1100.1519850492477" dy="0">5.471</tspan>
-</text>
-<text x="800.0" y="718" font-family="Arial, Helvetica, sans-serif" font-size="41" fill="#202326" text-anchor="middle" font-weight="normal">
-<tspan x="800.0" dy="0">Milliseconds per 16-step block</tspan>
-</text>
-<text x="89" y="778.6" font-family="Arial, Helvetica, sans-serif" font-size="36" fill="#202326" text-anchor="start" font-weight="normal">
-<tspan x="89" dy="0">Median bars · min–max whiskers · 3 paired blocks / cell · one process</tspan>
-<tspan x="89" dy="43.199999999999996">Batch 8 · hidden 2048 · vocab 131072 · shared IDs · TF32 off</tspan>
-<tspan x="89" dy="43.199999999999996">Changing includes gather. Static reuses rows; 64-ID setup: 3.252 ms, excluded.</tspan>
-</text>
+<defs><marker id="arrow" viewBox="0 0 12 12" refX="10" refY="6" markerWidth="5" markerHeight="5" orient="auto"><path d="M2 2 L10 6 L2 10" fill="none" stroke="context-stroke" stroke-width="2"/></marker></defs>
+<text x="64" y="82.0" font-family="Inter" font-size="64" font-weight="400" font-style="normal" fill="#202326" text-anchor="start">Six warm-block comparisons</text>
+<text x="64" y="152.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#202326" text-anchor="start">Synthetic strict-FP32 output-head stage</text>
+<text x="70" y="220.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#3478BA" text-anchor="start">Full + filter</text>
+<text x="820" y="220.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#E87823" text-anchor="start">Allowed rows first</text>
+<text x="70" y="292.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#202326" text-anchor="start">Static IDs</text>
+<line x1="205.0" y1="315" x2="205.0" y2="625" stroke="#D3D6D9" stroke-width="1"/>
+<text x="205.0" y="645.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#202326" text-anchor="middle">0</text>
+<line x1="405.0" y1="315" x2="405.0" y2="625" stroke="#D3D6D9" stroke-width="1"/>
+<text x="405.0" y="645.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#202326" text-anchor="middle">3</text>
+<line x1="605.0" y1="315" x2="605.0" y2="625" stroke="#D3D6D9" stroke-width="1"/>
+<text x="605.0" y="645.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#202326" text-anchor="middle">6</text>
+<text x="70" y="369.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#202326" text-anchor="start">16</text>
+<rect data-science="bar" data-series="baseline" data-mode="static" data-size="16" x="205" y="335" width="365.9311216324568" height="14" fill="#3478BA"/>
+<line x1="570.6832035630941" y1="342.0" x2="571.1958655963342" y2="342.0" stroke="#202326" stroke-width="2"/>
+<line x1="570.6832035630941" y1="335.0" x2="570.6832035630941" y2="349.0" stroke="#202326" stroke-width="2"/>
+<line x1="571.1958655963342" y1="335.0" x2="571.1958655963342" y2="349.0" stroke="#202326" stroke-width="2"/>
+<text x="582.9311216324568" y="349.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#3478BA" text-anchor="start">5.489</text>
+<rect data-science="bar" data-series="candidate" data-mode="static" data-size="16" x="205" y="373" width="22.2744109729926" height="14" fill="#E87823"/>
+<line x1="227.14366880555949" y1="380.0" x2="227.88507918516794" y2="380.0" stroke="#202326" stroke-width="2"/>
+<line x1="227.14366880555949" y1="373.0" x2="227.14366880555949" y2="387.0" stroke="#202326" stroke-width="2"/>
+<line x1="227.88507918516794" y1="373.0" x2="227.88507918516794" y2="387.0" stroke="#202326" stroke-width="2"/>
+<text x="239.27441097299257" y="387.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#E87823" text-anchor="start">0.334</text>
+<text x="70" y="473.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#202326" text-anchor="start">64</text>
+<rect data-science="bar" data-series="baseline" data-mode="static" data-size="64" x="205" y="439" width="360.5839485923449" height="14" fill="#3478BA"/>
+<line x1="565.0206070890029" y1="446.0" x2="565.6038788954418" y2="446.0" stroke="#202326" stroke-width="2"/>
+<line x1="565.0206070890029" y1="439.0" x2="565.0206070890029" y2="453.0" stroke="#202326" stroke-width="2"/>
+<line x1="565.6038788954418" y1="439.0" x2="565.6038788954418" y2="453.0" stroke="#202326" stroke-width="2"/>
+<text x="577.583948592345" y="453.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#3478BA" text-anchor="start">5.409</text>
+<rect data-science="bar" data-series="candidate" data-mode="static" data-size="64" x="205" y="477" width="23.2883263379335" height="14" fill="#E87823"/>
+<line x1="228.21233041584492" y1="484.0" x2="229.86039884388447" y2="484.0" stroke="#202326" stroke-width="2"/>
+<line x1="228.21233041584492" y1="477.0" x2="228.21233041584492" y2="491.0" stroke="#202326" stroke-width="2"/>
+<line x1="229.86039884388447" y1="477.0" x2="229.86039884388447" y2="491.0" stroke="#202326" stroke-width="2"/>
+<text x="240.28832633793354" y="491.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#E87823" text-anchor="start">0.349</text>
+<text x="70" y="577.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#202326" text-anchor="start">256</text>
+<rect data-science="bar" data-series="baseline" data-mode="static" data-size="256" x="205" y="543" width="364.3985372036695" height="14" fill="#3478BA"/>
+<line x1="569.26253306369" y1="550.0" x2="569.4678741693497" y2="550.0" stroke="#202326" stroke-width="2"/>
+<line x1="569.26253306369" y1="543.0" x2="569.26253306369" y2="557.0" stroke="#202326" stroke-width="2"/>
+<line x1="569.4678741693497" y1="543.0" x2="569.4678741693497" y2="557.0" stroke="#202326" stroke-width="2"/>
+<text x="581.3985372036695" y="557.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#3478BA" text-anchor="start">5.466</text>
+<rect data-science="bar" data-series="candidate" data-mode="static" data-size="256" x="205" y="581" width="23.3049970120192" height="14" fill="#E87823"/>
+<line x1="228.16907048225403" y1="588.0" x2="228.5916736225287" y2="588.0" stroke="#202326" stroke-width="2"/>
+<line x1="228.16907048225403" y1="581.0" x2="228.16907048225403" y2="595.0" stroke="#202326" stroke-width="2"/>
+<line x1="228.5916736225287" y1="581.0" x2="228.5916736225287" y2="595.0" stroke="#202326" stroke-width="2"/>
+<text x="240.30499701201916" y="595.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#E87823" text-anchor="start">0.350</text>
+<text x="860" y="292.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#202326" text-anchor="start">Changing IDs</text>
+<line x1="995.0" y1="315" x2="995.0" y2="625" stroke="#D3D6D9" stroke-width="1"/>
+<text x="995.0" y="645.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#202326" text-anchor="middle">0</text>
+<line x1="1195.0" y1="315" x2="1195.0" y2="625" stroke="#D3D6D9" stroke-width="1"/>
+<text x="1195.0" y="645.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#202326" text-anchor="middle">3</text>
+<line x1="1395.0" y1="315" x2="1395.0" y2="625" stroke="#D3D6D9" stroke-width="1"/>
+<text x="1395.0" y="645.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#202326" text-anchor="middle">6</text>
+<text x="860" y="369.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#202326" text-anchor="start">16</text>
+<rect data-science="bar" data-series="baseline" data-mode="changing" data-size="16" x="995" y="335" width="366.2665219356616" height="14" fill="#3478BA"/>
+<line x1="1359.8784787704546" y1="342.0" x2="1361.56119239827" y2="342.0" stroke="#202326" stroke-width="2"/>
+<line x1="1359.8784787704546" y1="335.0" x2="1359.8784787704546" y2="349.0" stroke="#202326" stroke-width="2"/>
+<line x1="1361.56119239827" y1="335.0" x2="1361.56119239827" y2="349.0" stroke="#202326" stroke-width="2"/>
+<text x="1373.2665219356616" y="349.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#3478BA" text-anchor="start">5.494</text>
+<rect data-science="bar" data-series="candidate" data-mode="changing" data-size="16" x="995" y="373" width="37.3281383266052" height="14" fill="#E87823"/>
+<line x1="1026.7515339702368" y1="380.0" x2="1032.546797345082" y2="380.0" stroke="#202326" stroke-width="2"/>
+<line x1="1026.7515339702368" y1="373.0" x2="1026.7515339702368" y2="387.0" stroke="#202326" stroke-width="2"/>
+<line x1="1032.546797345082" y1="373.0" x2="1032.546797345082" y2="387.0" stroke="#202326" stroke-width="2"/>
+<text x="1044.328138326605" y="387.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#E87823" text-anchor="start">0.560</text>
+<text x="860" y="473.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#202326" text-anchor="start">64</text>
+<rect data-science="bar" data-series="baseline" data-mode="changing" data-size="64" x="995" y="439" width="359.9499197055896" height="14" fill="#3478BA"/>
+<line x1="1354.5286048948765" y1="446.0" x2="1355.565260052681" y2="446.0" stroke="#202326" stroke-width="2"/>
+<line x1="1354.5286048948765" y1="439.0" x2="1354.5286048948765" y2="453.0" stroke="#202326" stroke-width="2"/>
+<line x1="1355.565260052681" y1="439.0" x2="1355.565260052681" y2="453.0" stroke="#202326" stroke-width="2"/>
+<text x="1366.9499197055895" y="453.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#3478BA" text-anchor="start">5.399</text>
+<rect data-science="bar" data-series="candidate" data-mode="changing" data-size="64" x="995" y="477" width="28.0383198211590" height="14" fill="#E87823"/>
+<line x1="1022.6395274947087" y1="484.0" x2="1023.072933976849" y2="484.0" stroke="#202326" stroke-width="2"/>
+<line x1="1022.6395274947087" y1="477.0" x2="1022.6395274947087" y2="491.0" stroke="#202326" stroke-width="2"/>
+<line x1="1023.072933976849" y1="477.0" x2="1023.072933976849" y2="491.0" stroke="#202326" stroke-width="2"/>
+<text x="1035.038319821159" y="491.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#E87823" text-anchor="start">0.421</text>
+<text x="860" y="577.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#202326" text-anchor="start">256</text>
+<rect data-science="bar" data-series="baseline" data-mode="changing" data-size="256" x="995" y="543" width="364.7257884343465" height="14" fill="#3478BA"/>
+<line x1="1359.0984650701284" y1="550.0" x2="1360.0485382725794" y2="550.0" stroke="#202326" stroke-width="2"/>
+<line x1="1359.0984650701284" y1="543.0" x2="1359.0984650701284" y2="557.0" stroke="#202326" stroke-width="2"/>
+<line x1="1360.0485382725794" y1="543.0" x2="1360.0485382725794" y2="557.0" stroke="#202326" stroke-width="2"/>
+<text x="1371.7257884343464" y="557.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#3478BA" text-anchor="start">5.471</text>
+<rect data-science="bar" data-series="candidate" data-mode="changing" data-size="256" x="995" y="581" width="28.0729960650206" height="14" fill="#E87823"/>
+<line x1="1022.8642556319634" y1="588.0" x2="1023.2736650357643" y2="588.0" stroke="#202326" stroke-width="2"/>
+<line x1="1022.8642556319634" y1="581.0" x2="1022.8642556319634" y2="595.0" stroke="#202326" stroke-width="2"/>
+<line x1="1023.2736650357643" y1="581.0" x2="1023.2736650357643" y2="595.0" stroke="#202326" stroke-width="2"/>
+<text x="1035.0729960650206" y="595.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#E87823" text-anchor="start">0.421</text>
+<text x="800" y="700.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#202326" text-anchor="middle">Milliseconds per warm 16-step block</text>
+<text x="64" y="759.6" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#202326" text-anchor="start">Median bars · min–max whiskers · 3 pairs in one process</text>
+<text x="64" y="814.8000000000001" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#202326" text-anchor="start">Batch 8 · hidden 2048 · vocabulary 131072 · TF32 off</text>
+<text x="64" y="870.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#202326" text-anchor="start">Changing includes gather. Static setup is separate.</text>
 </svg>
