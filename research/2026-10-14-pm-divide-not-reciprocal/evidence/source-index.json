@@ -1,0 +1,64 @@
+{
+  "schema_version": 1,
+  "curation_author": "Chris Fregly",
+  "relative_url_base": "evidence directory",
+  "sources": [
+    {
+      "id": "gimlet-numeric-limit",
+      "url": "https://gimletlabs.ai/blog/formally-verifying-ai-generated-kernels",
+      "title": "Formally Verifying AI-Generated GPU Kernels",
+      "fetched": "2026-10-31",
+      "scope": "Article Early Results and Limitations and Future Work: exact-real prototype limit, hardsigmoid example, and formal/numerical-test complementarity. Date and byline confirmed on the primary page. No talk timestamp is asserted.",
+      "type": "primary_author_article",
+      "authors": [
+        "Jubi Taneja",
+        "Tom St John",
+        "Natalie Serrino"
+      ],
+      "publication_date": "2026-07-08"
+    },
+    {
+      "id": "nv-floating-point",
+      "url": "https://docs.nvidia.com/cuda/floating-point/index.html",
+      "title": "NVIDIA Floating Point and IEEE 754",
+      "fetched": "2026-10-31",
+      "scope": "Correct rounding, operation order and precision are explicit design choices.",
+      "type": "official_documentation"
+    },
+    {
+      "id": "nv-prec-div",
+      "url": "https://docs.nvidia.com/cuda/cuda-compiler-driver-nvcc/index.html#prec-div-prec-div",
+      "title": "NVIDIA CUDA Compiler Driver precision options",
+      "fetched": "2026-10-31",
+      "scope": "Compiler flags alter arithmetic behavior. Do not generalize a default across flags.",
+      "type": "official_documentation"
+    },
+    {
+      "id": "triton-div-rn",
+      "url": "https://triton-lang.org/main/python-api/generated/triton.language.div_rn.html",
+      "title": "Triton div_rn documentation",
+      "fetched": "2026-10-31",
+      "scope": "Documented precise division choice, not a new runtime test.",
+      "type": "official_documentation"
+    },
+    {
+      "id": "torch-allclose",
+      "url": "https://docs.pytorch.org/docs/stable/generated/torch.allclose.html",
+      "title": "PyTorch allclose",
+      "fetched": "2026-10-31",
+      "scope": "Current interface reference, separate from the source experiment\u2019s PyTorch2.13.0 runtime and recorded tolerances.",
+      "type": "official_documentation"
+    },
+    {
+      "id": "historical-division-counts",
+      "url": "numerical-census.md",
+      "title": "Historical division-by-six numerical census",
+      "type": "curated_source_reported_counts",
+      "curation_author": "Chris Fregly",
+      "measurement_author": "Antje Barth",
+      "scope": "Two recorded source runs dated 2026-10-24. Original artifact hashes and exact selected numerical fields in numerical-census.json. No executed-source digest was embedded."
+    }
+  ],
+  "methods": "../code/README.md",
+  "provenance": "provenance.json"
+}

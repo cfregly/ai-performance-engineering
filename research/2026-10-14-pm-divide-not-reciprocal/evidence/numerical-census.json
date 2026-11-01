@@ -1,0 +1,145 @@
+{
+  "schema": "division-numerical-census-v1",
+  "curation_author": "Chris Fregly",
+  "measurement_kind": "Historical source-reported numerical counts. No new GPU execution.",
+  "cohort": {
+    "description": "finite float32 inputs with |x| >= 2^-123",
+    "exponent_field_minimum": 4,
+    "exponent_field_maximum": 254,
+    "signs": 2,
+    "significands_per_exponent_and_sign": 8388608,
+    "historical_field_name": "normal_quotient",
+    "field_name_correction": "This is the whole-binade census above, not every input whose correctly rounded quotient is normal."
+  },
+  "historical_observations": [
+    {
+      "run_id": "b200",
+      "recorded_date": "2026-10-24",
+      "measurement_author": "Antje Barth",
+      "retained_original_json": {
+        "filename": "b200.json",
+        "sha256": "71e0888fa0df11c32c178dd9571c59244045ab821291e88c6481eab334c9431b"
+      },
+      "retained_original_markdown": {
+        "filename": "b200.md",
+        "sha256": "06b77eaa6e9663cf15862e1a090af38283a6e7cd454e8be0c63fcae34def0766"
+      },
+      "runtime": {
+        "gpu_model": "NVIDIA B200",
+        "driver": "580.173.02",
+        "cuda": "13.0",
+        "nvcc": "13.0",
+        "pytorch": "2.13.0+cu130",
+        "triton": "3.7.1"
+      },
+      "source_reported_census": {
+        "source_json_pointer": "/exhaustive/0/normal_quotient",
+        "build": "default",
+        "build_flags": [],
+        "target_architecture": "sm_100",
+        "expression": "x * (1.0f / 6.0f)",
+        "reference": "inline PTX div.rn.f32(x, 6.0f)",
+        "inputs": 4211081216,
+        "different": 1403693404,
+        "one_step_away_from_zero": 1403693404,
+        "one_step_toward_zero": 0,
+        "two_or_more_steps": 0,
+        "maximum_representable_steps": 1,
+        "different_per_sign_binade_minimum": 2796202,
+        "different_per_sign_binade_maximum": 2796202
+      },
+      "source_reported_tolerance_observation": {
+        "source_json_pointer": "/triton/modes/x * 0.16666666666666666",
+        "expression": "x * 0.16666666666666666 in the recorded Triton experiment",
+        "reference": "torch.div(x, six) with six a float32 tensor on the GPU",
+        "comparison": "torch.isclose at recorded torch.allclose defaults, restricted to finite inputs",
+        "rtol": 1e-05,
+        "atol": 1e-08,
+        "finite_input_failures": 0,
+        "counted_input_bit_patterns": 4294967296,
+        "chunks": 32,
+        "coverage": "The experiment traversed all 2^32 input bit patterns. The tolerance-failure count filters finite inputs, which include the displayed census."
+      },
+      "executed_source_digest_embedded_in_original_report": false,
+      "executed_source_digest_limit": "Retained source-file hashes identify archived source. The result does not attest which exact source bytes executed.",
+      "maintained_successor_produced_this_result": false
+    },
+    {
+      "run_id": "b200-run2",
+      "recorded_date": "2026-10-24",
+      "measurement_author": "Antje Barth",
+      "retained_original_json": {
+        "filename": "b200-run2.json",
+        "sha256": "5ad5ed54c3b63f1f576c061266601e0276fd69625ab3043801440466afcdd931"
+      },
+      "retained_original_markdown": {
+        "filename": "b200-run2.md",
+        "sha256": "814b4c8037e4ed485fc256d912d56765699917f0b260933b4ed0fefb47824ad5"
+      },
+      "runtime": {
+        "gpu_model": "NVIDIA B200",
+        "driver": "580.173.02",
+        "cuda": "13.0",
+        "nvcc": "13.0",
+        "pytorch": "2.13.0+cu130",
+        "triton": "3.7.1"
+      },
+      "source_reported_census": {
+        "source_json_pointer": "/exhaustive/0/normal_quotient",
+        "build": "default",
+        "build_flags": [],
+        "target_architecture": "sm_100",
+        "expression": "x * (1.0f / 6.0f)",
+        "reference": "inline PTX div.rn.f32(x, 6.0f)",
+        "inputs": 4211081216,
+        "different": 1403693404,
+        "one_step_away_from_zero": 1403693404,
+        "one_step_toward_zero": 0,
+        "two_or_more_steps": 0,
+        "maximum_representable_steps": 1,
+        "different_per_sign_binade_minimum": 2796202,
+        "different_per_sign_binade_maximum": 2796202
+      },
+      "source_reported_tolerance_observation": {
+        "source_json_pointer": "/triton/modes/x * 0.16666666666666666",
+        "expression": "x * 0.16666666666666666 in the recorded Triton experiment",
+        "reference": "torch.div(x, six) with six a float32 tensor on the GPU",
+        "comparison": "torch.isclose at recorded torch.allclose defaults, restricted to finite inputs",
+        "rtol": 1e-05,
+        "atol": 1e-08,
+        "finite_input_failures": 0,
+        "counted_input_bit_patterns": 4294967296,
+        "chunks": 32,
+        "coverage": "The experiment traversed all 2^32 input bit patterns. The tolerance-failure count filters finite inputs, which include the displayed census."
+      },
+      "executed_source_digest_embedded_in_original_report": false,
+      "executed_source_digest_limit": "Retained source-file hashes identify archived source. The result does not attest which exact source bytes executed.",
+      "maintained_successor_produced_this_result": false
+    }
+  ],
+  "computed_derivations": {
+    "kind": "Integer arithmetic computed from the retained source counts, not a new measured result",
+    "input_formula": "2 * 251 * 2^23",
+    "input_count": 4211081216,
+    "different_formula": "2 * 251 * 2796202",
+    "different_count": 1403693404,
+    "same_formula": "input_count - different_count",
+    "same_count": 2807387812,
+    "different_fraction": {
+      "numerator": 1398101,
+      "denominator": 4194304
+    },
+    "different_percent": 33.33332538604736,
+    "same_percent": 66.66667461395264,
+    "chart_different_percent_one_decimal": "33.3",
+    "chart_same_percent_one_decimal": "66.7"
+  },
+  "scope_limits": [
+    "Uniform input bit patterns are not a model-value distribution.",
+    "The one-step direction statement applies to the admitted finite |x| >= 2^-123 census only.",
+    "The tolerance observation is a separate recorded Triton-versus-tensor-divisor comparison, not a direct rerun of the CUDA census.",
+    "A passing numerical tolerance is not a task-quality guarantee or a recommendation for a universal error budget.",
+    "No timing, profiler counters, instruction-count argument, speedup, end-to-end serving result or fresh Chris-run GPU result is included.",
+    "These maintained source bytes did not produce the historical counts."
+  ]
+}

@@ -1,0 +1,227 @@
+{
+  "schema_version": 1,
+  "scientific_source_author": "Antje Barth",
+  "maintained_successor_author": "Chris Fregly",
+  "measurement_origin": "Historical source-reported B200 numerical experiments recorded by Antje Barth on 2026-10-24. No new Chris-run GPU measurement.",
+  "upstream_source_identity": {
+    "repository": "antje/research-drafts",
+    "commit": "51e4939a3ff34a2d022c57b299e47927ee90fd3a",
+    "package_path": "posts/2026-10-14-pm-divide-not-reciprocal",
+    "relationship": "Retained source bytes bound externally at import; not an execution-time source attestation."
+  },
+  "executed_source_distinction": "The maintained code is a semantic successor. Its bytes did not produce the historical results. Original results do not embed executed-source digests.",
+  "source_files": [
+    {
+      "path": "code/README.md",
+      "maintained_sha256": "5e4ec3f75a35ea32125014ea15cade0f00410be8e40ffa237be5c9130ef1e6be",
+      "git_blob_sha1": "18b0323347051a0e3e3218a5cfbf25394a23415c",
+      "original_sha256": "73218305c321dfd6cb4e880512cde883b042682d9407aafea8d2c049614fd8d9",
+      "relationship": "SEMANTIC_SUCCESSOR"
+    },
+    {
+      "path": "code/pyproject.toml",
+      "maintained_sha256": "ba9f01fbd8e431f077db36d3c51f3286f53c13adb993c2bc5b060e1bcd2f34da",
+      "git_blob_sha1": "f6ddb81b89aea7a1abc88fc089f42acbb4449f18",
+      "original_sha256": "426c3d851a4fc477b51f4abc35b653e3fb3a1a44b99e1076c7bd6578b6e8017c",
+      "relationship": "SEMANTIC_SUCCESSOR"
+    },
+    {
+      "path": "code/src/divide_not_reciprocal/__init__.py",
+      "maintained_sha256": "f5edac47fd16673d990951988577832ac95e7b23b299b6be42883ca7074832ce",
+      "git_blob_sha1": "b4100b4402b608f5addf5612e5e737dd914ec107",
+      "original_sha256": "f5edac47fd16673d990951988577832ac95e7b23b299b6be42883ca7074832ce",
+      "relationship": "BYTE_IDENTICAL_RETAINED_SOURCE"
+    },
+    {
+      "path": "code/src/divide_not_reciprocal/__main__.py",
+      "maintained_sha256": "dbe873117e9e9f83cad2372e47cedceb73152642af7ae7a3c39585c30ce35b65",
+      "git_blob_sha1": "6f8c369cc8fe75e44944f2064cc18c452541407c",
+      "original_sha256": "db55fffc54972cc4f08f66174927e68c0e9699b2d6d9b20e186c6fd25ff97b59",
+      "relationship": "SEMANTIC_SUCCESSOR"
+    },
+    {
+      "path": "code/src/divide_not_reciprocal/constants.py",
+      "maintained_sha256": "50461976c64b346abef7c3b92c92b8552e2a689c5c6d7550bb4605cc732111a2",
+      "git_blob_sha1": "fadf9d18cd8ec0e829e3c3c0b8e56ccfc38d949e",
+      "original_sha256": "4fd6457f70ceebbb2bbf62132efe8a915bdcfdf4f334cadbd35df2bf17365d43",
+      "relationship": "SEMANTIC_SUCCESSOR"
+    },
+    {
+      "path": "code/src/divide_not_reciprocal/count.cu",
+      "maintained_sha256": "cb71da5224f1e23bbcb481e37c24a8e478470d956aa6a0fa113d2f3d2ca1fbc7",
+      "git_blob_sha1": "f2222478c357fe084d2baca145de8fb8c25eb83a",
+      "original_sha256": "c618f4773586bbbfe700471b95ac5f9deafbce743df8c0caaeefb1f8555d8c8f",
+      "relationship": "SEMANTIC_SUCCESSOR"
+    },
+    {
+      "path": "code/src/divide_not_reciprocal/exhaustive.py",
+      "maintained_sha256": "d4aa4a25ee3ab6cca03dbfe9ff89e1325be4cdb369a5715ac19bdd85204d6bb5",
+      "git_blob_sha1": "7d0089cc7e58aff3a38fbf409c996afda2fb21ca",
+      "original_sha256": "e636521b25d2b929db6cd50bd9f5fa14b739c2cab4c4156d6016adef21214df1",
+      "relationship": "SEMANTIC_SUCCESSOR"
+    },
+    {
+      "path": "code/src/divide_not_reciprocal/hardsigmoid.py",
+      "maintained_sha256": "6cbdf259a7c9db2440971183bd3ff931f62333226a40595267a68a32863b718b",
+      "git_blob_sha1": "ddbbed5f0ede421827f03193417e35ff066205fc",
+      "original_sha256": "75f36da36a1aac0ce8f6613e605d2c097876b34780adc98226947965e35af942",
+      "relationship": "SEMANTIC_SUCCESSOR"
+    },
+    {
+      "path": "code/src/divide_not_reciprocal/report.py",
+      "maintained_sha256": "3d85030b4ece5bbddc410070c6816320f2d7029d6a809a24e056ecd592077a4c",
+      "git_blob_sha1": "7c8b6f51d4a506c8190472ea69cf866d08560cc0",
+      "original_sha256": "9af8407970d2b2f8f8e9d5143668fceb96a72bb4b66f79ee8307934d35cf43f0",
+      "relationship": "SEMANTIC_SUCCESSOR"
+    },
+    {
+      "path": "code/src/divide_not_reciprocal/timing.py",
+      "maintained_sha256": "a63c125b1cd178d473f84f52be72193bfeac2e763ed16f1e7502e07212a45c02",
+      "git_blob_sha1": "72e77338512dbbf52c8fa7fb077867cf7a178f1d",
+      "original_sha256": "2503c6c523e62d445fa6aa60f81ccc7a20f6b22592edcf84b01d9cde282fde7b",
+      "relationship": "SEMANTIC_SUCCESSOR"
+    },
+    {
+      "path": "code/src/divide_not_reciprocal/triton_div.py",
+      "maintained_sha256": "3c0cf40b13ea17e1b167f03e9fa9fc376be94b6b126b9158b2bc33f0541fd9af",
+      "git_blob_sha1": "c507df77afd31d22f73f544abd68915b54703518",
+      "original_sha256": "4b2609305554d76234183955d04d7e54194087ac8237577d8dfd219626e54846",
+      "relationship": "SEMANTIC_SUCCESSOR"
+    },
+    {
+      "path": "code/src/divide_not_reciprocal/ulp.py",
+      "maintained_sha256": "9dbc3a554a97e609382a47f19f39d7d93f97d78fba616097079588bd7f979fde",
+      "git_blob_sha1": "04e7ca71edae3902ff8a9d773aed34247434fbe1",
+      "original_sha256": "448be164fecc6b16a663bfcf21e5fa235f0e4ca524e01b08c2f0915e30f837a7",
+      "relationship": "SEMANTIC_SUCCESSOR"
+    },
+    {
+      "path": "code/tests/test_cpu.py",
+      "maintained_sha256": "e38665a181c1583a8944a4ba7e96ec28b8c2221229c070a23db595bb1d01b80e",
+      "git_blob_sha1": "98a8cb881bcb139ab44379d14f5df3e9e95b98e4",
+      "original_sha256": null,
+      "relationship": "NEW_MAINTAINED_WHOLE_FILE"
+    },
+    {
+      "path": "code/tests/test_derivation.py",
+      "maintained_sha256": "1deda549235ca8e1d6b8cdaf42ddfe4f8ef91ceae7e9ad965c3782fc6346f7aa",
+      "git_blob_sha1": "207fed7efdca16edde5e41215c093fc42a4a701a",
+      "original_sha256": "254ff441fdd630f8108cbe9f92f9be8537ee621e9f31463eaa5625d9ca4fccdf",
+      "relationship": "SEMANTIC_SUCCESSOR"
+    },
+    {
+      "path": "code/tests/test_gpu.py",
+      "maintained_sha256": "90fe41b29c6ecb94f1ed46e8f73019f4aa5d4cad3ff0a896e075edc7f30ec87b",
+      "git_blob_sha1": "17ba648d47676de48fd78c5b4c08e1fcac5ae380",
+      "original_sha256": "b075db4f221d2f4efaabcf5588921242c54f5223408e090e8c12f7b507eb7428",
+      "relationship": "SEMANTIC_SUCCESSOR"
+    },
+    {
+      "path": "code/tests/test_report.py",
+      "maintained_sha256": "8dc3bcba169dcfabdb95a5fc85dff44ab0a65687dc4df5a9c3b2abdeb7456bac",
+      "git_blob_sha1": "7626408b59a60693ac63c5feb39a7ab0bd1eb0b2",
+      "original_sha256": null,
+      "relationship": "NEW_CPU_REPORT_FIXTURE"
+    },
+    {
+      "path": "code/tests/test_runner.py",
+      "maintained_sha256": "988a6e3c82b25c4ec43a209811b5f2c73ea9c0f225377e49a30f7e962c9bdb18",
+      "git_blob_sha1": "5c9bb55a769045e83923ec14d2737e84e0bb6734",
+      "original_sha256": null,
+      "relationship": "NEW_MAINTAINED_WHOLE_FILE"
+    }
+  ],
+  "numerical_records": [
+    {
+      "run_id": "b200",
+      "recorded_date": "2026-10-24",
+      "measurement_author": "Antje Barth",
+      "original_json": {
+        "filename": "b200.json",
+        "sha256": "71e0888fa0df11c32c178dd9571c59244045ab821291e88c6481eab334c9431b"
+      },
+      "original_markdown": {
+        "filename": "b200.md",
+        "sha256": "06b77eaa6e9663cf15862e1a090af38283a6e7cd454e8be0c63fcae34def0766"
+      },
+      "executed_source_digest_embedded": false
+    },
+    {
+      "run_id": "b200-run2",
+      "recorded_date": "2026-10-24",
+      "measurement_author": "Antje Barth",
+      "original_json": {
+        "filename": "b200-run2.json",
+        "sha256": "5ad5ed54c3b63f1f576c061266601e0276fd69625ab3043801440466afcdd931"
+      },
+      "original_markdown": {
+        "filename": "b200-run2.md",
+        "sha256": "814b4c8037e4ed485fc256d912d56765699917f0b260933b4ed0fefb47824ad5"
+      },
+      "executed_source_digest_embedded": false
+    }
+  ],
+  "curated_evidence": [
+    {
+      "path": "evidence/numerical-census.json",
+      "sha256": "51aea6984b858bc29a7d5e1dc2a4b63b3943428f1787b8eedc4dd60d3b06276e"
+    },
+    {
+      "path": "evidence/numerical-census.md",
+      "sha256": "b28701006a0168794edcf20356910f744b807827377ab6e33699eb0ec7578f17"
+    },
+    {
+      "path": "evidence/antje-b200-summary.md",
+      "sha256": "5420a553d0dc00eda3e534f12f2a9048a52669ba41eea3e1fc4a0358f0ef1ab8"
+    },
+    {
+      "path": "evidence/antje-b200-run2-summary.md",
+      "sha256": "02513108cf39db956bb736db531620f0c6ea1e6fdacea9c34d9d8ce29f68cb0a"
+    }
+  ],
+  "curation_scope": "Numerical count cohort and finite-input tolerance observation only. Ratios and percentages are labeled computed derivations. Original timing, profiler, instruction-count and unrelated experiment data are not reproduced.",
+  "chart": {
+    "files": [
+      {
+        "path": "images/c-square.png",
+        "sha256": "74d2bd62e8f5068eba1256ad6c7185f77d41e842ee96de7836dadba90750bf42",
+        "bytes": 187814
+      },
+      {
+        "path": "images/c-square.svg",
+        "sha256": "a7f86c417c85bcae497d3021475bce194d1660c15522b5a302e08192b3ed8991",
+        "bytes": 3094495
+      },
+      {
+        "path": "images/c-square.txt",
+        "sha256": "70a495564a23bcfbe5dcfc320b53323ba8edd047eef7987cebe2d7a98bfe86ae",
+        "bytes": 421
+      }
+    ],
+    "stamp_sha256": "f456e86072e455924bb45aca4500b27cf02d4210297c55d24179097700a946ec",
+    "stamp_rotation_degrees": 0,
+    "stamp_mirrored": false,
+    "stamp_skew_degrees": 0,
+    "numerical_source": "evidence/numerical-census.json",
+    "different": 1403693404,
+    "inputs": 4211081216,
+    "same_derived": 2807387812
+  },
+  "source_licence_records": {
+    "upstream_commit_inspected": "51e4939a3ff34a2d022c57b299e47927ee90fd3a",
+    "package_wide_licence_record_in_retained_inspection": "NOT_FOUND",
+    "item_specific_redistribution_permission_record": "NOT_FOUND_IN_INSPECTED_ARTIFACTS",
+    "font_licence_scope": "Font OFL records are separate and do not establish a licence for these code packages.",
+    "target_repository_license": {
+      "repository": "cfregly/ai-performance-engineering",
+      "commit": "275419650b448e2aedc461531dc28d2e86a995c7",
+      "path": "LICENSE",
+      "title": "Apache License Version2.0,January2004",
+      "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4"
+    },
+    "target_licence_is_not_a_donor_permission_attestation": true,
+    "new_source_licence_added": false,
+    "rights_determination": "Not performed. This is a factual record of retained documentation, not a new approval gate or inferred grant."
+  },
+  "public_reference_index": "source-index.json"
+}
