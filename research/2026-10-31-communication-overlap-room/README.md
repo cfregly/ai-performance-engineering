@@ -1,40 +1,16 @@
 # Prime Mega MoE result companion
 
-Read the arithmetic behind Mario Sieg and Prime Intellect's [reported training-step results](https://www.primeintellect.ai/blog/prime-mega-moe), and view a comparison chart with the reported conditions attached.
+View Mario Sieg and Prime Intellect's [reported training-step results](https://www.primeintellect.ai/blog/prime-mega-moe) and compare the charts with their workload conditions.
 
 ![Bar chart of Prime Intellect and Mario Sieg's reported Prime-RL result for Qwen3-30B-A3B. Full training-step time: Mega MoE off, torch all-to-all plus DeepGEMM FP8 experts, 2.78 seconds. Mega MoE on, 2.08 seconds. Conditions: 32 H200 GPUs, 8 per node, FP8, expert parallelism 8 within node, 16,384 packed tokens per GPU per step, microbatch 1, no gradient accumulation, both arms compiled fullgraph, no offload, FP32 master weights, AdamW, FSDP, full activation checkpointing, real data and routing. Mean steps 6 to 20 of 20, with 5 compile/JIT warmups excluded. These short timings do not establish long-run training quality.](images/b-square.png)
 
 For Qwen3-30B-A3B, Prime reports 2.78 seconds per training step with Mega MoE disabled and 2.08 seconds with it enabled in Prime-RL. Prime labels this 34% higher throughput and 25% less time per step. At equal work per step, those percentages use different denominators: the new step time for throughput gain and the baseline for time reduction. The baseline already uses compiled torch all-to-all communication and DeepGEMM FP8 experts.
 
-The Qwen3-30B-A3B setup uses 32 H200s at eight per node, FP8 with FP32 master weights and AdamW, one packed 16,384-token row per GPU per step without gradient accumulation, full activation checkpointing, intra-node expert parallelism of eight, Fully Sharded Data Parallel (FSDP) and no offloading. Both arms use `torch.compile(fullgraph=True)`, with real data and routing. The mean covers steps 6 to 20 after five compile/JIT warmups. The data file also retains the Qwen3-235B-A22B comparison on 128 H200s. These are Prime's results.
-
-## Run the arithmetic example
-
-Requirements: Python 3.10 or newer. No GPU, network access, credentials or extra packages are needed.
-
-Use the same repository revision as the link to this guide: download that revision's ZIP or check it out in your clone. Inside the extracted repository folder, open a terminal in `research/2026-10-31-communication-overlap-room`, keeping the `code` folder intact.
-
-From this directory:
-
-```sh
-python3 code/report_prime_results.py
-```
-
-The program prints ratios and time reductions from rounded source values. It checks the fields used by the report. It does not reproduce the benchmark, authenticate edited values or validate Prime's closed-source training kernel. Installation and integration effort are not quantified by the timing chart. Short step timings do not establish long-run training-quality equivalence.
-
-See [the code instructions](code/README.md) and [source-attributed numeric data](code/prime_results.json).
-
-The helper was checked with Python 3.14.6 using both command forms in the code instructions. Eight portable regression tests also check both ratios, data lookup from another directory, help and rejected inputs, including nonfinite timings. Other Python versions were not executed.
-
-Run those report checks from this directory:
-
-```sh
-python3 code/test_report_prime_results.py
-```
+The Qwen3-30B-A3B setup uses 32 H200s at eight per node, FP8 with FP32 master weights and AdamW, one packed 16,384-token row per GPU per step without gradient accumulation, full activation checkpointing, intra-node expert parallelism of eight, Fully Sharded Data Parallel (FSDP) and no offloading. Both arms use `torch.compile(fullgraph=True)`, with real data and routing. The mean covers steps 6 to 20 after five compile/JIT warmups. These are Prime's results.
 
 ## Resource allocation in the integration
 
-Prime's [pinned integration documentation](https://github.com/PrimeIntellect-ai/prime-rl/blob/a566e5d8e2a903f44d901e114d5d510888b93303/docs/scaling.md#expert-parallelism) describes an expert launch-grid limit that leaves scheduling capacity for concurrent FSDP collectives. A larger reservation makes the expert grid smaller on every call. The guard validates configuration settings, rather than measuring actual occupancy. My advice: start with the supported reservation default and evaluate complete steps on the intended workload. Confirm access to Prime's replacement kernel wheel and its requirements before planning an integration. The offline arithmetic example needs no such wheel.
+Prime's [pinned integration documentation](https://github.com/PrimeIntellect-ai/prime-rl/blob/a566e5d8e2a903f44d901e114d5d510888b93303/docs/scaling.md#expert-parallelism) describes an expert launch-grid limit that leaves scheduling capacity for concurrent FSDP collectives. A larger reservation makes the expert grid smaller on every call. The guard validates configuration settings, rather than measuring actual occupancy. My advice: start with the supported reservation default and evaluate complete steps on the intended workload. Confirm access to Prime's replacement kernel wheel and its requirements before planning an integration.
 
 ## Charts and explanations
 
