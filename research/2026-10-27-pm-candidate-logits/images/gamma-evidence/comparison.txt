@@ -13,7 +13,9 @@ Median ms per warm 16-step block
 Whiskers: min–max of 3 paired blocks
 Allowed set ready BEFORE scoring
 Weight gathering included in timing
-64 shared allowed tokens · new set each step
-Creating/transferring the set excluded
-from BOTH paths
+64 allowed tokens shared by batch
+New allowed set each step
+Both paths exclude set creation and transfer
 Whole-model gains unmeasured
+
+Retained methods: synthetic strict FP32 output head. Batch 8, hidden 2048, vocabulary 131072. One device-resident allowed set shared by the batch. TF32 off. Median warm blocks contain 16 steps. Three paired blocks per cell in one process. Whiskers are observed min–max, not confidence intervals. Changing sets include each weight gather. Creating and transferring allowed sets are excluded from both paths. Static setup for 16/64/256 IDs: 0.034720 / 3.252477 / 0.022130 ms. The 64-ID setup is an unexplained outlier. Cold-start benefit and break-even were not measured. Different per-request sets, BF16, whole-model and serving gains are untested. Ratios use retained unrounded medians.

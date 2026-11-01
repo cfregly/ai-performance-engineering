@@ -1,5 +1,5 @@
-Check when allowed tokens are known
-One shared set was tested
+Does the batch share one allowed set?
+One device-resident shared set was tested
 Batch 8 → one allowed set
 Gather rows → score
 Different IDs per request?
@@ -7,12 +7,11 @@ Set 1
 Set 2
 Set 3
 Set 4
-Different sets need their own implementation and measurement
-One device-resident shared set was tested
-Check when allowed tokens are
-known
+Per-request sets need a different implementation
+Measure preparation and full request time
+Does the batch share one allowed
+set?
 Gather rows
 then score
-Different sets need their own implementation
 
 Retained methods: synthetic strict FP32 output head. Batch 8, hidden 2048, vocabulary 131072. One shared device-resident allowed set. TF32 off. Median warm blocks contain 16 steps. Three paired blocks per cell in one process. Whiskers are observed min–max, not confidence intervals. Changing sets include each gather. Static sets reuse gathered weights after one-time setup. Static setup for 16/64/256 IDs: 0.034720 / 3.252477 / 0.022130 ms. The 64-ID setup is an unexplained outlier. Cold-start benefit and break-even were not measured. Whole-model and serving gains were not measured. Different per-request sets and BF16 are untested. Ratios use retained unrounded medians.

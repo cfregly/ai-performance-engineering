@@ -26,8 +26,8 @@
 <line x1="800.0" y1="638" x2="800.0" y2="650" stroke="#202326" stroke-width="2"/>
 <text x="800.0" y="700.0" font-family="Inter" font-size="36" font-weight="400" font-style="normal" fill="#202326" text-anchor="middle">6</text>
 <text x="540.0" y="758.0" font-family="Inter" font-size="36" font-weight="400" font-style="normal" fill="#202326" text-anchor="middle">Milliseconds per warm 16-step block</text>
-<text x="48" y="925.8" font-family="Inter" font-size="36" font-weight="400" font-style="normal" fill="#202326" text-anchor="start">Static 64-ID setup: 3.252 ms, an unexplained outlier</text>
-<text x="48" y="967.1999999999999" font-family="Inter" font-size="36" font-weight="400" font-style="normal" fill="#202326" text-anchor="start">16/256-ID setup: 0.035/0.022 ms, outside warm ratios</text>
+<text x="48" y="925.8" font-family="Inter" font-size="36" font-weight="400" font-style="normal" fill="#202326" text-anchor="start">Static setup: 64 IDs 3.252 ms (unexplained outlier)</text>
+<text x="48" y="967.1999999999999" font-family="Inter" font-size="36" font-weight="400" font-style="normal" fill="#202326" text-anchor="start">Static 16/256 IDs: 0.035/0.022 ms · setup excluded</text>
 <text x="48" y="1008.5999999999999" font-family="Inter" font-size="36" font-weight="400" font-style="normal" fill="#202326" text-anchor="start">FP32 · B8 · H2048 · V131072 · TF32 off</text>
 <text x="48" y="1050.0" font-family="Inter" font-size="36" font-weight="400" font-style="normal" fill="#202326" text-anchor="start">3 pairs, one process · paired ratios: 12.81–13.05×</text>
 </svg>

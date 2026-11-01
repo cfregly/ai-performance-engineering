@@ -17,8 +17,8 @@
 <text x="1310" y="373.0" font-family="Inter" font-size="54" font-weight="400" font-style="normal" fill="#202326" text-anchor="middle">3</text>
 <text x="1310" y="490.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#202326" text-anchor="middle">Measure gathering</text>
 <text x="1310" y="547.6" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#202326" text-anchor="middle">+ scoring</text>
-<text x="64" y="704.4" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#202326" text-anchor="start">Measure gathering, scoring and choosing the highest-scoring</text>
-<text x="64" y="759.6" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#202326" text-anchor="start">allowed token</text>
-<text x="64" y="814.8" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#202326" text-anchor="start">Changing sets: gather each time · static sets: report setup</text>
-<text x="64" y="870.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#202326" text-anchor="start">separately</text>
+<text x="64" y="704.4" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#202326" text-anchor="start">Include choosing the allowed token</text>
+<text x="64" y="759.6" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#202326" text-anchor="start">Changing sets: gather every step</text>
+<text x="64" y="814.8" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#202326" text-anchor="start">Static sets: report one-time setup</text>
+<text x="64" y="870.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#202326" text-anchor="start">Compare the same allowed outputs</text>
 </svg>

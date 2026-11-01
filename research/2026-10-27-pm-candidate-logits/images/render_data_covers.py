@@ -20,7 +20,7 @@ import xml.etree.ElementTree as ET
 from PIL import Image, ImageFont
 
 HERE = Path(__file__).resolve().parent
-GAMMA_RENDERER_SHA256 = '24a0dcb2d0f7ec158b64ba1e3466e9b20aee24baeed7672bf30cbe58329a05b6'
+GAMMA_RENDERER_SHA256 = 'a9cd439ce9f8fee9b8a5377dfa79d75a4c8d38ef330499e511c3fb04293e6236'
 STAMP_SHA256 = 'f456e86072e455924bb45aca4500b27cf02d4210297c55d24179097700a946ec'
 STAMP_HREF = 'gamma-evidence/fregly-take-stamp.png'
 
@@ -85,32 +85,32 @@ def landscape(package, canonical, basis):
     text(72, 160, basis['text'][1]['text'], 52, 600, palette['header_accent'], background=palette['header'])
     parts.append(f'<image x="1364" y="10" width="164" height="164" href="{STAMP_HREF}" preserveAspectRatio="xMidYMid meet"/>')
     text(72, 246, 'Synthetic strict FP32 · B200', 48, 500)
-    for source_mark, y, label in zip(basis['marks'], (319, 416), ('Full scoring + filter', 'Allowed rows first')):
+    for source_mark, y, label in zip(basis['marks'], (341, 471), ('Full scoring + filter', 'Allowed rows first')):
         value = source_mark['value_ms']
         series = source_mark['series']
         color = source_mark['color']
-        text(72, y-24, label, 52, 500)
-        text(1528, y-24, f'{value:.3f} ms', 52, 600, anchor='end')
+        text(72, y-36, label, 52, 500)
+        text(1528, y-36, f'{value:.3f} ms', 52, 600, anchor='end')
         bar_width = (x1-x0)*value/maximum
         rect(x0, y, bar_width, 30, color, f'data-science="median" data-series="{series}"')
         a, b = [x0+(x1-x0)*v/maximum for v in (source_mark['observed_min_ms'], source_mark['observed_max_ms'])]
         line(a, y+15, b, y+15, f'data-science="range" data-series="{series}"')
         line(a, y+5, a, y+25)
         line(b, y+5, b, y+25)
-        marks.append({**source_mark, 'bar_x': x0, 'bar_y': y, 'bar_width': bar_width,
+        marks.append({**source_mark, 'bar_x': x0, 'bar_y': y, 'bar_width': bar_width, 'bar_height': 30,
                       'scale_px_per_ms': (x1-x0)/maximum, 'whisker_x': [a, b]})
-    line(x0, 480, x1, 480)
+    line(x0, 520, x1, 520)
     for tick in (0, 2, 4, 6):
         x = x0+(x1-x0)*tick/maximum
-        line(x, 480, x, 492)
-        text(x, 536, str(tick), anchor='start' if tick == 0 else 'end' if tick == maximum else 'middle')
-    text(72, 585, 'Median ms per warm 16-step block', 48, 500)
-    text(72, 642, 'Whiskers: min–max of 3 paired blocks')
-    rect(48, 654, 1504, 230, palette['catch'])
-    for y, value, weight in [(710, 'Allowed set ready BEFORE scoring · weight gathering timed', 600),
-                              (760, '64 shared allowed tokens · new set each step', 400),
-                              (810, 'Creating/transferring the set excluded from BOTH paths', 400),
-                              (860, 'Whole-model gains unmeasured', 500)]:
+        line(x, 520, x, 532)
+        text(x, 574, str(tick), anchor='start' if tick == 0 else 'end' if tick == maximum else 'middle')
+    text(72, 636, 'Median ms / 16-step warm block', 48, 500)
+    text(1528, 636, '3-pair min–max whiskers', anchor='end')
+    rect(48, 676, 1504, 208, palette['catch'])
+    for y, value, weight in [(716, 'Allowed set ready BEFORE scoring · weight gathering timed', 600),
+                              (766, '64 allowed tokens shared by batch · new set each step', 400),
+                              (816, 'Both paths exclude set creation and transfer', 400),
+                              (866, 'Whole-model gains unmeasured', 500)]:
         text(72, y, value, 48, weight, background=palette['catch'])
     for bounds, value in boxes:
         require(not(min(bounds[2], stamp[2])-max(bounds[0], stamp[0]) > 0 and min(bounds[3], stamp[3])-max(bounds[1], stamp[1]) > 0),
@@ -122,7 +122,7 @@ def landscape(package, canonical, basis):
         'axis': {'minimum_ms': 0, 'maximum_ms': maximum, 'start_x': x0, 'end_x': x1, 'linear': True},
         'text': texts, 'minimum_text_css_px_at400': min(t['css_px_at400'] for t in texts),
         'stamp': {'sha256': STAMP_SHA256, 'href': STAMP_HREF, 'box': stamp, 'rotation_degrees': 0, 'mirror': False, 'skew_degrees': 0},
-        'layout': 'Full-width reflow of chart and conditions. No centered square image.'}
+        'text_bar_clearance': canonical.check_text_bar_clearance(texts, marks), 'layout': 'Full-width reflow of chart and conditions. No centered square image.'}
 
 def render(package):
     canonical = source(package)
@@ -131,7 +131,7 @@ def render(package):
     square = square.replace('href="fregly-take-stamp.png"', f'href="{STAMP_HREF}"', 1)
     wide, wide_text, wide_basis = landscape(package, canonical, basis)
     outputs = {'fun.svg': wide.encode(), 'fun-square.svg': square.encode(),
-               'fun.txt': square_text.encode()}
+               'fun.txt': (wide_text+'\n'+canonical.retained_methods(package)).encode(), 'fun-square.txt': square_text.encode()}
     converter, matcher = shutil.which('rsvg-convert'), shutil.which('fc-match')
     require(converter and matcher, 'Existing rsvg-convert and fc-match are required')
     stamp = package / 'images/gamma-evidence/fregly-take-stamp.png'

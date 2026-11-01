@@ -4,27 +4,25 @@
 <text x="64" y="82.0" font-family="Inter" font-size="64" font-weight="400" font-style="normal" fill="#202326" text-anchor="start">Reduce the output dimension</text>
 <text x="64" y="152.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#202326" text-anchor="start">Same inputs, fewer allowed weight rows</text>
 <text x="70" y="280.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#3478BA" text-anchor="start">Full output projection</text>
-<rect x="80" y="315" width="1000" height="90" rx="0" fill="none" stroke="#3478BA" stroke-width="3"/>
-<line x1="80" y1="337.5" x2="1080" y2="337.5" stroke="#3478BA" stroke-width="1.5"/>
-<line x1="80" y1="360.0" x2="1080" y2="360.0" stroke="#3478BA" stroke-width="1.5"/>
-<line x1="80" y1="382.5" x2="1080" y2="382.5" stroke="#3478BA" stroke-width="1.5"/>
-<line x1="280.0" y1="315" x2="280.0" y2="405" stroke="#3478BA" stroke-width="1.5"/>
-<line x1="480.0" y1="315" x2="480.0" y2="405" stroke="#3478BA" stroke-width="1.5"/>
-<line x1="680.0" y1="315" x2="680.0" y2="405" stroke="#3478BA" stroke-width="1.5"/>
-<line x1="880.0" y1="315" x2="880.0" y2="405" stroke="#3478BA" stroke-width="1.5"/>
-<text x="1350" y="380.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#202326" text-anchor="middle">FP32</text>
-<text x="1350" y="437.6" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#202326" text-anchor="middle">weights</text>
-<text x="70" y="470.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#202326" text-anchor="start">8 × 2048  @  2048 × 131072</text>
-<text x="70" y="535.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#E87823" text-anchor="start">64 allowed outputs</text>
-<rect x="80" y="570" width="300" height="90" rx="0" fill="none" stroke="#E87823" stroke-width="3"/>
-<line x1="80" y1="592.5" x2="380" y2="592.5" stroke="#E87823" stroke-width="1.5"/>
-<line x1="80" y1="615.0" x2="380" y2="615.0" stroke="#E87823" stroke-width="1.5"/>
-<line x1="80" y1="637.5" x2="380" y2="637.5" stroke="#E87823" stroke-width="1.5"/>
-<line x1="140.0" y1="570" x2="140.0" y2="660" stroke="#E87823" stroke-width="1.5"/>
-<line x1="200.0" y1="570" x2="200.0" y2="660" stroke="#E87823" stroke-width="1.5"/>
-<line x1="260.0" y1="570" x2="260.0" y2="660" stroke="#E87823" stroke-width="1.5"/>
-<line x1="320.0" y1="570" x2="320.0" y2="660" stroke="#E87823" stroke-width="1.5"/>
-<text x="900" y="635.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#202326" text-anchor="middle">8 × 2048  @  2048 × 64</text>
-<text x="64" y="814.8" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#202326" text-anchor="start">FP32 weight storage: 1 GiB → 512 KiB · derived, not measured</text>
-<text x="64" y="870.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#202326" text-anchor="start">traffic</text>
+<rect x="80" y="315" width="1000" height="80" rx="0" fill="none" stroke="#3478BA" stroke-width="3"/>
+<line x1="80" y1="335.0" x2="1080" y2="335.0" stroke="#3478BA" stroke-width="1.5"/>
+<line x1="80" y1="355.0" x2="1080" y2="355.0" stroke="#3478BA" stroke-width="1.5"/>
+<line x1="80" y1="375.0" x2="1080" y2="375.0" stroke="#3478BA" stroke-width="1.5"/>
+<line x1="280.0" y1="315" x2="280.0" y2="395" stroke="#3478BA" stroke-width="1.5"/>
+<line x1="480.0" y1="315" x2="480.0" y2="395" stroke="#3478BA" stroke-width="1.5"/>
+<line x1="680.0" y1="315" x2="680.0" y2="395" stroke="#3478BA" stroke-width="1.5"/>
+<line x1="880.0" y1="315" x2="880.0" y2="395" stroke="#3478BA" stroke-width="1.5"/>
+<text x="80" y="460.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#202326" text-anchor="start">8 × 2048  @  2048 × 131072</text>
+<text x="70" y="555.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#E87823" text-anchor="start">64 allowed outputs</text>
+<rect x="80" y="590" width="300" height="80" rx="0" fill="none" stroke="#E87823" stroke-width="3"/>
+<line x1="80" y1="610.0" x2="380" y2="610.0" stroke="#E87823" stroke-width="1.5"/>
+<line x1="80" y1="630.0" x2="380" y2="630.0" stroke="#E87823" stroke-width="1.5"/>
+<line x1="80" y1="650.0" x2="380" y2="650.0" stroke="#E87823" stroke-width="1.5"/>
+<line x1="140.0" y1="590" x2="140.0" y2="670" stroke="#E87823" stroke-width="1.5"/>
+<line x1="200.0" y1="590" x2="200.0" y2="670" stroke="#E87823" stroke-width="1.5"/>
+<line x1="260.0" y1="590" x2="260.0" y2="670" stroke="#E87823" stroke-width="1.5"/>
+<line x1="320.0" y1="590" x2="320.0" y2="670" stroke="#E87823" stroke-width="1.5"/>
+<text x="80" y="735.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#202326" text-anchor="start">8 × 2048  @  2048 × 64</text>
+<text x="64" y="814.8" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#202326" text-anchor="start">FP32 weight storage: 1 GiB → 512 KiB</text>
+<text x="64" y="870.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#202326" text-anchor="start">Derived storage, not measured traffic · not to scale</text>
 </svg>

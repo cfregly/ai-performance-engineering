@@ -174,9 +174,17 @@ def mechanism(square):
 
 def comparison(square):
     b=Board('b','Six warm-block comparisons','Synthetic strict-FP32 output-head stage',square)
+    legend_size = 36 if square else 48
+    swatch, gap, between = (22, 14, 44) if square else (28, 18, 64)
+    labels = [('baseline', 'Full scoring + filter', b.blue), ('candidate', 'Allowed rows first', b.orange)]
+    total = sum(swatch + gap + font(legend_size).getlength(label) for _, label, _ in labels) + between
+    left = (b.w - total) / 2
+    baseline = 270 if square else 220
+    for series, label, color in labels:
+        b.parts.append(f'<rect data-role="legend-swatch" data-series="{series}" x="{left}" y="{baseline-legend_size*.62}" width="{swatch}" height="{swatch}" fill="{color}"/>')
+        b.text(left + swatch + gap, baseline, label, legend_size, color)
+        left += swatch + gap + font(legend_size).getlength(label) + between
     if square:
-        b.text(55,270,'Full + filter',36,b.blue)
-        b.text(570,270,'Allowed rows',36,b.orange)
         x0,width,top,pitch=320,440,332,78
         for tick in (0,3,6):
             x=x0+width*tick/6;b.line(x,310,x,top+pitch*5+58,'#D3D6D9',1)
@@ -193,8 +201,6 @@ def comparison(square):
                 'Batch 8 · hidden 2048 · vocabulary 131072 · TF32 off',
                 'Changing includes gather. Static setup is separate.'])
     else:
-        b.text(70,220,'Full + filter',48,b.blue)
-        b.text(820,220,'Allowed rows first',48,b.orange)
         for panel,mode in enumerate(('static','changing')):
             left=70+panel*790;x0=left+135;width=400
             b.text(left,292,mode.capitalize()+' IDs',48)
@@ -223,13 +229,13 @@ def inspection(square):
             y=385+n*185;b.circle(115,y,42,b.orange)
             b.text(115,y+15,n+1,42,anchor='middle');b.text(220,y-8,lines,42)
             if n<2:b.line(115,y+57,115,y+120,b.orange,3,True)
-        b.foot(['Measure gathering, scoring and choosing the highest-scoring allowed token','Changing sets: gather each time','Static sets: report setup separately'])
+        b.foot(['Include choosing the allowed token','Changing sets: gather every step','Static sets: report one-time setup','Compare the same allowed outputs'])
     else:
         for n,lines in enumerate(labels):
             x=290+n*510;b.circle(x,355,52,b.orange)
             b.text(x,373,n+1,54,anchor='middle');b.text(x,490,lines,48,anchor='middle')
             if n<2:b.line(x+88,355,x+420,355,b.orange,3,True)
-        b.foot(['Measure gathering, scoring and choosing the highest-scoring allowed token','Changing sets: gather each time · static sets: report setup separately'])
+        b.foot(['Include choosing the allowed token','Changing sets: gather every step','Static sets: report one-time setup','Compare the same allowed outputs'])
     return b
 
 
@@ -276,7 +282,7 @@ def ml(square):
             b.matrix(x,380,w,130,b.orange if x>80 else b.ink)
             b.text(x+w/2,590,label,48,anchor='middle')
         b.text(455,475,'×',64,anchor='middle');b.line(1000,445,1120,445,b.orange,3,True)
-        b.foot(['Allowed argmax → token ID · preserve ID order and tie rules','64 allowed IDs · strict FP32 · TF32 off · check exact token agreement'])
+        b.foot(['Allowed argmax → token ID · preserve ID order and tie rules','64 allowed IDs · strict FP32 · TF32 off','Check score tolerance and exact token agreement'])
     return b
 
 
@@ -318,10 +324,12 @@ def performance(square):
     for tick in (0,2,4,6):
         x=x0+width*tick/6;b.line(x,axis-12,x,axis,b.ink,2);b.text(x,axis+50,str(tick),36 if square else 48,anchor='middle')
     b.text(b.w/2,axis+108,'Milliseconds per warm 16-step block',36 if square else 48,anchor='middle')
-    b.foot(['Static 64-ID setup: 3.252 ms, an unexplained outlier',
-            '16/256-ID setup: 0.035/0.022 ms, outside warm ratios',
+    setup = {row['size']: row['row_setup_wall_ms'] for row in SUMMARY['cells'] if row['mode']=='static'}
+    b.foot([f'Static setup: 64 IDs {setup[64]:.3f} ms (unexplained outlier)',
+            f'Static 16/256 IDs: {setup[16]:.3f}/{setup[256]:.3f} ms · setup excluded',
             'FP32 · B8 · H2048 · V131072 · TF32 off',
             f'3 pairs, one process · paired ratios: {min(ratios):.2f}–{max(ratios):.2f}×'])
+
     return b
 
 
@@ -330,18 +338,19 @@ def kernel(square):
     if square:
         for y,title,col,w,shape in ((345,'Full output projection',b.blue,700,'8 × 2048  @  2048 × 131072'),(650,'64 allowed outputs',b.orange,250,'8 × 2048  @  2048 × 64')):
             b.text(55,y,title,42,col);b.matrix(80,y+45,w,100,col);b.text(540,y+207,shape,38,anchor='middle')
-        b.foot(['FP32 weight storage: 1 GiB → 512 KiB','Derived storage, not measured traffic'])
+        b.foot(['FP32 weight storage: 1 GiB → 512 KiB','Derived storage, not measured traffic · not to scale'])
     else:
-        for y,title,col,w,shape in ((280,'Full output projection',b.blue,1000,'8 × 2048  @  2048 × 131072'),(535,'64 allowed outputs',b.orange,300,'8 × 2048  @  2048 × 64')):
-            b.text(70,y,title,48,col);b.matrix(80,y+35,w,90,col)
-            b.text(1350 if w==1000 else 900,y+100,['FP32','weights'] if w==1000 else shape,48,anchor='middle')
-            if w==1000:b.text(70,y+190,shape,48)
-        b.foot(['FP32 weight storage: 1 GiB → 512 KiB · derived, not measured traffic'])
+        for y,title,col,w,shape in ((280,'Full output projection',b.blue,1000,'8 × 2048  @  2048 × 131072'),(555,'64 allowed outputs',b.orange,300,'8 × 2048  @  2048 × 64')):
+            b.text(70,y,title,48,col)
+            b.matrix(80,y+35,w,80,col)
+            b.text(80,y+180,shape,48)
+        b.foot(['FP32 weight storage: 1 GiB → 512 KiB','Derived storage, not measured traffic · not to scale'])
+
     return b
 
 
 def platform(square):
-    b=Board('aud-platform-operations','Check when allowed tokens are known','One shared set was tested',square)
+    b=Board('aud-platform-operations','Does the batch share one allowed set?','One device-resident shared set was tested',square)
     if square:
         b.text(55,340,'Batch 8 → one allowed set',42,b.orange)
         for n in range(8):b.rect(80+n%4*95,390+n//4*70,65,45,b.orange)
@@ -349,7 +358,7 @@ def platform(square):
         b.text(55,675,'Different IDs per request?',42)
         for n in range(4):
             x=70+n*250;b.rect(x,730,205,85,b.ink);b.text(x+102,785,f'Set {n+1}',36,anchor='middle')
-        b.foot(['Different sets need their own implementation','One device-resident shared set was tested'])
+        b.foot(['Per-request sets need a different implementation','Measure preparation and full request time'])
     else:
         b.text(70,290,'Batch 8 → one allowed set',48,b.orange)
         for n in range(8):b.rect(80+n%4*95,345+n//4*70,65,45,b.orange)
@@ -357,7 +366,7 @@ def platform(square):
         b.text(70,610,'Different IDs per request?',48)
         for n in range(4):
             x=80+n*220;b.rect(x,655,175,80,b.ink);b.text(x+87,710,f'Set {n+1}',48,anchor='middle')
-        b.foot(['Different sets need their own implementation and measurement','One device-resident shared set was tested'])
+        b.foot(['Per-request sets need a different implementation','Measure preparation and full request time'])
     return b
 
 
@@ -365,15 +374,15 @@ def business(square):
     b=Board('aud-business-capacity','Measure requests before promising capacity','A stage gain does not measure request capacity',square)
     pairs=[r for r in PAIRS if r['size']==64 and r['mode']=='changing'];ratios=[r['baseline_wall_ms']/r['candidate_wall_ms'] for r in pairs]
     if square:
-        b.circle(270,440,135,b.orange);b.text(270,438,'12.84×',60,b.orange,'middle');b.text(270,500,'Stage gain',36,anchor='middle')
+        b.circle(270,440,135,b.orange);b.text(270,438,f"{next(c for c in SUMMARY['cells'] if c['size']==64 and c['mode']=='changing')['speedup']:.2f}×",60,b.orange,'middle');b.text(270,500,'Stage gain',36,anchor='middle')
         b.line(455,440,610,440,b.ink,3,True);b.text(820,415,['Measure','requests'],42,anchor='middle')
         b.text(540,680,f'Paired range: {min(ratios):.2f}–{max(ratios):.2f}×',40,anchor='middle')
         b.text(540,790,['How much request time','is in the output head?'],42,anchor='middle')
         b.foot(['64 changing IDs · gather included · 16-step blocks','FP32 · B8 · H2048 · V131072 · TF32 off','3 pairs in one process · requests unmeasured'])
     else:
-        b.circle(300,400,140,b.orange);b.text(300,400,'12.84×',64,b.orange,'middle');b.text(300,465,'Stage gain',48,anchor='middle')
+        b.circle(300,400,140,b.orange);b.text(300,400,f"{next(c for c in SUMMARY['cells'] if c['size']==64 and c['mode']=='changing')['speedup']:.2f}×",64,b.orange,'middle');b.text(300,465,'Stage gain',48,anchor='middle')
         b.line(500,400,690,400,b.ink,3,True);b.text(1080,400,'Measure real requests',54,anchor='middle')
-        b.text(800,645,f'Paired range: {min(ratios):.2f}–{max(ratios):.2f}× · 3 pairs in one process',48,anchor='middle')
+        b.text(800,645,f'Paired range: {min(ratios):.2f}–{max(ratios):.2f}×',48,anchor='middle')
         b.foot(['64 changing IDs · gather included · warm 16-step blocks',
                 'FP32 · B8 · H2048 · V131072 · TF32 off',
                 '3 paired blocks, one process · whole requests unmeasured'])
@@ -441,9 +450,9 @@ def main():
                 copy += board.copy
                 checks.append({'stem':stem,'square':square,'text_boxes_checked':len(board.boxes),'regular_Inter_only':True,'text_nonoverlap':True,'minimum_text_px_at_400':min(float(t.get('font-size'))*400/board.w for t in tree.iter() if t.tag.endswith('text'))})
                 geometry_rows.append({'stem':stem,'square':square,'bars':board.chart})
-            setup=next(c for c in SUMMARY['cells'] if c['size']==64 and c['mode']=='static')['row_setup_wall_ms']
+            setup={c['size']:c['row_setup_wall_ms'] for c in SUMMARY['cells'] if c['mode']=='static'}
             side=out/(target_stem(stem)+'.txt')
-            side.write_text('\n'.join(dict.fromkeys(copy))+'\n\nRetained methods: synthetic strict FP32 output head. Batch 8, hidden 2048, vocabulary 131072. One shared device-resident allowed set. TF32 off. Median warm blocks contain 16 steps. Three paired blocks per cell in one process. Whiskers are observed min–max, not confidence intervals. Changing sets include each gather. Static sets reuse gathered weights after one-time setup. Static setup for 16/64/256 IDs: 0.034720 / 3.252477 / 0.022130 ms. The 64-ID setup is an unexplained outlier. Cold-start benefit and break-even were not measured. Whole-model and serving gains were not measured. Different per-request sets and BF16 are untested. Ratios use retained unrounded medians.\n')
+            side.write_text('\n'.join(dict.fromkeys(copy))+f'\n\nRetained methods: synthetic strict FP32 output head. Batch 8, hidden 2048, vocabulary 131072. One shared device-resident allowed set. TF32 off. Median warm blocks contain 16 steps. Three paired blocks per cell in one process. Whiskers are observed min–max, not confidence intervals. Changing sets include each gather. Static sets reuse gathered weights after one-time setup. Static setup for 16/64/256 IDs: {setup[16]:.6f} / {setup[64]:.6f} / {setup[256]:.6f} ms. The 64-ID setup is an unexplained outlier. Cold-start benefit and break-even were not measured. Whole-model and serving gains were not measured. Different per-request sets and BF16 are untested. Ratios use retained unrounded medians.\n')
             entries[str(side.relative_to(out))]={'sha256':sha(side),'bytes':side.stat().st_size};records[stem]=entries
         # Contact sheets contain exact 400-pixel renders, with no scaling/cropping.
         for square in (False,True):

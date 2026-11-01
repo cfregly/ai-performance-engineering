@@ -34,6 +34,6 @@
 <text x="455" y="475.0" font-family="Inter" font-size="64" font-weight="400" font-style="normal" fill="#202326" text-anchor="middle">×</text>
 <line x1="1000" y1="445" x2="1120" y2="445" stroke="#E87823" stroke-width="3" marker-end="url(#arrow)"/>
 <text x="64" y="759.6" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#202326" text-anchor="start">Allowed argmax → token ID · preserve ID order and tie rules</text>
-<text x="64" y="814.8000000000001" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#202326" text-anchor="start">64 allowed IDs · strict FP32 · TF32 off · check exact token</text>
-<text x="64" y="870.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#202326" text-anchor="start">agreement</text>
+<text x="64" y="814.8000000000001" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#202326" text-anchor="start">64 allowed IDs · strict FP32 · TF32 off</text>
+<text x="64" y="870.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#202326" text-anchor="start">Check score tolerance and exact token agreement</text>
 </svg>

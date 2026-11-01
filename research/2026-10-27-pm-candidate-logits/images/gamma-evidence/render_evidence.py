@@ -49,6 +49,32 @@ def contrast(a,b):
  l,h=sorted((lum(a),lum(b)));return (h+.05)/(l+.05)
 
 
+
+def check_text_bar_clearance(texts, marks, minimum=20):
+ gaps=[]
+ for label in texts:
+  left,top,right,bottom=label['bounds']
+  for mark in marks:
+   x,y,width,height=mark['bar_x'],mark['bar_y'],mark['bar_width'],mark['bar_height']
+   if min(right,x+width)<=max(left,x):continue
+   gap=max(y-bottom,top-(y+height))
+   require(gap>=minimum,'Text too close to timing bar: '+label['text']+' / '+mark['series'])
+   gaps.append(gap)
+ return {'minimum_required_px':minimum,'minimum_observed_px':min(gaps),'checked_pairs':len(gaps)}
+
+
+def retained_methods(package):
+ summary=json.loads((package/'evidence/summary.json').read_text())
+ setup={c['size']:c['row_setup_wall_ms'] for c in summary['cells'] if c['mode']=='static'}
+ return ('Retained methods: synthetic strict FP32 output head. Batch 8, hidden 2048, vocabulary 131072. '
+         'One device-resident allowed set shared by the batch. TF32 off. Median warm blocks contain 16 steps. '
+         'Three paired blocks per cell in one process. Whiskers are observed min–max, not confidence intervals. '
+         'Changing sets include each weight gather. Creating and transferring allowed sets are excluded from both paths. '
+         f'Static setup for 16/64/256 IDs: {setup[16]:.6f} / {setup[64]:.6f} / {setup[256]:.6f} ms. '
+         'The 64-ID setup is an unexplained outlier. Cold-start benefit and break-even were not measured. '
+         'Different per-request sets, BF16, whole-model and serving gains are untested. Ratios use retained unrounded medians.\n')
+
+
 def build(package):
  for name,digest in SOURCE_PINS.items():require(sha((package/name).read_bytes())==digest,'Retained input SHA changed: '+name)
  tokens=json.loads((HERE/'gamma-visual-tokens.json').read_text())
@@ -90,33 +116,33 @@ def build(package):
  text(72,281,'Synthetic strict FP32 · B200',48,500)
  for field,raw_field,value,y,label,color in (
   ('baseline','baseline_wall_ms',base,377,'Full scoring + filter',PALETTE['baseline']),
-  ('selected','candidate_wall_ms',selected,487,'Allowed rows first',PALETTE['selected'])):
-  text(72,y-27,label,52,500);text(1128,y-27,f'{value:.3f} ms',52,600,anchor='end')
+  ('selected','candidate_wall_ms',selected,517,'Allowed rows first',PALETTE['selected'])):
+  text(72,y-36,label,52,500);text(1128,y-36,f'{value:.3f} ms',52,600,anchor='end')
   width=(X1-X0)*value/AXIS_MAX
   rect(X0,y,width,38,color,f'data-science="median" data-series="{field}"')
   values=[p[raw_field] for p in pairs];lo,hi=min(values),max(values);a=X0+(X1-X0)*lo/AXIS_MAX;b=X0+(X1-X0)*hi/AXIS_MAX;yy=y+19
   line(a,yy,b,yy,attrs=f'data-science="range" data-series="{field}"');line(a,yy-10,a,yy+10);line(b,yy-10,b,yy+10)
-  marks.append({'series':field,'value_ms':value,'bar_x':X0,'bar_y':y,'bar_width':width,'scale_px_per_ms':(X1-X0)/AXIS_MAX,'observed_min_ms':lo,'observed_max_ms':hi,'whisker_x':[a,b],'color':color})
- line(X0,550,X1,550)
+  marks.append({'series':field,'value_ms':value,'bar_x':X0,'bar_y':y,'bar_width':width,'bar_height':38,'scale_px_per_ms':(X1-X0)/AXIS_MAX,'observed_min_ms':lo,'observed_max_ms':hi,'whisker_x':[a,b],'color':color})
+ line(X0,580,X1,580)
  for v in (0,2,4,6):
-  x=X0+(X1-X0)*v/AXIS_MAX;line(x,550,x,562)
-  text(x,613,str(v),48,400,anchor='start' if v==0 else 'end' if v==6 else 'middle')
- text(72,672,'Median ms per warm 16-step block',48,500)
- text(72,730,'Whiskers: min–max of 3 paired blocks',48,400)
- rect(48,764,1104,380,PALETTE['catch'])
+  x=X0+(X1-X0)*v/AXIS_MAX;line(x,580,x,592)
+  text(x,637,str(v),48,400,anchor='start' if v==0 else 'end' if v==6 else 'middle')
+ text(72,697,'Median ms per warm 16-step block',48,500)
+ text(72,754,'Whiskers: min–max of 3 paired blocks',48,400)
+ rect(48,790,1104,354,PALETTE['catch'])
  for y,value,weight,size in (
-  (820,'Allowed set ready BEFORE scoring',600,52),
-  (880,'Weight gathering included in timing',500,48),
-  (940,'64 shared allowed tokens · new set each step',400,48),
-  (1000,'Creating/transferring the set excluded',400,48),
-  (1060,'from BOTH paths',600,48),
-  (1120,'Whole-model gains unmeasured',500,48)):
+  (842,'Allowed set ready BEFORE scoring',600,52),
+  (899,'Weight gathering included in timing',500,48),
+  (956,'64 allowed tokens shared by batch',400,48),
+  (1013,'New allowed set each step',400,48),
+  (1070,'Both paths exclude set creation and transfer',600,48),
+  (1127,'Whole-model gains unmeasured',500,48)):
   text(72,y,value,size,weight,background=PALETTE['catch'])
  for bounds,value in boxes:
   require(not(min(bounds[2],STAMP_BOX[2])-max(bounds[0],STAMP_BOX[0])>0 and min(bounds[3],STAMP_BOX[3])-max(bounds[1],STAMP_BOX[1])>0),'Stamp overlaps text: '+value)
  parts.append('</svg>');svg='\n'.join(parts)+'\n';ET.fromstring(svg)
- metadata={'dimensions':[W,H],'target_embedded_width_css_px':TARGET_WIDTH,'minimum_text_css_px':min(t['css_px_at306'] for t in texts),'text':texts,'marks':marks,'axis':{'minimum_ms':0,'maximum_ms':AXIS_MAX,'start_x':X0,'end_x':X1,'linear':True},'retained_cell':cell,'palette':PALETTE,'contrast_target':4.5,'all_text_nonoverlap_and_in_safe_canvas':True,'no_new_measurement':True,'stamp':{'relative_href':'fregly-take-stamp.png','sha256':STAMP_SHA256,'box':STAMP_BOX,'rotation_degrees':0,'mirror':False,'skew_degrees':0,'crop':False,'raw_bytes_preserved':True,'no_text_or_data_overlap':True},'Gamma_tokens_sha256':sha((HERE/'gamma-visual-tokens.json').read_bytes()),'source_pins':SOURCE_PINS}
- return svg, '\n'.join(t['text'] for t in texts)+'\n',metadata
+ metadata={'dimensions':[W,H],'target_embedded_width_css_px':TARGET_WIDTH,'minimum_text_css_px':min(t['css_px_at306'] for t in texts),'text':texts,'marks':marks,'axis':{'minimum_ms':0,'maximum_ms':AXIS_MAX,'start_x':X0,'end_x':X1,'linear':True},'retained_cell':cell,'palette':PALETTE,'contrast_target':4.5,'all_text_nonoverlap_and_in_safe_canvas':True,'no_new_measurement':True,'stamp':{'relative_href':'fregly-take-stamp.png','sha256':STAMP_SHA256,'box':STAMP_BOX,'rotation_degrees':0,'mirror':False,'skew_degrees':0,'crop':False,'raw_bytes_preserved':True,'no_text_or_data_overlap':True},'Gamma_tokens_sha256':sha((HERE/'gamma-visual-tokens.json').read_bytes()),'source_pins':SOURCE_PINS,'text_bar_clearance':check_text_bar_clearance(texts,marks)}
+ return svg, '\n'.join(t['text'] for t in texts)+'\n\n'+retained_methods(package),metadata
 
 
 def render(package):

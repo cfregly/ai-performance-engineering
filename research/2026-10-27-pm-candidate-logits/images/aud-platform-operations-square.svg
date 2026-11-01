@@ -1,9 +1,9 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1080" viewBox="0 0 1080 1080">
 <rect width="100%" height="100%" fill="#FBFBF8"/>
 <defs><marker id="arrow" viewBox="0 0 12 12" refX="10" refY="6" markerWidth="5" markerHeight="5" orient="auto"><path d="M2 2 L10 6 L2 10" fill="none" stroke="context-stroke" stroke-width="2"/></marker></defs>
-<text x="48" y="82.0" font-family="Inter" font-size="60" font-weight="400" font-style="normal" fill="#202326" text-anchor="start">Check when allowed tokens are</text>
-<text x="48" y="149.2" font-family="Inter" font-size="60" font-weight="400" font-style="normal" fill="#202326" text-anchor="start">known</text>
-<text x="48" y="219.2" font-family="Inter" font-size="36" font-weight="400" font-style="normal" fill="#202326" text-anchor="start">One shared set was tested</text>
+<text x="48" y="82.0" font-family="Inter" font-size="60" font-weight="400" font-style="normal" fill="#202326" text-anchor="start">Does the batch share one allowed</text>
+<text x="48" y="149.2" font-family="Inter" font-size="60" font-weight="400" font-style="normal" fill="#202326" text-anchor="start">set?</text>
+<text x="48" y="219.2" font-family="Inter" font-size="36" font-weight="400" font-style="normal" fill="#202326" text-anchor="start">One device-resident shared set was tested</text>
 <text x="55" y="340.0" font-family="Inter" font-size="42" font-weight="400" font-style="normal" fill="#E87823" text-anchor="start">Batch 8 → one allowed set</text>
 <rect x="80" y="390" width="65" height="45" rx="0" fill="none" stroke="#E87823" stroke-width="3"/>
 <rect x="175" y="390" width="65" height="45" rx="0" fill="none" stroke="#E87823" stroke-width="3"/>
@@ -25,6 +25,6 @@
 <text x="672" y="785.0" font-family="Inter" font-size="36" font-weight="400" font-style="normal" fill="#202326" text-anchor="middle">Set 3</text>
 <rect x="820" y="730" width="205" height="85" rx="0" fill="none" stroke="#202326" stroke-width="3"/>
 <text x="922" y="785.0" font-family="Inter" font-size="36" font-weight="400" font-style="normal" fill="#202326" text-anchor="middle">Set 4</text>
-<text x="48" y="1008.6" font-family="Inter" font-size="36" font-weight="400" font-style="normal" fill="#202326" text-anchor="start">Different sets need their own implementation</text>
-<text x="48" y="1050.0" font-family="Inter" font-size="36" font-weight="400" font-style="normal" fill="#202326" text-anchor="start">One device-resident shared set was tested</text>
+<text x="48" y="1008.6" font-family="Inter" font-size="36" font-weight="400" font-style="normal" fill="#202326" text-anchor="start">Per-request sets need a different implementation</text>
+<text x="48" y="1050.0" font-family="Inter" font-size="36" font-weight="400" font-style="normal" fill="#202326" text-anchor="start">Measure preparation and full request time</text>
 </svg>

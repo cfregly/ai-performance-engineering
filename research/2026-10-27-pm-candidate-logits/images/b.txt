@@ -1,6 +1,6 @@
 Six warm-block comparisons
 Synthetic strict-FP32 output-head stage
-Full + filter
+Full scoring + filter
 Allowed rows first
 Static IDs
 0
@@ -25,7 +25,6 @@ Milliseconds per warm 16-step block
 Median bars · min–max whiskers · 3 pairs in one process
 Batch 8 · hidden 2048 · vocabulary 131072 · TF32 off
 Changing includes gather. Static setup is separate.
-Allowed rows
 static
 changing
 

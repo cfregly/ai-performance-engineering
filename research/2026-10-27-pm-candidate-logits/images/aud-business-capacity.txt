@@ -3,7 +3,7 @@ A stage gain does not measure request capacity
 12.84×
 Stage gain
 Measure real requests
-Paired range: 12.81–13.05× · 3 pairs in one process
+Paired range: 12.81–13.05×
 64 changing IDs · gather included · warm 16-step blocks
 FP32 · B8 · H2048 · V131072 · TF32 off
 3 paired blocks, one process · whole requests unmeasured
@@ -11,7 +11,6 @@ Measure requests before
 promising capacity
 Measure
 requests
-Paired range: 12.81–13.05×
 How much request time
 is in the output head?
 64 changing IDs · gather included · 16-step blocks

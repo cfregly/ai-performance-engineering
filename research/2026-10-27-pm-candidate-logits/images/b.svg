@@ -3,8 +3,10 @@
 <defs><marker id="arrow" viewBox="0 0 12 12" refX="10" refY="6" markerWidth="5" markerHeight="5" orient="auto"><path d="M2 2 L10 6 L2 10" fill="none" stroke="context-stroke" stroke-width="2"/></marker></defs>
 <text x="64" y="82.0" font-family="Inter" font-size="64" font-weight="400" font-style="normal" fill="#202326" text-anchor="start">Six warm-block comparisons</text>
 <text x="64" y="152.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#202326" text-anchor="start">Synthetic strict-FP32 output-head stage</text>
-<text x="70" y="220.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#3478BA" text-anchor="start">Full + filter</text>
-<text x="820" y="220.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#E87823" text-anchor="start">Allowed rows first</text>
+<rect data-role="legend-swatch" data-series="baseline" x="302.0" y="190.24" width="28" height="28" fill="#3478BA"/>
+<text x="348.0" y="220.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#3478BA" text-anchor="start">Full scoring + filter</text>
+<rect data-role="legend-swatch" data-series="candidate" x="841.0" y="190.24" width="28" height="28" fill="#E87823"/>
+<text x="887.0" y="220.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#E87823" text-anchor="start">Allowed rows first</text>
 <text x="70" y="292.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#202326" text-anchor="start">Static IDs</text>
 <line x1="205.0" y1="315" x2="205.0" y2="625" stroke="#D3D6D9" stroke-width="1"/>
 <text x="205.0" y="645.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#202326" text-anchor="middle">0</text>

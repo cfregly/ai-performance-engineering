@@ -1,6 +1,6 @@
 # Score only the choices that are allowed
 
-Suppose a router may answer only A, B or C. Why score the rest? I reproduced [Murali Manohar's idea](https://gitlostmurali.com/blog/structured-generation-optimizations/): gather the allowed tokens' weights first, then score them.
+Suppose a router may answer only A, B or C. Why score the rest? I reproduced the [row selection Murali Manohar described](https://gitlostmurali.com/blog/structured-generation-optimizations/): gather the allowed tokens' weights first, then score them.
 
 The catch is that the allowed set must be ready before scoring. The usual path needs it only when filtering scores afterward. Creating and transferring the set were excluded from both timed paths. My advice: keep full scoring if earlier selection and weight gathering erase the saving, or if the caller needs every token's score.
 
@@ -21,7 +21,7 @@ One NVIDIA B200 ran strict FP32 with TF32 disabled, batch 8, hidden width 2,048 
 
 Speedups are ratios of the unrounded median block times.
 
-Times are medians of three matched warm blocks, each containing 16 projection/filter/selection steps and final device synchronization. Pair order was dense-first, candidate-first, then dense-first after two warmup blocks per path. Every one of the 18 pairs favored selected rows. The nearest-rank p95 of three samples is the largest block, rather than request tail latency. The fixed order and three pairs do not separate execution order from sample position. In the 64-ID changing-set cell, the candidate-first block took 0.414593 ms, versus 0.420575 and 0.421094 ms for its two candidate-second blocks. These retained samples support this within-process screen, rather than a broad repeatability claim.
+Times are medians of three matched warm blocks, each containing 16 projection/filter/selection steps and final device synchronization. Pair order was dense-first, candidate-first, then dense-first after two warmup blocks per path. Every one of the 18 pairs favored selected rows. The nearest-rank p95 of three samples is the largest block, rather than request tail latency. Because the fixed rule also requires every paired candidate block to beat its matching baseline, the extra 2% p95 allowance cannot reject a case that has already passed that stricter rule. The fixed order and three pairs do not separate execution order from sample position. In the 64-ID changing-set cell, the candidate-first block took 0.414593 ms, versus 0.420575 and 0.421094 ms for its two candidate-second blocks. In all six cells, the candidate-first block was the fastest candidate block. The largest gap was at 16 changing IDs: 0.476 ms, versus 0.560 and 0.563 ms. Every reported candidate median therefore comes from a candidate-second block. These retained samples support this within-process screen, rather than a broad repeatability claim.
 
 The changing-set timings are not monotonic in set size. I did not profile their cause, so the three sizes establish no scaling trend.
 
@@ -57,7 +57,7 @@ API contracts: [PyTorch matrix product](https://docs.pytorch.org/docs/2.14/gener
 
 ## Prior work
 
-[Underpinning study by Murali Manohar](https://gitlostmurali.com/blog/structured-generation-optimizations/) explains allowed-token weight slicing and batching limitations. The [GSP working paper](https://github.com/StealthEyeLLC/grammar-sparse-projection/blob/30a9d0ed82f26dc53ec74b4f0985e1d213a18625/paper/draft.md) develops packed-mask projection, heterogeneous batching and an end-to-end evaluation. Those authors’ results are separate from this controlled B200 reproduction. The core mechanism is established.
+[Underpinning study by Murali Manohar](https://gitlostmurali.com/blog/structured-generation-optimizations/) explains allowed-token weight slicing and batching limitations. The [GSP working paper](https://github.com/StealthEyeLLC/grammar-sparse-projection/blob/30a9d0ed82f26dc53ec74b4f0985e1d213a18625/paper/draft.md) develops packed-mask projection, heterogeneous batching and an end-to-end evaluation. Those authors' results are separate from this controlled B200 reproduction. The core mechanism is established.
 
 ## Measured output-head comparison
 
@@ -90,7 +90,7 @@ stack may change PNG bytes. Inspect the editable SVG and source data when
 reproducing on another stack.
 
 The landscape and square cover variants present the same comparison and
-conditions, with a deliberate layout for each aspect ratio. Rebuild them with:
+conditions, with a deliberate layout for each aspect ratio. Check them with:
 
 ```sh
 python3 images/render_data_covers.py --check
@@ -112,7 +112,7 @@ python3 images/render_illustrations.py --public-layout --output-root /tmp/candid
 
 Omit `--output-root` to replace the canonical figures. The command writes the ten landscape/square figure families and their previews, text and export metadata. If it fails, the chosen output directory may contain partial output. Resolve the reported source, font or layout error before using those figures. It does not run the benchmark or recompute the measurements.
 
-The tested renderer stack is the librsvg, Cairo, Pango, HarfBuzz and Fontconfig stack listed above, with `PANGOCAIRO_BACKEND=fc` and the packaged regular Inter face. Different stacks may produce different PNG bytes.
+The explanatory figures were produced with Python 3.12.14 and Pillow 12.3.0. The comparison and cover variants above used Python 3.12.2 and Pillow 11.3.0. Both use the librsvg, Cairo, Pango, HarfBuzz and Fontconfig stack listed above, `PANGOCAIRO_BACKEND=fc` and the packaged regular Inter face. Different stacks may produce different PNG bytes.
 
 ## Figures
 

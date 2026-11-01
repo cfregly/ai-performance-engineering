@@ -7,32 +7,32 @@
 <text x="72" y="160" font-family="Inter" font-size="52" font-weight="600" fill="#C3DDF4" text-anchor="start">12.84× faster · output head only</text>
 <image x="1364" y="10" width="164" height="164" href="gamma-evidence/fregly-take-stamp.png" preserveAspectRatio="xMidYMid meet"/>
 <text x="72" y="246" font-family="Inter" font-size="48" font-weight="500" fill="#202326" text-anchor="start">Synthetic strict FP32 · B200</text>
-<text x="72" y="295" font-family="Inter" font-size="52" font-weight="500" fill="#202326" text-anchor="start">Full scoring + filter</text>
-<text x="1528" y="295" font-family="Inter" font-size="52" font-weight="600" fill="#202326" text-anchor="end">5.399 ms</text>
-<rect x="72" y="319" width="1310.2177077283461" height="30" fill="#3478BA" data-science="median" data-series="baseline"/>
-<line x1="1380.6841218173504" y1="334" x2="1384.4575465917587" y2="334" stroke="#202326" stroke-width="2" data-science="range" data-series="baseline"/>
-<line x1="1380.6841218173504" y1="324" x2="1380.6841218173504" y2="344" stroke="#202326" stroke-width="2" />
-<line x1="1384.4575465917587" y1="324" x2="1384.4575465917587" y2="344" stroke="#202326" stroke-width="2" />
-<text x="72" y="392" font-family="Inter" font-size="52" font-weight="500" fill="#202326" text-anchor="start">Allowed rows first</text>
-<text x="1528" y="392" font-family="Inter" font-size="52" font-weight="600" fill="#202326" text-anchor="end">0.421 ms</text>
-<rect x="72" y="416" width="102.0594841490189" height="30" fill="#E87823" data-science="median" data-series="selected"/>
-<line x1="172.6078800807397" y1="431" x2="174.1854796757301" y2="431" stroke="#202326" stroke-width="2" data-science="range" data-series="selected"/>
-<line x1="172.6078800807397" y1="421" x2="172.6078800807397" y2="441" stroke="#202326" stroke-width="2" />
-<line x1="174.1854796757301" y1="421" x2="174.1854796757301" y2="441" stroke="#202326" stroke-width="2" />
-<line x1="72.0000000000000" y1="480" x2="1528.0000000000000" y2="480" stroke="#202326" stroke-width="2" />
-<line x1="72.0000000000000" y1="480" x2="72.0000000000000" y2="492" stroke="#202326" stroke-width="2" />
-<text x="72.0" y="536" font-family="Inter" font-size="48" font-weight="400" fill="#202326" text-anchor="start">0</text>
-<line x1="557.3333333333333" y1="480" x2="557.3333333333333" y2="492" stroke="#202326" stroke-width="2" />
-<text x="557.3333333333333" y="536" font-family="Inter" font-size="48" font-weight="400" fill="#202326" text-anchor="middle">2</text>
-<line x1="1042.6666666666665" y1="480" x2="1042.6666666666665" y2="492" stroke="#202326" stroke-width="2" />
-<text x="1042.6666666666665" y="536" font-family="Inter" font-size="48" font-weight="400" fill="#202326" text-anchor="middle">4</text>
-<line x1="1528.0000000000000" y1="480" x2="1528.0000000000000" y2="492" stroke="#202326" stroke-width="2" />
-<text x="1528.0" y="536" font-family="Inter" font-size="48" font-weight="400" fill="#202326" text-anchor="end">6</text>
-<text x="72" y="585" font-family="Inter" font-size="48" font-weight="500" fill="#202326" text-anchor="start">Median ms per warm 16-step block</text>
-<text x="72" y="642" font-family="Inter" font-size="48" font-weight="400" fill="#202326" text-anchor="start">Whiskers: min–max of 3 paired blocks</text>
-<rect x="48" y="654" width="1504.0000000000000" height="230" fill="#EDF3F8" />
-<text x="72" y="710" font-family="Inter" font-size="48" font-weight="600" fill="#202326" text-anchor="start">Allowed set ready BEFORE scoring · weight gathering timed</text>
-<text x="72" y="760" font-family="Inter" font-size="48" font-weight="400" fill="#202326" text-anchor="start">64 shared allowed tokens · new set each step</text>
-<text x="72" y="810" font-family="Inter" font-size="48" font-weight="400" fill="#202326" text-anchor="start">Creating/transferring the set excluded from BOTH paths</text>
-<text x="72" y="860" font-family="Inter" font-size="48" font-weight="500" fill="#202326" text-anchor="start">Whole-model gains unmeasured</text>
+<text x="72" y="305" font-family="Inter" font-size="52" font-weight="500" fill="#202326" text-anchor="start">Full scoring + filter</text>
+<text x="1528" y="305" font-family="Inter" font-size="52" font-weight="600" fill="#202326" text-anchor="end">5.399 ms</text>
+<rect x="72" y="341" width="1310.2177077283461" height="30" fill="#3478BA" data-science="median" data-series="baseline"/>
+<line x1="1380.6841218173504" y1="356" x2="1384.4575465917587" y2="356" stroke="#202326" stroke-width="2" data-science="range" data-series="baseline"/>
+<line x1="1380.6841218173504" y1="346" x2="1380.6841218173504" y2="366" stroke="#202326" stroke-width="2" />
+<line x1="1384.4575465917587" y1="346" x2="1384.4575465917587" y2="366" stroke="#202326" stroke-width="2" />
+<text x="72" y="435" font-family="Inter" font-size="52" font-weight="500" fill="#202326" text-anchor="start">Allowed rows first</text>
+<text x="1528" y="435" font-family="Inter" font-size="52" font-weight="600" fill="#202326" text-anchor="end">0.421 ms</text>
+<rect x="72" y="471" width="102.0594841490189" height="30" fill="#E87823" data-science="median" data-series="selected"/>
+<line x1="172.6078800807397" y1="486" x2="174.1854796757301" y2="486" stroke="#202326" stroke-width="2" data-science="range" data-series="selected"/>
+<line x1="172.6078800807397" y1="476" x2="172.6078800807397" y2="496" stroke="#202326" stroke-width="2" />
+<line x1="174.1854796757301" y1="476" x2="174.1854796757301" y2="496" stroke="#202326" stroke-width="2" />
+<line x1="72.0000000000000" y1="520" x2="1528.0000000000000" y2="520" stroke="#202326" stroke-width="2" />
+<line x1="72.0000000000000" y1="520" x2="72.0000000000000" y2="532" stroke="#202326" stroke-width="2" />
+<text x="72.0" y="574" font-family="Inter" font-size="48" font-weight="400" fill="#202326" text-anchor="start">0</text>
+<line x1="557.3333333333333" y1="520" x2="557.3333333333333" y2="532" stroke="#202326" stroke-width="2" />
+<text x="557.3333333333333" y="574" font-family="Inter" font-size="48" font-weight="400" fill="#202326" text-anchor="middle">2</text>
+<line x1="1042.6666666666665" y1="520" x2="1042.6666666666665" y2="532" stroke="#202326" stroke-width="2" />
+<text x="1042.6666666666665" y="574" font-family="Inter" font-size="48" font-weight="400" fill="#202326" text-anchor="middle">4</text>
+<line x1="1528.0000000000000" y1="520" x2="1528.0000000000000" y2="532" stroke="#202326" stroke-width="2" />
+<text x="1528.0" y="574" font-family="Inter" font-size="48" font-weight="400" fill="#202326" text-anchor="end">6</text>
+<text x="72" y="636" font-family="Inter" font-size="48" font-weight="500" fill="#202326" text-anchor="start">Median ms / 16-step warm block</text>
+<text x="1528" y="636" font-family="Inter" font-size="48" font-weight="400" fill="#202326" text-anchor="end">3-pair min–max whiskers</text>
+<rect x="48" y="676" width="1504.0000000000000" height="208" fill="#EDF3F8" />
+<text x="72" y="716" font-family="Inter" font-size="48" font-weight="600" fill="#202326" text-anchor="start">Allowed set ready BEFORE scoring · weight gathering timed</text>
+<text x="72" y="766" font-family="Inter" font-size="48" font-weight="400" fill="#202326" text-anchor="start">64 allowed tokens shared by batch · new set each step</text>
+<text x="72" y="816" font-family="Inter" font-size="48" font-weight="400" fill="#202326" text-anchor="start">Both paths exclude set creation and transfer</text>
+<text x="72" y="866" font-family="Inter" font-size="48" font-weight="500" fill="#202326" text-anchor="start">Whole-model gains unmeasured</text>
 </svg>

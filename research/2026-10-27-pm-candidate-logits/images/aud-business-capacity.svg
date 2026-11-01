@@ -8,7 +8,7 @@
 <text x="300" y="465.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#202326" text-anchor="middle">Stage gain</text>
 <line x1="500" y1="400" x2="690" y2="400" stroke="#202326" stroke-width="3" marker-end="url(#arrow)"/>
 <text x="1080" y="400.0" font-family="Inter" font-size="54" font-weight="400" font-style="normal" fill="#202326" text-anchor="middle">Measure real requests</text>
-<text x="800" y="645.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#202326" text-anchor="middle">Paired range: 12.81–13.05× · 3 pairs in one process</text>
+<text x="800" y="645.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#202326" text-anchor="middle">Paired range: 12.81–13.05×</text>
 <text x="64" y="759.6" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#202326" text-anchor="start">64 changing IDs · gather included · warm 16-step blocks</text>
 <text x="64" y="814.8000000000001" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#202326" text-anchor="start">FP32 · B8 · H2048 · V131072 · TF32 off</text>
 <text x="64" y="870.0" font-family="Inter" font-size="48" font-weight="400" font-style="normal" fill="#202326" text-anchor="start">3 paired blocks, one process · whole requests unmeasured</text>

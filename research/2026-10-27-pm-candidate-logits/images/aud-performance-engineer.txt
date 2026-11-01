@@ -10,8 +10,8 @@ Allowed rows first
 4
 6
 Milliseconds per warm 16-step block
-Static 64-ID setup: 3.252 ms, an unexplained outlier
-16/256-ID setup: 0.035/0.022 ms, outside warm ratios
+Static setup: 64 IDs 3.252 ms (unexplained outlier)
+Static 16/256 IDs: 0.035/0.022 ms · setup excluded
 FP32 · B8 · H2048 · V131072 · TF32 off
 3 pairs, one process · paired ratios: 12.81–13.05×
 Include gathering in the timed
