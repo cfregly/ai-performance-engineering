@@ -1037,56 +1037,6 @@ note = "with False, with True, Raw metrics and units are retained."
         self.assertEqual(result.returncode, 2)
         self.assertIn("usage:", result.stderr)
 
-    def test_cli_help_exits_zero_without_checking_a_package(self) -> None:
-        script = Path(__file__).with_name("check_package.py")
-        for flag in ("-h", "--help"):
-            with self.subTest(flag=flag):
-                result = subprocess.run(
-                    [sys.executable, str(script), flag],
-                    text=True,
-                    capture_output=True,
-                    check=False,
-                )
-                self.assertEqual(result.returncode, 0, result.stderr)
-                self.assertIn("usage:", result.stdout)
-                self.assertIn("retained package files", result.stdout)
-                self.assertEqual(result.stderr, "")
-                self.assertNotIn("FAIL", result.stdout)
-
-    def test_manifest_rejects_nested_duplicate_keys(self) -> None:
-        original = json.dumps(self.read_json("manifest.json"))
-        duplicates = (
-            '"metadata": {"owner": "first", "owner": "second"}',
-            '"metadata": {"owner": "same", "owner": "same"}',
-        )
-        for duplicate in duplicates:
-            with self.subTest(duplicate=duplicate):
-                (self.package / "manifest.json").write_text(
-                    original[:-1] + ", " + duplicate + "}\n",
-                    encoding="utf-8",
-                )
-                errors = validate_package(self.package)
-                self.assertEqual(len(errors), 1, errors)
-                self.assertIn("invalid manifest", errors[0])
-                self.assertIn("duplicate JSON key:", errors[0])
-
-    def test_cli_reports_duplicate_manifest_key_without_traceback(self) -> None:
-        original = json.dumps(self.read_json("manifest.json"))
-        (self.package / "manifest.json").write_text(
-            original[:-1] + ', "schema_version": 2}\n', encoding="utf-8"
-        )
-        script = Path(__file__).with_name("check_package.py")
-        result = subprocess.run(
-            [sys.executable, str(script), str(self.package)],
-            text=True,
-            capture_output=True,
-            check=False,
-        )
-        self.assertEqual(result.returncode, 1)
-        self.assertIn("duplicate JSON key: schema_version", result.stderr)
-        self.assertNotIn("Traceback", result.stderr)
-        self.assertNotIn("PASS", result.stdout)
-
 
     def make_source_reported(self) -> None:
         manifest = self.read_json("manifest.json")
@@ -1260,6 +1210,310 @@ note = "with False, with True, Raw metrics and units are retained."
         ).hexdigest()
         self.write_json("evidence/source-reported-receipt.json", receipt)
         self.assert_problem("review reviewer must be a nonempty string")
+
+    def test_gate_repair_object_documents_reject_null_and_scalars(self) -> None:
+        families = [
+            ("manifest.json", "manifest"),
+            ("images/review.json", "independent review receipt"),
+            ("social/typefully-receipt.json", "Typefully receipt"),
+        ]
+        for relative, label in families:
+            original = (self.package / relative).read_text()
+            for value in (None, 0, True, "not-an-object", []):
+                with self.subTest(relative=relative, value=value):
+                    self.write_json(relative, value)
+                    self.assert_problem(f"{label} must be a JSON object")
+            (self.package / relative).write_text(original)
+
+    def test_gate_repair_manifest_null_cli_returns_fail(self) -> None:
+        self.write_json("manifest.json", None)
+        result = subprocess.run([sys.executable, str(Path(__file__).with_name("check_package.py")), str(self.package)],
+                                text=True, capture_output=True, check=False)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("manifest must be a JSON object", result.stderr)
+        self.assertNotIn("Traceback", result.stderr)
+        self.assertNotIn("PASS", result.stdout)
+
+    def test_gate_repair_measured_receipt_rejects_null_and_scalars(self) -> None:
+        self.make_measured()
+        for value in (None, 0, True, "not-an-object", []):
+            with self.subTest(value=value):
+                self.write_json("evidence/measurement-receipt.json", value)
+                self.assert_problem("measurement receipt must be a JSON object")
+
+    def test_gate_repair_sources_keep_lists_but_reject_null_and_scalars(self) -> None:
+        self.assertEqual(validate_package(self.package), [])
+        for value in (None, 0, True, "not-sources"):
+            with self.subTest(value=value):
+                self.write_json("sources.json", value)
+                self.assert_problem("sources JSON must be a JSON object or list")
+
+    def test_gate_repair_manifest_control_fields_are_type_guarded(self) -> None:
+        original = self.read_json("manifest.json")
+        for field in ("content_state", "review_status"):
+            for value in ([], {}, 0, True):
+                with self.subTest(field=field, value=value):
+                    self.write_json("manifest.json", {**original, field: value})
+                    self.assert_problem(f"manifest.{field}")
+
+    def test_gate_repair_source_type_containers_are_validation_errors(self) -> None:
+        self.make_source_reported()
+        original = self.read_json("sources.json")
+        for value in ([], {}, 0, True):
+            with self.subTest(value=value):
+                sources = copy.deepcopy(original)
+                sources["sources"][0]["type"] = value
+                self.write_json("sources.json", sources)
+                self.reseal_source_reported_review()
+                self.assert_problem("source definitions sources[0].type must be a string")
+
+    def test_gate_repair_source_receipts_reject_null_and_scalars(self) -> None:
+        for relative, label in (("evidence/source-reported-receipt.json", "source-reported receipt"),
+                                ("evidence/source-review.json", "source-claim review")):
+            for value in (None, 0, True, "not-an-object", []):
+                with self.subTest(relative=relative, value=value):
+                    self.make_source_reported()
+                    self.write_json(relative, value)
+                    if relative.endswith("source-review.json"):
+                        receipt = self.read_json("evidence/source-reported-receipt.json")
+                        receipt["independent_review"] = self.artifact_ref(relative)
+                        self.write_json("evidence/source-reported-receipt.json", receipt)
+                    self.assert_problem(f"{label} must be a JSON object")
+
+    def test_gate_repair_source_receipts_reject_nonfinite_and_duplicate_keys(self) -> None:
+        for relative, label in (("evidence/source-reported-receipt.json", "source-reported receipt"),
+                                ("evidence/source-review.json", "source-claim review")):
+            for member in ('"probe":NaN', '"probe":Infinity', '"probe":-Infinity',
+                           '"probe":1,"probe":1', '"probe":1,"probe":2'):
+                with self.subTest(relative=relative, member=member):
+                    self.make_source_reported()
+                    path = self.package / relative
+                    path.write_text("{" + member + "," + path.read_text().lstrip()[1:])
+                    if relative.endswith("source-review.json"):
+                        receipt = self.read_json("evidence/source-reported-receipt.json")
+                        receipt["independent_review"] = self.artifact_ref(relative)
+                        self.write_json("evidence/source-reported-receipt.json", receipt)
+                    errors = validate_package(self.package)
+                    expected = "nonfinite JSON constant" if "Infinity" in member or "NaN" in member else "duplicate JSON key"
+                    self.assertTrue(any(f"invalid {label}" in e and expected in e for e in errors), errors)
+
+    def write_gate_repair_preview(self, *, draft_id="draft-123", media=None) -> None:
+        raw = self.read_json("social/typefully-readback.json")
+        raw["id"] = draft_id
+        if media is not None:
+            for platform in ("x", "linkedin"):
+                raw["platforms"][platform]["posts"][0]["media_ids"] = media[platform]
+        self.write_json("social/preview-readback.json", raw)
+        source = self.artifact_ref("image.png")
+        receipt = {"schema_version": 1, "verified": True,
+                   "checked_at": "2026-10-26T12:01:00Z", "platforms": {}}
+        for platform in ("x", "linkedin"):
+            ids = raw["platforms"][platform]["posts"][0]["media_ids"]
+            receipt["platforms"][platform] = {
+                "draft_id": draft_id, "raw_readback": self.artifact_ref("social/preview-readback.json"),
+                "attachment_sources": {mid: {**source, "media_type": "image"} for mid in ids},
+                "images": [{"media_id": mid, "source_path": source["path"], "source_sha256": source["sha256"],
+                    "natural_width": 1920, "natural_height": 1080, "rendered_width": 400, "rendered_height": 225,
+                    "object_fit": "contain", "object_position": "50% 50%", "preview_group_size": 1,
+                    "visual_review": {"complete_profile": True, "headings_visible": True,
+                                      "key_labels_readable": True, "reviewer": "fixture preview reviewer"}}
+                    for mid in ids],
+            }
+        self.write_json("social/profile-preview.json", receipt)
+
+    def test_gate_repair_final_preview_identity_passes(self) -> None:
+        self.write_gate_repair_preview()
+        self.assertEqual(validate_package(self.package), [])
+
+    def test_gate_repair_preview_wrong_draft_fails(self) -> None:
+        self.write_gate_repair_preview(draft_id="other-draft")
+        self.assertEqual(validate_package(self.package), [
+            f"profile preview {platform}: draft_id must match final workflow and Typefully receipt"
+            for platform in ("x", "linkedin")
+        ])
+
+    def test_gate_repair_preview_final_media_swap_fails(self) -> None:
+        self.write_gate_repair_preview(media={"x": ["old-x"], "linkedin": ["old-linkedin"]})
+        self.assertEqual(validate_package(self.package), [
+            "profile preview x: ordered per-post media_ids differ from final readback",
+            "profile preview x: final media_id media-x is missing from attachment_sources",
+            "profile preview linkedin: ordered per-post media_ids differ from final readback",
+            "profile preview linkedin: final media_id media-linkedin is missing from attachment_sources",
+        ])
+
+    def test_gate_repair_preview_per_post_order_is_bound(self) -> None:
+        self.write_gate_repair_preview()
+        raw = self.read_json("social/preview-readback.json")
+        raw["platforms"]["x"]["posts"].insert(0, {"text": "text only", "media_ids": []})
+        self.write_json("social/preview-readback.json", raw)
+        preview = self.read_json("social/profile-preview.json")
+        for spec in preview["platforms"].values():
+            spec["raw_readback"] = self.artifact_ref("social/preview-readback.json")
+        self.write_json("social/profile-preview.json", preview)
+        self.assertEqual(validate_package(self.package), [
+            "profile preview x: ordered per-post media_ids differ from final readback"
+        ])
+
+    def test_gate_repair_preview_notes_only_edit_needs_no_new_capture(self) -> None:
+        self.write_gate_repair_preview()
+        raw = self.read_json("social/preview-readback.json")
+        raw["updated_at"] = "2026-10-26T11:00:00Z"
+        raw["scratchpad_text"] = "Earlier metadata, identical visual attachments."
+        self.write_json("social/preview-readback.json", raw)
+        preview = self.read_json("social/profile-preview.json")
+        preview["checked_at"] = "2026-10-26T11:05:00Z"
+        for spec in preview["platforms"].values():
+            spec["raw_readback"] = self.artifact_ref("social/preview-readback.json")
+        self.write_json("social/profile-preview.json", preview)
+        self.assertEqual(validate_package(self.package), [])
+
+
+    def write_declared_gate_preview(self, *, default_decoy: bool, draft_id="draft-123", media=None) -> None:
+        """Build a complete synthetic analytical reader/preview/workflow interface."""
+        from tools.test_check_reader_visuals import ReaderVisualTests
+        reader = ReaderVisualTests()
+        reader.setUp()
+        try:
+            reader.make_analytical()
+            manifest = self.read_json("manifest.json")
+            for source in reader.package.rglob("*"):
+                if not source.is_file() or source.relative_to(reader.package).as_posix() in (
+                    "manifest.json", "evidence/measurement-receipt.json"
+                ):
+                    continue
+                target = self.package / source.relative_to(reader.package)
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(source.read_bytes())
+            manifest.update(reader.manifest)
+            reader.package = self.package
+            reader.manifest = manifest
+            reader.authorization["package_directory"] = self.package.name
+            reader.basis["package_directory"] = self.package.name
+            reader.retain_analytical()
+            # The existing workflow fixture retains one post per platform.
+            (self.package / "social/x.txt").write_text(reader.article + "\n")
+            for platform, relative in (("article", "README.md"), ("x", "social/x.txt"), ("linkedin", "social/linkedin.txt")):
+                reader.declaration["copy"][platform] = {**self.artifact_ref(relative), "sequence": copy.deepcopy(reader.sequence)}
+            reader.declaration["scientific_chart"] = self.artifact_ref("image.png")
+            self.write_typefully()
+            self.write_typefully_workflow()
+            self.write_gate_repair_preview(draft_id=draft_id, media=media)
+            raw = self.read_json("social/preview-readback.json")
+            self.write_json("social/declared-preview-readback.json", raw)
+            preview = self.read_json("social/profile-preview.json")
+            for platform, spec in preview["platforms"].items():
+                spec["raw_readback"] = self.artifact_ref("social/declared-preview-readback.json")
+                spec["screenshot"] = self.artifact_ref(f"evidence/{platform}.png")
+            self.write_json("social/declared-primary-preview.json", preview)
+            reader.declaration["preview_receipt"] = self.artifact_ref("social/declared-primary-preview.json")
+            reader.review["reviewed_at"] = "2026-10-26T12:03:00Z"
+            self.assertEqual(reader.save(renew_review=True), [])
+            if default_decoy:
+                self.write_gate_repair_preview()
+            else:
+                (self.package / "social/profile-preview.json").unlink()
+        finally:
+            reader.tearDown()
+
+    def test_declared_preview_nondefault_positive_with_absent_or_valid_default(self) -> None:
+        for default_decoy in (False, True):
+            with self.subTest(default_decoy=default_decoy):
+                self.write_declared_gate_preview(default_decoy=default_decoy)
+                self.assertEqual(validate_package(self.package), [])
+
+    def test_declared_preview_wrong_draft_with_absent_or_valid_default(self) -> None:
+        for default_decoy in (False, True):
+            with self.subTest(default_decoy=default_decoy):
+                self.write_declared_gate_preview(default_decoy=default_decoy, draft_id="other-draft")
+                self.assertEqual(validate_package(self.package), [
+                    f"profile preview {platform}: draft_id must match final workflow and Typefully receipt"
+                    for platform in ("x", "linkedin")
+                ])
+
+    def test_declared_preview_media_swap_with_absent_or_valid_default(self) -> None:
+        for default_decoy in (False, True):
+            with self.subTest(default_decoy=default_decoy):
+                self.write_declared_gate_preview(default_decoy=default_decoy,
+                    media={"x": ["old-x"], "linkedin": ["old-linkedin"]})
+                self.assertEqual(validate_package(self.package), [
+                    "profile preview x: ordered per-post media_ids differ from final readback",
+                    "profile preview x: final media_id media-x is missing from attachment_sources",
+                    "profile preview linkedin: ordered per-post media_ids differ from final readback",
+                    "profile preview linkedin: final media_id media-linkedin is missing from attachment_sources",
+                ])
+
+    def test_declared_preview_invalid_reference_never_uses_valid_default(self) -> None:
+        self.write_declared_gate_preview(default_decoy=True)
+        original = self.read_json("manifest.json")
+        valid = original["reader_visuals"]["preview_receipt"]
+        cases = (
+            (None, "must be an object with path and sha256"),
+            ([], "must be an object with path and sha256"),
+            ("social/declared-primary-preview.json", "must be an object with path and sha256"),
+            ({**valid, "path": "../outside.json"}, "safe package-relative path"),
+            ({**valid, "path": "/outside.json"}, "safe package-relative path"),
+            ({**valid, "sha256": "0" * 64}, "sha256"),
+        )
+        for value, diagnostic in cases:
+            with self.subTest(value=value):
+                manifest = copy.deepcopy(original)
+                manifest["reader_visuals"]["preview_receipt"] = value
+                self.write_json("manifest.json", manifest)
+                errors = validate_package(self.package)
+                self.assertTrue(any("manifest.reader_visuals.preview_receipt" in error and diagnostic in error
+                                    for error in errors), errors)
+
+
+    def test_cli_help_exits_zero_without_checking_a_package(self) -> None:
+        script = Path(__file__).with_name("check_package.py")
+        for flag in ("-h", "--help"):
+            with self.subTest(flag=flag):
+                result = subprocess.run(
+                    [sys.executable, str(script), flag],
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                )
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertIn("usage:", result.stdout)
+                self.assertIn("retained package files", result.stdout)
+                self.assertEqual(result.stderr, "")
+                self.assertNotIn("FAIL", result.stdout)
+
+    def test_manifest_rejects_nested_duplicate_keys(self) -> None:
+        original = json.dumps(self.read_json("manifest.json"))
+        duplicates = (
+            '"metadata": {"owner": "first", "owner": "second"}',
+            '"metadata": {"owner": "same", "owner": "same"}',
+        )
+        for duplicate in duplicates:
+            with self.subTest(duplicate=duplicate):
+                (self.package / "manifest.json").write_text(
+                    original[:-1] + ", " + duplicate + "}\n",
+                    encoding="utf-8",
+                )
+                errors = validate_package(self.package)
+                self.assertEqual(len(errors), 1, errors)
+                self.assertIn("invalid manifest", errors[0])
+                self.assertIn("duplicate JSON key:", errors[0])
+
+    def test_cli_reports_duplicate_manifest_key_without_traceback(self) -> None:
+        original = json.dumps(self.read_json("manifest.json"))
+        (self.package / "manifest.json").write_text(
+            original[:-1] + ', "schema_version": 2}\n', encoding="utf-8"
+        )
+        script = Path(__file__).with_name("check_package.py")
+        result = subprocess.run(
+            [sys.executable, str(script), str(self.package)],
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("duplicate JSON key: schema_version", result.stderr)
+        self.assertNotIn("Traceback", result.stderr)
+        self.assertNotIn("PASS", result.stdout)
+
 
 if __name__ == "__main__":
     unittest.main()

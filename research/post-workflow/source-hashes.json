@@ -680,14 +680,15 @@
     {
       "path": "tools/check_package.py",
       "staged_path": "research/post-workflow/tools/check_package.py",
-      "sha256": "1b5e401299c2b06fcd675142af95430909e2fd61441cb892ae4b8d5755ebb12e",
-      "source_sha256": "102bfff67a50ebf6bdf215f8c5e7070cbf998c63c6197a6ca3a63d2fbaf74530",
+      "sha256": "fc61592a1286fb7274ebede325ef97903e6f0b52a93307d47dc05e81a7ea1513",
+      "source_sha256": "3b098c14881106f1a14d792e46f3d8cb225eac2d4fe60db36a00025befed5c03",
       "public_base_sha256": "5c31503d6aeb357020bb378efa387615c3bc14255e36237a65e624857ab8459c",
       "provenance": "public_source_adaptation",
       "adaptations": [
         "plain_language",
         "cli_help"
-      ]
+      ],
+      "source_revision": "cdb9cc639d8a94abc5010751d86d55f379c0e265"
     },
     {
       "path": "tools/check_profile_conventions.py",
@@ -711,10 +712,11 @@
     {
       "path": "tools/check_reader_copy.py",
       "staged_path": "research/post-workflow/tools/check_reader_copy.py",
-      "sha256": "8b5b9fa8ae32e04a1adb995753ac087219197f4512a982e558780ace342449db",
-      "source_sha256": "8b5b9fa8ae32e04a1adb995753ac087219197f4512a982e558780ace342449db",
+      "sha256": "cc3261743c4ba0e081b920653bf38b42e197ca4e3ccf08dec90658c5116c0a11",
+      "source_sha256": "cc3261743c4ba0e081b920653bf38b42e197ca4e3ccf08dec90658c5116c0a11",
       "public_base_sha256": "8b5b9fa8ae32e04a1adb995753ac087219197f4512a982e558780ace342449db",
-      "provenance": "verbatim_source"
+      "provenance": "verbatim_source",
+      "source_revision": "cdb9cc639d8a94abc5010751d86d55f379c0e265"
     },
     {
       "path": "tools/check_reader_visuals.py",
@@ -793,8 +795,8 @@
     {
       "path": "tools/test_check_package.py",
       "staged_path": "research/post-workflow/tools/test_check_package.py",
-      "sha256": "81d23d81018fca72da0267e4593fa69b6a29ffc571477deecc007b18f6e99f24",
-      "source_sha256": "445c93c60cf7a1eb2b3e216512ba7ba50f1137d41d85fef4eaf5409795207ce3",
+      "sha256": "c9d4430915bf0fab484fdc1c8826424582737eddeec2439156930ab89a165f3e",
+      "source_sha256": "2b290542dca89b5ecfba4da1bcd8d1f9d5e3c0ae6ebc208a60462088881ddeba",
       "public_base_sha256": "eeaf6a492d0795e079fe3f473ddeb1bf673490011f9ceb25e84b343e83a37531",
       "provenance": "public_source_adaptation",
       "adaptations": [
@@ -803,7 +805,8 @@
         "cli_help_regression",
         "nested_duplicate_key_regression",
         "duplicate_key_cli_regression"
-      ]
+      ],
+      "source_revision": "cdb9cc639d8a94abc5010751d86d55f379c0e265"
     },
     {
       "path": "tools/test_check_profile_conventions.py",
@@ -824,10 +827,11 @@
     {
       "path": "tools/test_check_reader_copy.py",
       "staged_path": "research/post-workflow/tools/test_check_reader_copy.py",
-      "sha256": "70632ec2aade29f3336c450074b8e7ee2181e520353f3ad6742c076c9c82dcb3",
-      "source_sha256": "70632ec2aade29f3336c450074b8e7ee2181e520353f3ad6742c076c9c82dcb3",
+      "sha256": "0c01a6ce0300c6c7911f0cd763fa1a3a174ec4292fcda8cb713a10dc28b94f99",
+      "source_sha256": "0c01a6ce0300c6c7911f0cd763fa1a3a174ec4292fcda8cb713a10dc28b94f99",
       "public_base_sha256": "70632ec2aade29f3336c450074b8e7ee2181e520353f3ad6742c076c9c82dcb3",
-      "provenance": "verbatim_source"
+      "provenance": "verbatim_source",
+      "source_revision": "cdb9cc639d8a94abc5010751d86d55f379c0e265"
     },
     {
       "path": "tools/test_check_reader_visuals.py",

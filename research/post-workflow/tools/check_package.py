@@ -21,7 +21,7 @@ from urllib.parse import urlsplit
 if __package__:
     from .check_diagnostic_finding import validate_declared_diagnostic_finding
     from .check_profile_conventions import validate_profile_conventions
-    from .check_social_preview import validate_social_preview
+    from .check_social_preview import _identifier, _platform_posts, validate_social_preview
     from .check_public_projection import validate_public_projection
     from .check_reader_copy import validate_reader_copy
     from .check_reader_visuals import validate_reader_visuals
@@ -31,7 +31,7 @@ if __package__:
 else:
     from check_diagnostic_finding import validate_declared_diagnostic_finding
     from check_profile_conventions import validate_profile_conventions
-    from check_social_preview import validate_social_preview
+    from check_social_preview import _identifier, _platform_posts, validate_social_preview
     from check_public_projection import validate_public_projection
     from check_reader_copy import validate_reader_copy
     from check_reader_visuals import validate_reader_visuals
@@ -139,17 +139,24 @@ def load_json(
     path: Path,
     errors: list[str],
     label: str,
+    *,
+    allow_list: bool = False,
 ) -> Any | None:
     if not path.is_file():
         errors.append(f"missing {label}: {path}")
         return None
     try:
         raw = path.read_text(encoding="utf-8")
-        return json.loads(
+        value = json.loads(
             raw,
             object_pairs_hook=reject_duplicate_json_keys,
             parse_constant=reject_nonfinite_json_constant,
         )
+        if not isinstance(value, dict) and not (allow_list and isinstance(value, list)):
+            shape = "a JSON object or list" if allow_list else "a JSON object"
+            errors.append(f"{label} must be {shape}")
+            return None
+        return value
     except (OSError, UnicodeError, ValueError) as exc:
         errors.append(f"invalid {label} {path}: {exc}")
         return None
@@ -253,8 +260,10 @@ def validate_manifest(data: Any, errors: list[str]) -> tuple[list[str], str | No
     if type(schema_version) is not int or schema_version not in {1, 2}:
         errors.append("manifest.schema_version must equal 1 or 2")
         schema_version = None
-    if data.get("content_state") not in {"hypothetical", "measured", "source_reported"}:
+    if data.get("content_state") not in ("hypothetical", "measured", "source_reported"):
         errors.append("manifest.content_state must be 'hypothetical', 'measured', or 'source_reported'")
+    if "review_status" in data and (not isinstance(data["review_status"], str) or not data["review_status"].strip()):
+        errors.append("manifest.review_status must be a nonempty string")
     if data.get("concepts") != CONCEPTS:
         errors.append(f"manifest.concepts must equal {CONCEPTS!r}")
     if data.get("cover_stem") != COVER:
@@ -520,8 +529,12 @@ def validate_typefully(package: Path, errors: list[str], *, extended_workflow: b
     for platform, relative in SOCIAL_FILES.items():
         path = require_file(package, relative, errors)
         if path.is_file():
-            exact = path.read_text(encoding="utf-8")
-            if texts.get(platform) != exact:
+            # Preserve interior line endings. Only one final LF may delimit the file.
+            with path.open(encoding="utf-8", newline="") as stream:
+                exact = stream.read()
+            saved = texts.get(platform)
+            file_terminator = exact.endswith("\n") and saved == exact[:-1]
+            if saved != exact and not file_terminator:
                 errors.append(f"Typefully receipt texts.{platform} does not exactly match {relative}")
 
 
@@ -593,7 +606,7 @@ def validate_source_reported(package: Path, errors: list[str]) -> None:
     if not isinstance(source_ref, dict) or source_ref.get("path") != "sources.json":
         errors.append("source-reported receipt sources must bind sources.json")
     validate_hashed_file(package, source_ref, "source-reported receipt sources", errors)
-    sources = load_json(package / "sources.json", errors, "source definitions")
+    sources = load_json(package / "sources.json", errors, "source definitions", allow_list=True)
     definitions = sources.get("sources") if isinstance(sources, dict) else None
     if not isinstance(definitions, list) or not definitions:
         errors.append("source definitions sources must be a nonempty list")
@@ -604,7 +617,10 @@ def validate_source_reported(package: Path, errors: list[str]) -> None:
             errors.append(f"source definitions sources[{index}] must be an object")
             continue
         source_id = item.get("id")
-        if item.get("type") not in {"primary_paper", "primary_author_article", "official_results"}:
+        if not isinstance(item.get("type"), str):
+            errors.append(f"source definitions sources[{index}].type must be a string")
+            continue
+        if item["type"] not in ("primary_paper", "primary_author_article", "official_results"):
             continue
         if not isinstance(source_id, str) or not source_id.strip():
             errors.append(f"source definitions sources[{index}].id must be a nonempty string")
@@ -687,7 +703,7 @@ def validate_source_explanation_basis(
         errors.append(f"{label}.sources must bind sources.json")
     else:
         validate_hashed_file(package, source_ref, f"{label}.sources", errors)
-    definitions = load_json(package / "sources.json", errors, "source-explanation sources")
+    definitions = load_json(package / "sources.json", errors, "source-explanation sources", allow_list=True)
     definitions = definitions.get("sources") if isinstance(definitions, dict) else definitions
     ids = basis.get("source_ids")
     if not isinstance(ids, list) or not ids or not all(isinstance(item, str) and item.strip() for item in ids):
@@ -757,6 +773,88 @@ def validate_state(
             errors.append("source-reported package GPU stage must state that the local workload was not run")
 
 
+def validate_final_social_preview(package: Path, manifest: dict[str, Any], errors: list[str]) -> None:
+    """Bind the declared rendered preview to the final saved draft and media."""
+    declaration = manifest.get("reader_visuals")
+    if "reader_visuals" in manifest and not isinstance(declaration, dict):
+        errors.append("manifest.reader_visuals must be a JSON object")
+        return
+    if isinstance(declaration, dict) and "preview_receipt" in declaration:
+        relative = validate_hashed_file(package, declaration["preview_receipt"],
+                                       "manifest.reader_visuals.preview_receipt", errors)
+        if relative is None:
+            return
+        preview_path = package / relative
+        errors.extend(validate_social_preview(package, Path(relative)))
+    else:
+        metadata = package / "_internal" if (package / "_internal").is_dir() else package
+        preview_path = metadata / "social/profile-preview.json"
+        errors.extend(validate_social_preview(package))
+        if not preview_path.exists():
+            return
+    if not preview_path.resolve().is_relative_to(package):
+        errors.append("profile preview receipt must stay within the package")
+        return
+    preview = load_json(preview_path, errors, "profile preview receipt")
+    workflow = load_json(package / WORKFLOW_PATH, errors, "final Typefully workflow")
+    receipt = load_json(package / TYPEFULLY_PATH, errors, "final Typefully receipt")
+    if not all(isinstance(value, dict) for value in (preview, workflow, receipt)):
+        return
+    final_relative = validate_hashed_file(package, workflow.get("raw_readback"), "final Typefully raw_readback", errors)
+    if final_relative is None:
+        return
+    final = load_json(package / final_relative, errors, "final Typefully raw_readback")
+    if not isinstance(final, dict):
+        return
+    platforms = preview.get("platforms")
+    if not isinstance(platforms, dict):
+        errors.append("profile preview requires x and linkedin platforms")
+        return
+
+    def ordered_media(posts: Any, label: str) -> list[list[str]] | None:
+        if not isinstance(posts, list) or not posts:
+            errors.append(f"{label}: posts must be a nonempty list")
+            return None
+        ordered = []
+        for index, post in enumerate(posts):
+            ids = post.get("media_ids") if isinstance(post, dict) else None
+            if not isinstance(ids, list) or any(_identifier(value) is None for value in ids):
+                errors.append(f"{label}: posts[{index}].media_ids must be a list of IDs")
+                return None
+            ordered.append([str(value) for value in ids])
+        return ordered
+
+    for platform in ("x", "linkedin"):
+        label = f"profile preview {platform}"
+        spec = platforms.get(platform)
+        if not isinstance(spec, dict):
+            errors.append(f"{label}: requires platform receipt")
+            continue
+        draft_id = _identifier(spec.get("draft_id"))
+        final_id = _identifier(workflow.get("draft_id"))
+        if draft_id is None or final_id is None or draft_id != final_id or draft_id != _identifier(receipt.get("draft_id")):
+            errors.append(f"{label}: draft_id must match final workflow and Typefully receipt")
+            continue
+        relative = validate_hashed_file(package, spec.get("raw_readback"), f"{label} raw_readback", errors)
+        if relative is None:
+            continue
+        saved = load_json(package / relative, errors, f"{label} raw_readback")
+        saved_posts = list(_platform_posts(saved, draft_id, platform))
+        final_posts = list(_platform_posts(final, final_id, platform))
+        if len(saved_posts) != 1 or len(final_posts) != 1:
+            errors.append(f"{label}: requires one unambiguous matching draft and platform in preview and final readbacks")
+            continue
+        preview_ids = ordered_media(saved_posts[0][1], label)
+        final_ids = ordered_media(final_posts[0][1], f"{label} final readback")
+        if preview_ids is not None and final_ids is not None and preview_ids != final_ids:
+            errors.append(f"{label}: ordered per-post media_ids differ from final readback")
+        sources = spec.get("attachment_sources")
+        if final_ids is not None:
+            for media_id in dict.fromkeys(mid for ids in final_ids for mid in ids):
+                if not isinstance(sources, dict) or media_id not in sources:
+                    errors.append(f"{label}: final media_id {media_id} is missing from attachment_sources")
+
+
 def validate_package(package: Path) -> list[str]:
     package = package.resolve()
     errors: list[str] = []
@@ -764,7 +862,7 @@ def validate_package(package: Path) -> list[str]:
         return [f"package directory does not exist: {package}"]
     for relative in REQUIRED_FILES:
         require_file(package, relative, errors)
-    load_json(package / "sources.json", errors, "sources JSON")
+    load_json(package / "sources.json", errors, "sources JSON", allow_list=True)
 
     manifest = load_json(package / "manifest.json", errors, "manifest")
     if manifest is None:
@@ -775,7 +873,7 @@ def validate_package(package: Path) -> list[str]:
     source_comment_required = schema_version == 2
     if source_comment_required:
         require_file(package, SOURCE_COMMENT_PATH, errors)
-    if isinstance(manifest, dict) and manifest.get("review_status") in {"PENDING", "REVIEW_BLOCKED"}:
+    if isinstance(manifest, dict) and manifest.get("review_status") in ("PENDING", "REVIEW_BLOCKED"):
         errors.append("required technical review is " + manifest["review_status"] + ". Private preview only")
     stems = [*CONCEPTS, COVER, *audience_stems]
     validate_public_copy(package, stems, errors)
@@ -887,7 +985,7 @@ def validate_package(package: Path) -> list[str]:
     image_basis = manifest.get("selected_image_basis") if isinstance(manifest, dict) else None
     validate_state(package, state, selected, errors, image_basis)
     errors.extend(validate_profile_conventions(package))
-    errors.extend(validate_social_preview(package))
+    validate_final_social_preview(package, manifest, errors)
     if isinstance(manifest, dict) and manifest.get("reader_visuals_required") is True and not isinstance(manifest.get("reader_visuals"), dict):
         errors.append("manifest.reader_visuals_required needs a current reader_visuals declaration and review")
     errors.extend(validate_reader_visuals(package))
