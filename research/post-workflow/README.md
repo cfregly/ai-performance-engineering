@@ -165,6 +165,9 @@ print("PASS snapshot hashes")
 PY
 ```
 
-Every performance post and related reply still needs runnable code, inputs,
-and retained observed results in this repository. Source checks and synthetic
-fixtures cannot substitute for execution evidence.
+For a post that reports measured performance from this repository, retain the
+runnable implementation, inputs and observed results. Commentary on an external
+source may use cited source results and charts without reader code. Add public
+code only when it provides independently useful behavior; arithmetic-only helpers
+and source rehashes do not qualify. Source checks and synthetic fixtures cannot
+establish measured performance.
