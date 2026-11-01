@@ -471,6 +471,25 @@ def render(output,asset_context=None):
     return records,sorted(pending)
 
 
+
+def verify_current(output, first, second, paths):
+    """Report all current reference artifact mismatches without overwriting files."""
+    mismatches=[]
+    for rel in sorted(paths,key=lambda s:(0 if s.endswith('.svg') else 1 if s.endswith('.txt') else 2,s)):
+        expected_bytes=(first/rel).read_bytes()
+        repeated=second/rel
+        if not repeated.is_file():
+            mismatches.append('Second render output missing: '+rel)
+        elif expected_bytes!=repeated.read_bytes():
+            mismatches.append('Non-deterministic output: '+rel)
+        current=output/rel
+        if not current.is_file():
+            mismatches.append('Current output missing: '+rel)
+        elif current.read_bytes()!=expected_bytes:
+            mismatches.append('Current output drift: '+rel+(' (PNG-only drift may be rendering-stack dependent)' if rel.endswith('.png') else ''))
+    require(not mismatches,'Reference artifact verification failed:\n- '+'\n- '.join(mismatches))
+
+
 def main():
     p=argparse.ArgumentParser(description=__doc__);p.add_argument('--output-dir',type=Path,default=ROOT);p.add_argument('--check',action='store_true');p.add_argument('--receipt',type=Path);a=p.parse_args()
     if a.receipt:a.receipt.unlink(missing_ok=True)
@@ -480,10 +499,7 @@ def main():
         if a.check:
             with tempfile.TemporaryDirectory(prefix='attention-reference-check-') as tmp:
                 first,second=Path(tmp)/'first',Path(tmp)/'second';records,paths=render(first,a.output_dir);render(second,a.output_dir)
-                for rel in sorted(paths,key=lambda s:(0 if s.endswith('.svg') else 1 if s.endswith('.txt') else 2,s)):
-                    require((first/rel).read_bytes()==(second/rel).read_bytes(),'Non-deterministic output: '+rel)
-                    require((a.output_dir/rel).is_file(),'Current output missing: '+rel)
-                    require((a.output_dir/rel).read_bytes()==(first/rel).read_bytes(),'Current output drift: '+rel+(' (PNG-only drift may be rendering-stack dependent)' if rel.endswith('.png') else ''))
+                verify_current(a.output_dir,first,second,paths)
         else:records,paths=render(a.output_dir)
         receipt={'status':'PASS','mode':'read-only-check' if a.check else 'render','records':records,'outputs':paths,'inputs':{'results_sha256':EXPECTED_RESULTS,'font_sha256':EXPECTED_FONT},'dependencies':{tool:run([tool,'--version']).decode().strip() for tool in ['rsvg-convert','magick']},'limits':['Qualitative diagrams do not encode unknown byte quantities','Local preview only, native platform proof and current independent reviews remain required','No new measurement or analytical result']}
         atomic_json(a.receipt,receipt);print(json.dumps({'status':'PASS','diagrams':len(records),'outputs':len(paths)}))

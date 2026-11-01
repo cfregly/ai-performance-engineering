@@ -28,5 +28,7 @@
   ],
   "font_license": "SIL Open Font License 1.1, retained in images/attention-scenes/OFL.txt.",
   "artwork": "Only the cropped illustration regions are conceptual. The input cards also contain earlier labels and proportional bars, which are outside those scene crops.",
-  "analytical_data": "Synthetic analytical example, not runtime measurements."
+  "analytical_data": "Synthetic analytical example, not runtime measurements.",
+  "artwork_origin": "Retained project card artwork exported from Gamma, separate from the cited papers. Source-card exports are preserved byte-for-byte; current figure labels and quantitative geometry are produced by the retained renderers.",
+  "artwork_reuse": "No artwork-specific reuse license is granted by this input record."
 }

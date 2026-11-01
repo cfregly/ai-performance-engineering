@@ -312,6 +312,8 @@ def validate_svg(slide: Slide, svg: bytes, env: dict) -> dict:
         width, height, dx, dy = glyph_box(actual, env)
         x=actual['x']; anchor=actual['anchor']
         left=x if anchor=='start' else x-width if anchor=='end' else x-width/2
+        # glyph_box measures ink in a sample whose text origin is x=100.
+        left += dx - 100
         right=left+width
         require(left>=80 and right<=1120,
                 f'Text outside 80px safe margin: {row["text"]} ({left}..{right})')
@@ -512,21 +514,32 @@ def render(output: Path, data: dict, asset_context: Path | None = None) -> dict:
 
 
 def verify_current(output: Path, expected: Path, second: Path) -> list[dict]:
-    """Check the current selected destination, without overwriting stale files."""
+    """Report all current selected artifact mismatches without overwriting files."""
     verified=[]
-    for candidate in sorted(expected.iterdir(), key=lambda p: ({'.svg': 0, '.txt': 1, '.png': 2}.get(p.suffix, 3), p.name)):
-        if candidate.suffix not in ('.svg','.png','.txt'):
-            continue
+    mismatches=[]
+    candidates=[candidate for candidate in sorted(expected.iterdir(), key=lambda p: ({'.svg': 0, '.txt': 1, '.png': 2}.get(p.suffix, 3), p.name))
+                if candidate.suffix in ('.svg','.png','.txt')]
+    for candidate in candidates:
         name=candidate.name
-        require(candidate.read_bytes()==(second/name).read_bytes(),
-                f'Non-deterministic output: {name}')
+        expected_bytes=candidate.read_bytes()
+        repeated=second/name
+        if not repeated.is_file():
+            mismatches.append(f'Second render output missing: {repeated}')
+        elif expected_bytes!=repeated.read_bytes():
+            mismatches.append(f'Non-deterministic output: {name}')
         current=output/name
-        require(current.is_file(), f'Canonical output missing: {current}')
-        require(current.read_bytes()==candidate.read_bytes(),
-                f'Canonical output is stale or modified: {current}' +
-                (' (PNG-only drift may reflect a different rendering stack)' if current.suffix == '.png' else ''))
-        verified.append({'path':str(current),'sha256':sha(current.read_bytes())})
-    require(len(verified)==len(STEMS)*5,'Output inventory incomplete')
+        if not current.is_file():
+            mismatches.append(f'Canonical output missing: {current}')
+        else:
+            current_bytes=current.read_bytes()
+            if current_bytes!=expected_bytes:
+                mismatches.append(f'Canonical output is stale or modified: {current}' +
+                                  (' (PNG-only drift may reflect a different rendering stack)' if current.suffix == '.png' else ''))
+            else:
+                verified.append({'path':str(current),'sha256':sha(current_bytes)})
+    if len(candidates)!=len(STEMS)*5:
+        mismatches.append(f'Output inventory incomplete: expected {len(STEMS)*5}, found {len(candidates)}')
+    require(not mismatches, 'Selected artifact verification failed:\n- ' + '\n- '.join(mismatches))
     return verified
 
 

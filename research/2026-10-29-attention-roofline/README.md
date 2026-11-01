@@ -83,7 +83,7 @@ These diagrams follow the same synthetic workload, phase contract and analytical
 
 ![The same 1,856 MiB (1.946 GB) gives calculated floors at least 0.243 ms at assumed 8 TB/s and 0.304 ms at assumed 6.4 TB/s, against a 0.200 ms target. The zero-based time bars share one scale.](images/scientific/05-independent-budgets.png)
 
-![Three reduction designs: keep each producer’s output separate, combine smaller batches, or accumulate directly. Each changes scratch, coordination and synchronization responsibilities.](images/scientific/06-reduction-comparison.png)
+![Three reduction designs: keep each producer's output separate, combine smaller batches, or accumulate directly. Each changes scratch, coordination and synchronization responsibilities.](images/scientific/06-reduction-comparison.png)
 
 ### Concept cards
 
@@ -99,7 +99,7 @@ These diagrams follow the same synthetic workload, phase contract and analytical
 
 [Landscape card](images/aud-curious.png) · [Editable square diagram](images/aud-curious-square.svg) · [Editable landscape diagram](images/aud-curious.svg)
 
-![Keep each producer’s output separate for a simpler schedule, or combine smaller batches to reduce scratch while adding coordination.](images/aud-ml-engineer-square.png)
+![Keep each producer's output separate for a simpler schedule, or combine smaller batches to reduce scratch while adding coordination.](images/aud-ml-engineer-square.png)
 
 [Landscape card](images/aud-ml-engineer.png) · [Editable square diagram](images/aud-ml-engineer-square.svg) · [Editable landscape diagram](images/aud-ml-engineer.svg)
 
@@ -107,7 +107,7 @@ These diagrams follow the same synthetic workload, phase contract and analytical
 
 [Landscape card](images/aud-performance-engineer.png) · [Editable square diagram](images/aud-performance-engineer-square.svg) · [Editable landscape diagram](images/aud-performance-engineer.svg)
 
-![Qualitative buffer lifetimes overlap. Add the live buffers’ bytes during overlap and reuse storage only after its last reader.](images/aud-kernel-engineer-square.png)
+![Qualitative buffer lifetimes overlap. Add the live buffers' bytes during overlap and reuse storage only after its last reader.](images/aud-kernel-engineer-square.png)
 
 [Landscape card](images/aud-kernel-engineer.png) · [Editable square diagram](images/aud-kernel-engineer-square.svg) · [Editable landscape diagram](images/aud-kernel-engineer.svg)
 
@@ -144,6 +144,8 @@ python3 code/render_attention_figures.py --check --receipt selected-check.json
 ```
 
 A successful check prints a JSON receipt with `status: PASS` and exits zero. With `--receipt selected-check.json`, it also writes that receipt. Without `--receipt`, no receipt file is written. The receipt starts at `INCOMPLETE`, so an abruptly killed run is not a PASS. The check regenerates into temporary storage and compares the retained files. It does not overwrite them. PNG byte equality depends on the rendering stack. To regenerate intentionally, omit `--check` or use `--output-dir` for a separate directory. This renders retained analytical values and performs no GPU experiment.
+
+SVGs written with `--output-dir` reference Inter in the retained `images/attention-scenes` folder. Keep that relative path intact when moving SVGs, or use the self-contained PNGs. The selected renderer writes individual output files as it finishes. After an interruption, rerun its `--check` command before using those files.
 
 <details>
 <summary>Artwork inputs and compact exports</summary>
@@ -186,11 +188,11 @@ The audience cards above also have landscape layouts. These retained landscape i
 
 ![Buffer lifetimes and storage reuse at 400 pixels](images/aud-kernel-engineer-400.png)
 
-![Qualitative buffer lifetimes overlap. Add the live buffers’ bytes during overlap and reuse storage only after its last reader.](images/aud-kernel-engineer.png)
+![Qualitative buffer lifetimes overlap. Add the live buffers' bytes during overlap and reuse storage only after its last reader.](images/aud-kernel-engineer.png)
 
 ![Materialize partials or combine smaller batches at 400 pixels](images/aud-ml-engineer-400.png)
 
-![Keep each producer’s output separate for a simpler schedule, or combine smaller batches to reduce scratch while adding coordination.](images/aud-ml-engineer.png)
+![Keep each producer's output separate for a simpler schedule, or combine smaller batches to reduce scratch while adding coordination.](images/aud-ml-engineer.png)
 
 ![Screen compute and traffic separately at 400 pixels](images/aud-performance-engineer-400.png)
 
@@ -207,5 +209,3 @@ The audience cards above also have landscape layouts. These retained landscape i
 </details>
 
 The three selected figures are also available as a [three-page document](images/Attention-three-cards.pdf). Its [composition record](images/Attention-three-cards.composition.json) identifies the source images and their placement.
-
-SVGs written with `--output-dir` reference Inter in the retained `images/attention-scenes` folder. Keep that relative path intact when moving SVGs, or use the self-contained PNGs. The selected renderer writes individual output files as it finishes. After an interruption, rerun its `--check` command before using those files.
