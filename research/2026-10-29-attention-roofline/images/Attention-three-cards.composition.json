@@ -1,15 +1,15 @@
 {
   "schema_version": 1,
   "kind": "lossless_square_image_pdf_composition",
-  "created_at": "2026-11-01T06:07:01.418421+00:00",
+  "created_at": "2026-11-01T07:55:23.104689+00:00",
   "document": {
     "path": "images/Attention-three-cards.pdf",
-    "sha256": "69a1c6b6a263fafc66c7e3f8ddd9c1100ce24d612454165025025415d97a03cc",
+    "sha256": "4ee8a2b9d23aa1026f62a1f58da5f66a5a6e3a04cd137512fee8472cfd66d632",
     "page_count": 3
   },
   "asset_index": {
     "path": "images/reader-card-index.json",
-    "sha256": "932a75935931b87b42298dbeccf5a65fea64e49b615ffa215a7b795b27299bc4"
+    "sha256": "e9756ed865cc7bf80207ca0ab9f3525401d2cf206187211544d93d36b22cf7f6"
   },
   "composition_receipt": "images/Attention-three-cards.composition.json",
   "page_size_points": {
@@ -39,11 +39,11 @@
       "title": "Transfers alone miss the target",
       "source_png": {
         "path": "images/scientific/04-target-rejection.png",
-        "sha256": "071fbf288a6dcf7318cd87a9775309752da257e1126924d8697c5fc1e5889cc7",
+        "sha256": "7b355acef5bb3aad711ff5f079e151199bfa662f56270a6c62924eb461376377",
         "width": 1200,
         "height": 1200
       },
-      "decoded_rgb_sha256": "bfd2ebba2bc4da71d57a84800892c73623e227d883c02380612b07ec2e92034e",
+      "decoded_rgb_sha256": "def83c6e84ae16e789a656ed1f3b52b4bbe67d9fb181d45982f95fdec77da7b5",
       "page_box_points": [
         0,
         0,
@@ -72,11 +72,11 @@
       "title": "Scratch becomes traffic",
       "source_png": {
         "path": "images/scientific/03-scratch-traffic.png",
-        "sha256": "4b1caf135c97f160d5c8facc98c84c9b765f0aae2291fdeb1258e1e9e322fda7",
+        "sha256": "dc712a6d538bda9bbea2d4fe4ba36917f7e94e5e5a31182332b3d8bed2714ba5",
         "width": 1200,
         "height": 1200
       },
-      "decoded_rgb_sha256": "e0f4c3655807d81008c9cddef8e79e4c6a727879d08c54391f4a1ca43b798f2e",
+      "decoded_rgb_sha256": "f687370efcafebf7aa7ed987cdb8d641d0c795c067849be95c5133363052b4bb",
       "page_box_points": [
         0,
         0,

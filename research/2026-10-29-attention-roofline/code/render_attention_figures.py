@@ -160,7 +160,9 @@ def slides(data: dict, asset_prefix: str = '../attention-scenes') -> list[Slide]
     a.text(a.title, 84, 112, 64, 700)
     a.text('Attention backward · one sequence,', 84, 182)
     a.text('one layer · one device · FP32 partials', 84, 246)
-    a.art('warehouse-source.png', (0, 730, 2400, 525), (84, 278, 1032, 226))
+    # The retained source has no visible floor below its parcels. A shorter
+    # aspect-matched strip leaves the first quantity clear of the clipped art.
+    a.art('warehouse-source.png', (0, 757.3255814, 2400, 497.6744186), (84, 278, 1032, 214))
     rows = [(1056, '1,056 MiB produced', 'blue'),
             (128, '≤128 MiB retained on chip', 'blue'),
             (1856, '≥1,856 MiB out + back', 'orange')]
@@ -171,8 +173,10 @@ def slides(data: dict, asset_prefix: str = '../attention-scenes') -> list[Slide]
     a.line(84, 837, 1116, 837, extra='data-quantitative-axis="MiB" data-axis-max="2048"')
     for value, label, anchor in ((0,'0','start'), (1024,'1,024','middle'), (2048,'2,048 MiB','end')):
         x = 84+1032*value/2048
+        a.parts.append(f'<g data-quantitative-tick="{value}" data-tick-unit="MiB">')
         a.line(x, 837, x, 849)
         a.text(label, x, 905, anchor=anchor)
+        a.parts.append('</g>')
     a.text('All production, then reduction.', 84, 977)
     a.text('≥928 MiB out + ≥928 MiB reread.', 84, 1041)
     a.text('No compression or recomputation.', 84, 1105)
@@ -181,7 +185,7 @@ def slides(data: dict, asset_prefix: str = '../attention-scenes') -> list[Slide]
     b.text(b.title, 84, 112, 60, 700)
     b.text('One layer · one device · FP32 results', 84, 182)
     b.text('Assumed 8 TB/s for reads + writes', 84, 246)
-    b.art('factory-source.png', (190, 750, 2016, 480), (84, 288, 1032, 246))
+    b.art('factory-source.png', (190, 772.883721, 2016, 457.116279), (84, 288, 1032, 234))
     floor = float(data['derivation']['hypothetical_bandwidth_floors_ms']['8'])
     for y, value, label, color in ((586,.2,'Target 0.200 ms','blue'),
                                   (732,floor,'Transfer floor ≥0.243 ms','orange')):
@@ -191,8 +195,10 @@ def slides(data: dict, asset_prefix: str = '../attention-scenes') -> list[Slide]
     b.line(84, 816, 1116, 816, extra='data-quantitative-axis="ms" data-axis-max="0.25"')
     for value, label, anchor in ((0,'0','start'),(.125,'0.125','middle'),(.25,'0.250 ms','end')):
         x=84+1032*value/.25
+        b.parts.append(f'<g data-quantitative-tick="{value}" data-tick-unit="ms">')
         b.line(x,816,x,828)
         b.text(label,x,884,anchor=anchor)
+        b.parts.append('</g>')
     b.text('Calculated: 1.946 GB ÷ 8 TB/s.',84,977)
     b.text('Transfers alone exceed this target.',84,1041)
     b.text('Compute and other traffic excluded.',84,1105)
@@ -301,25 +307,46 @@ def validate_svg(slide: Slide, svg: bytes, env: dict) -> dict:
         topology = {'endpoint_geometry_checked': True, 'node_count': len(nodes), 'edge_count': len(edges), 'exact_ids_and_directed_edges': True}
     texts=root.findall('.//s:text',ns)
     require(len(texts)==len(slide.labels), 'Label inventory mismatch')
+    text_bounds = {}
     for node,row in zip(texts,slide.labels):
         size=float(node.attrib['font-size'])
         require(node.attrib.get('font-family')=='Inter','Unexpected font family')
         require(size>=MIN_FONT,'Font below 52px')
         require(size*297/SIZE >= 12.87,'Essential label below 12.87px at actual 297px')
-        width = glyph_width(row, env)
-        x=row['x']; anchor=row['anchor']
+        actual = dict(row, text=node.text or '', x=float(node.attrib['x']), y=float(node.attrib['y']),
+                      font_px=size, weight=int(node.attrib['font-weight']), anchor=node.attrib['text-anchor'])
+        width, height, dx, dy = glyph_box(actual, env)
+        x=actual['x']; anchor=actual['anchor']
         left=x if anchor=='start' else x-width if anchor=='end' else x-width/2
         right=left+width
         require(left>=80 and right<=1120,
                 f'Text outside 80px safe margin: {row["text"]} ({left}..{right})')
-        require(row['y']-row['font_px']>=48 and row['y']+14<=1120,
+        require(actual['y']-actual['font_px']>=48 and actual['y']+14<=1120,
                 f'Text outside vertical safe area: {row["text"]}')
+        top = actual['y'] + dy - 160
+        text_bounds[actual['text']] = {'top': top, 'bottom': top+height}
+    spacing = None
+    if slide.name in STEMS[:2]:
+        art = root.findall('s:svg', ns)
+        require(len(art) == 1, 'Selected art band inventory changed')
+        band = art[0].attrib
+        crop = list(map(float, band['viewBox'].split()))
+        require(abs(crop[2]/crop[3]-float(band['width'])/float(band['height'])) < 1e-6,
+                'Selected art band must fill its crop without letterboxing')
+        labels = ['1,056 MiB produced', '≤128 MiB retained on chip', '≥1,856 MiB out + back'] if slide.name == STEMS[0] else ['Target 0.200 ms', 'Transfer floor ≥0.243 ms']
+        art_gap = text_bounds[labels[0]]['top']-(float(band['y'])+float(band['height']))
+        require(art_gap >= 24, 'Selected art/text clearance below 24 px')
+        bars = [node for node in root.iter() if 'data-bar-value' in node.attrib]
+        bar_gaps = [float(bar.attrib['y'])-text_bounds[label]['bottom'] for bar,label in zip(bars,labels)]
+        require(all(gap >= 10 for gap in bar_gaps), 'Selected label/bar clearance below 10 px')
+        spacing = {'art_to_first_label_px': art_gap, 'label_to_bar_px': bar_gaps}
     return {'text_elements':len(texts),'minimum_font_px':min(r['font_px'] for r in slide.labels),
             'minimum_at_297_px':min(r['font_px']*297/SIZE for r in slide.labels),
             'minimum_at_312_px':min(r['font_px']*312/SIZE for r in slide.labels),
             'safe_margin_checked_px':80,'labels':slide.labels,
             **({'topology': topology} if topology is not None else {}),
-            **({'quantitative_geometry': quantitative} if quantitative else {})}
+            **({'quantitative_geometry': quantitative} if quantitative else {}),
+            **({'selected_spacing': spacing} if spacing else {})}
 
 
 def validate_bar_geometry(name, root):
@@ -349,17 +376,40 @@ def validate_bar_geometry(name, root):
         require(actual['x'] == 84 and actual['y'] == y and actual['height'] == height
                 and abs(actual['width'] - 1032 * value / maximum) <= 1e-5,
                 'Emitted quantitative bar is not on its retained zero-based scale')
-    return {'emitted_rects_checked': len(bars), 'zero_origin_x': 84, 'plot_width': 1032, 'axis_max': maximum, 'unit': unit}
+    tick_values = [(0, '0'), (1024, '1,024'), (2048, '2,048 MiB')] if unit == 'MiB' else [(0, '0'), (.125, '0.125'), (.25, '0.250 ms')]
+    tick_y = 905 if unit == 'MiB' else 884
+    axis_y = 837 if unit == 'MiB' else 816
+    ticks = [node for node in root.iter() if 'data-quantitative-tick' in node.attrib]
+    require(len(ticks) == len(tick_values), 'Emitted quantitative tick inventory changed')
+    for tick, (value, text) in zip(ticks, tick_values):
+        require(tick.tag.endswith('g') and tick.attrib.get('data-tick-unit') == unit
+                and float(tick.attrib['data-quantitative-tick']) == value and len(tick) == 2,
+                'Emitted quantitative tick value or unit changed')
+        line, label = tick
+        x = 84 + 1032 * value / maximum
+        anchor = 'start' if value == 0 else 'end' if value == maximum else 'middle'
+        require(line.tag.endswith('line') and [float(line.attrib[k]) for k in ['x1', 'y1', 'x2', 'y2']] == [x, axis_y, x, axis_y+12],
+                'Emitted quantitative tick position differs from retained scale')
+        require(label.tag.endswith('text') and label.text == text and float(label.attrib['x']) == x
+                and float(label.attrib['y']) == tick_y and label.attrib.get('text-anchor') == anchor,
+                'Emitted quantitative tick label differs from retained scale')
+    return {'emitted_rects_checked': len(bars), 'emitted_ticks_checked': len(ticks), 'zero_origin_x': 84, 'plot_width': 1032, 'axis_max': maximum, 'unit': unit}
 
 
-def glyph_width(row: dict, env: dict) -> int:
+def glyph_box(row: dict, env: dict) -> tuple[int, int, int, int]:
     """Measure the actual Inter weight with the rendering stack, not a default face."""
     sample = (f'<svg xmlns="http://www.w3.org/2000/svg" width="4000" height="240">'
               f'<text x="100" y="160" font-family="Inter" font-size="{row["font_px"]}" '
               f'font-weight="{row["weight"]}">{escape(row["text"])}</text></svg>').encode()
     raster = run(['rsvg-convert', '--format', 'png'], input=sample, env=env)
-    return int(run(['magick', 'png:-', '-trim', '-format', '%w', 'info:'],
-                   input=raster, env=env).decode())
+    values = run(['magick', 'png:-', '-trim', '-format', '%w %h %X %Y', 'info:'],
+                 input=raster, env=env).decode().split()
+    require(len(values) == 4, 'Expected actual Inter glyph bounds')
+    return tuple(map(int, values))
+
+
+def glyph_width(row: dict, env: dict) -> int:
+    return glyph_box(row, env)[0]
 
 
 def validate_edge_geometry(root, ns):

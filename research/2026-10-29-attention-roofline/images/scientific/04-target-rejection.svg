@@ -5,18 +5,24 @@
 <text x="84" y="112" font-family="Inter" font-size="60" font-weight="700" text-anchor="start" fill="#202326">Transfers alone miss the target</text>
 <text x="84" y="182" font-family="Inter" font-size="52" font-weight="400" text-anchor="start" fill="#202326">One layer · one device · FP32 results</text>
 <text x="84" y="246" font-family="Inter" font-size="52" font-weight="400" text-anchor="start" fill="#202326">Assumed 8 TB/s for reads + writes</text>
-<svg x="84" y="288" width="1032" height="246" viewBox="190 750 2016 480" overflow="hidden" preserveAspectRatio="xMidYMid meet"><image width="2400" height="2400" xlink:href="../attention-scenes/factory-source.png"/></svg>
+<svg x="84" y="288" width="1032" height="234" viewBox="190 772.883721 2016 457.116279" overflow="hidden" preserveAspectRatio="xMidYMid meet"><image width="2400" height="2400" xlink:href="../attention-scenes/factory-source.png"/></svg>
 <text x="84" y="586" font-family="Inter" font-size="52" font-weight="600" text-anchor="start" fill="#202326">Target 0.200 ms</text>
 <rect x="84.000000" y="608.000000" width="825.600000" height="36.000000" fill="#3478BA" data-bar-value="0.2" data-bar-unit="ms" data-axis-max="0.25"/>
 <text x="84" y="732" font-family="Inter" font-size="52" font-weight="600" text-anchor="start" fill="#202326">Transfer floor ≥0.243 ms</text>
 <rect x="84.000000" y="754.000000" width="1004.217041" height="36.000000" fill="#E87823" data-bar-value="0.243269632" data-bar-unit="ms" data-axis-max="0.25"/>
 <line x1="84" y1="816" x2="1116" y2="816" stroke="#202326" stroke-width="3" data-quantitative-axis="ms" data-axis-max="0.25"/>
+<g data-quantitative-tick="0" data-tick-unit="ms">
 <line x1="84.0" y1="816" x2="84.0" y2="828" stroke="#202326" stroke-width="3" />
 <text x="84.0" y="884" font-family="Inter" font-size="52" font-weight="400" text-anchor="start" fill="#202326">0</text>
+</g>
+<g data-quantitative-tick="0.125" data-tick-unit="ms">
 <line x1="600.0" y1="816" x2="600.0" y2="828" stroke="#202326" stroke-width="3" />
 <text x="600.0" y="884" font-family="Inter" font-size="52" font-weight="400" text-anchor="middle" fill="#202326">0.125</text>
+</g>
+<g data-quantitative-tick="0.25" data-tick-unit="ms">
 <line x1="1116.0" y1="816" x2="1116.0" y2="828" stroke="#202326" stroke-width="3" />
 <text x="1116.0" y="884" font-family="Inter" font-size="52" font-weight="400" text-anchor="end" fill="#202326">0.250 ms</text>
+</g>
 <text x="84" y="977" font-family="Inter" font-size="52" font-weight="400" text-anchor="start" fill="#202326">Calculated: 1.946 GB ÷ 8 TB/s.</text>
 <text x="84" y="1041" font-family="Inter" font-size="52" font-weight="400" text-anchor="start" fill="#202326">Transfers alone exceed this target.</text>
 <text x="84" y="1105" font-family="Inter" font-size="52" font-weight="400" text-anchor="start" fill="#202326">Compute and other traffic excluded.</text>

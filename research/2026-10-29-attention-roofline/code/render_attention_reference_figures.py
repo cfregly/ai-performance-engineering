@@ -44,7 +44,7 @@ def font_env(temp):
 
 class Diagram:
     def __init__(self,stem,title,w=1080,h=1080):
-        self.stem,self.title,self.w,self.h=stem,title,w,h;self.labels=[];self.edges=[];self.bars=[];self.lines=[];self.nodes={};self.obstacles=[]
+        self.stem,self.title,self.w,self.h=stem,title,w,h;self.labels=[];self.edges=[];self.bars=[];self.lines=[];self.nodes={}
         self.parts=[f'<svg xmlns="http://www.w3.org/2000/svg" width="{w}" height="{h}" viewBox="0 0 {w} {h}"><title>{escape(title)}</title>',f'<style>@font-face{{font-family:Inter;src:url("__RETAINED_INTER_FONT__") format("truetype");font-weight:100 900}}</style>',f'<rect width="{w}" height="{h}" fill="{C["background"]}"/>']
     def text(self,t,x,y,size=None,weight=400,color='ink',anchor='start'):
         size=size or (64 if self.w==1600 else 48 if self.w==1080 else 52)
@@ -52,7 +52,6 @@ class Diagram:
         self.parts.append(f'<text x="{x}" y="{y}" font-family="Inter" font-size="{size}" font-weight="{weight}" text-anchor="{anchor}" fill="{C[color]}">{escape(t)}</text>')
     def rect(self,x,y,w,h,color='background',stroke='ink',extra=''):
         self.parts.append(f'<rect x="{x}" y="{y}" width="{w}" height="{h}" fill="{C[color]}" stroke="{C[stroke]}" stroke-width="3" {extra}/>')
-        if color != 'background':self.obstacles.append((x,y,x+w,y+h))
     def node(self,identifier,x,y,w,h):
         require(identifier not in self.nodes,'Duplicate route node')
         self.nodes[identifier]=(x,y,x+w,y+h)
@@ -206,7 +205,7 @@ def audience(kind,wide):
             d.text('Do not add overlapping floors.',72,850);d.text('Dependencies may make',72,935);d.text('real time longer than both.',72,1005)
     elif kind=='kernel-engineer':
         d.title_lines(['Add bytes while lifetimes overlap'] if wide else ['Add bytes while','lifetimes overlap'])
-        x0=370 if wide else 310;plot=1110 if wide else 690;y1=250 if wide else 370;y2=y1+150
+        x0=370 if wide else 310;plot=1110 if wide else 690;y1=230 if wide else 370;y2=y1+150
         d.text('Buffer A',left,y1+70,fs,600);d.text('Buffer B',left,y2+70,fs,600)
         # Qualitative timeline only: widths encode lifetime order, never byte size.
         d.rect(x0,y1,plot*.68,100,'blue','blue');d.rect(x0+plot*.4,y2,plot*.6,100,'orange','orange')
@@ -426,17 +425,17 @@ def validate(d,env,cache):
         for old,oldlabel in boxes:
             if abs(label['y']-oldlabel['y'])<1e-6:
                 gap=max(box[0]-old[2],old[0]-box[2])
-                require(gap>=.75*max(label['font_px'],oldlabel['font_px']),'Same-row text gutter below0.75em: '+label['text']+' / '+oldlabel['text'])
+                require(gap>=.75*max(label['font_px'],oldlabel['font_px']),'Same-row text gutter below 0.75 em: '+label['text']+' / '+oldlabel['text'])
         boxes.append((box,label))
     lines=[tuple(float(node.attrib[k]) for k in ['x1','y1','x2','y2','stroke-width']) for node in emitted.iter() if node.tag.endswith('line')]
     obstacles=[tuple(float(node.attrib[k]) for k in ['x','y','width','height']) for node in emitted.iter() if node.tag.endswith('rect') and node.attrib.get('fill') in [C['blue'],C['orange']]]
     outlines=outline_edges(emitted,d)
     for box,label in boxes:
-        for line in lines:require(segment_text_clearance(line,box)>=16,'Text/line clearance below16px: '+d.stem+': '+label['text'])
+        for line in lines:require(segment_text_clearance(line,box)>=16,'Text/line clearance below 16 px: '+d.stem+': '+label['text'])
         for edge in outlines:require(segment_text_clearance(edge,box)>=16,'Text/container padding or clearance below 16 px: '+d.stem+': '+label['text'])
         for x,y,width,height in obstacles:
             gap=math.hypot(max(x-box[2],box[0]-x-width,0),max(y-box[3],box[1]-y-height,0))-1.5
-            require(gap>=16,'Text/bar clearance below16px: '+d.stem+': '+label['text'])
+            require(gap>=16,'Text/bar clearance below 16 px: '+d.stem+': '+label['text'])
     if '02-operand' in d.stem:
         names={e['name'] for e in d.edges}
         require(names=={'HBM-to-SMEM','SMEM-to-HBM','SMEM-operands-to-MMA','MMA-writes-TMEM','MMA-reads-TMEM','TMEM-load-to-registers','register-store-to-TMEM'},'Operand route inventory changed')

@@ -207,3 +207,5 @@ The audience cards above also have landscape layouts. These retained landscape i
 </details>
 
 The three selected figures are also available as a [three-page document](images/Attention-three-cards.pdf). Its [composition record](images/Attention-three-cards.composition.json) identifies the source images and their placement.
+
+SVGs written with `--output-dir` reference Inter in the retained `images/attention-scenes` folder. Keep that relative path intact when moving SVGs, or use the self-contained PNGs. The selected renderer writes individual output files as it finishes. After an interruption, rerun its `--check` command before using those files.
