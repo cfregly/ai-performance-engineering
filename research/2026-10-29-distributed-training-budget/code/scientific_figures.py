@@ -134,6 +134,7 @@ class Figure:
 
     def image(self, name, x, y, width, height, crop=None):
         require(name in {'rack-traffic-scene.png', 'ordered-barrier-scene.png'}, f'Unsupported retained artwork: {name}')
+        require(not crop or name == 'ordered-barrier-scene.png', 'Only the retained barrier artwork has admitted crop dimensions')
         require(all(math.isfinite(v) for v in (x, y, width, height)) and width > 0 and height > 0, 'Invalid artwork rectangle')
         require(x >= SAFE and y >= SAFE and x + width <= SIZE - SAFE and y + height <= SIZE - SAFE, 'Artwork outside safe margins')
         self.image_boxes.append({'name': name, 'left': x, 'top': y, 'right': x + width, 'bottom': y + height, 'crop': crop})

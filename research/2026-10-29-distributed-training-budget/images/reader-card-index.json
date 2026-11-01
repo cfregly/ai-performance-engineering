@@ -23,7 +23,7 @@
     },
     {
       "index": 3,
-      "title": "Placement B: pair replicas within each rack",
+      "title": "Placement B: pair corresponding stages within racks",
       "selected": {
         "path": "images/scientific/14-topology-b.png",
         "sha256": "04c127947e139a886e3609aaee3e12c53b73bf13cc58807e1681198bc9ebfdc6",

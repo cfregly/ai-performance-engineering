@@ -1,6 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1080" viewBox="0 0 1080 1080" role="img"><title>Article figure without the original carousel corner number.</title>
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1080" viewBox="0 0 1080 1080" role="img"><title>Unit-service pipeline schedule. Blank slots are idle. Slots are not milliseconds. Idle legend uses the existing legend text scale.</title>
 <image href="../article-sources/aud-performance-engineer-square.png" x="0" y="0" width="1080" height="1080"/>
 <rect x="969" y="1021" width="17" height="21" fill="#FBFBF8"/>
-<rect x="785" y="919" width="208" height="59" fill="#FBFBF8"/>
-<text x="788.8888888888889" y="961.6666666666666" font-family="Inter" font-weight="400" font-size="32.888888888888886" fill="#202326">Blank: idle</text>
+<rect x="785" y="919" width="240" height="59" fill="#FBFBF8"/>
+<text x="788.8888888888889" y="961.6666666666666" font-family="Inter" font-weight="400" font-size="38" fill="#202326">Blank: idle</text>
 </svg>

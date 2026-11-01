@@ -9,7 +9,7 @@
   },
   "asset_index": {
     "path": "images/reader-card-index.json",
-    "sha256": "3b1766eeb7f5ccf1067ae8b896229952fb9ee53054b4dcde703a39d0b7526680"
+    "sha256": "bca84217b38cf4dad03d8116c925f24a9b87fa8c7db1696e26d092f03084643a"
   },
   "composition_receipt": "images/Placement-three-cards.composition.json",
   "page_size_points": {
@@ -102,7 +102,7 @@
     {
       "page_index": 3,
       "asset_index": 3,
-      "title": "Placement B: pair replicas within each rack",
+      "title": "Placement B: pair corresponding stages within racks",
       "source_png": {
         "path": "images/scientific/14-topology-b.png",
         "sha256": "04c127947e139a886e3609aaee3e12c53b73bf13cc58807e1681198bc9ebfdc6",

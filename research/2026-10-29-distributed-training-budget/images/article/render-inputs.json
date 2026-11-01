@@ -19,16 +19,16 @@
         [
           1004,
           765,
-          1178,
+          1205,
           815
         ]
       ],
       "blank_idle_legend": {
         "x": 1007.4074074074075,
         "baseline_y": 801.3888888888889,
-        "font_size": 27.407407407407405
+        "font_size": 31.666666666666668
       },
-      "description": "Unit-service pipeline schedule. Blank slots are idle. Slots are not milliseconds."
+      "description": "Unit-service pipeline schedule. Blank slots are idle. Slots are not milliseconds. Idle legend uses the existing legend text scale."
     },
     {
       "target": "images/aud-performance-engineer-square.png",
@@ -42,16 +42,16 @@
         [
           785,
           919,
-          993,
+          1025,
           978
         ]
       ],
       "blank_idle_legend": {
         "x": 788.8888888888889,
         "baseline_y": 961.6666666666666,
-        "font_size": 32.888888888888886
+        "font_size": 38
       },
-      "description": "Unit-service pipeline schedule. Blank slots are idle. Slots are not milliseconds."
+      "description": "Unit-service pipeline schedule. Blank slots are idle. Slots are not milliseconds. Idle legend uses the existing legend text scale."
     },
     {
       "target": "images/article/02-topology-a.png",
@@ -179,15 +179,15 @@
         [
           785,
           919,
-          993,
+          1025,
           978
         ]
       ],
-      "description": "Article figure without the original carousel corner number.",
+      "description": "Unit-service pipeline schedule. Blank slots are idle. Slots are not milliseconds. Idle legend uses the existing legend text scale.",
       "blank_idle_legend": {
         "x": 788.8888888888889,
         "baseline_y": 961.6666666666666,
-        "font_size": 32.888888888888886
+        "font_size": 38
       }
     },
     {
@@ -299,5 +299,16 @@
       "description": "Article figure without the original carousel corner number."
     }
   ],
-  "limits": "Original designed data pixels remain source raster evidence, not a claim that this wrapper reconstructs their chart geometry. Complete native diagram elements remain separately retained. Only isolated carousel badge or legend annotation regions change; every other source pixel must compare exactly."
+  "limits": "Original designed data pixels remain source raster evidence, not a claim that this wrapper reconstructs their chart geometry. Complete native diagram elements remain separately retained. Only isolated carousel badge or legend annotation regions change; every other source pixel must compare exactly.",
+  "derived_outputs": [
+    {
+      "target": "images/aud-performance-engineer-400.png",
+      "source": "images/aud-performance-engineer-square.png",
+      "dimensions": [
+        400,
+        400
+      ],
+      "resampling": "LANCZOS"
+    }
+  ]
 }

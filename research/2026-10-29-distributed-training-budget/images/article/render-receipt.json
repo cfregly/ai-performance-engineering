@@ -1,7 +1,7 @@
 {
   "kind": "PRESENTATION_ANNOTATION_REPAIR_ONLY",
-  "manifest_sha256": "c0a226ca45be9809a2a80c49e54d5e21824d7c75d27966fb34a3e0e9be97cb58",
-  "renderer_sha256": "c484d6319bce02a11a531f0f7888dbf7a721428609a4eab2611fa20fdab669c9",
+  "manifest_sha256": "1a043c53b376df529185ec4422e25de64ac5e835181f73a93fc68c0305d0ffb6",
+  "renderer_sha256": "848de1cec7401165475eb84cde49d19975e886592b2f2c77cceb24d10ef73b22",
   "font_sha256": "29160a80ff49ddcab2c97711247e08b1fab27a484a329ce8b813d820dc559031",
   "Pillow": "12.3.0",
   "rsvg_version": "rsvg-convert version 2.62.3",
@@ -12,20 +12,20 @@
       "target": "images/aud-performance-engineer.png",
       "source": "images/article-sources/aud-performance-engineer.png",
       "source_sha256": "ab421db741336f51da5c434f3ad8c267bdb8c16fa3d2201530ff10684f4b4372",
-      "png_sha256": "1922af6e6906eb9d4450c30c1297e9139e15767e829b3bc4c18729468d8033c7",
-      "svg_sha256": "ea3677100c19033d535302b2b59c6a6c7c45176319c7112633c78bae20aed9cb",
+      "png_sha256": "ad376a37e6a52aa2f58099cc60d9f01deda1f3c7f356aeeb73db3f2bdb9717c7",
+      "svg_sha256": "2ba54783a4dcdaec81ec6c10935edabf7bcba7a04a8b78b8dff80e2640b52228",
       "edits": [
         [
           1004,
           765,
-          1178,
+          1205,
           815
         ]
       ],
       "changed_pixel_bbox": [
         1009,
         767,
-        1131,
+        1146,
         808
       ],
       "outside_annotation_pixels_identical": true,
@@ -39,20 +39,20 @@
       "target": "images/aud-performance-engineer-square.png",
       "source": "images/article-sources/aud-performance-engineer-square.png",
       "source_sha256": "8c50cd2050539d7b5a87d73af480a7ad44a33c89e2151d5e8c40082626cbf3a3",
-      "png_sha256": "127a6a522c7d27ca5c9093813e26825468a369229ef07e3fea56bb25abb8f323",
-      "svg_sha256": "b0f61f7b0d446e9f2309cf19a0c8a1a98e5920eca94bbdca34cf29096c7c9832",
+      "png_sha256": "4cc6ed8197de87e02d467610791fc425cf54fa8a07d77bcb076d30d33db55505",
+      "svg_sha256": "1366c98d5377a2c1000552cae3aeff7fca5415b71488625676181079a196d9e5",
       "edits": [
         [
           785,
           919,
-          993,
+          1025,
           978
         ]
       ],
       "changed_pixel_bbox": [
         791,
         921,
-        933,
+        955,
         969
       ],
       "outside_annotation_pixels_identical": true,
@@ -228,8 +228,8 @@
       "target": "images/article/aud-performance-engineer-square.png",
       "source": "images/article-sources/aud-performance-engineer-square.png",
       "source_sha256": "8c50cd2050539d7b5a87d73af480a7ad44a33c89e2151d5e8c40082626cbf3a3",
-      "png_sha256": "a0348492cbbc8f6243d4424378e52eafda4f3acea5f6582495e5cace994a08b3",
-      "svg_sha256": "865067403543c008f202a9d392f6156fa39519ab903e8f5481515d7bff019919",
+      "png_sha256": "2f2796adaa24b46f6bd39ff076d41dbb6a6d30e7e85fc32551ebe225b34a01e0",
+      "svg_sha256": "0ddeb39a396e3d5192ddb75cc3e02fc43c103b15f312a794dc0d3e8ab5e22252",
       "edits": [
         [
           969,
@@ -240,7 +240,7 @@
         [
           785,
           919,
-          993,
+          1025,
           978
         ]
       ],
@@ -418,6 +418,19 @@
         1080
       ],
       "scientific_diagram_pixels_outside_annotation_identical": true
+    }
+  ],
+  "derived_outputs": [
+    {
+      "target": "images/aud-performance-engineer-400.png",
+      "source": "images/aud-performance-engineer-square.png",
+      "source_sha256": "4cc6ed8197de87e02d467610791fc425cf54fa8a07d77bcb076d30d33db55505",
+      "png_sha256": "e33e313db49fc4289f3be84129c83b6fb7f651d55bf6c8f6f4861c8f1b518188",
+      "dimensions": [
+        400,
+        400
+      ],
+      "resampling": "LANCZOS"
     }
   ]
 }

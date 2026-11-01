@@ -104,6 +104,8 @@ These are the complete reader cards for the same hypothetical construction. The 
 
 ![Place the whole training graph](images/article/02-topology-a.png)
 
+R0 and R1 are the two data replicas, one per rack in A. P0–P3 are their pipeline stages.
+
 ### Eight GPUs. Two execution views.
 
 ![Eight GPUs. Two execution views.](images/article/aud-curious-square.png)
@@ -148,9 +150,9 @@ These are the complete reader cards for the same hypothetical construction. The 
 
 ![Muon needs the whole matrix](images/article/aud-kernel-engineer-square.png)
 
-### Placement B: pair replicas within each rack
+### Placement B: pair corresponding stages within racks
 
-![Placement B: pair replicas within each rack](images/scientific/14-topology-b.png)
+![Placement B: pair corresponding stages within racks](images/scientific/14-topology-b.png)
 
 ### Placement moves rack traffic
 
@@ -169,7 +171,7 @@ These are the complete reader cards for the same hypothetical construction. The 
 
 The three selected figures above carry the complete captions, conditions and larger labels. A keeps each data replica in one rack. B pairs corresponding stages within racks. In the ordered-floor chart, blue is before clipping and orange after clipping.
 
-With Pillow and librsvg already installed, validate the selected SVG and PNG exports:
+With Pillow, librsvg and Fontconfig (`fc-match`) already installed, validate the selected SVG and PNG exports:
 
 ```sh
 python3 code/scientific_figures.py --check
@@ -187,7 +189,7 @@ The renderer reads retained calculations, artwork and Inter font assets. It perf
 Selected figure rebuilding was checked with Python 3.12.2, Pillow 11.3.0 and rsvg-convert 2.62.3. Exact PNG bytes depend on the rendering stack and retained Inter font. A PNG mismatch on another build can occur even when SVG and text agree. Inspect those sources before regenerating the PNG. Editable SVGs require their relative artwork assets.
 
 <details>
-<summary>Artwork inputs and compact exports</summary>
+<summary>Artwork input</summary>
 
 ![Conceptual rack-routing illustration cropped into the traffic comparison](images/scientific/rack-traffic-scene.png)
 
@@ -204,7 +206,7 @@ From this package root, check the retained annotation outputs:
 python3 code/article_figures.py --check
 ```
 
-This presentation check uses Pillow 12.3.0, rsvg-convert 2.62.3 and Fontconfig with `fc-match`. It resolves the packaged Inter Regular font. These presentation tools are separate from the standard-library analytical workbook and the selected-figure rendering stack above. To render a separate preview tree, use `python3 code/article_figures.py --write --output-root /tmp/main-article-figures`. This changes annotations only and performs no scientific calculation.
+The retained annotation outputs were generated with Pillow 12.3.0, rsvg-convert 2.62.3 and Fontconfig with `fc-match`. The check reports environment-version differences without failing when all source, SVG and PNG hashes still match. It resolves the packaged Inter Regular font. These presentation tools are separate from the standard-library analytical workbook and the selected-figure rendering stack above. To render a separate preview tree, use `python3 code/article_figures.py --write --output-root /tmp/main-article-figures`. A successful check prints `"status": "CHECKED"`, fifteen figures and one phone derivative. This changes annotations only and performs no scientific calculation.
 
 <details>
 <summary>Source artwork for article annotation rendering</summary>
@@ -225,10 +227,6 @@ The figures above use these retained inputs. Numbered deck images supply the und
 
 ![Full output-head work source artwork](images/aud-ml-engineer-square.png)
 
-![Pipeline schedule source artwork with the blank idle legend](images/aud-performance-engineer-square.png)
-
-![Landscape pipeline source artwork with the blank idle legend](images/aud-performance-engineer.png)
-
 ![Model-state allocation source artwork](images/aud-platform-operations-square.png)
 
 ![Live-allocation source artwork](images/b-square.png)
@@ -244,3 +242,15 @@ The figures above use these retained inputs. Numbered deck images supply the und
 ![Gradient-barrier source artwork](images/scientific/11-gradient-barrier.png)
 
 </details>
+
+### Corrected pipeline outputs
+
+These are annotation-renderer outputs, not the original source artwork. The square and landscape legends use the same text scale as their other legend labels. The phone export is derived from the corrected square.
+
+![Pipeline schedule with a blank-idle legend](images/aud-performance-engineer-square.png)
+
+![Landscape pipeline schedule with a blank-idle legend](images/aud-performance-engineer.png)
+
+The 400 px export below is produced from the corrected square by the same annotation renderer.
+
+![400 px pipeline phone export](images/aud-performance-engineer-400.png)
