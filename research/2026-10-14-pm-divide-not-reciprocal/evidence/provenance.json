@@ -180,11 +180,11 @@
     },
     {
       "path": "README.md",
-      "sha256": "77723ec6675f40c27bc0bedb00b3e5e7081d2c933f9d927afc8be86170168849"
+      "sha256": "1cb2f0dd21b2e8b8e3c4aedc4755c906fa40fc9f23af0e32253165e04349de7e"
     },
     {
       "path": "evidence/source-index.json",
-      "sha256": "60b7291c27e4d8b72a6554c2279ed8972cf7f0d170064381880db4b50360bc07"
+      "sha256": "58a1af4f5a60ab88a071b627a3a519825d6148eb31b42d0c087ef1a19b3d1a61"
     }
   ],
   "curation_scope": "Numerical count cohort and finite-input tolerance observation only. Ratios and percentages are labeled computed derivations. Original timing, profiler, instruction-count and unrelated experiment data are not reproduced.",
@@ -192,18 +192,18 @@
     "files": [
       {
         "path": "images/c-square.png",
-        "sha256": "74d2bd62e8f5068eba1256ad6c7185f77d41e842ee96de7836dadba90750bf42",
-        "bytes": 187814
+        "sha256": "3635042fc1d6159e69cb7474b9ed356d86ca601fab74411588d6a68118cc525b",
+        "bytes": 186912
       },
       {
         "path": "images/c-square.svg",
-        "sha256": "a7f86c417c85bcae497d3021475bce194d1660c15522b5a302e08192b3ed8991",
-        "bytes": 3094495
+        "sha256": "40bbaba9f02922423311ea5bef22749925bfbc54689ebbb86be15813f9179b08",
+        "bytes": 3094496
       },
       {
         "path": "images/c-square.txt",
-        "sha256": "70a495564a23bcfbe5dcfc320b53323ba8edd047eef7987cebe2d7a98bfe86ae",
-        "bytes": 421
+        "sha256": "70899f9bd93d20974b044446226aa1dff122a646882017f0dd7bd780d9bfddce",
+        "bytes": 422
       }
     ],
     "stamp_sha256": "f456e86072e455924bb45aca4500b27cf02d4210297c55d24179097700a946ec",
@@ -213,7 +213,8 @@
     "numerical_source": "evidence/numerical-census.json",
     "different": 1403693404,
     "inputs": 4211081216,
-    "same_derived": 2807387812
+    "same_derived": 2807387812,
+    "cohort_note": "Bit-pattern census in the stated finite float32 magnitude cohort, not a model-data distribution."
   },
   "source_licence_records": {
     "upstream_commit_inspected": "51e4939a3ff34a2d022c57b299e47927ee90fd3a",
@@ -231,6 +232,138 @@
     "new_source_licence_added": false,
     "rights_determination": "Not performed. This is a factual record of retained documentation, not a new approval gate or inferred grant."
   },
-  "public_reference_index": "source-index.json",
-  "relative_path_base": "package root"
+  "public_reference_index": "evidence/source-index.json",
+  "relative_path_base": "package root",
+  "public_artifact_hashes": [
+    {
+      "path": "README.md",
+      "sha256": "1cb2f0dd21b2e8b8e3c4aedc4755c906fa40fc9f23af0e32253165e04349de7e",
+      "bytes": 3097
+    },
+    {
+      "path": "code/README.md",
+      "sha256": "53f9e8d2e4b266c6a616c19058adeb5a96f25cc6bb116903a051bb89907dfe93",
+      "bytes": 13422
+    },
+    {
+      "path": "code/pyproject.toml",
+      "sha256": "ba9f01fbd8e431f077db36d3c51f3286f53c13adb993c2bc5b060e1bcd2f34da",
+      "bytes": 679
+    },
+    {
+      "path": "code/src/divide_not_reciprocal/__init__.py",
+      "sha256": "f5edac47fd16673d990951988577832ac95e7b23b299b6be42883ca7074832ce",
+      "bytes": 120
+    },
+    {
+      "path": "code/src/divide_not_reciprocal/__main__.py",
+      "sha256": "dbe873117e9e9f83cad2372e47cedceb73152642af7ae7a3c39585c30ce35b65",
+      "bytes": 8863
+    },
+    {
+      "path": "code/src/divide_not_reciprocal/constants.py",
+      "sha256": "50461976c64b346abef7c3b92c92b8552e2a689c5c6d7550bb4605cc732111a2",
+      "bytes": 4479
+    },
+    {
+      "path": "code/src/divide_not_reciprocal/count.cu",
+      "sha256": "cb71da5224f1e23bbcb481e37c24a8e478470d956aa6a0fa113d2f3d2ca1fbc7",
+      "bytes": 7780
+    },
+    {
+      "path": "code/src/divide_not_reciprocal/exhaustive.py",
+      "sha256": "d4aa4a25ee3ab6cca03dbfe9ff89e1325be4cdb369a5715ac19bdd85204d6bb5",
+      "bytes": 9783
+    },
+    {
+      "path": "code/src/divide_not_reciprocal/hardsigmoid.py",
+      "sha256": "6cbdf259a7c9db2440971183bd3ff931f62333226a40595267a68a32863b718b",
+      "bytes": 4140
+    },
+    {
+      "path": "code/src/divide_not_reciprocal/report.py",
+      "sha256": "3d85030b4ece5bbddc410070c6816320f2d7029d6a809a24e056ecd592077a4c",
+      "bytes": 13670
+    },
+    {
+      "path": "code/src/divide_not_reciprocal/timing.py",
+      "sha256": "a63c125b1cd178d473f84f52be72193bfeac2e763ed16f1e7502e07212a45c02",
+      "bytes": 22233
+    },
+    {
+      "path": "code/src/divide_not_reciprocal/triton_div.py",
+      "sha256": "3c0cf40b13ea17e1b167f03e9fa9fc376be94b6b126b9158b2bc33f0541fd9af",
+      "bytes": 6564
+    },
+    {
+      "path": "code/src/divide_not_reciprocal/ulp.py",
+      "sha256": "9dbc3a554a97e609382a47f19f39d7d93f97d78fba616097079588bd7f979fde",
+      "bytes": 5017
+    },
+    {
+      "path": "code/tests/test_cpu.py",
+      "sha256": "e38665a181c1583a8944a4ba7e96ec28b8c2221229c070a23db595bb1d01b80e",
+      "bytes": 3381
+    },
+    {
+      "path": "code/tests/test_derivation.py",
+      "sha256": "1deda549235ca8e1d6b8cdaf42ddfe4f8ef91ceae7e9ad965c3782fc6346f7aa",
+      "bytes": 2760
+    },
+    {
+      "path": "code/tests/test_gpu.py",
+      "sha256": "90fe41b29c6ecb94f1ed46e8f73019f4aa5d4cad3ff0a896e075edc7f30ec87b",
+      "bytes": 10942
+    },
+    {
+      "path": "code/tests/test_report.py",
+      "sha256": "8dc3bcba169dcfabdb95a5fc85dff44ab0a65687dc4df5a9c3b2abdeb7456bac",
+      "bytes": 5834
+    },
+    {
+      "path": "code/tests/test_runner.py",
+      "sha256": "988a6e3c82b25c4ec43a209811b5f2c73ea9c0f225377e49a30f7e962c9bdb18",
+      "bytes": 29308
+    },
+    {
+      "path": "evidence/antje-b200-run2-summary.md",
+      "sha256": "02513108cf39db956bb736db531620f0c6ea1e6fdacea9c34d9d8ce29f68cb0a",
+      "bytes": 1141
+    },
+    {
+      "path": "evidence/antje-b200-summary.md",
+      "sha256": "5420a553d0dc00eda3e534f12f2a9048a52669ba41eea3e1fc4a0358f0ef1ab8",
+      "bytes": 1131
+    },
+    {
+      "path": "evidence/numerical-census.json",
+      "sha256": "51aea6984b858bc29a7d5e1dc2a4b63b3943428f1787b8eedc4dd60d3b06276e",
+      "bytes": 6461
+    },
+    {
+      "path": "evidence/numerical-census.md",
+      "sha256": "7f469da8bb26e7146e703b749657690f2c96e03e72defedc3fd7cd6c1cca06bf",
+      "bytes": 2852
+    },
+    {
+      "path": "evidence/source-index.json",
+      "sha256": "58a1af4f5a60ab88a071b627a3a519825d6148eb31b42d0c087ef1a19b3d1a61",
+      "bytes": 2736
+    },
+    {
+      "path": "images/c-square.png",
+      "sha256": "3635042fc1d6159e69cb7474b9ed356d86ca601fab74411588d6a68118cc525b",
+      "bytes": 186912
+    },
+    {
+      "path": "images/c-square.svg",
+      "sha256": "40bbaba9f02922423311ea5bef22749925bfbc54689ebbb86be15813f9179b08",
+      "bytes": 3094496
+    },
+    {
+      "path": "images/c-square.txt",
+      "sha256": "70899f9bd93d20974b044446226aa1dff122a646882017f0dd7bd780d9bfddce",
+      "bytes": 422
+    }
+  ]
 }

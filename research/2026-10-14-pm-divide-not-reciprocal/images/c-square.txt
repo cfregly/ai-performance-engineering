@@ -10,5 +10,5 @@ The pair passes default torch.allclose.
 Earlier B200 source check
 B200 · CUDA 13.0
 PyTorch 2.13 · Triton 3.7.1
-Only the cohort shown above.
+Bit patterns, not model data.
 Fregly's take · technical commentary · @cfregly

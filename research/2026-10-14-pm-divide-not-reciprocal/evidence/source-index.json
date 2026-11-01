@@ -27,7 +27,7 @@
     },
     {
       "id": "nv-prec-div",
-      "url": "https://docs.nvidia.com/cuda/cuda-compiler-driver-nvcc/index.html#prec-div-prec-div",
+      "url": "https://docs.nvidia.com/cuda/cuda-compiler-driver-nvcc/index.html#prec-div-true-false-prec-div",
       "title": "NVIDIA CUDA Compiler Driver precision options",
       "fetched": "2026-10-31",
       "scope": "Compiler flags alter arithmetic behavior. Do not generalize a default across flags.",
