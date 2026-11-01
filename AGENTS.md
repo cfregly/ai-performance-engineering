@@ -13,6 +13,9 @@ For work under `code/`, also follow [code/AGENTS.md](code/AGENTS.md), which rout
 
 ## Research posts
 
+- Every new or revised X and LinkedIn draft follows the [share-optimization check](research/post-workflow/SHARE_OPTIMIZATION.md) and [draft-only workflow](research/post-workflow/TYPEFULLY_WORKFLOW.md). Lead with a useful reader decision, payoff and material tradeoff. Verify relevant people and native mentions, and make each eligible Auto-Plug continue the exact topic.
+- Keep account analytics and readbacks private. Preserve the active owner's work, the author's edits, media, targets, Auto-Retweet and account defaults. Keep preparation unscheduled, leave live posts unchanged, and measure actual-age sharing without promising reach.
+
 - Keep the benchmark, analysis code, tests, evidence summaries, and scientific images for a post in this repository.
 - Commit and push the code and referenced images before calling a social draft ready. Verify the remote commit contains them.
 - Include links to the code and images in `cfregly/ai-performance-engineering` in every related post or reply draft. Prefer commit-pinned links for the evidence used in a claim.
