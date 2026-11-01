@@ -1,0 +1,9 @@
+Check each resource
+separately
+Compute floor
+Work ÷ compute rate
+Transfer floor
+Bytes ÷ bandwidth
+Do not add overlapping floors.
+Dependencies may make
+real time longer than both.

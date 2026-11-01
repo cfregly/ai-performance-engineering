@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1080" viewBox="0 0 1080 1080"><title>platform operations</title>
+<style>@font-face{font-family:Inter;src:url("attention-scenes/Inter.ttf") format("truetype");font-weight:100 900}</style>
+<rect width="1080" height="1080" fill="#FBFBF8"/>
+<text x="72" y="112" font-family="Inter" font-size="60" font-weight="700" text-anchor="start" fill="#202326">Compare the</text>
+<text x="72" y="188" font-family="Inter" font-size="60" font-weight="700" text-anchor="start" fill="#202326">whole update</text>
+<text x="72" y="335" font-family="Inter" font-size="48" font-weight="400" text-anchor="start" fill="#202326">Equal math and quality</text>
+<text x="72" y="420" font-family="Inter" font-size="48" font-weight="400" text-anchor="start" fill="#202326">Equal load and resources</text>
+<text x="72" y="585" font-family="Inter" font-size="48" font-weight="400" text-anchor="start" fill="#202326">Include compute, transfers</text>
+<text x="72" y="660" font-family="Inter" font-size="48" font-weight="400" text-anchor="start" fill="#202326">and synchronization.</text>
+<text x="72" y="840" font-family="Inter" font-size="48" font-weight="400" text-anchor="start" fill="#202326">Check the complete step.</text>
+<text x="72" y="925" font-family="Inter" font-size="48" font-weight="400" text-anchor="start" fill="#202326">Smaller buffers alone</text>
+<text x="72" y="1000" font-family="Inter" font-size="48" font-weight="400" text-anchor="start" fill="#202326">do not prove a speedup.</text>
+</svg>

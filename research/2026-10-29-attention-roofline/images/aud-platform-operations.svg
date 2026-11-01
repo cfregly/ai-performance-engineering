@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900"><title>platform operations</title>
+<style>@font-face{font-family:Inter;src:url("attention-scenes/Inter.ttf") format("truetype");font-weight:100 900}</style>
+<rect width="1600" height="900" fill="#FBFBF8"/>
+<text x="80" y="112" font-family="Inter" font-size="76" font-weight="700" text-anchor="start" fill="#202326">Compare the whole update</text>
+<text x="80" y="340" font-family="Inter" font-size="64" font-weight="600" text-anchor="start" fill="#202326">Equal math + quality</text>
+<text x="820" y="340" font-family="Inter" font-size="64" font-weight="600" text-anchor="start" fill="#202326">Equal load + resources</text>
+<line x1="80" y1="410" x2="1520" y2="410" stroke="#3478BA" stroke-width="5"/>
+<text x="80" y="560" font-family="Inter" font-size="64" font-weight="400" text-anchor="start" fill="#202326">Include compute, transfers and synchronization.</text>
+<text x="80" y="700" font-family="Inter" font-size="64" font-weight="400" text-anchor="start" fill="#202326">Check the complete training step.</text>
+<text x="80" y="815" font-family="Inter" font-size="64" font-weight="400" text-anchor="start" fill="#202326">A smaller buffer is not a whole-model speedup.</text>
+</svg>

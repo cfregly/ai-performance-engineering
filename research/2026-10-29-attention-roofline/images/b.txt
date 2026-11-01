@@ -1,0 +1,9 @@
+Transfers alone miss the target
+Target
+0.200 ms
+Calculated floor
+0.243 ms
+0.00
+0.15
+0.30
+Time (ms) · assumed 8 TB/s · one layer / device

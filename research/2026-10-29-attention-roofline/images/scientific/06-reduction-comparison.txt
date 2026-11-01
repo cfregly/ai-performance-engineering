@@ -1,6 +1,6 @@
 Compare the complete path
 Store all partials
-Simple ownership.
+Separate producer outputs.
 More scratch + traffic.
 Σ
 Combine smaller batches

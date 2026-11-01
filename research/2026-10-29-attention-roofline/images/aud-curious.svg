@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900"><title>curious</title>
+<style>@font-face{font-family:Inter;src:url("attention-scenes/Inter.ttf") format("truetype");font-weight:100 900}</style>
+<rect width="1600" height="900" fill="#FBFBF8"/>
+<text x="80" y="112" font-family="Inter" font-size="76" font-weight="700" text-anchor="start" fill="#202326">Write it out. Read it back.</text>
+<rect x="80" y="290" width="560" height="210" fill="#FBFBF8" stroke="#202326" stroke-width="3" />
+<text x="360.0" y="375" font-family="Inter" font-size="64" font-weight="600" text-anchor="middle" fill="#202326">On-chip</text>
+<text x="360.0" y="455" font-family="Inter" font-size="64" font-weight="600" text-anchor="middle" fill="#202326">workspace</text>
+<rect x="1000" y="290" width="560" height="210" fill="#FBFBF8" stroke="#202326" stroke-width="3" />
+<text x="1280.0" y="415" font-family="Inter" font-size="64" font-weight="600" text-anchor="middle" fill="#202326">HBM</text>
+<g data-edge="write-out">
+<line x1="660" y1="345" x2="980" y2="345" stroke="#3478BA" stroke-width="5"/>
+<line x1="962.0" y1="356.0" x2="980" y2="345" stroke="#3478BA" stroke-width="5"/>
+<line x1="962.0" y1="334.0" x2="980" y2="345" stroke="#3478BA" stroke-width="5"/>
+</g>
+<g data-edge="reread">
+<line x1="980" y1="460" x2="660" y2="460" stroke="#E87823" stroke-width="5"/>
+<line x1="678.0" y1="449.0" x2="660" y2="460" stroke="#E87823" stroke-width="5"/>
+<line x1="678.0" y1="471.0" x2="660" y2="460" stroke="#E87823" stroke-width="5"/>
+</g>
+<text x="80" y="650" font-family="Inter" font-size="64" font-weight="500" text-anchor="start" fill="#3478BA">Write results out</text>
+<text x="900" y="650" font-family="Inter" font-size="64" font-weight="500" text-anchor="start" fill="#E87823">Reread them later</text>
+<text x="80" y="800" font-family="Inter" font-size="64" font-weight="400" text-anchor="start" fill="#202326">Here, the final sum waits for every piece.</text>
+</svg>

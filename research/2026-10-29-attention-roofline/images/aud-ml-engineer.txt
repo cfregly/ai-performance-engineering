@@ -1,0 +1,8 @@
+Choose when to combine results
+Keep outputs separate
+Combine in batches
+Simple producer schedule
+Less scratch space
+More scratch + traffic
+More coordination
+Use the simpler path when it meets your budget.

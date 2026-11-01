@@ -33,13 +33,20 @@ The bound excludes attention arithmetic, other tensors, final-gradient traffic, 
 
 [Cache sensitivity](evidence/derivation/cache_sensitivity.csv) changes retention while preserving the complete phase boundary. [Batch sensitivity](evidence/derivation/reduction_batch_sensitivity.csv) instead produces and reduces consecutive query-tile batches. Two query tiles per batch reduce maximum partial scratch from 1,056 MiB to 126 MiB. Total produced partial volume stays 1,056 MiB. Final FP32 dK/dV occupy another 4 MiB logically, with residency unspecified.
 
-Materialized partials give simple producer ownership at the cost of workspace, writes, rereads and a separate reduction. Smaller batches change the contract and add accumulation, scheduling and synchronization responsibilities. Prefer the simpler design when its costs fit the budget. Evaluate the complete changed path before choosing a faster implementation. No complete implementation fit or performance follows from these calculations.
+Materialized partials give each producer its own output region at the cost of workspace, writes, rereads and a separate reduction. Smaller batches change the contract and add accumulation, scheduling and synchronization responsibilities. Prefer the simpler design when its costs fit the budget. Evaluate the complete changed path before choosing a faster implementation. No complete implementation fit or performance follows from these calculations.
 
 For the larger placement and update decision, see [A whole-system budget for a hypothetical training update](../2026-10-29-distributed-training-budget). It uses a different synthetic workload. Applying this attention check there requires recomputing per-rank shapes, partials, phase order, retention and bandwidth rather than transferring this example's bytes or milliseconds.
 
 ## Reproduce
 
-Python 3.10 or newer and the standard library are sufficient. From this directory, write the outputs, check them and run the CPU tests:
+Python 3.10 or newer and the standard library are sufficient. From a fresh public checkout:
+
+```sh
+git clone https://github.com/cfregly/ai-performance-engineering.git
+cd ai-performance-engineering/research/2026-10-29-attention-roofline
+```
+
+Reproduce the fixed example, check the written outputs, then run its CPU tests:
 
 ```sh
 python3 code/roofline.py --output-dir reproduction-output
@@ -47,14 +54,14 @@ python3 code/roofline.py --output-dir reproduction-output --check
 python3 -m unittest discover -s code -p 'test_*.py' -v
 ```
 
-The first command writes three deterministic JSON/CSV files. The check reports missing or changed outputs without rewriting them. The tests also cover a modified CSV that the check must reject and bind the [retained evidence values](evidence/analytical-results.json) to the calculator and retained results. [RESULTS.json](evidence/derivation/RESULTS.json) records the full assumptions and exclusions. [Validation](evidence/derivation/VALIDATION.md) describes the focused checks. The tiny CPU toy uses artificial integer and exactly representable dyadic values, preserves reduction order and checks results against an independent cell-wise oracle. It does not implement attention derivatives, model GPU memory behavior or establish equivalence for reordered floating-point sums.
+The write command reports `Wrote 3 deterministic files to reproduction-output`. The check reports `Reproduction check passed for 3 files`. Successful tests finish with `OK`. Each command exits zero. These are success signals for reproducing this fixed example, not a general shape-configurable calculator. To use the check for another workload, adapt its assumptions and tests, then recompute the counts. The check reports missing or changed outputs without rewriting them. The tests also cover a modified CSV that the check must reject and bind the [retained evidence values](evidence/analytical-results.json) to the calculator and retained results. [RESULTS.json](evidence/derivation/RESULTS.json) records the full assumptions and exclusions. [Validation](evidence/derivation/VALIDATION.md) describes the focused checks. The tiny CPU toy uses artificial integer and exactly representable dyadic values, preserves reduction order and checks results against an independent cell-wise oracle. It does not implement attention derivatives, model GPU memory behavior or establish equivalence for reordered floating-point sums.
 
 ## Related primary sources
 
 The arithmetic above follows from the declared synthetic contract. These sources provide established algorithm and hardware context:
 
 - [FlashAttention](https://arxiv.org/abs/2205.14135v2): IO-aware exact attention reduces transfers between HBM and on-chip SRAM.
-- [FlashAttention-4](https://arxiv.org/abs/2603.05451) and the [authors' explanation](https://www.together.ai/blog/flashattention-4): uneven Blackwell resource scaling, shared-memory traffic, tensor memory and reduction choices.
+- [FlashAttention-4](https://arxiv.org/abs/2603.05451) by Ted Zadouri, Tri Dao and coauthors and the [authors' explanation](https://www.together.ai/blog/flashattention-4): uneven Blackwell resource scaling, shared-memory traffic, tensor memory and reduction choices.
 - [NVIDIA PTX ISA, tensor memory](https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#tensor-memory): distinct TMEM storage, allocation, movement and synchronization semantics on datacenter Blackwell GPUs that support tcgen05.
 - [NVIDIA Blackwell STAC-AI report](https://developer.nvidia.com/blog/nvidia-blackwell-sets-stac-ai-record-for-llm-inference-in-finance/): nominal B200 memory bandwidth, separate from the assumed sustained payload ceilings used here.
 
@@ -68,45 +75,69 @@ These diagrams follow the same synthetic workload, phase contract and analytical
 
 ![Even if it fits, count the traffic.](images/fun-square.png)
 
-![Follow every operand](images/scientific/02-operand-paths.png)
+![Common Blackwell tcgen05 route: shared memory supplies MMA operands, tensor cores read and write accumulators in TMEM, and threads move TMEM values through registers. A may also come from TMEM.](images/scientific/02-operand-paths.png)
 
-![Scratch becomes traffic](images/scientific/03-scratch-traffic.png)
+![The complete-producer-then-reducer example produces 1,056 MiB, retains at most 128 MiB on chip and forces at least 1,856 MiB of HBM writes plus rereads.](images/scientific/03-scratch-traffic.png)
 
-![Transfers alone miss the target](images/scientific/04-target-rejection.png)
+![At assumed aggregate 8 TB/s, the 0.243 ms calculated transfer floor exceeds the illustrative 0.200 ms target for one layer on one device.](images/scientific/04-target-rejection.png)
 
-![Test bottlenecks independently](images/scientific/05-independent-budgets.png)
+![For the same 1,856 MiB of traffic, assumed aggregate 8 and 6.4 TB/s give calculated floors of 0.243 and 0.304 ms. Both exceed the 0.200 ms target.](images/scientific/05-independent-budgets.png)
 
-![Compare the complete path](images/scientific/06-reduction-comparison.png)
+![Three reduction designs: keep each producer’s output separate, combine smaller batches, or accumulate directly. Each changes scratch, coordination and synchronization responsibilities.](images/scientific/06-reduction-comparison.png)
 
-### Reduction choices
+### Concept cards
 
-![Write now. Read later. Pay twice.](images/a-square.png)
+![Producers finish their results into HBM scratch, then a separate reducer reads them back. Smaller batches need a different schedule.](images/a-square.png)
 
-![Transfer floor: 0.243 ms](images/b-square.png)
+![The calculated transfer floor of 0.243 ms exceeds the illustrative target of 0.200 ms at assumed aggregate 8 TB/s.](images/b-square.png)
 
 ![Check where partials live](images/c-square.png)
 
 ### Ways to apply the calculation
 
-![The desk and the warehouse](images/aud-curious-square.png)
+![A small on-chip workspace writes results to HBM and rereads them later. The final sum waits until every piece is finished.](images/aud-curious-square.png)
 
-![Choose the reduction plan early](images/aud-ml-engineer-square.png)
+[Landscape card](images/aud-curious.png) · [Editable square diagram](images/aud-curious-square.svg) · [Editable landscape diagram](images/aud-curious.svg)
 
-![Budget bytes as well as FLOPs](images/aud-performance-engineer-square.png)
+![Keep each producer’s output separate for a simpler schedule, or combine smaller batches to reduce scratch while adding coordination.](images/aud-ml-engineer-square.png)
 
-![Capacity is a lifetime question](images/aud-kernel-engineer-square.png)
+[Landscape card](images/aud-ml-engineer.png) · [Editable square diagram](images/aud-ml-engineer-square.svg) · [Editable landscape diagram](images/aud-ml-engineer.svg)
 
-![Validate the whole training step](images/aud-platform-operations-square.png)
+![Check work divided by compute rate and traffic divided by bandwidth separately. Dependencies can push real time above both floors.](images/aud-performance-engineer-square.png)
 
-![Check the budget before building](images/aud-business-capacity-square.png)
+[Landscape card](images/aud-performance-engineer.png) · [Editable square diagram](images/aud-performance-engineer-square.svg) · [Editable landscape diagram](images/aud-performance-engineer.svg)
+
+![Qualitative buffer lifetimes overlap. Add the live buffers’ bytes during overlap and reuse storage only after its last reader.](images/aud-kernel-engineer-square.png)
+
+[Landscape card](images/aud-kernel-engineer.png) · [Editable square diagram](images/aud-kernel-engineer-square.svg) · [Editable landscape diagram](images/aud-kernel-engineer.svg)
+
+![Compare designs at equal math, quality, load and resources, then include the complete update path.](images/aud-platform-operations-square.png)
+
+[Landscape card](images/aud-platform-operations.png) · [Editable square diagram](images/aud-platform-operations-square.svg) · [Editable landscape diagram](images/aud-platform-operations.svg)
+
+![If a resource floor exceeds the target, reject the design. If it passes the screen, implement and measure the complete path.](images/aud-business-capacity-square.png)
+
+[Landscape card](images/aud-business-capacity.png) · [Editable square diagram](images/aud-business-capacity-square.svg) · [Editable landscape diagram](images/aud-business-capacity.svg)
 
 ## Source snapshot checksums
 
 `evidence/derivation/SHA256SUMS` retains the historical October 29 snapshot. For the maintained tree, run `shasum -a 256 -c evidence/derivation/SHA256SUMS-current`. Its scope excludes both checksum ledgers and the validation note to avoid self-reference.
 
+## Rebuild the reference diagrams and audience cards
+
+The reference paths and the six audience cards are editable SVG diagrams. The square and landscape cards have separate layouts. Python 3.10+ uses only its standard library, with existing `rsvg-convert`, ImageMagick (`magick`) and Fontconfig (`fc-match`). The retained Inter font and license are in `images/attention-scenes/`. No installation or network access occurs during rendering.
+
+```sh
+python3 code/render_attention_reference_figures.py --check --receipt reference-check.json
+```
+
+A passing check exits zero and writes `status: PASS`. It checks the retained input hashes, actual weighted Inter glyph bounds, directed arrows, exact zero-based bar geometry and two byte-identical fresh renders. It does not overwrite the retained figures. Omit `--check` to replace the reference diagrams and audience cards, or choose a separate package-shaped tree with `--output-dir /path/to/output`. SVG, PNG and text sidecars are written together after validation, with atomic replacement per file. The set of files is not one filesystem transaction. PNG byte identity depends on the installed rendering stack.
+
+The calculator inputs and results are unchanged. The floor bars render the retained values 0.243269632 and 0.30408704 ms. The buffer-lifetime and scheduling diagrams are qualitative, with no measured time or unknown byte amount encoded as a bar length.
+
 ## Rebuild the selected figures
 
-The current three cards use Inter labels of at least 52 px on a 1200 px canvas. Rebuilding requires the retained font and artwork, rsvg-convert 2.62.3, ImageMagick 7.1.2-26 and Fontconfig (`fc-match`). SVG artwork and font links are relative.
+The selected three cards use Inter labels of at least 52 px on a 1200 px canvas. Rebuilding requires the retained font and artwork, rsvg-convert 2.62.3, ImageMagick 7.1.2-26 and Fontconfig (`fc-match`). SVG artwork and font links are relative. An isolated Fontconfig configuration resolves the retained Inter font. The selected renderer preserves its existing default Pango/Cairo backend. The receipt records available rendering-library versions. A failed or interrupted invocation replaces any prior PASS receipt with FAIL or INTERRUPTED, then propagates the error.
 
 ```sh
 python3 code/render_attention_figures.py --check
@@ -134,3 +165,45 @@ The check regenerates into temporary storage and compares the retained files. It
 ![Three accumulation schedules at 312 pixels](images/scientific/06-reduction-comparison-312.png)
 
 </details>
+
+
+<details>
+<summary>Landscape diagrams and compact previews</summary>
+
+The audience cards above also have landscape layouts. These retained landscape images and 400-pixel previews are produced by the reference renderer, with the same assumptions and captions as their square counterparts.
+
+![Write and reread materialized partials at 400 pixels](images/a-400.png)
+
+![Write and reread materialized partials, landscape layout](images/a.png)
+
+![Reject a design or build and measure it at 400 pixels](images/aud-business-capacity-400.png)
+
+![Reject a design or build and measure it, landscape layout](images/aud-business-capacity.png)
+
+![On-chip storage and HBM traffic at 400 pixels](images/aud-curious-400.png)
+
+![On-chip storage and HBM traffic, landscape layout](images/aud-curious.png)
+
+![Buffer lifetimes and storage reuse at 400 pixels](images/aud-kernel-engineer-400.png)
+
+![Buffer lifetimes and storage reuse, landscape layout](images/aud-kernel-engineer.png)
+
+![Materialize partials or combine smaller batches at 400 pixels](images/aud-ml-engineer-400.png)
+
+![Materialize partials or combine smaller batches, landscape layout](images/aud-ml-engineer.png)
+
+![Screen compute and traffic separately at 400 pixels](images/aud-performance-engineer-400.png)
+
+![Screen compute and traffic separately, landscape layout](images/aud-performance-engineer.png)
+
+![Compare the complete update path at 400 pixels](images/aud-platform-operations-400.png)
+
+![Compare the complete update path, landscape layout](images/aud-platform-operations.png)
+
+![Compare the transfer floor with the target at 400 pixels](images/b-400.png)
+
+![Compare the transfer floor with the target, landscape layout](images/b.png)
+
+</details>
+
+The three selected figures are also available as a [three-page document](images/Attention-three-cards.pdf). Its [composition record](images/Attention-three-cards.composition.json) identifies the source images and their placement.

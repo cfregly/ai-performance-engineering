@@ -1,0 +1,6 @@
+Compare the whole update
+Equal math + quality
+Equal load + resources
+Include compute, transfers and synchronization.
+Check the complete training step.
+A smaller buffer is not a whole-model speedup.

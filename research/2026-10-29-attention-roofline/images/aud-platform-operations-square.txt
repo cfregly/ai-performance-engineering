@@ -1,0 +1,9 @@
+Compare the
+whole update
+Equal math and quality
+Equal load and resources
+Include compute, transfers
+and synchronization.
+Check the complete step.
+Smaller buffers alone
+do not prove a speedup.

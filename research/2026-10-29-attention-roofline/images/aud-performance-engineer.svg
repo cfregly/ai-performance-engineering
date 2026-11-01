@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900"><title>performance engineer</title>
+<style>@font-face{font-family:Inter;src:url("attention-scenes/Inter.ttf") format("truetype");font-weight:100 900}</style>
+<rect width="1600" height="900" fill="#FBFBF8"/>
+<text x="80" y="112" font-family="Inter" font-size="76" font-weight="700" text-anchor="start" fill="#202326">Check each resource separately</text>
+<text x="80" y="340" font-family="Inter" font-size="64" font-weight="600" text-anchor="start" fill="#202326">Compute floor</text>
+<text x="850" y="340" font-family="Inter" font-size="64" font-weight="600" text-anchor="start" fill="#202326">Transfer floor</text>
+<text x="80" y="470" font-family="Inter" font-size="64" font-weight="500" text-anchor="start" fill="#E87823">Work ÷ compute rate</text>
+<text x="850" y="470" font-family="Inter" font-size="64" font-weight="500" text-anchor="start" fill="#E87823">Bytes ÷ bandwidth</text>
+<text x="80" y="665" font-family="Inter" font-size="64" font-weight="400" text-anchor="start" fill="#202326">Do not add floors that can overlap.</text>
+<text x="80" y="790" font-family="Inter" font-size="64" font-weight="400" text-anchor="start" fill="#202326">Dependencies can push real time above both.</text>
+</svg>

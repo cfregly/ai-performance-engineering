@@ -1,0 +1,15 @@
+Test assumed bandwidths
+separately
+Same traffic: 1,856 MiB (1.946 GB)
+One layer · one device · FP32 results
+Read + write payload ceiling
+Assumed 8 TB/s
+≥0.243 ms
+Assumed 6.4 TB/s
+≥0.304 ms
+0.00
+0.20
+0.35
+Time (ms) · zero-based scale
+Blue line: 0.200 ms target.
+Calculated floors, not runtimes.

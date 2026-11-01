@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1080" viewBox="0 0 1080 1080"><title>ml engineer</title>
+<style>@font-face{font-family:Inter;src:url("attention-scenes/Inter.ttf") format("truetype");font-weight:100 900}</style>
+<rect width="1080" height="1080" fill="#FBFBF8"/>
+<text x="72" y="112" font-family="Inter" font-size="60" font-weight="700" text-anchor="start" fill="#202326">Choose when to</text>
+<text x="72" y="188" font-family="Inter" font-size="60" font-weight="700" text-anchor="start" fill="#202326">combine results</text>
+<text x="72" y="335" font-family="Inter" font-size="48" font-weight="600" text-anchor="start" fill="#202326">Keep outputs separate</text>
+<text x="72" y="415" font-family="Inter" font-size="48" font-weight="400" text-anchor="start" fill="#202326">Simple producer schedule</text>
+<text x="72" y="490" font-family="Inter" font-size="48" font-weight="500" text-anchor="start" fill="#E87823">More scratch + traffic</text>
+<text x="72" y="630" font-family="Inter" font-size="48" font-weight="600" text-anchor="start" fill="#202326">Combine smaller batches</text>
+<text x="72" y="710" font-family="Inter" font-size="48" font-weight="400" text-anchor="start" fill="#202326">Less scratch space</text>
+<text x="72" y="785" font-family="Inter" font-size="48" font-weight="500" text-anchor="start" fill="#E87823">More coordination</text>
+<text x="72" y="940" font-family="Inter" font-size="48" font-weight="400" text-anchor="start" fill="#202326">Keep the simpler path</text>
+<text x="72" y="1005" font-family="Inter" font-size="48" font-weight="400" text-anchor="start" fill="#202326">when it meets your budget.</text>
+</svg>

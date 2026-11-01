@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1080" viewBox="0 0 1080 1080"><title>curious</title>
+<style>@font-face{font-family:Inter;src:url("attention-scenes/Inter.ttf") format("truetype");font-weight:100 900}</style>
+<rect width="1080" height="1080" fill="#FBFBF8"/>
+<text x="72" y="112" font-family="Inter" font-size="60" font-weight="700" text-anchor="start" fill="#202326">Write it out.</text>
+<text x="72" y="188" font-family="Inter" font-size="60" font-weight="700" text-anchor="start" fill="#202326">Read it back.</text>
+<rect x="72" y="340" width="390" height="210" fill="#FBFBF8" stroke="#202326" stroke-width="3" />
+<text x="267.0" y="425" font-family="Inter" font-size="48" font-weight="600" text-anchor="middle" fill="#202326">On-chip</text>
+<text x="267.0" y="505" font-family="Inter" font-size="48" font-weight="600" text-anchor="middle" fill="#202326">workspace</text>
+<rect x="618" y="340" width="390" height="210" fill="#FBFBF8" stroke="#202326" stroke-width="3" />
+<text x="813.0" y="465" font-family="Inter" font-size="48" font-weight="600" text-anchor="middle" fill="#202326">HBM</text>
+<g data-edge="write-out">
+<line x1="482" y1="395" x2="598" y2="395" stroke="#3478BA" stroke-width="5"/>
+<line x1="580.0" y1="406.0" x2="598" y2="395" stroke="#3478BA" stroke-width="5"/>
+<line x1="580.0" y1="384.0" x2="598" y2="395" stroke="#3478BA" stroke-width="5"/>
+</g>
+<g data-edge="reread">
+<line x1="598" y1="510" x2="482" y2="510" stroke="#E87823" stroke-width="5"/>
+<line x1="500.0" y1="499.0" x2="482" y2="510" stroke="#E87823" stroke-width="5"/>
+<line x1="500.0" y1="521.0" x2="482" y2="510" stroke="#E87823" stroke-width="5"/>
+</g>
+<text x="72" y="690" font-family="Inter" font-size="48" font-weight="500" text-anchor="start" fill="#202326">Write out. Reread later.</text>
+<text x="72" y="850" font-family="Inter" font-size="48" font-weight="400" text-anchor="start" fill="#202326">Here, the final sum waits</text>
+<text x="72" y="925" font-family="Inter" font-size="48" font-weight="400" text-anchor="start" fill="#202326">until every piece is finished.</text>
+</svg>

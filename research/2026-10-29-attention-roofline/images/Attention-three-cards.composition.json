@@ -1,15 +1,15 @@
 {
   "schema_version": 1,
   "kind": "lossless_square_image_pdf_composition",
-  "created_at": "2026-10-31T21:15:46.312526+00:00",
+  "created_at": "2026-11-01T01:12:59.012076+00:00",
   "document": {
     "path": "images/Attention-three-cards.pdf",
-    "sha256": "057140335dd6ef4693a2ea6dfd1a7548386e25a142df1e4728a31302e90591a5",
+    "sha256": "45392e83ae65b1b449cbed7c0d9bcb617f2b08a58686a062f9504d850fd6f1c5",
     "page_count": 3
   },
   "asset_index": {
     "path": "images/reader-card-index.json",
-    "sha256": "784a5b08d0667ad08096427fbdb1bba2de6d70ab15ebf55fd0fc1f7159a66061"
+    "sha256": "9c280bde097860e80901a908810a4a300780aecb691befae278192cdbd29a8ce"
   },
   "composition_receipt": "images/Attention-three-cards.composition.json",
   "page_size_points": {
@@ -39,11 +39,11 @@
       "title": "Transfers alone miss the target",
       "source_png": {
         "path": "images/scientific/04-target-rejection.png",
-        "sha256": "5c606e0312c6dc87f1f8c02563ac69df039184abda544cd47b3c5fa89e57abba",
+        "sha256": "753246743af10efac7785b9f17818c23e7ec6265fd15dcbfd9bdef0e3b125c78",
         "width": 1200,
         "height": 1200
       },
-      "decoded_rgb_sha256": "5ff174139c659841d0251626236867315ac0cb6b75ebfc2452ee2589aef036f9",
+      "decoded_rgb_sha256": "6a7b7747ea17f8d6ec54ad21b802cb136868c55a882bd465a8bfcd3817321899",
       "page_box_points": [
         0,
         0,
@@ -105,11 +105,11 @@
       "title": "Compare the complete path",
       "source_png": {
         "path": "images/scientific/06-reduction-comparison.png",
-        "sha256": "c65309cdd033ee31c4dea0bf9c7da50f064abb7bf0002985dfe131c340599b53",
+        "sha256": "1d4dd72c245fcbc38c6322a31523b12724647b418331440a686fa1d86d343849",
         "width": 1200,
         "height": 1200
       },
-      "decoded_rgb_sha256": "6ea6c900865cde2b5df07a478e33da9abdb6a44a621f6473030cd6edf500a649",
+      "decoded_rgb_sha256": "74d29f339b9a06cc9432773042d56ad0920c01160b6f77733baa5f0979d9da16",
       "page_box_points": [
         0,
         0,

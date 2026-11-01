@@ -4,7 +4,7 @@
 <rect width="1200" height="1200" fill="#FBFBF8"/>
 <text x="84" y="112" font-family="Inter" font-size="64" font-weight="700" text-anchor="start" fill="#202326">Compare the complete path</text>
 <text x="84" y="250" font-family="Inter" font-size="52" font-weight="700" text-anchor="start" fill="#202326">Store all partials</text>
-<text x="84" y="316" font-family="Inter" font-size="52" font-weight="400" text-anchor="start" fill="#202326">Simple ownership.</text>
+<text x="84" y="316" font-family="Inter" font-size="52" font-weight="400" text-anchor="start" fill="#202326">Separate producer outputs.</text>
 <text x="84" y="380" font-family="Inter" font-size="52" font-weight="400" text-anchor="start" fill="#202326">More scratch + traffic.</text>
 <g data-node-id="all-producer-1" data-node-kind="partial">
 <circle cx="802" cy="272" r="14" fill="#FBFBF8" stroke="#3478BA" stroke-width="4"/>

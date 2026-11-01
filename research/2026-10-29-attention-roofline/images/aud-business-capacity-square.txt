@@ -1,0 +1,10 @@
+Screen the design
+before building
+Floor ≤ target?
+NO
+Reject this
+design
+YES
+Implement
++ measure
+Passing proves no runtime.

@@ -1,0 +1,9 @@
+Write now. Read later.
+Producers
+finish
+Scratch
+in HBM
+Reducer
+combines
+Write results, then read them back.
+Smaller batches need a different schedule.

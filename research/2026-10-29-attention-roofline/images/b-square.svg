@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1080" viewBox="0 0 1080 1080"><title>Transfer floor and target</title>
+<style>@font-face{font-family:Inter;src:url("attention-scenes/Inter.ttf") format("truetype");font-weight:100 900}</style>
+<rect width="1080" height="1080" fill="#FBFBF8"/>
+<text x="72" y="112" font-family="Inter" font-size="60" font-weight="700" text-anchor="start" fill="#202326">Transfers alone</text>
+<text x="72" y="188" font-family="Inter" font-size="60" font-weight="700" text-anchor="start" fill="#202326">miss the target</text>
+<text x="72" y="390" font-family="Inter" font-size="48" font-weight="600" text-anchor="start" fill="#202326">Target</text>
+<text x="1008" y="390" font-family="Inter" font-size="48" font-weight="600" text-anchor="end" fill="#3478BA">0.200 ms</text>
+<rect x="72" y="420" width="624.0000000000001" height="40" fill="#3478BA" stroke="#3478BA" stroke-width="3" data-value-ms="0.2" data-axis-max-ms="0.3"/>
+<text x="72" y="600" font-family="Inter" font-size="48" font-weight="600" text-anchor="start" fill="#202326">Calculated floor</text>
+<text x="1008" y="600" font-family="Inter" font-size="48" font-weight="600" text-anchor="end" fill="#E87823">0.243 ms</text>
+<rect x="72" y="630" width="759.0012518400001" height="40" fill="#E87823" stroke="#E87823" stroke-width="3" data-value-ms="0.243269632" data-axis-max-ms="0.3"/>
+<line x1="72" y1="770" x2="1008" y2="770" stroke="#202326" stroke-width="4"/>
+<line x1="72.0" y1="770" x2="72.0" y2="782" stroke="#202326" stroke-width="4"/>
+<text x="72.0" y="848" font-family="Inter" font-size="48" font-weight="400" text-anchor="start" fill="#202326">0.00</text>
+<line x1="540.0" y1="770" x2="540.0" y2="782" stroke="#202326" stroke-width="4"/>
+<text x="540.0" y="848" font-family="Inter" font-size="48" font-weight="400" text-anchor="middle" fill="#202326">0.15</text>
+<line x1="1008.0000000000001" y1="770" x2="1008.0000000000001" y2="782" stroke="#202326" stroke-width="4"/>
+<text x="1008.0000000000001" y="848" font-family="Inter" font-size="48" font-weight="400" text-anchor="end" fill="#202326">0.30</text>
+<text x="72" y="930" font-family="Inter" font-size="48" font-weight="400" text-anchor="start" fill="#202326">Time (ms) · assumed 8 TB/s</text>
+<text x="72" y="1000" font-family="Inter" font-size="48" font-weight="400" text-anchor="start" fill="#202326">One layer / device · calculated</text>
+</svg>

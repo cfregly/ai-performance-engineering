@@ -1,0 +1,342 @@
+#!/usr/bin/env python3
+"""Editable attention reference diagrams and audience cards.
+
+Python 3.10+ standard library; existing rsvg-convert, ImageMagick and Fontconfig.
+Uses the retained Inter file, visual tokens and RESULTS.json. No science run,
+network, model or GPU call. --check compares a fresh render without overwriting.
+"""
+from __future__ import annotations
+import argparse,base64,hashlib,json,math,os,re,shutil,struct,subprocess,tempfile
+import xml.etree.ElementTree as ET
+from pathlib import Path
+from html import escape
+ROOT=Path(__file__).resolve().parents[1]
+INPUTS=ROOT/'images/attention-scenes'
+RESULTS=ROOT/'evidence/derivation/RESULTS.json'
+C={}
+EXPECTED_RESULTS='d1439661b3fb845fa556338b2779cdaa2a34da46b3ccf62b1d26fec87d667557'
+EXPECTED_FONT='29160a80ff49ddcab2c97711247e08b1fab27a484a329ce8b813d820dc559031'
+BW_FLOORS=[('8','0.243269632'),('6.4','0.30408704')]
+sha=lambda b:hashlib.sha256(b).hexdigest()
+
+def require(ok,message):
+    if not ok:raise ValueError(message)
+
+def run(args,**kw):
+    try:return subprocess.run(args,stdout=subprocess.PIPE,stderr=subprocess.PIPE,check=True,**kw).stdout
+    except subprocess.CalledProcessError as exc:
+        raise ValueError('Command failed ('+str(exc.returncode)+'): '+' '.join(map(str,args))+'\n'+(exc.stderr or b'').decode('utf8','replace')) from exc
+
+def atomic_json(path,value):
+    if path is None:return
+    path.parent.mkdir(parents=True,exist_ok=True)
+    fd,name=tempfile.mkstemp(prefix='.'+path.name+'.',suffix='.tmp',dir=path.parent);tmp=Path(name)
+    try:
+        with os.fdopen(fd,'w',encoding='utf8') as f:
+            json.dump(value,f,indent=2);f.write('\n');f.flush();os.fsync(f.fileno())
+        os.replace(tmp,path)
+    except BaseException:
+        tmp.unlink(missing_ok=True);raise
+
+def font_env(temp):
+    config=temp/'fonts.conf';config.write_text('<?xml version="1.0"?><!DOCTYPE fontconfig SYSTEM "fonts.dtd"><fontconfig><dir>'+escape(str(INPUTS))+'</dir><cachedir>'+escape(str(temp/'cache'))+'</cachedir></fontconfig>')
+    return dict(os.environ,FONTCONFIG_FILE=str(config),LC_ALL='C',TZ='UTC',PANGOCAIRO_BACKEND='fc')
+
+class Diagram:
+    def __init__(self,stem,title,w=1080,h=1080):
+        self.stem,self.title,self.w,self.h=stem,title,w,h;self.labels=[];self.edges=[];self.bars=[]
+        prefix=Path(os.path.relpath(INPUTS,ROOT/Path(stem).parent)).as_posix()
+        self.parts=[f'<svg xmlns="http://www.w3.org/2000/svg" width="{w}" height="{h}" viewBox="0 0 {w} {h}"><title>{escape(title)}</title>',f'<style>@font-face{{font-family:Inter;src:url("{prefix}/Inter.ttf") format("truetype");font-weight:100 900}}</style>',f'<rect width="{w}" height="{h}" fill="{C["background"]}"/>']
+    def text(self,t,x,y,size=None,weight=400,color='ink',anchor='start'):
+        size=size or (64 if self.w==1600 else 48 if self.w==1080 else 52)
+        self.labels.append(dict(text=t,x=x,y=y,font_px=size,weight=weight,anchor=anchor))
+        self.parts.append(f'<text x="{x}" y="{y}" font-family="Inter" font-size="{size}" font-weight="{weight}" text-anchor="{anchor}" fill="{C[color]}">{escape(t)}</text>')
+    def rect(self,x,y,w,h,color='background',stroke='ink',extra=''):
+        self.parts.append(f'<rect x="{x}" y="{y}" width="{w}" height="{h}" fill="{C[color]}" stroke="{C[stroke]}" stroke-width="3" {extra}/>')
+    def line(self,x1,y1,x2,y2,color='ink',width=4,dash=''):
+        self.parts.append(f'<line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" stroke="{C[color]}" stroke-width="{width}"'+(f' stroke-dasharray="{dash}"' if dash else '')+'/>')
+    def arrow(self,x1,y1,x2,y2,color='blue',name=None):
+        dx,dy=x2-x1,y2-y1;length=math.hypot(dx,dy);require(length>0,'Zero edge');ux,uy=dx/length,dy/length
+        self.parts.append(f'<g data-edge="{escape(name or str(len(self.edges)))}">');self.line(x1,y1,x2,y2,color,5)
+        for sign in [-1,1]:self.line(x2-18*ux+sign*11*uy,y2-18*uy-sign*11*ux,x2,y2,color,5)
+        self.parts.append('</g>');self.edges.append(dict(name=name,x1=x1,y1=y1,x2=x2,y2=y2))
+    def title_lines(self,lines):
+        size=76 if self.w==1600 else 64 if self.w==1200 else 60
+        x=80 if self.w==1600 else 72 if self.w==1080 else 84
+        for i,t in enumerate(lines):self.text(t,x,112+i*(size+16),size,700)
+    def finish(self):return ('\n'.join(self.parts)+'\n</svg>\n').encode()
+
+
+def operands():
+    d=Diagram('images/scientific/02-operand-paths','Trace a Blackwell tensor-core path',1200,1200)
+    d.title_lines(['Trace a Blackwell','tensor-core path'])
+    d.text('Common tcgen05 SMEM-operand route',84,292)
+    d.rect(84,365,220,145);d.text('HBM',194,453,52,600,anchor='middle')
+    d.rect(424,365,290,145);d.text('Shared',569,423,52,600,anchor='middle');d.text('memory',569,483,52,600,anchor='middle')
+    d.rect(856,365,260,145);d.text('Tensor',986,423,52,600,anchor='middle');d.text('cores',986,483,52,600,anchor='middle')
+    d.arrow(320,400,408,400,'blue','HBM-to-SMEM');d.arrow(408,480,320,480,'orange','SMEM-to-HBM')
+    d.arrow(730,437,840,437,'blue','SMEM-operands-to-MMA')
+    d.text('A + B',780,570,52,500,anchor='middle')
+    d.rect(716,730,400,150);d.text('TMEM',916,792,52,600,anchor='middle');d.text('accumulator',916,854,52,600,anchor='middle')
+    d.rect(84,730,360,150);d.text('Thread',264,792,52,600,anchor='middle');d.text('registers',264,854,52,600,anchor='middle')
+    d.arrow(950,526,950,714,'orange','MMA-writes-TMEM');d.arrow(1040,714,1040,526,'blue','MMA-reads-TMEM')
+    d.text('MMA reads + writes',84,645,52,500)
+    d.arrow(700,768,460,768,'orange','TMEM-load-to-registers');d.arrow(460,842,700,842,'blue','register-store-to-TMEM')
+    d.text('tcgen05.ld / st',580,953,52,500,anchor='middle')
+    d.text('A can also come from TMEM.',84,1040)
+    d.text('Use the required synchronization.',84,1110)
+    return d
+
+
+def sensitivity():
+    d=Diagram('images/scientific/05-independent-budgets','Test assumed bandwidths separately',1200,1200)
+    d.title_lines(['Test assumed bandwidths','separately'])
+    d.text('Same traffic: 1,856 MiB (1.946 GB)',84,298)
+    d.text('One layer · one device · FP32 results',84,365)
+    d.text('Read + write payload ceiling',84,430)
+    x0,width,axismax=84,1032,.35
+    for y,(bw,val) in zip([505,730],BW_FLOORS):
+        d.text('Assumed '+bw+' TB/s',x0,y,52,600)
+        d.text('≥'+format(float(val),'.3f')+' ms',1116,y,52,600,'orange','end')
+        barw=width*float(val)/axismax
+        d.rect(x0,y+30,barw,44,'orange','orange',f'data-value-ms="{val}" data-axis-max-ms="0.35"')
+        d.bars.append(dict(value_ms=val,x=x0,width=barw,plot_width=width,axis_max_ms=axismax,zero=0))
+    targetx=x0+width*.2/axismax
+    d.line(targetx,565,targetx,824,'blue',5,'12 10')
+    d.line(x0,830,x0+width,830)
+    for value in [0,.2,.35]:
+        x=x0+width*value/axismax;d.line(x,830,x,842);d.text(format(value,'.2f'),x,910,52,400,'ink','start' if value==0 else 'end' if value==.35 else 'middle')
+    d.text('Time (ms) · zero-based scale',84,990)
+    d.text('Blue line: 0.200 ms target.',84,1060,52,500,'blue')
+    d.text('Calculated floors, not runtimes.',84,1130)
+    return d
+
+
+def concept(stem,wide):
+    w,h=(1600,900) if wide else (1080,1080);d=Diagram('images/'+stem+('' if wide else '-square'),'Scratch traffic' if stem=='a' else 'Transfer floor and target',w,h)
+    if stem=='a':
+        d.title_lines(['Write now. Read later.'] if wide else ['Write now. Read later.','Pay twice.'])
+        if wide:
+            for x,lines in [(80,['Producers','finish']),(620,['Scratch','in HBM']),(1160,['Reducer','combines'])]:
+                d.rect(x,300,360,225);d.text(lines[0],x+180,390,64,600,anchor='middle');d.text(lines[1],x+180,475,64,600,anchor='middle')
+            d.arrow(460,410,600,410);d.arrow(1000,410,1140,410,'orange')
+            d.text('Write results, then read them back.',80,675);d.text('Smaller batches need a different schedule.',80,790)
+        else:
+            for y,lines in [(280,['Producers finish']),(515,['Scratch in HBM']),(750,['Reducer combines'])]:
+                d.rect(100,y,880,120);d.text(lines[0],540,y+78,48,600,anchor='middle')
+            d.arrow(540,420,540,495);d.arrow(540,655,540,730,'orange')
+            d.text('Write out, then read back.',72,972)
+    else:
+        d.title_lines(['Transfers alone miss the target'] if wide else ['Transfers alone','miss the target'])
+        # Same retained floor as selected figure04, with explicit common zero axis.
+        x0=80 if wide else 72;plot=1440 if wide else 936;maxval=.3
+        for y,label,v,col in [(350 if wide else 390,'Target',.2,'blue'),(545 if wide else 600,'Calculated floor',float(BW_FLOORS[0][1]),'orange')]:
+            d.text(label,x0,y,64 if wide else 48,600);d.text(f'{v:.3f} ms',w-x0,y,64 if wide else 48,600,col,'end')
+            d.rect(x0,y+30,plot*v/maxval,40,col,col,f'data-value-ms="{v}" data-axis-max-ms="0.3"');d.bars.append(dict(value_ms=str(v),x=x0,width=plot*v/maxval,plot_width=plot,axis_max_ms=.3,zero=0))
+        axis_y=680 if wide else 770;d.line(x0,axis_y,x0+plot,axis_y)
+        for val in [0,.15,.3]:
+            x=x0+plot*val/maxval;d.line(x,axis_y,x,axis_y+12);d.text(f'{val:.2f}',x,axis_y+78,64 if wide else 48,anchor='start' if val==0 else 'end' if val==.3 else 'middle')
+        if wide:d.text('Time (ms) · assumed 8 TB/s · one layer / device',80,830)
+        else:
+            d.text('Time (ms) · assumed 8 TB/s',72,930)
+            d.text('One layer / device · calculated',72,1000)
+    return d
+
+AUDIENCES=['curious','ml-engineer','performance-engineer','kernel-engineer','platform-operations','business-capacity']
+
+def audience(kind,wide):
+    w,h=(1600,900) if wide else (1080,1080);suffix='' if wide else '-square';d=Diagram('images/aud-'+kind+suffix,kind.replace('-',' '),w,h)
+    fs=64 if wide else 48;left=80 if wide else 72;right=w-left
+    if kind=='curious':
+        d.title_lines(['Write it out. Read it back.'] if wide else ['Write it out.','Read it back.'])
+        # Large mechanism fills the wide canvas; no square thumbnail is shrunk.
+        y=290 if wide else 340;bx=80 if wide else 72;bw=560 if wide else 390;rx=1000 if wide else 618
+        d.rect(bx,y,bw,210);d.text('On-chip',bx+bw/2,y+85,fs,600,anchor='middle');d.text('workspace',bx+bw/2,y+165,fs,600,anchor='middle')
+        d.rect(rx,y,bw,210);d.text('HBM',rx+bw/2,y+125,fs,600,anchor='middle')
+        d.arrow(bx+bw+20,y+55,rx-20,y+55,'blue','write-out');d.arrow(rx-20,y+170,bx+bw+20,y+170,'orange','reread')
+        if wide:
+            d.text('Write results out',80,650,fs,500,'blue');d.text('Reread them later',900,650,fs,500,'orange')
+            d.text('Here, the final sum waits for every piece.',80,800)
+        else:
+            d.text('Write out. Reread later.',72,690,fs,500)
+            d.text('Here, the final sum waits',72,850);d.text('until every piece is finished.',72,925)
+    elif kind=='ml-engineer':
+        d.title_lines(['Choose when to combine results'] if wide else ['Choose when to','combine results'])
+        if wide:
+            d.text('Keep outputs separate',80,320,64,600);d.text('Combine in batches',830,320,64,600)
+            d.text('Simple producer schedule',80,440);d.text('Less scratch space',830,440)
+            d.text('More scratch + traffic',80,555,64,500,'orange');d.text('More coordination',830,555,64,500,'orange')
+            d.text('Use the simpler path when it meets your budget.',80,790)
+        else:
+            for y,title,lines in [(335,'Keep outputs separate',['Simple producer schedule','More scratch + traffic']),(630,'Combine smaller batches',['Less scratch space','More coordination'])]:
+                d.text(title,72,y,48,600);d.text(lines[0],72,y+80);d.text(lines[1],72,y+155,48,500,'orange')
+            d.text('Keep the simpler path',72,940);d.text('when it meets your budget.',72,1005)
+    elif kind=='performance-engineer':
+        d.title_lines(['Check each resource separately'] if wide else ['Check each resource','separately'])
+        if wide:
+            d.text('Compute floor',80,340,64,600);d.text('Transfer floor',850,340,64,600)
+            d.text('Work ÷ compute rate',80,470,64,500,'orange');d.text('Bytes ÷ bandwidth',850,470,64,500,'orange')
+            d.text('Do not add floors that can overlap.',80,665);d.text('Dependencies can push real time above both.',80,790)
+        else:
+            d.text('Compute floor',72,345,48,600);d.text('Work ÷ compute rate',72,430,48,500,'orange')
+            d.text('Transfer floor',72,590,48,600);d.text('Bytes ÷ bandwidth',72,675,48,500,'orange')
+            d.text('Do not add overlapping floors.',72,850);d.text('Dependencies may make',72,935);d.text('real time longer than both.',72,1005)
+    elif kind=='kernel-engineer':
+        d.title_lines(['Add bytes while lifetimes overlap'] if wide else ['Add bytes while','lifetimes overlap'])
+        x0=370 if wide else 310;plot=1110 if wide else 690;y1=310 if wide else 370;y2=y1+150
+        d.text('Buffer A',left,y1+70,fs,600);d.text('Buffer B',left,y2+70,fs,600)
+        # Qualitative timeline only: widths encode lifetime order, never byte size.
+        d.rect(x0,y1,plot*.68,100,'blue','blue');d.rect(x0+plot*.4,y2,plot*.6,100,'orange','orange')
+        d.line(x0+plot*.4,y1-25,x0+plot*.4,y2+135,'ink',3,'10 10');d.line(x0+plot*.68,y1-25,x0+plot*.68,y2+135,'ink',3,'10 10')
+        ty=y2+175;d.arrow(x0,ty,x0+plot,ty,'ink','time');d.text('Time → (qualitative)',x0,ty+(55 if wide else 85),fs,500)
+        if wide:
+            d.text('In the overlap, count A + B.',80,770);d.text('Reuse storage only after its last reader.',80,850)
+        else:
+            d.text('In the overlap, count A + B.',72,885);d.text('Reuse after the last reader.',72,965)
+    elif kind=='platform-operations':
+        d.title_lines(['Compare the whole update'] if wide else ['Compare the','whole update'])
+        if wide:
+            d.text('Equal math + quality',80,340,64,600);d.text('Equal load + resources',820,340,64,600)
+            d.line(80,410,1520,410,'blue',5)
+            d.text('Include compute, transfers and synchronization.',80,560)
+            d.text('Check the complete training step.',80,700);d.text('A smaller buffer is not a whole-model speedup.',80,815)
+        else:
+            for y,line in [(335,'Equal math and quality'),(420,'Equal load and resources'),(585,'Include compute, transfers'),(660,'and synchronization.'),(840,'Check the complete step.'),(925,'Smaller buffers alone'),(1000,'do not prove a speedup.')]:d.text(line,72,y)
+    elif kind=='business-capacity':
+        d.title_lines(['Screen the design before building'] if wide else ['Screen the design','before building'])
+        # One decision diamond. Distinct directed pass/fail lanes never cross.
+        if wide:
+            cx,cy,rx,ry=800,320,440,135
+            pts=f'{cx},{cy-ry} {cx+rx},{cy} {cx},{cy+ry} {cx-rx},{cy}'
+            d.parts.append(f'<polygon points="{pts}" fill="{C["background"]}" stroke="{C["ink"]}" stroke-width="4"/>')
+            d.text('Floor ≤ target?',cx,cy+22,64,600,anchor='middle')
+            d.arrow(360,320,250,320,'orange','fail-start');d.arrow(250,320,250,570,'orange','fail-end')
+            d.arrow(1240,320,1350,320,'blue','pass-start');d.arrow(1350,320,1350,570,'blue','pass-end')
+            d.text('NO',120,505,64,600,'orange');d.text('YES',1400,505,64,600,'blue')
+            d.text('Reject this design',80,665,64,600,'orange');d.text('Implement + measure',800,665,64,600,'blue')
+            d.text('Passing the screen is no runtime guarantee.',80,810)
+        else:
+            cx,cy,rx,ry=540,375,390,120
+            pts=f'{cx},{cy-ry} {cx+rx},{cy} {cx},{cy+ry} {cx-rx},{cy}'
+            d.parts.append(f'<polygon points="{pts}" fill="{C["background"]}" stroke="{C["ink"]}" stroke-width="4"/>')
+            d.text('Floor ≤ target?',540,393,48,600,anchor='middle')
+            d.arrow(150,375,110,375,'orange','fail-start');d.arrow(110,375,110,610,'orange','fail-end')
+            d.arrow(930,375,970,375,'blue','pass-start');d.arrow(970,375,970,610,'blue','pass-end')
+            d.text('NO',110,700,48,600,'orange','middle');d.text('Reject this',250,790,48,600,'orange','middle');d.text('design',250,865,48,600,'orange','middle')
+            d.text('YES',970,700,48,600,'blue','middle');d.text('Implement',800,790,48,600,'blue','middle');d.text('+ measure',800,865,48,600,'blue','middle')
+            d.text('Passing proves no runtime.',72,1000)
+    return d
+
+
+def all_diagrams():return [operands(),sensitivity()]+[concept(s,w) for s in ['a','b'] for w in [False,True]]+[audience(s,w) for s in AUDIENCES for w in [False,True]]
+
+def validate_inputs():
+    global C
+    tokens=json.loads((INPUTS/'visual-tokens.json').read_text())
+    require(tokens['colors']=={'background':'#FBFBF8','ink':'#202326','blue':'#3478BA','orange':'#E87823'}, 'Retained palette changed')
+    C=tokens['colors']
+    require(sha(RESULTS.read_bytes())==EXPECTED_RESULTS,'Retained RESULTS.json changed')
+    require(sha((INPUTS/'Inter.ttf').read_bytes())==EXPECTED_FONT,'Retained Inter changed')
+    data=json.loads(RESULTS.read_text())
+    require(data['derivation']['hypothetical_bandwidth_floors_ms']==dict(BW_FLOORS),'Retained floor values changed')
+    return data
+
+
+def measure(label,env,cache):
+    key=(label['text'],label['font_px'],label['weight'])
+    if key not in cache:
+        sample=f'<svg xmlns="http://www.w3.org/2000/svg" width="5000" height="300"><text x="100" y="200" font-family="Inter" font-size="{key[1]}" font-weight="{key[2]}">{escape(key[0])}</text></svg>'.encode()
+        raster=run(['rsvg-convert','--format','png'],input=sample,env=env)
+        geometry=run(['magick','png:-','-format','%@','info:'],input=raster,env=env).decode().strip()
+        m=re.fullmatch(r'(\d+)x(\d+)\+(-?\d+)\+(-?\d+)',geometry);require(m is not None,'Unexpected glyph box '+geometry)
+        width,height,x,y=map(int,m.groups());cache[key]=(width,height,x-100,y-200)
+    return cache[key]
+
+
+def validate_route_svg(d, svg):
+    root=ET.fromstring(svg)
+    ns={'s':'http://www.w3.org/2000/svg'}
+    groups=[node for node in root.iter() if 'data-edge' in node.attrib]
+    require(len(groups)==len(d.edges),'SVG directed edge count changed')
+    for node,edge in zip(groups,d.edges):
+        require(node.attrib['data-edge']==(edge['name'] or str(d.edges.index(edge))),'SVG edge identity changed')
+        lines=node.findall('s:line',ns)
+        require(len(lines)==3,'SVG arrow needs a shaft and two head lines')
+        actual=[float(lines[0].attrib[k]) for k in ['x1','y1','x2','y2']]
+        require(actual==[edge[k] for k in ['x1','y1','x2','y2']],'SVG arrow direction or endpoint differs from declared route')
+        for head in lines[1:]:
+            require(float(head.attrib['x2'])==edge['x2'] and float(head.attrib['y2'])==edge['y2'],'SVG arrowhead does not reach shaft target')
+    return True
+
+
+def validate(d,env,cache):
+    boxes=[];minimum=64 if d.w==1600 else 48 if d.w==1080 else 52
+    for label in d.labels:
+        require(label['font_px']>=minimum,'Font too small')
+        require(label['weight'] in [400,500,600,700],'Unexpected font weight')
+        width,height,dx,dy=measure(label,env,cache)
+        offset=0 if label['anchor']=='start' else width if label['anchor']=='end' else width/2
+        x=label['x']-offset+dx;y=label['y']+dy;box=(x,y,x+width,y+height)
+        require(x>=48 and x+width<=d.w-48 and y>=36 and y+height<=d.h-35,'Text outside safe margins: '+label['text']+' '+str(box))
+        for old,oldlabel in boxes:
+            require(not (min(box[2],old[2])>max(box[0],old[0])+1 and min(box[3],old[3])>max(box[1],old[1])+1),'Text overlaps: '+label['text']+' / '+oldlabel)
+        boxes.append((box,label['text']))
+    for b in d.bars:
+        require(b['zero']==0 and abs(b['width']-b['plot_width']*float(b['value_ms'])/b['axis_max_ms'])<1e-8,'Bar geometry mismatch')
+    if '02-operand' in d.stem:
+        names={e['name'] for e in d.edges}
+        require(names=={'HBM-to-SMEM','SMEM-to-HBM','SMEM-operands-to-MMA','MMA-writes-TMEM','MMA-reads-TMEM','TMEM-load-to-registers','register-store-to-TMEM'},'Operand route inventory changed')
+    if 'business-capacity' in d.stem:
+        require({e['name'] for e in d.edges}=={'fail-start','fail-end','pass-start','pass-end'},'Decision graph needs both outgoing directed paths')
+        for fail in [e for e in d.edges if e['name'].startswith('fail')]:
+            for passed in [e for e in d.edges if e['name'].startswith('pass')]:
+                require(max(fail['x1'],fail['x2'])<min(passed['x1'],passed['x2']),'Decision paths cross')
+    return {'minimum_font_px':minimum,'minimum_at_306_px':minimum*306/d.w,'text_boxes':[{**l,'glyph_box':list(b)} for (b,_),l in zip(boxes,d.labels)],'bars':d.bars,'directed_edges':d.edges,'all_text_inside_safe_margin':True,'no_text_text_overlap':True}
+
+
+def render(output):
+    validate_inputs();records={};pending={};cache={}
+    with tempfile.TemporaryDirectory(prefix='attention-reference-') as tmp:
+        env=font_env(Path(tmp));matched=run(['fc-match','-f','%{family}|%{file}','Inter'],env=env).decode()
+        require(matched=='Inter|'+str(INPUTS/'Inter.ttf'),'Unexpected Inter resolution: '+matched)
+        for d in all_diagrams():
+            checks=validate(d,env,cache);svg=d.finish();validate_route_svg(d,svg);prefix=Path(os.path.relpath(INPUTS,ROOT/Path(d.stem).parent)).as_posix()
+            raster_svg=svg.replace((prefix+'/Inter.ttf').encode(),b'data:font/ttf;base64,'+base64.b64encode((INPUTS/'Inter.ttf').read_bytes()))
+            png=run(['rsvg-convert','--format','png'],input=raster_svg,env=env)
+            png=run(['magick','png:-','-background',C['background'],'-alpha','off','-strip','-define','png:color-type=2','png:-'],input=png,env=env)
+            require(struct.unpack('>II',png[16:24])==(d.w,d.h),'Wrong PNG size');require(png[25]==2,'PNG must be RGB')
+            pending[d.stem+'.svg']=svg;pending[d.stem+'.png']=png;pending[d.stem+'.txt']=('\n'.join(t['text'] for t in d.labels)+'\n').encode()
+            if d.w==1080:pending[d.stem.removesuffix('-square')+'-400.png']=run(['magick','png:-','-filter','Lanczos','-resize','400x400','-strip','png:-'],input=png,env=env)
+            records[d.stem]={'width':d.w,'height':d.h,'svg_sha256':sha(svg),'png_sha256':sha(png),**checks}
+    # All render/validation work finishes before any destination is replaced.
+    for rel,data in pending.items():
+        dest=output/rel;dest.parent.mkdir(parents=True,exist_ok=True)
+        fd,name=tempfile.mkstemp(prefix='.'+dest.name+'.',suffix='.tmp',dir=dest.parent)
+        try:
+            with os.fdopen(fd,'wb') as f:f.write(data);f.flush();os.fsync(f.fileno())
+            os.replace(name,dest)
+        except BaseException:Path(name).unlink(missing_ok=True);raise
+    return records,sorted(pending)
+
+
+def main():
+    p=argparse.ArgumentParser(description=__doc__);p.add_argument('--output-dir',type=Path,default=ROOT);p.add_argument('--check',action='store_true');p.add_argument('--receipt',type=Path);a=p.parse_args()
+    if a.receipt:a.receipt.unlink(missing_ok=True)
+    atomic_json(a.receipt,{'status':'INCOMPLETE','stage':'started'})
+    try:
+        for tool in ['rsvg-convert','magick','fc-match']:require(shutil.which(tool),'Required existing binary unavailable: '+tool)
+        if a.check:
+            with tempfile.TemporaryDirectory(prefix='attention-reference-check-') as tmp:
+                first,second=Path(tmp)/'first',Path(tmp)/'second';records,paths=render(first);render(second)
+                for rel in sorted(paths,key=lambda s:(0 if s.endswith('.svg') else 1 if s.endswith('.txt') else 2,s)):
+                    require((first/rel).read_bytes()==(second/rel).read_bytes(),'Non-deterministic output: '+rel)
+                    require((a.output_dir/rel).is_file(),'Current output missing: '+rel)
+                    require((a.output_dir/rel).read_bytes()==(first/rel).read_bytes(),'Current output drift: '+rel+(' (PNG-only drift may be rendering-stack dependent)' if rel.endswith('.png') else ''))
+        else:records,paths=render(a.output_dir)
+        receipt={'status':'PASS','mode':'read-only-check' if a.check else 'render','records':records,'outputs':paths,'inputs':{'results_sha256':EXPECTED_RESULTS,'font_sha256':EXPECTED_FONT},'dependencies':{tool:run([tool,'--version']).decode().strip() for tool in ['rsvg-convert','magick']},'limits':['Qualitative diagrams do not encode unknown byte quantities','Local preview only, native platform proof and current independent reviews remain required','No new measurement or analytical result']}
+        atomic_json(a.receipt,receipt);print(json.dumps({'status':'PASS','diagrams':len(records),'outputs':len(paths)}))
+    except BaseException as exc:
+        atomic_json(a.receipt,{'status':'INTERRUPTED' if isinstance(exc,(KeyboardInterrupt,SystemExit)) or not isinstance(exc,Exception) else 'FAIL','exception_type':type(exc).__name__,'message':str(exc)})
+        raise
+
+if __name__=='__main__':main()

@@ -1,0 +1,6 @@
+Add bytes while lifetimes overlap
+Buffer A
+Buffer B
+Time → (qualitative)
+In the overlap, count A + B.
+Reuse storage only after its last reader.

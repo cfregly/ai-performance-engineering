@@ -6,7 +6,7 @@
       "title": "Transfers alone miss the target",
       "selected": {
         "path": "images/scientific/04-target-rejection.png",
-        "sha256": "5c606e0312c6dc87f1f8c02563ac69df039184abda544cd47b3c5fa89e57abba",
+        "sha256": "753246743af10efac7785b9f17818c23e7ec6265fd15dcbfd9bdef0e3b125c78",
         "width": 1200,
         "height": 1200
       }
@@ -26,7 +26,7 @@
       "title": "Compare the complete path",
       "selected": {
         "path": "images/scientific/06-reduction-comparison.png",
-        "sha256": "c65309cdd033ee31c4dea0bf9c7da50f064abb7bf0002985dfe131c340599b53",
+        "sha256": "1d4dd72c245fcbc38c6322a31523b12724647b418331440a686fa1d86d343849",
         "width": 1200,
         "height": 1200
       }

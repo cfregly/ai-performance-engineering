@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1080" viewBox="0 0 1080 1080"><title>business capacity</title>
+<style>@font-face{font-family:Inter;src:url("attention-scenes/Inter.ttf") format("truetype");font-weight:100 900}</style>
+<rect width="1080" height="1080" fill="#FBFBF8"/>
+<text x="72" y="112" font-family="Inter" font-size="60" font-weight="700" text-anchor="start" fill="#202326">Screen the design</text>
+<text x="72" y="188" font-family="Inter" font-size="60" font-weight="700" text-anchor="start" fill="#202326">before building</text>
+<polygon points="540,255 930,375 540,495 150,375" fill="#FBFBF8" stroke="#202326" stroke-width="4"/>
+<text x="540" y="393" font-family="Inter" font-size="48" font-weight="600" text-anchor="middle" fill="#202326">Floor ≤ target?</text>
+<g data-edge="fail-start">
+<line x1="150" y1="375" x2="110" y2="375" stroke="#E87823" stroke-width="5"/>
+<line x1="128.0" y1="364.0" x2="110" y2="375" stroke="#E87823" stroke-width="5"/>
+<line x1="128.0" y1="386.0" x2="110" y2="375" stroke="#E87823" stroke-width="5"/>
+</g>
+<g data-edge="fail-end">
+<line x1="110" y1="375" x2="110" y2="610" stroke="#E87823" stroke-width="5"/>
+<line x1="99.0" y1="592.0" x2="110" y2="610" stroke="#E87823" stroke-width="5"/>
+<line x1="121.0" y1="592.0" x2="110" y2="610" stroke="#E87823" stroke-width="5"/>
+</g>
+<g data-edge="pass-start">
+<line x1="930" y1="375" x2="970" y2="375" stroke="#3478BA" stroke-width="5"/>
+<line x1="952.0" y1="386.0" x2="970" y2="375" stroke="#3478BA" stroke-width="5"/>
+<line x1="952.0" y1="364.0" x2="970" y2="375" stroke="#3478BA" stroke-width="5"/>
+</g>
+<g data-edge="pass-end">
+<line x1="970" y1="375" x2="970" y2="610" stroke="#3478BA" stroke-width="5"/>
+<line x1="959.0" y1="592.0" x2="970" y2="610" stroke="#3478BA" stroke-width="5"/>
+<line x1="981.0" y1="592.0" x2="970" y2="610" stroke="#3478BA" stroke-width="5"/>
+</g>
+<text x="110" y="700" font-family="Inter" font-size="48" font-weight="600" text-anchor="middle" fill="#E87823">NO</text>
+<text x="250" y="790" font-family="Inter" font-size="48" font-weight="600" text-anchor="middle" fill="#E87823">Reject this</text>
+<text x="250" y="865" font-family="Inter" font-size="48" font-weight="600" text-anchor="middle" fill="#E87823">design</text>
+<text x="970" y="700" font-family="Inter" font-size="48" font-weight="600" text-anchor="middle" fill="#3478BA">YES</text>
+<text x="800" y="790" font-family="Inter" font-size="48" font-weight="600" text-anchor="middle" fill="#3478BA">Implement</text>
+<text x="800" y="865" font-family="Inter" font-size="48" font-weight="600" text-anchor="middle" fill="#3478BA">+ measure</text>
+<text x="72" y="1000" font-family="Inter" font-size="48" font-weight="400" text-anchor="start" fill="#202326">Passing proves no runtime.</text>
+</svg>

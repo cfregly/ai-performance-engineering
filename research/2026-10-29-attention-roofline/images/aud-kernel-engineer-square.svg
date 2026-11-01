@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1080" viewBox="0 0 1080 1080"><title>kernel engineer</title>
+<style>@font-face{font-family:Inter;src:url("attention-scenes/Inter.ttf") format("truetype");font-weight:100 900}</style>
+<rect width="1080" height="1080" fill="#FBFBF8"/>
+<text x="72" y="112" font-family="Inter" font-size="60" font-weight="700" text-anchor="start" fill="#202326">Add bytes while</text>
+<text x="72" y="188" font-family="Inter" font-size="60" font-weight="700" text-anchor="start" fill="#202326">lifetimes overlap</text>
+<text x="72" y="440" font-family="Inter" font-size="48" font-weight="600" text-anchor="start" fill="#202326">Buffer A</text>
+<text x="72" y="590" font-family="Inter" font-size="48" font-weight="600" text-anchor="start" fill="#202326">Buffer B</text>
+<rect x="310" y="370" width="469.20000000000005" height="100" fill="#3478BA" stroke="#3478BA" stroke-width="3" />
+<rect x="586.0" y="520" width="414.0" height="100" fill="#E87823" stroke="#E87823" stroke-width="3" />
+<line x1="586.0" y1="345" x2="586.0" y2="655" stroke="#202326" stroke-width="3" stroke-dasharray="10 10"/>
+<line x1="779.2" y1="345" x2="779.2" y2="655" stroke="#202326" stroke-width="3" stroke-dasharray="10 10"/>
+<g data-edge="time">
+<line x1="310" y1="695" x2="1000" y2="695" stroke="#202326" stroke-width="5"/>
+<line x1="982.0" y1="706.0" x2="1000" y2="695" stroke="#202326" stroke-width="5"/>
+<line x1="982.0" y1="684.0" x2="1000" y2="695" stroke="#202326" stroke-width="5"/>
+</g>
+<text x="310" y="780" font-family="Inter" font-size="48" font-weight="500" text-anchor="start" fill="#202326">Time → (qualitative)</text>
+<text x="72" y="885" font-family="Inter" font-size="48" font-weight="400" text-anchor="start" fill="#202326">In the overlap, count A + B.</text>
+<text x="72" y="965" font-family="Inter" font-size="48" font-weight="400" text-anchor="start" fill="#202326">Reuse after the last reader.</text>
+</svg>

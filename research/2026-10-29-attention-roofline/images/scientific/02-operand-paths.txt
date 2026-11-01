@@ -1,0 +1,17 @@
+Trace a Blackwell
+tensor-core path
+Common tcgen05 SMEM-operand route
+HBM
+Shared
+memory
+Tensor
+cores
+A + B
+TMEM
+accumulator
+Thread
+registers
+MMA reads + writes
+tcgen05.ld / st
+A can also come from TMEM.
+Use the required synchronization.

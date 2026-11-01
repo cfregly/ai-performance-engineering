@@ -10,6 +10,8 @@ import argparse
 import base64
 import hashlib
 import json
+import math
+import re
 import os
 from pathlib import Path
 import shutil
@@ -22,11 +24,8 @@ from html import escape
 ROOT = Path(__file__).resolve().parents[1]
 INPUTS = ROOT / 'images' / 'attention-scenes'
 RESULTS = ROOT / 'evidence' / 'derivation' / 'RESULTS.json'
-try:
-    TOKENS = json.loads((INPUTS / 'visual-tokens.json').read_text())
-except (OSError, ValueError) as exc:
-    raise ValueError(f'Shared visual tokens unavailable: {exc}') from exc
-C = TOKENS['colors']
+TOKENS = {}
+C = {}
 SIZE = 1200
 MIN_FONT = 52
 WIDTHS = (297, 312)
@@ -121,6 +120,12 @@ class Slide:
 
 
 def validate_inputs() -> dict:
+    global TOKENS, C
+    try:
+        TOKENS = json.loads((INPUTS / 'visual-tokens.json').read_text())
+    except (OSError, ValueError) as exc:
+        raise ValueError(f'Shared visual tokens unavailable: {exc}') from exc
+    C = TOKENS['colors']
     provenance = json.loads((INPUTS / 'provenance.json').read_text())
     for row in provenance['inputs']:
         path = ROOT / row['input']
@@ -173,7 +178,7 @@ def slides(data: dict, asset_prefix: str = '../attention-scenes') -> list[Slide]
 
     b = Slide(STEMS[1], 'Transfers alone miss the target', asset_prefix)
     b.text(b.title, 84, 112, 60, 700)
-    b.text('Produce all, then reduce · analytical', 84, 182)
+    b.text('One layer · one device · FP32 results', 84, 182)
     b.text('Assumed 8 TB/s for reads + writes', 84, 246)
     b.art('factory-source.png', (190, 750, 2016, 480), (84, 288, 1032, 246))
     floor = float(data['derivation']['hypothetical_bandwidth_floors_ms']['8'])
@@ -210,7 +215,7 @@ def slides(data: dict, asset_prefix: str = '../attention-scenes') -> list[Slide]
             c.line(x2-12*ux+side*8*uy,y2-12*uy-side*8*ux,x2,y2,color,5)
         c.parts.append('</g>')
 
-    rows = [(250,'Store all partials','Simple ownership.','More scratch + traffic.','all'),
+    rows = [(250,'Store all partials','Separate producer outputs.','More scratch + traffic.','all'),
             (520,'Combine smaller batches','Less live scratch.','More coordination.','bounded'),
             (790,'Accumulate directly','Less staging.','Check synchronization.','direct')]
     for y,title,first,second,kind in rows:
@@ -289,7 +294,8 @@ def validate_svg(slide: Slide, svg: bytes, env: dict) -> dict:
                 'Reduction topology must contain all 15 exact directed edges without duplicates')
         require(all(len(node.findall('s:line', ns)) == 3 for node in edges),
                 'Reduction edge must contain one shaft and two arrowhead lines')
-        topology = {'node_count': len(nodes), 'edge_count': len(edges), 'exact_ids_and_directed_edges': True}
+        validate_edge_geometry(root, ns)
+        topology = {'endpoint_geometry_checked': True, 'node_count': len(nodes), 'edge_count': len(edges), 'exact_ids_and_directed_edges': True}
     texts=root.findall('.//s:text',ns)
     require(len(texts)==len(slide.labels), 'Label inventory mismatch')
     for node,row in zip(texts,slide.labels):
@@ -297,10 +303,7 @@ def validate_svg(slide: Slide, svg: bytes, env: dict) -> dict:
         require(node.attrib.get('font-family')=='Inter','Unexpected font family')
         require(size>=MIN_FONT,'Font below 52px')
         require(size*297/SIZE >= 12.87,'Essential label below 12.87px at actual 297px')
-        # Independent glyph-width check uses the pinned Inter file directly.
-        width=int(run(['magick','-background','none','-font',str(INPUTS/'Inter.ttf'),
-                       '-pointsize',str(row['font_px']),f'label:{row["text"]}',
-                       '-format','%w','info:'],env=env).decode())
+        width = glyph_width(row, env)
         x=row['x']; anchor=row['anchor']
         left=x if anchor=='start' else x-width if anchor=='end' else x-width/2
         right=left+width
@@ -315,6 +318,70 @@ def validate_svg(slide: Slide, svg: bytes, env: dict) -> dict:
             **({'topology': topology} if topology is not None else {})}
 
 
+def glyph_width(row: dict, env: dict) -> int:
+    """Measure the actual Inter weight with the rendering stack, not a default face."""
+    sample = (f'<svg xmlns="http://www.w3.org/2000/svg" width="4000" height="240">'
+              f'<text x="100" y="160" font-family="Inter" font-size="{row["font_px"]}" '
+              f'font-weight="{row["weight"]}">{escape(row["text"])}</text></svg>').encode()
+    raster = run(['rsvg-convert', '--format', 'png'], input=sample, env=env)
+    return int(run(['magick', 'png:-', '-trim', '-format', '%w', 'info:'],
+                   input=raster, env=env).decode())
+
+
+def validate_edge_geometry(root, ns):
+    """Require actual shaft endpoints to touch their declared drawn nodes."""
+    bounds = {}
+    for node in root.iter():
+        key = node.attrib.get('data-node-id')
+        if not key:
+            continue
+        child = next(iter(node))
+        a = child.attrib
+        if child.tag.endswith('circle'):
+            bounds[key] = ('circle', float(a['cx']), float(a['cy']), float(a['r']))
+        elif child.tag.endswith('rect'):
+            bounds[key] = ('rect', *(float(a[k]) for k in ('x', 'y', 'width', 'height')))
+    def boundary_distance(point, shape):
+        x, y = point
+        if shape[0] == 'circle':
+            _, cx, cy, radius = shape
+            return abs(math.hypot(x-cx, y-cy)-radius)
+        _, left, top, width, height = shape
+        right, bottom = left+width, top+height
+        if left <= x <= right and top <= y <= bottom:
+            return min(x-left, right-x, y-top, bottom-y)
+        return math.hypot(max(left-x, 0, x-right), max(top-y, 0, y-bottom))
+    for edge in root.iter():
+        if 'data-flow-source' not in edge.attrib:
+            continue
+        shaft = edge.findall('s:line', ns)[0].attrib
+        for field, point in [('source',(float(shaft['x1']),float(shaft['y1']))),
+                             ('target',(float(shaft['x2']),float(shaft['y2'])))]:
+            key = edge.attrib['data-flow-'+field]
+            require(key in bounds, 'Edge has no drawn endpoint node: '+key)
+            require(boundary_distance(point,bounds[key]) <= 25,
+                    'Reduction edge endpoint is detached from node: '+key)
+
+
+def atomic_receipt(path: Path | None, value: dict) -> None:
+    """Replace a receipt atomically, cleaning only this call's temporary file."""
+    if path is None:
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, name = tempfile.mkstemp(prefix='.'+path.name+'.', suffix='.tmp', dir=path.parent)
+    temporary = Path(name)
+    try:
+        with os.fdopen(fd, 'w', encoding='utf-8') as stream:
+            json.dump(value, stream, indent=2)
+            stream.write('\n')
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, path)
+    except BaseException:
+        temporary.unlink(missing_ok=True)
+        raise
+
+
 def raster_source(svg: bytes, asset_prefix: str) -> bytes:
     """Resolve pinned relative dependencies for raster input only.
 
@@ -327,7 +394,8 @@ def raster_source(svg: bytes, asset_prefix: str) -> bytes:
         reference=f'{escape(asset_prefix)}/{name}'.encode()
         embedded=f'data:{mime};base64,'.encode()+base64.b64encode((INPUTS/name).read_bytes())
         result=result.replace(reference,embedded)
-    require(b'../attention-scenes/' not in result,'Unresolved raster asset dependency')
+    require((escape(asset_prefix) + '/').encode() not in result,
+            'Unresolved raster asset dependency')
     return result
 
 
@@ -368,7 +436,7 @@ def render(output: Path, data: dict, asset_context: Path | None = None) -> dict:
 def verify_current(output: Path, expected: Path, second: Path) -> list[dict]:
     """Check the current selected destination, without overwriting stale files."""
     verified=[]
-    for candidate in sorted(expected.iterdir()):
+    for candidate in sorted(expected.iterdir(), key=lambda p: ({'.svg': 0, '.txt': 1, '.png': 2}.get(p.suffix, 3), p.name)):
         if candidate.suffix not in ('.svg','.png','.txt'):
             continue
         name=candidate.name
@@ -377,10 +445,22 @@ def verify_current(output: Path, expected: Path, second: Path) -> list[dict]:
         current=output/name
         require(current.is_file(), f'Canonical output missing: {current}')
         require(current.read_bytes()==candidate.read_bytes(),
-                f'Canonical output is stale or modified: {current}')
+                f'Canonical output is stale or modified: {current}' +
+                (' (PNG-only drift may reflect a different rendering stack)' if current.suffix == '.png' else ''))
         verified.append({'path':str(current),'sha256':sha(current.read_bytes())})
     require(len(verified)==len(STEMS)*5,'Output inventory incomplete')
     return verified
+
+
+def available_versions():
+    versions = {}
+    if shutil.which('pkg-config'):
+        for name in ('pango', 'pangocairo', 'cairo'):
+            try:
+                versions[name] = run(['pkg-config', '--modversion', name]).decode().strip()
+            except ValueError as exc:
+                versions[name] = 'unavailable: ' + str(exc)
+    return versions
 
 
 def main():
@@ -391,35 +471,45 @@ def main():
                         help='Read-only check of current canonical files against two fresh byte-exact renders')
     parser.add_argument('--receipt',type=Path,help='Optional explicit path for the JSON receipt')
     args=parser.parse_args()
-    output=args.output_dir.resolve()
-    for binary in ('rsvg-convert','magick','fc-match'):
-        require(shutil.which(binary) is not None,f'Required existing binary unavailable: {binary}')
-    data=validate_inputs()
-    verified=[]
-    if args.check:
-        with tempfile.TemporaryDirectory(prefix='attention-repro-') as temp:
-            first,second=Path(temp)/'first',Path(temp)/'second'
-            records=render(first,data,output)
-            render(second,data,output)
-            verified=verify_current(output,first,second)
-    else:
-        records=render(output,data)
-    receipt={'status':'PASS','canvas':[SIZE,SIZE],
-             'package_root':str(ROOT),'canonical_output_dir':str(output),
-             'mode':'read-only-check' if args.check else 'render',
-             'phone_widths_px':list(WIDTHS),'all_essential_text_minimum_px':MIN_FONT,
-             'byte_exact_second_render':bool(args.check),
-             'current_canonical_files_verified':verified,'records':records,
-             'dependencies':{'python':'standard library only',
-                 'rsvg':run(['rsvg-convert','--version']).decode().splitlines()[0],
-                 'imagemagick':run(['magick','--version']).decode().splitlines()[0],
-                 'font':'images/attention-scenes/Inter.ttf, resolved with isolated Fontconfig configuration'},
-             'limitations':['Local preview only. Actual platform upload, preview and review binding remain root-owned.',
-                            'Retained illustrative art is reused, not new art. Diagrams are qualitative topology.',
-                            'No model runtime, attention kernel, GPU experiment or measured speedup.']}
     if args.receipt:
-        args.receipt.write_text(json.dumps(receipt,indent=2)+'\n')
-    print(json.dumps(receipt,indent=2))
+        args.receipt.unlink(missing_ok=True)
+    atomic_receipt(args.receipt, {'status':'INCOMPLETE','stage':'started'})
+    try:
+        output=args.output_dir.resolve()
+        for binary in ('rsvg-convert','magick','fc-match'):
+            require(shutil.which(binary) is not None,f'Required existing binary unavailable: {binary}')
+        data=validate_inputs()
+        verified=[]
+        if args.check:
+            with tempfile.TemporaryDirectory(prefix='attention-repro-') as temp:
+                first,second=Path(temp)/'first',Path(temp)/'second'
+                records=render(first,data,output)
+                render(second,data,output)
+                verified=verify_current(output,first,second)
+        else:
+            records=render(output,data)
+        receipt={'status':'PASS','canvas':[SIZE,SIZE],
+                 'package_root':str(ROOT),'canonical_output_dir':str(output),
+                 'mode':'read-only-check' if args.check else 'render',
+                 'phone_widths_px':list(WIDTHS),'all_essential_text_minimum_px':MIN_FONT,
+                 'byte_exact_second_render':bool(args.check),
+                 'current_canonical_files_verified':verified,'records':records,
+                 'dependencies':{'python':'standard library only',
+                     'rsvg':run(['rsvg-convert','--version']).decode().splitlines()[0],
+                     'imagemagick':run(['magick','--version']).decode().splitlines()[0],
+                     'font':'images/attention-scenes/Inter.ttf, resolved with isolated Fontconfig configuration',
+                     'available_pkg_config_versions':available_versions(),
+                     'pangocairo_backend':os.environ.get('PANGOCAIRO_BACKEND','default (not overridden)')},
+                 'limitations':['Local preview only. Actual platform upload, preview and review binding remain root-owned.',
+                                'Retained illustrative art is reused, not new art. Diagrams are qualitative topology.',
+                                'No model runtime, attention kernel, GPU experiment or measured speedup.']}
+        atomic_receipt(args.receipt, receipt)
+        print(json.dumps(receipt,indent=2))
+    except BaseException as exc:
+        interrupted = isinstance(exc, (KeyboardInterrupt, SystemExit)) or not isinstance(exc, Exception)
+        atomic_receipt(args.receipt, {'status':'INTERRUPTED' if interrupted else 'FAIL',
+                                     'exception_type':type(exc).__name__, 'message':str(exc)})
+        raise
 
 
 if __name__=='__main__':

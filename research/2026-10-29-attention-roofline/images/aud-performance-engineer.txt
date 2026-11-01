@@ -1,0 +1,7 @@
+Check each resource separately
+Compute floor
+Transfer floor
+Work ÷ compute rate
+Bytes ÷ bandwidth
+Do not add floors that can overlap.
+Dependencies can push real time above both.
