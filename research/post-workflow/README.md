@@ -4,9 +4,13 @@ This public source snapshot contains the current measurement receipt v3 and
 PIQ diagnostic envelope v2 checks. It removes the retired GPU receipt v1, CPU
 receipt v2, PIQ envelope v1, and separate two-host supplement paths.
 
-The snapshot is synthetic-only. It contains no real run, host, device, owner,
-account, admission, private package, performance result, qualification, draft,
-or publication record. The 59-file
+The retained execution-evidence fixtures are synthetic. This snapshot contains
+no real run, host, device, owner, admission, private package, performance result,
+qualification, private account configuration, live draft, or publication record.
+Parser tests also use the public Prime Intellect name and organization URN
+`urn:li:organization:100845452` as mention syntax examples. The test path
+`social/v8-candidate/linkedin.txt` is created in a temporary fixture directory;
+it does not identify a live draft. The 59-file
 [GPU training diagnostic example](examples/piq-gpu-training-diagnostic) uses
 explicitly synthetic identifiers and values. The repository-owned
 [two-host admissions anchor](trust/piq-v2-two-host-admissions.json) is empty.
@@ -83,8 +87,8 @@ tools saves, schedules, publishes, or changes an external account.
 [the X and LinkedIn draft workflow](TYPEFULLY_WORKFLOW.md) require a useful
 reader decision, an early payoff with its material tradeoff, verified relevant
 attribution and a topic-specific follow-up. These are general preparation rules.
-Keep account analytics, private copy, identity research and native receipts out
-of the public snapshot. Draft work does not authorize publication, scheduling,
+Keep account analytics, private copy, nonpublic identity research and native
+receipts out of the public snapshot. Draft work does not authorize publication, scheduling,
 sending replies or changing live promotion.
 
 ## Draft promotion and results
@@ -142,7 +146,8 @@ use the same per-entry override and are listed in `source_updates` with their
 later private tree. The top-level source revision and tree remain the historical
 baseline for every unchanged entry. They do not claim that unchanged projected
 files match the later private source tree. Public adaptations use synthetic
-fixtures and standalone guidance.
+execution fixtures and standalone guidance. Public organization mention fixtures
+are identified above.
 
 Verify every staged byte from this directory:
 

@@ -62,18 +62,19 @@
     {
       "path": "README.md",
       "staged_path": "research/post-workflow/README.md",
-      "sha256": "01bca182439dec32db1ac1763b835360554692c442e42823ef163b6b0a8df4e4",
+      "sha256": "2883847011d2aa84a34a6c9d3cb4104db121affc7683035f18a70fcdcb4c5cd1",
       "public_base_sha256": "acdec6cd5d9f13ffd598128b7404f15d648f340d4813e597e5cfa41f537f6c3c",
       "provenance": "public_snapshot_documentation",
       "adaptations": [
         "current_contract_only",
-        "synthetic_only_scope",
+        "synthetic_execution_evidence_scope",
         "omit_private_scaffold",
         "public_staged_paths",
         "plain_language",
         "draft_promotion_and_results_router",
         "per_entry_source_revision_overrides",
-        "share_optimization_router"
+        "share_optimization_router",
+        "public_organization_parser_fixture_disclosure"
       ]
     },
     {
