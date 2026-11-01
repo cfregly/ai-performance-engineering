@@ -27,7 +27,9 @@ PIQ v2 variants:
   repository anchor. A bundle cannot admit itself, and no command-line or
   environment override is accepted.
 - Transformer Engine GPU training binds all five execution groups and ten
-  attempts. Every raw attempt interval must fit inside its exact assignment
+  attempts. Admission shares the initial BF16 oracle with the eight full
+  attempts but performs no final evaluation, so its `final_bf16` value must be
+  `null`. Every raw attempt interval must fit inside its exact assignment
   window.
 
 Read
@@ -112,10 +114,16 @@ python3 tools/typefully_results.py --help
 
 ## Source identity and provenance
 
-The projected private source revision is
+The baseline projected private source revision is
 `05ca0567277ecf48d5af732c60aad9a0959489f1`. Its source tree is
 `d25e5e1044d487e2b84620f1426f5d93eec81c17`. The public base revision is
 `0942e572e82395277c08952a1536639b1d5303f4`.
+
+The admission-quality update comes from private source revision
+`74049e74f4e3736c7d1de154761521dd0c243046` and tree
+`2d70f78d4ec686872b7b6e575907977d75c20d85`. It changes only
+`QUALIFIED_GPU_TRAINING_EVIDENCE.md`, `tools/qualified_gpu_training.py`, and
+`tools/test_qualified_gpu_training.py` in this projection.
 
 [source-hashes.json](source-hashes.json) records every file staged under
 `research/post-workflow/`, except the hash manifest itself. Each entry names
@@ -129,8 +137,12 @@ Draft promotion and results additions declare `source_revision` on each changed
 entry. That value overrides the manifest's base source revision. Their exact
 private source bytes are bound by `source_sha256`. The offline analytics helper and
 tests bind their follow-up source revision in the same way. The share-optimization
-guides also bind their source revision per entry. Public adaptations
-use synthetic fixtures and standalone guidance.
+guides also bind their source revision per entry. The admission-quality files
+use the same per-entry override and are listed in `source_updates` with their
+later private tree. The top-level source revision and tree remain the historical
+baseline for every unchanged entry. They do not claim that unchanged projected
+files match the later private source tree. Public adaptations use synthetic
+fixtures and standalone guidance.
 
 Verify every staged byte from this directory:
 

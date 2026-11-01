@@ -320,7 +320,7 @@ def build_gpu_fixture(package: Path, *, synthetic: bool = True) -> dict:
         initial_quality = {"nll_sum_nanonats": 4_000_000_000 * 1_048_576,
                            "target_bytes": 1_048_576, "correct_bytes": 250_000}
         final_base = 3_800_000_000 * 1_048_576 - attempt_index * 1000
-        final_quality = {
+        final_quality = None if group["kind"] == "admission" else {
             "nll_sum_nanonats": final_base + (10_000_000 * 1_048_576 if role == "candidate" else 0),
             "target_bytes": 1_048_576,
             "correct_bytes": 320_000 - (5_000 if role == "candidate" else 0),
@@ -703,6 +703,78 @@ def _normalized_fixture(package: Path, receipt: dict) -> tuple[dict, dict, list[
 
 
 class QualifiedGpuTrainingTests(unittest.TestCase):
+    def test_admission_has_no_final_quality_evaluation(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            package = Path(directory)
+            receipt = build_gpu_fixture(package)
+            envelope_path = package / receipt["piq_envelope"]["path"]
+            envelope = strict_load_json(envelope_path)
+            design = strict_load_json(package / receipt["design"]["path"])
+            for entry in envelope["attempts"][:2]:
+                with self.subTest(role=entry["role"]):
+                    raw = strict_load_json(envelope_path.parent / entry["raw_result"]["path"])
+                    self.assertEqual(0, raw["useful_work"]["validation_windows"])
+                    self.assertIsNone(raw["quality"]["final_bf16"])
+                    normalized = normalize_gpu_attempt(design, SCHEDULE[0], envelope, raw)
+                    self.assertIsNone(normalized["quality"]["final_bf16"])
+                    self.assertEqual([], normalized["eligible_update_latencies_ns"])
+
+    def test_admission_rejects_invented_final_quality(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            package = Path(directory)
+            receipt = build_gpu_fixture(package)
+            envelope_path = package / receipt["piq_envelope"]["path"]
+            envelope = strict_load_json(envelope_path)
+            design = strict_load_json(package / receipt["design"]["path"])
+            for entry in envelope["attempts"][:2]:
+                with self.subTest(role=entry["role"]):
+                    raw = strict_load_json(envelope_path.parent / entry["raw_result"]["path"])
+                    raw["quality"]["final_bf16"] = copy.deepcopy(raw["quality"]["initial_bf16"])
+                    with self.assertRaisesRegex(EvidenceError, "must not fabricate final BF16"):
+                        normalize_gpu_attempt(design, SCHEDULE[0], envelope, raw)
+
+    def test_all_full_attempts_still_require_final_quality(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            package = Path(directory)
+            receipt = build_gpu_fixture(package)
+            envelope_path = package / receipt["piq_envelope"]["path"]
+            envelope = strict_load_json(envelope_path)
+            design = strict_load_json(package / receipt["design"]["path"])
+            groups = {item["id"]: item for item in SCHEDULE}
+            for entry in envelope["attempts"][2:]:
+                with self.subTest(group=entry["group_id"], role=entry["role"]):
+                    raw = strict_load_json(envelope_path.parent / entry["raw_result"]["path"])
+                    raw["quality"]["final_bf16"] = None
+                    with self.assertRaisesRegex(EvidenceError, "GPU final quality"):
+                        normalize_gpu_attempt(design, groups[entry["group_id"]], envelope, raw)
+
+    def test_admission_shares_the_initial_oracle_with_full_attempts(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            package = Path(directory)
+            receipt = build_gpu_fixture(package)
+            design, _, original = _normalized_fixture(package, receipt)
+            for index in (0, 1):
+                with self.subTest(role=original[index]["role"]):
+                    attempts = copy.deepcopy(original)
+                    attempts[index]["quality"]["initial_bf16"]["nll_sum_nanonats"] += 1
+                    report = evaluate_gpu_study(design, attempts, design_sha256=receipt["design"]["sha256"])
+                    self.assertEqual("INCONCLUSIVE", report["verdict"])
+                    self.assertFalse(report["gates"]["quality"])
+                    self.assertIn("GPU study must share one initial BF16 quality oracle across all ten attempts", report["errors"])
+
+    def test_missing_admission_cannot_pass_all_ten_quality_gate(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            package = Path(directory)
+            receipt = build_gpu_fixture(package)
+            design, _, original = _normalized_fixture(package, receipt)
+            for missing in ({0}, {1}, {0, 1}):
+                with self.subTest(missing=sorted(missing)):
+                    attempts = [item for index, item in enumerate(original) if index not in missing]
+                    report = evaluate_gpu_study(design, attempts, design_sha256=receipt["design"]["sha256"])
+                    self.assertEqual("INCONCLUSIVE", report["verdict"])
+                    self.assertFalse(report["gates"]["quality"])
+                    self.assertIn("GPU study must share one initial BF16 quality oracle across all ten attempts", report["errors"])
+
     def test_complete_synthetic_fixture_validates_but_cannot_project(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             package = Path(directory)
