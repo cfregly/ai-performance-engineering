@@ -2,7 +2,11 @@
 
 View Mario Sieg and Prime Intellect's [reported training-step results](https://www.primeintellect.ai/blog/prime-mega-moe) and compare the charts with their workload conditions.
 
-![Bar chart of Prime Intellect and Mario Sieg's reported Prime-RL result for Qwen3-30B-A3B. Full training-step time: Mega MoE off, torch all-to-all plus DeepGEMM FP8 experts, 2.78 seconds. Mega MoE on, 2.08 seconds. Conditions: 32 H200 GPUs, 8 per node, FP8, expert parallelism 8 within node, 16,384 packed tokens per GPU per step, microbatch 1, no gradient accumulation, both arms compiled fullgraph, no offload, FP32 master weights, AdamW, FSDP, full activation checkpointing, real data and routing. Mean steps 6 to 20 of 20, with 5 compile/JIT warmups excluded. These short timings do not establish long-run training quality.](images/b-square.png)
+![Horizontal bar chart of Prime Intellect's reported full training-step time for Qwen3-30B-A3B in Prime-RL. Mega MoE off, using torch all-to-all plus DeepGEMM FP8, takes 2.78 seconds. Mega MoE on takes 2.08 seconds, about 25% less time. Both bars start at zero on the same 0-to-3-second scale. Setup: 32 H200 GPUs, FP8, expert parallelism 8 within each node, 16,384 tokens per GPU per step, full activation checkpointing, and fullgraph compilation in both arms. Values are means of steps 6 to 20 after 5 compile/JIT warmup steps. Source: Prime Intellect and Mario Sieg, primeintellect.ai/blog/prime-mega-moe. The upright Fregly's take portrait stamp appears in the lower right.](images/training-step-comparison.png)
+
+This is the current selected chart. Source: [Prime Intellect and Mario Sieg](https://www.primeintellect.ai/blog/prime-mega-moe). These short timings do not establish long-run training quality.
+
+[Full chart, 1200 × 1200 PNG](images/training-step-comparison.png) and [400 × 400 preview](images/training-step-comparison-400.png).
 
 For Qwen3-30B-A3B, Prime reports 2.78 seconds per training step with Mega MoE disabled and 2.08 seconds with it enabled in Prime-RL. Prime labels this 34% higher throughput and 25% less time per step. At equal work per step, those percentages use different denominators: the new step time for throughput gain and the baseline for time reduction. The baseline already uses compiled torch all-to-all communication and DeepGEMM FP8 experts.
 
@@ -12,9 +16,9 @@ The Qwen3-30B-A3B setup uses 32 H200s at eight per node, FP8 with FP32 master we
 
 Prime's [pinned integration documentation](https://github.com/PrimeIntellect-ai/prime-rl/blob/a566e5d8e2a903f44d901e114d5d510888b93303/docs/scaling.md#expert-parallelism) describes an expert launch-grid limit that leaves scheduling capacity for concurrent FSDP collectives. A larger reservation makes the expert grid smaller on every call. The guard validates configuration settings, rather than measuring actual occupancy. My advice: start with the supported reservation default and evaluate complete steps on the intended workload. Confirm access to Prime's replacement kernel wheel and its requirements before planning an integration.
 
-## Charts and explanations
+## Historical chart and explainer alternatives
 
-The comparison charts use Prime’s reported timings. The resource diagrams explain scheduling capacity and the tradeoff to evaluate on a supported workload. Choose the square or landscape version that fits your view.
+The images below are retained historical alternatives. The current selected chart is shown above. The comparison charts use the same Prime-reported timings and workload conditions. The resource diagrams explain scheduling capacity and the tradeoff to evaluate on a supported workload.
 
 | View | Square | Landscape |
 |---|---|---|
