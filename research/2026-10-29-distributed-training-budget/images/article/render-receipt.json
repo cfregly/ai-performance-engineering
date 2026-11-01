@@ -1,7 +1,7 @@
 {
   "kind": "PRESENTATION_ANNOTATION_REPAIR_ONLY",
-  "manifest_sha256": "1a043c53b376df529185ec4422e25de64ac5e835181f73a93fc68c0305d0ffb6",
-  "renderer_sha256": "848de1cec7401165475eb84cde49d19975e886592b2f2c77cceb24d10ef73b22",
+  "manifest_sha256": "52cb3c02965dfa23893201c39de756b8aa2267b22f8916bd24f01f56e71772cb",
+  "renderer_sha256": "eac1655b9ff6e66fc4c6e964b5cfb00dab5609c47db7b60008cd9c98964de373",
   "font_sha256": "29160a80ff49ddcab2c97711247e08b1fab27a484a329ce8b813d820dc559031",
   "Pillow": "12.3.0",
   "rsvg_version": "rsvg-convert version 2.62.3",
@@ -13,7 +13,7 @@
       "source": "images/article-sources/aud-performance-engineer.png",
       "source_sha256": "ab421db741336f51da5c434f3ad8c267bdb8c16fa3d2201530ff10684f4b4372",
       "png_sha256": "ad376a37e6a52aa2f58099cc60d9f01deda1f3c7f356aeeb73db3f2bdb9717c7",
-      "svg_sha256": "2ba54783a4dcdaec81ec6c10935edabf7bcba7a04a8b78b8dff80e2640b52228",
+      "svg_sha256": "fbcf5aea132d697370371c7bdad936687297efe60f1a572db8dc88c0d44981af",
       "edits": [
         [
           1004,
@@ -40,7 +40,7 @@
       "source": "images/article-sources/aud-performance-engineer-square.png",
       "source_sha256": "8c50cd2050539d7b5a87d73af480a7ad44a33c89e2151d5e8c40082626cbf3a3",
       "png_sha256": "4cc6ed8197de87e02d467610791fc425cf54fa8a07d77bcb076d30d33db55505",
-      "svg_sha256": "1366c98d5377a2c1000552cae3aeff7fca5415b71488625676181079a196d9e5",
+      "svg_sha256": "135b386d2848cd477ccf031cdf12ed24e93ee79143cb8fa9e7d08daf0d7364d1",
       "edits": [
         [
           785,
@@ -67,7 +67,7 @@
       "source": "images/scientific/02-topology-a.png",
       "source_sha256": "2c6ce245fa46d640b2d9b55db60ca5203a4c1b3229012241b753d66d5189b7a1",
       "png_sha256": "b1bf153408f7396d9aace6b198866a948392cb5d0ce1561096303b28951e66f9",
-      "svg_sha256": "5af964e7fb707d4312768e807ff43ee14c572188888e4eaefa1bffba5e4b135a",
+      "svg_sha256": "43e5b459bf73763aadb03d5b60476a1acb9b5e8bf55011efd976289b4f86bcf2",
       "edits": [
         [
           2162,
@@ -94,7 +94,7 @@
       "source": "images/aud-curious-square.png",
       "source_sha256": "7c35c25dd6f4e95982c8d8beeeecae6a2f2d22dff9e548ab000966075d0a3a05",
       "png_sha256": "9e71fee1aa9003815bc05cf362319d7ec4d96e2152ecacc142b101767293e196",
-      "svg_sha256": "1929a8df1d73f26db27c8ed1415763c1a22cf4989fbdbd4d4a2e4520254c7eef",
+      "svg_sha256": "8ac49daa064e37384967b4d769b325c77eddc353215ac2df6316ba28ba14b443",
       "edits": [
         [
           969,
@@ -121,7 +121,7 @@
       "source": "images/scientific/07-context-policy.png",
       "source_sha256": "9bdd38d634195edbb58b96f683cc68017826232f6d254c567e7e1f615db5d4e7",
       "png_sha256": "f4a75f56a2132f2dfbcb40bf92edfc45236552e7a896e85d38a5ea855b449320",
-      "svg_sha256": "bd5d06e98a16b38bca025e4a01bbe22e5238168e827d7428b9424b25d40a16cb",
+      "svg_sha256": "f5fdfd5da89ac8a0add08d9886e8fd240c1f2aa1bd3ed803a95684d6e9260c8b",
       "edits": [
         [
           2163,
@@ -147,19 +147,25 @@
       "target": "images/article/a-square.png",
       "source": "images/a-square.png",
       "source_sha256": "f72c7cb976af02d1d00869bb9bd1a2b8a394ecbfe2f77d1b6d3f2f484069eb7e",
-      "png_sha256": "cd10b4e188b6b870fb3f80e339d98294c5e12406c6bbdb4ff0b80dddbac3e05f",
-      "svg_sha256": "6d6e8dbf70da1cf5018fbe77b50c4276889eafb2977d269ef8f09c82f4fcc8fa",
+      "png_sha256": "db76d9e775d621b0509cca41a0279cf215c5b4419ce62da944071a3b111764d8",
+      "svg_sha256": "f0f7c443fd4564f96f6cd17b128d2f2da3a97151ed2a1714e9080a5b0f31f697",
       "edits": [
         [
           970,
           1021,
           986,
           1042
+        ],
+        [
+          145,
+          748,
+          952,
+          984
         ]
       ],
       "changed_pixel_bbox": [
-        971,
-        1022,
+        152,
+        763,
         985,
         1041
       ],
@@ -175,7 +181,7 @@
       "source": "images/scientific/06-routing-skew.png",
       "source_sha256": "e2a139dfdbb0c0ff1ce0c3a3c9b29da72246de0aa035f1d92206359c9d4babf8",
       "png_sha256": "5a91d0ffa6105abb0ca78d0410c344273e548ba0ea20fdb21022612fae3cc2ab",
-      "svg_sha256": "f5a9dfa475edb5618e4e56927f7d2cedcfa3fb9773da5a54f54680ad00d8f0a5",
+      "svg_sha256": "b177562eeb33dd033d8b4e1ce4030d1a84fabd57663b7e4c6b055cb4916b2828",
       "edits": [
         [
           2161,
@@ -202,7 +208,7 @@
       "source": "images/aud-ml-engineer-square.png",
       "source_sha256": "32c50e8bd6f1919bd4cd50c3bf990ebcef052c98551e92baa8f546682c66386f",
       "png_sha256": "b2034018744dc381532f22e734826dbc279dacd1ea79f46950a7b424bdabc075",
-      "svg_sha256": "ec9784e9f3b5650d201102029ebb7301155778191591dc9209b50ce20939291a",
+      "svg_sha256": "81b4f3d2f3b05fe9deab06651e943b37b49f306f155da4b52d35e35bba831b1c",
       "edits": [
         [
           969,
@@ -229,7 +235,7 @@
       "source": "images/article-sources/aud-performance-engineer-square.png",
       "source_sha256": "8c50cd2050539d7b5a87d73af480a7ad44a33c89e2151d5e8c40082626cbf3a3",
       "png_sha256": "2f2796adaa24b46f6bd39ff076d41dbb6a6d30e7e85fc32551ebe225b34a01e0",
-      "svg_sha256": "0ddeb39a396e3d5192ddb75cc3e02fc43c103b15f312a794dc0d3e8ab5e22252",
+      "svg_sha256": "6137b728eb0c7918f7bc835a92f7b81474a9f10e089a1594aa1f17815ffc8233",
       "edits": [
         [
           969,
@@ -262,7 +268,7 @@
       "source": "images/b-square.png",
       "source_sha256": "c6b9f179e45fe385e995e9373ed7550fe550b4a357637052aef322eceb0778fc",
       "png_sha256": "3ba0ff6caa3afa73e57338918e65e550ccd763e53f75cfac8c0736ed52e80271",
-      "svg_sha256": "233d8209fb544a0dbf1fcae0d124a81c73941f0b652ef399d9b6c1dc755e9a09",
+      "svg_sha256": "5a9abb12f5cda14b3f0ad926458e03af94d8e5faa7e8bf781f646e5e03146639",
       "edits": [
         [
           969,
@@ -289,7 +295,7 @@
       "source": "images/aud-platform-operations-square.png",
       "source_sha256": "53bc3c02eaa343b205ebe6046d17b1cd94c6db8921d1110e331cad2aa1d83103",
       "png_sha256": "09031c4d785b0d52fe7435725128ba58162ff2528a27caee5acb4b1befd9a063",
-      "svg_sha256": "f17570a31f1975df2a772d1b8167b7cd8c9a50418e32058b7ed164445e42817c",
+      "svg_sha256": "99e360326607656fe1a5fe5b7dd7302609178fdb71c13353843dac7fe5d47ea2",
       "edits": [
         [
           961,
@@ -316,7 +322,7 @@
       "source": "images/scientific/11-gradient-barrier.png",
       "source_sha256": "d679a1d7bb65dd2bd97ccd10cd1c8e7ceb93b3d426ee93a975a5843ae325515e",
       "png_sha256": "d7e05d0dd97afeefe720052a12021762e53dd33205a806c9eb9a99a3809807f7",
-      "svg_sha256": "fb5497009d92289eca41cc517cc5f921abcf23db41892ac16b1cc9f4eab1a856",
+      "svg_sha256": "fbf9248bd6606181060aea5fc2500b67f79559801342c59244bb1cb8c1847efc",
       "edits": [
         [
           2152,
@@ -343,7 +349,7 @@
       "source": "images/c-square.png",
       "source_sha256": "071067c938eb4f9fb128622162fdba85ad15b74556db1f76e99952c5872d2bed",
       "png_sha256": "6653df8931a65148a44ace89d79e98412507379da5b79ed4dc8cbcdf0bc3c2f9",
-      "svg_sha256": "c427d4335d1d2d9ce112787729c44a6e841b5994b28f0a4b60f1d716c9476167",
+      "svg_sha256": "778a82b749bf1f26e8da9f042466bc0e8832071a3a15b8734191406c4d9e85a3",
       "edits": [
         [
           961,
@@ -370,7 +376,7 @@
       "source": "images/aud-kernel-engineer-square.png",
       "source_sha256": "293e22bb41fb2ae6863ac54d12ad6424c26bd4bfe3c487bfca762b9b05e703c6",
       "png_sha256": "58fe684cb87a5779699a52bada328a2c0ae92a2e379fed4e1d44133162b472f0",
-      "svg_sha256": "3746cafbe944442ff86bbf43284b8b87612fd918896d46394ec93a9fa0a98da7",
+      "svg_sha256": "9af90ecd60b0f13a9a4a7ddb808cb1bfb5d372061d1f814dbf6092ac3f10f843",
       "edits": [
         [
           961,
@@ -397,7 +403,7 @@
       "source": "images/aud-business-capacity-square.png",
       "source_sha256": "2911a3bbcc4fd05fe5126ba29bac1f2bd2161875fc87783bd765ba9ce8fc74e5",
       "png_sha256": "a4f1338520d04d4edbb68b26fb87a66cca9568a9e074b8f93c74b2b1aa405b1e",
-      "svg_sha256": "7a8db20d58e5095c72db24b71f282c13154769df0e78bbb091113369c411b672",
+      "svg_sha256": "b6ed4d38bf17c9e62bf45915edb492fa8d3f25c5a7b57dfcf6db08881b2271d6",
       "edits": [
         [
           962,
@@ -426,11 +432,13 @@
       "source": "images/aud-performance-engineer-square.png",
       "source_sha256": "4cc6ed8197de87e02d467610791fc425cf54fa8a07d77bcb076d30d33db55505",
       "png_sha256": "e33e313db49fc4289f3be84129c83b6fb7f651d55bf6c8f6f4861c8f1b518188",
+      "pixel_sha256": "02ae82a486920be00332e20b718a406ecba02edaaff4b183b5bce09c3f47b8e1",
       "dimensions": [
         400,
         400
       ],
       "resampling": "LANCZOS"
     }
-  ]
+  ],
+  "preview_source_assets": []
 }

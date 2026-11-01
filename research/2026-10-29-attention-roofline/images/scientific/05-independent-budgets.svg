@@ -14,12 +14,18 @@
 <rect x="84" y="760" width="896.6223579428571" height="44" fill="#E87823" stroke="#E87823" stroke-width="3" data-value-ms="0.30408704" data-axis-max-ms="0.35"/>
 <line x1="673.7142857142858" y1="480" x2="673.7142857142858" y2="824" stroke="#3478BA" stroke-width="5" stroke-dasharray="12 10" data-target-ms="0.2" data-axis-max-ms="0.35"/>
 <line x1="84" y1="830" x2="1116" y2="830" stroke="#202326" stroke-width="4" data-quantitative-axis="ms" data-axis-max-ms="0.35"/>
+<g data-quantitative-tick-ms="0">
 <line x1="84.0" y1="830" x2="84.0" y2="842" stroke="#202326" stroke-width="4" />
 <text x="84.0" y="910" font-family="Inter" font-size="52" font-weight="400" text-anchor="start" fill="#202326">0.00</text>
+</g>
+<g data-quantitative-tick-ms="0.2">
 <line x1="673.7142857142858" y1="830" x2="673.7142857142858" y2="842" stroke="#202326" stroke-width="4" />
 <text x="673.7142857142858" y="910" font-family="Inter" font-size="52" font-weight="400" text-anchor="middle" fill="#202326">0.20</text>
+</g>
+<g data-quantitative-tick-ms="0.35">
 <line x1="1116.0" y1="830" x2="1116.0" y2="842" stroke="#202326" stroke-width="4" />
 <text x="1116.0" y="910" font-family="Inter" font-size="52" font-weight="400" text-anchor="end" fill="#202326">0.35</text>
+</g>
 <text x="84" y="990" font-family="Inter" font-size="52" font-weight="400" text-anchor="start" fill="#202326">Time (ms) · zero-based scale</text>
 <text x="84" y="1060" font-family="Inter" font-size="52" font-weight="500" text-anchor="start" fill="#3478BA">Blue line: 0.200 ms target.</text>
 <text x="84" y="1130" font-family="Inter" font-size="52" font-weight="400" text-anchor="start" fill="#202326">Calculated floors, not runtimes.</text>

@@ -17,7 +17,7 @@
 <text x="600.0" y="884" font-family="Inter" font-size="52" font-weight="400" text-anchor="middle" fill="#202326">0.125</text>
 <line x1="1116.0" y1="816" x2="1116.0" y2="828" stroke="#202326" stroke-width="3" />
 <text x="1116.0" y="884" font-family="Inter" font-size="52" font-weight="400" text-anchor="end" fill="#202326">0.250 ms</text>
-<text x="84" y="977" font-family="Inter" font-size="52" font-weight="400" text-anchor="start" fill="#202326">Calculated: 1,856 MiB ÷ 8 TB/s.</text>
+<text x="84" y="977" font-family="Inter" font-size="52" font-weight="400" text-anchor="start" fill="#202326">Calculated: 1.946 GB ÷ 8 TB/s.</text>
 <text x="84" y="1041" font-family="Inter" font-size="52" font-weight="400" text-anchor="start" fill="#202326">Transfers alone exceed this target.</text>
 <text x="84" y="1105" font-family="Inter" font-size="52" font-weight="400" text-anchor="start" fill="#202326">Compute and other traffic excluded.</text>
 </svg>

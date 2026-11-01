@@ -6,6 +6,6 @@ Transfer floor ≥0.243 ms
 0
 0.125
 0.250 ms
-Calculated: 1,856 MiB ÷ 8 TB/s.
+Calculated: 1.946 GB ÷ 8 TB/s.
 Transfers alone exceed this target.
 Compute and other traffic excluded.

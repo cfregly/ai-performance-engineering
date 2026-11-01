@@ -5,7 +5,7 @@
 <text x="84" y="112" font-family="Inter" font-size="64" font-weight="700" text-anchor="start" fill="#202326">Scratch becomes traffic</text>
 <text x="84" y="182" font-family="Inter" font-size="52" font-weight="400" text-anchor="start" fill="#202326">Attention backward · one sequence,</text>
 <text x="84" y="246" font-family="Inter" font-size="52" font-weight="400" text-anchor="start" fill="#202326">one layer · one device · FP32 partials</text>
-<svg x="84" y="278" width="1032" height="226" viewBox="0 624 2400 738" overflow="hidden" preserveAspectRatio="xMidYMid meet"><image width="2400" height="2400" xlink:href="../attention-scenes/warehouse-source.png"/></svg>
+<svg x="84" y="278" width="1032" height="226" viewBox="0 730 2400 525" overflow="hidden" preserveAspectRatio="xMidYMid meet"><image width="2400" height="2400" xlink:href="../attention-scenes/warehouse-source.png"/></svg>
 <text x="84" y="557" font-family="Inter" font-size="52" font-weight="600" text-anchor="start" fill="#202326">1,056 MiB produced</text>
 <rect x="84.000000" y="579.000000" width="532.125000" height="27.000000" fill="#3478BA" data-bar-value="1056" data-bar-unit="MiB" data-axis-max="2048"/>
 <text x="84" y="669" font-family="Inter" font-size="52" font-weight="600" text-anchor="start" fill="#202326">≤128 MiB retained on chip</text>

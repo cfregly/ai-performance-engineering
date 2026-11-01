@@ -9,6 +9,7 @@ network, model, GPU or account operation is invoked. Default is read-only check.
 from __future__ import annotations
 import argparse
 import base64
+import copy
 import hashlib
 import html
 import io
@@ -64,11 +65,22 @@ def svg_source(entry):
         factor, offset = (1, 0) if (width, height) == (1080, 1080) else (5/6, 350)
         legend_zone = (int(785*factor+offset), int(919*factor), int(1025*factor+offset+.999), int(978*factor+.999))
         legend = bool(entry.get('blank_idle_legend') and (width, height) in ((1080, 1080), (1600, 900)) and tuple(box) == legend_zone)
-        require(badge or legend, 'Only the isolated deck-number or exact non-data legend region may be erased')
+        footer = bool(entry.get('footer_copy') and entry['target']=='images/article/a-square.png'
+                      and (width,height)==(1080,1080) and tuple(box)==(145,748,952,984))
+        require(badge or legend or footer, 'Only the isolated deck-number, exact legend or exact wording footer may be erased')
         out.append(f'<rect x="{x1}" y="{y1}" width="{x2-x1}" height="{y2-y1}" fill="#FBFBF8"/>')
     if entry.get('blank_idle_legend'):
         label = entry['blank_idle_legend']
         out.append(f'<text x="{label["x"]}" y="{label["baseline_y"]}" font-family="Inter" font-weight="400" font-size="{label["font_size"]}" fill="#202326">Blank: idle</text>')
+    if entry.get('footer_copy'):
+        label=entry['footer_copy']
+        require(label=={'kind':'token-owner-reshard-copy','x':154,'baseline_y':790,'font_size':36,'line_gap':42,
+                        'lines':['Modeled reshards: 10 MiB per rank,','per layer, per microbatch.',
+                                 'Forward + backward combined.','Dispatch and combine traffic','is counted separately.']},
+                'Footer must preserve the retained quantity and literal traffic category')
+        require([145,748,952,984] in entry['erase_regions'],'Footer requires its exact isolated annotation region')
+        for index,line in enumerate(label['lines']):
+            out.append(f'<text x="{label["x"]}" y="{label["baseline_y"]+index*label["line_gap"]}" font-family="Inter" font-weight="400" font-size="{label["font_size"]}" fill="#202326">{html.escape(line)}</text>')
     return ('\n'.join(out) + '\n</svg>\n').encode()
 
 
@@ -112,11 +124,30 @@ def compare_retained_receipt(retained, current):
     """Exact source/output proof is required; environment strings are context."""
     environment_fields = {'Pillow', 'rsvg_version'}
     canonical = lambda value: json.dumps(value, sort_keys=True, separators=(',', ':'))
-    expected = {key: value for key, value in retained.items() if key not in environment_fields}
-    actual = {key: value for key, value in current.items() if key not in environment_fields}
+    def identity(value):
+        result=copy.deepcopy({key:item for key,item in value.items() if key not in environment_fields})
+        for item in result.get('derived_outputs',[]):
+            require(item.get('dimensions')==[400,400] and len(item.get('pixel_sha256',''))==64,
+                    'Derived phone output needs dimensions and decoded RGB pixel identity')
+            item.pop('png_sha256',None)
+        return result
+    expected,actual=identity(retained),identity(current)
     require(canonical(expected) == canonical(actual), 'Retained article source/output proof differs')
-    return {key: {'retained': retained.get(key), 'current': current.get(key)}
-            for key in sorted(environment_fields) if retained.get(key) != current.get(key)}
+    differences={key: {'retained': retained.get(key), 'current': current.get(key)}
+                 for key in sorted(environment_fields) if retained.get(key) != current.get(key)}
+    encoding=[{'target':old['target'],'retained_png_sha256':old['png_sha256'],'current_png_sha256':new['png_sha256']}
+              for old,new in zip(retained.get('derived_outputs',[]),current.get('derived_outputs',[]))
+              if old['png_sha256']!=new['png_sha256']]
+    if encoding:differences['derived_png_encoding_only']=encoding
+    return differences
+
+
+def retained_derived_output(path,data,output):
+    require(path.is_file(),'Retained phone output missing: '+str(path.relative_to(output)))
+    actual=Image.open(io.BytesIO(path.read_bytes())).convert('RGB')
+    expected=Image.open(io.BytesIO(data)).convert('RGB')
+    require(actual.size==expected.size==(400,400) and actual.tobytes()==expected.tobytes(),
+            'Retained phone decoded RGB pixels or dimensions differ: '+str(path.relative_to(output)))
 
 
 def retained_output(path, data, output):
@@ -175,14 +206,28 @@ def run(root, output, write, *, explicit_output=False):
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_bytes(png)
             else:
-                retained_output(path, png, output)
+                retained_derived_output(path, png, output)
             derived.append({'target': entry['target'], 'source': entry['source'], 'source_sha256': sha(source),
-                            'png_sha256': sha(png), 'dimensions': [400, 400], 'resampling': 'LANCZOS'})
+                            'png_sha256': sha(png), 'pixel_sha256':sha(Image.open(io.BytesIO(png)).convert('RGB').tobytes()),
+                            'dimensions': [400, 400], 'resampling': 'LANCZOS'})
+        preview_assets=[]
+        if output.resolve()!=root.resolve():
+            output_targets={entry['target'] for entry in declaration['outputs']}|{entry['target'] for entry in declaration.get('derived_outputs',[])}
+            for name in sorted({entry['source'] for entry in declaration['outputs']}):
+                require(name not in output_targets,'Preview source must not overwrite a rendered target')
+                destination=output/name
+                require(destination.resolve().is_relative_to(output.resolve()),'Preview source escapes output root')
+                source=(root/name).read_bytes()
+                if write:
+                    destination.parent.mkdir(parents=True,exist_ok=True);destination.write_bytes(source)
+                else:require(destination.is_file() and destination.read_bytes()==source,'Preview SVG source missing or changed: '+name)
+                preview_assets.append({'path':name,'sha256':sha(source)})
         receipt = {'kind': 'PRESENTATION_ANNOTATION_REPAIR_ONLY', 'manifest_sha256': sha((root/'images/article/render-inputs.json').read_bytes()),
                    'renderer_sha256': sha(Path(__file__).read_bytes()),
                    'font_sha256': declaration['font']['sha256'], 'Pillow': PILLOW_VERSION,
                    'rsvg_version': subprocess.check_output([required_tool('rsvg-convert'), '--version'], text=True).splitlines()[0],
-                   'scientific_calculations_run': 0, 'new_mathematical_PASS': False, 'rows': rows, 'derived_outputs': derived}
+                   'scientific_calculations_run': 0, 'new_mathematical_PASS': False, 'rows': rows,
+                   'derived_outputs': derived,'preview_source_assets':preview_assets}
         path = output / 'images/article/render-receipt.json'
         data = (json.dumps(receipt, indent=2) + '\n').encode()
         if write:

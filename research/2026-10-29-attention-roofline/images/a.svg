@@ -2,21 +2,27 @@
 <style>@font-face{font-family:Inter;src:url("attention-scenes/Inter.ttf") format("truetype");font-weight:100 900}</style>
 <rect width="1600" height="900" fill="#FBFBF8"/>
 <text x="80" y="112" font-family="Inter" font-size="76" font-weight="700" text-anchor="start" fill="#202326">Write now. Read later.</text>
+<g data-node-id="producers">
 <rect x="80" y="300" width="360" height="225" fill="#FBFBF8" stroke="#202326" stroke-width="3" />
+</g>
 <text x="260" y="390" font-family="Inter" font-size="64" font-weight="600" text-anchor="middle" fill="#202326">Producers</text>
 <text x="260" y="475" font-family="Inter" font-size="64" font-weight="600" text-anchor="middle" fill="#202326">finish</text>
+<g data-node-id="scratch">
 <rect x="620" y="300" width="360" height="225" fill="#FBFBF8" stroke="#202326" stroke-width="3" />
+</g>
 <text x="800" y="390" font-family="Inter" font-size="64" font-weight="600" text-anchor="middle" fill="#202326">Scratch</text>
 <text x="800" y="475" font-family="Inter" font-size="64" font-weight="600" text-anchor="middle" fill="#202326">in HBM</text>
+<g data-node-id="reducer">
 <rect x="1160" y="300" width="360" height="225" fill="#FBFBF8" stroke="#202326" stroke-width="3" />
+</g>
 <text x="1340" y="390" font-family="Inter" font-size="64" font-weight="600" text-anchor="middle" fill="#202326">Reducer</text>
 <text x="1340" y="475" font-family="Inter" font-size="64" font-weight="600" text-anchor="middle" fill="#202326">combines</text>
-<g data-edge="0" data-source="" data-target="">
+<g data-edge="write-out" data-source="producers" data-target="scratch">
 <line x1="460" y1="410" x2="600" y2="410" stroke="#3478BA" stroke-width="5" />
 <line x1="582.0" y1="421.0" x2="600" y2="410" stroke="#3478BA" stroke-width="5" />
 <line x1="582.0" y1="399.0" x2="600" y2="410" stroke="#3478BA" stroke-width="5" />
 </g>
-<g data-edge="1" data-source="" data-target="">
+<g data-edge="reread" data-source="scratch" data-target="reducer">
 <line x1="1000" y1="410" x2="1140" y2="410" stroke="#E87823" stroke-width="5" />
 <line x1="1122.0" y1="421.0" x2="1140" y2="410" stroke="#E87823" stroke-width="5" />
 <line x1="1122.0" y1="399.0" x2="1140" y2="410" stroke="#E87823" stroke-width="5" />

@@ -3,18 +3,22 @@
 <rect width="1080" height="1080" fill="#FBFBF8"/>
 <text x="72" y="112" font-family="Inter" font-size="60" font-weight="700" text-anchor="start" fill="#202326">Write it out.</text>
 <text x="72" y="188" font-family="Inter" font-size="60" font-weight="700" text-anchor="start" fill="#202326">Read it back.</text>
+<g data-node-id="on-chip">
 <rect x="72" y="340" width="390" height="210" fill="#FBFBF8" stroke="#202326" stroke-width="3" />
+</g>
 <text x="267.0" y="425" font-family="Inter" font-size="48" font-weight="600" text-anchor="middle" fill="#202326">On-chip</text>
 <text x="267.0" y="505" font-family="Inter" font-size="48" font-weight="600" text-anchor="middle" fill="#202326">workspace</text>
+<g data-node-id="HBM">
 <rect x="618" y="340" width="390" height="210" fill="#FBFBF8" stroke="#202326" stroke-width="3" />
+</g>
 <text x="813.0" y="425" font-family="Inter" font-size="48" font-weight="600" text-anchor="middle" fill="#202326">Off-chip</text>
 <text x="813.0" y="505" font-family="Inter" font-size="48" font-weight="600" text-anchor="middle" fill="#202326">memory (HBM)</text>
-<g data-edge="write-out" data-source="" data-target="">
+<g data-edge="write-out" data-source="on-chip" data-target="HBM">
 <line x1="482" y1="395" x2="598" y2="395" stroke="#3478BA" stroke-width="5" />
 <line x1="580.0" y1="406.0" x2="598" y2="395" stroke="#3478BA" stroke-width="5" />
 <line x1="580.0" y1="384.0" x2="598" y2="395" stroke="#3478BA" stroke-width="5" />
 </g>
-<g data-edge="reread" data-source="" data-target="">
+<g data-edge="reread" data-source="HBM" data-target="on-chip">
 <line x1="598" y1="510" x2="482" y2="510" stroke="#E87823" stroke-width="5" />
 <line x1="500.0" y1="499.0" x2="482" y2="510" stroke="#E87823" stroke-width="5" />
 <line x1="500.0" y1="521.0" x2="482" y2="510" stroke="#E87823" stroke-width="5" />

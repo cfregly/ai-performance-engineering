@@ -3,18 +3,24 @@
 <rect width="1080" height="1080" fill="#FBFBF8"/>
 <text x="72" y="112" font-family="Inter" font-size="60" font-weight="700" text-anchor="start" fill="#202326">Write now. Read later.</text>
 <text x="72" y="188" font-family="Inter" font-size="60" font-weight="700" text-anchor="start" fill="#202326">Pay twice.</text>
+<g data-node-id="producers">
 <rect x="100" y="280" width="880" height="120" fill="#FBFBF8" stroke="#202326" stroke-width="3" />
+</g>
 <text x="540" y="358" font-family="Inter" font-size="48" font-weight="600" text-anchor="middle" fill="#202326">Producers finish</text>
+<g data-node-id="scratch">
 <rect x="100" y="515" width="880" height="120" fill="#FBFBF8" stroke="#202326" stroke-width="3" />
+</g>
 <text x="540" y="593" font-family="Inter" font-size="48" font-weight="600" text-anchor="middle" fill="#202326">Scratch in HBM</text>
+<g data-node-id="reducer">
 <rect x="100" y="750" width="880" height="120" fill="#FBFBF8" stroke="#202326" stroke-width="3" />
+</g>
 <text x="540" y="828" font-family="Inter" font-size="48" font-weight="600" text-anchor="middle" fill="#202326">Reducer combines</text>
-<g data-edge="0" data-source="" data-target="">
+<g data-edge="write-out" data-source="producers" data-target="scratch">
 <line x1="540" y1="420" x2="540" y2="495" stroke="#3478BA" stroke-width="5" />
 <line x1="529.0" y1="477.0" x2="540" y2="495" stroke="#3478BA" stroke-width="5" />
 <line x1="551.0" y1="477.0" x2="540" y2="495" stroke="#3478BA" stroke-width="5" />
 </g>
-<g data-edge="1" data-source="" data-target="">
+<g data-edge="reread" data-source="scratch" data-target="reducer">
 <line x1="540" y1="655" x2="540" y2="730" stroke="#E87823" stroke-width="5" />
 <line x1="529.0" y1="712.0" x2="540" y2="730" stroke="#E87823" stroke-width="5" />
 <line x1="551.0" y1="712.0" x2="540" y2="730" stroke="#E87823" stroke-width="5" />

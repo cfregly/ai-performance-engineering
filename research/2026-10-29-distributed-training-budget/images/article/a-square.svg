@@ -1,4 +1,10 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1080" viewBox="0 0 1080 1080" role="img"><title>Article figure without the original carousel corner number.</title>
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1080" viewBox="0 0 1080 1080" role="img"><title>Token ownership and transfers between attention and expert layouts</title>
 <image href="../a-square.png" x="0" y="0" width="1080" height="1080"/>
 <rect x="970" y="1021" width="16" height="21" fill="#FBFBF8"/>
+<rect x="145" y="748" width="807" height="236" fill="#FBFBF8"/>
+<text x="154" y="790" font-family="Inter" font-weight="400" font-size="36" fill="#202326">Modeled reshards: 10 MiB per rank,</text>
+<text x="154" y="832" font-family="Inter" font-weight="400" font-size="36" fill="#202326">per layer, per microbatch.</text>
+<text x="154" y="874" font-family="Inter" font-weight="400" font-size="36" fill="#202326">Forward + backward combined.</text>
+<text x="154" y="916" font-family="Inter" font-weight="400" font-size="36" fill="#202326">Dispatch and combine traffic</text>
+<text x="154" y="958" font-family="Inter" font-weight="400" font-size="36" fill="#202326">is counted separately.</text>
 </svg>

@@ -14,6 +14,6 @@
 <line x1="1462.0" y1="564.0" x2="1480" y2="575" stroke="#202326" stroke-width="5" />
 </g>
 <text x="370" y="660" font-family="Inter" font-size="64" font-weight="500" text-anchor="start" fill="#202326">Time → (qualitative)</text>
-<text x="80" y="770" font-family="Inter" font-size="64" font-weight="400" text-anchor="start" fill="#202326">In the overlap, count A + B.</text>
-<text x="80" y="850" font-family="Inter" font-size="64" font-weight="400" text-anchor="start" fill="#202326">Reuse storage only after its last reader.</text>
+<text x="80" y="750" font-family="Inter" font-size="64" font-weight="400" text-anchor="start" fill="#202326">In the overlap, count A + B.</text>
+<text x="80" y="830" font-family="Inter" font-size="64" font-weight="400" text-anchor="start" fill="#202326">Reuse storage only after its last reader.</text>
 </svg>

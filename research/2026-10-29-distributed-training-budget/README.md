@@ -80,7 +80,7 @@ PYTHONDONTWRITEBYTECODE=1 python3 code/visual_elements.py
 PYTHONDONTWRITEBYTECODE=1 python3 code/visual_elements.py --check
 ```
 
-This uses the retained summary and scientific description to write `images/elements/`. It regenerates the six components, not the complete designed slide deck.
+This uses the retained summary and scientific description to write `images/elements/`. It regenerates the six components, not the complete designed slide deck. Generation prints `Wrote 6 SVG elements; XML and 20 px safe-inset bounds pass.` The check prints `Verified 6 SVG elements; XML and 20 px safe-inset bounds pass.`
 
 ## Primary-source context
 
@@ -177,7 +177,7 @@ With Pillow, librsvg and Fontconfig (`fc-match`) already installed, validate the
 python3 code/scientific_figures.py --check
 ```
 
-The renderer reads retained calculations, artwork and Inter font assets. It performs no GPU experiment.
+A successful check starts with `Verified three selected SVG/PNG figures.` The renderer reads retained calculations, artwork and Inter font assets. It performs no GPU experiment.
 
 <details>
 <summary>Retained barrier illustration used by the selected chart</summary>
@@ -198,7 +198,7 @@ Selected figure rebuilding was checked with Python 3.12.2, Pillow 11.3.0 and rsv
 
 ## Rebuild the article annotations
 
-The article figures use the retained designed PNGs as source artwork. The annotation renderer removes isolated carousel numbers and corrects the pipeline idle legend. Its SVGs link to those original PNGs and keep the annotation shapes and text editable. It does not reconstruct the scientific chart marks. The [input declaration](images/article/render-inputs.json) and [render receipt](images/article/render-receipt.json) bind the source images and the fifteen outputs.
+The article figures use the retained designed PNGs as source artwork. The annotation renderer removes isolated carousel numbers, corrects the pipeline idle legend and clarifies the layout-reshard footer without changing its 10 MiB quantity. Its SVGs link to those original PNGs and keep the annotation shapes and text editable. It does not reconstruct the scientific chart marks. The [input declaration](images/article/render-inputs.json) and [render receipt](images/article/render-receipt.json) bind the source images and the fifteen outputs.
 
 From this package root, check the retained annotation outputs:
 
@@ -206,7 +206,7 @@ From this package root, check the retained annotation outputs:
 python3 code/article_figures.py --check
 ```
 
-The retained annotation outputs were generated with Pillow 12.3.0, rsvg-convert 2.62.3 and Fontconfig with `fc-match`. The check reports environment-version differences without failing when all source, SVG and PNG hashes still match. It resolves the packaged Inter Regular font. These presentation tools are separate from the standard-library analytical workbook and the selected-figure rendering stack above. To render a separate preview tree, use `python3 code/article_figures.py --write --output-root /tmp/main-article-figures`. A successful check prints `"status": "CHECKED"`, fifteen figures and one phone derivative. This changes annotations only and performs no scientific calculation.
+The retained annotation outputs were generated with Pillow 12.3.0, rsvg-convert 2.62.3 and Fontconfig with `fc-match`. The check requires exact source, SVG and full-size PNG hashes. The 400 px Pillow derivative is checked by dimensions and decoded RGB pixel hash, with its PNG encoding hash retained as context. Environment-version differences alone do not fail an otherwise identical check. It resolves the packaged Inter Regular font. These presentation tools are separate from the standard-library analytical workbook and the selected-figure rendering stack above. To render a separate preview tree, use `python3 code/article_figures.py --write --output-root /tmp/main-article-figures`. The separate preview copies the exact input PNGs beside their relative SVG references. A successful check prints `"status": "CHECKED"`, fifteen figures and one phone derivative. This changes annotations only and performs no scientific calculation.
 
 <details>
 <summary>Source artwork for article annotation rendering</summary>

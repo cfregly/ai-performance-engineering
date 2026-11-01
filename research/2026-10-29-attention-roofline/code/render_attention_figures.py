@@ -160,7 +160,7 @@ def slides(data: dict, asset_prefix: str = '../attention-scenes') -> list[Slide]
     a.text(a.title, 84, 112, 64, 700)
     a.text('Attention backward · one sequence,', 84, 182)
     a.text('one layer · one device · FP32 partials', 84, 246)
-    a.art('warehouse-source.png', (0, 624, 2400, 738), (84, 278, 1032, 226))
+    a.art('warehouse-source.png', (0, 730, 2400, 525), (84, 278, 1032, 226))
     rows = [(1056, '1,056 MiB produced', 'blue'),
             (128, '≤128 MiB retained on chip', 'blue'),
             (1856, '≥1,856 MiB out + back', 'orange')]
@@ -193,7 +193,7 @@ def slides(data: dict, asset_prefix: str = '../attention-scenes') -> list[Slide]
         x=84+1032*value/.25
         b.line(x,816,x,828)
         b.text(label,x,884,anchor=anchor)
-    b.text('Calculated: 1,856 MiB ÷ 8 TB/s.',84,977)
+    b.text('Calculated: 1.946 GB ÷ 8 TB/s.',84,977)
     b.text('Transfers alone exceed this target.',84,1041)
     b.text('Compute and other traffic excluded.',84,1105)
 

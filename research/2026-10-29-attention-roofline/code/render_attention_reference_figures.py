@@ -75,8 +75,13 @@ class Diagram:
         x=80 if self.w==1600 else 72 if self.w==1080 else 84
         for i,t in enumerate(lines):self.text(t,x,112+i*(size+16),size,700)
     def finish(self,asset_context=None):
-        prefix=Path(os.path.relpath(INPUTS,(asset_context or ROOT)/Path(self.stem).parent)).as_posix()
+        prefix=asset_prefix(self.stem,asset_context)
         return ('\n'.join(self.parts)+'\n</svg>\n').replace('__RETAINED_INTER_FONT__',prefix+'/Inter.ttf').encode()
+
+
+def asset_prefix(stem,context=None):
+    # Resolve both bases before counting parents across macOS /var -> /private/var.
+    return Path(os.path.relpath(INPUTS.resolve(),(context or ROOT).resolve()/Path(stem).parent)).as_posix()
 
 
 def operands():
@@ -84,13 +89,13 @@ def operands():
     d.title_lines(['Trace a Blackwell','tensor-core path'])
     d.text('Common tcgen05 SMEM-operand route',84,292)
     d.node('HBM',84,365,220,145);d.text('HBM',194,453,52,600,anchor='middle')
-    d.node('SMEM',424,365,290,145);d.text('Shared',569,423,52,600,anchor='middle');d.text('memory',569,483,52,600,anchor='middle')
-    d.node('MMA',856,365,260,145);d.text('Tensor',986,423,52,600,anchor='middle');d.text('cores',986,483,52,600,anchor='middle')
+    d.node('SMEM',424,365,250,150);d.text('Shared',549,423,52,600,anchor='middle');d.text('memory',549,483,52,600,anchor='middle')
+    d.node('MMA',856,365,260,150);d.text('Tensor',986,423,52,600,anchor='middle');d.text('cores',986,483,52,600,anchor='middle')
     d.arrow(320,400,408,400,'ink','HBM-to-SMEM','HBM','SMEM');d.arrow(408,480,320,480,'ink','SMEM-to-HBM','SMEM','HBM')
-    d.arrow(730,437,840,437,'ink','SMEM-operands-to-MMA','SMEM','MMA')
-    d.text('A + B',785,506,52,500,anchor='middle')
-    d.node('TMEM',716,730,400,150);d.text('TMEM',916,792,52,600,anchor='middle');d.text('accumulator',916,854,52,600,anchor='middle')
-    d.node('registers',84,730,360,150);d.text('Thread',264,792,52,600,anchor='middle');d.text('registers',264,854,52,600,anchor='middle')
+    d.arrow(690,437,840,437,'ink','SMEM-operands-to-MMA','SMEM','MMA')
+    d.text('A + B',765,506,52,500,anchor='middle')
+    d.node('TMEM',716,730,400,160);d.text('TMEM',916,792,52,600,anchor='middle');d.text('accumulator',916,854,52,600,anchor='middle')
+    d.node('registers',84,730,360,160);d.text('Thread',264,792,52,600,anchor='middle');d.text('registers',264,854,52,600,anchor='middle')
     d.arrow(950,526,950,714,'ink','MMA-writes-TMEM','MMA','TMEM');d.arrow(1040,714,1040,526,'ink','MMA-reads-TMEM','TMEM','MMA')
     d.text('MMA reads + writes',925,645,52,500,anchor='end')
     d.arrow(700,768,460,768,'ink','TMEM-load-to-registers','TMEM','registers');d.arrow(460,842,700,842,'ink','register-store-to-TMEM','registers','TMEM')
@@ -117,7 +122,9 @@ def sensitivity():
     d.line(targetx,480,targetx,824,'blue',5,'12 10','data-target-ms="0.2" data-axis-max-ms="0.35"')
     d.line(x0,830,x0+width,830,extra='data-quantitative-axis="ms" data-axis-max-ms="0.35"')
     for value in [0,.2,.35]:
+        d.parts.append(f'<g data-quantitative-tick-ms="{value}">')
         x=x0+width*value/axismax;d.line(x,830,x,842);d.text(format(value,'.2f'),x,910,52,400,'ink','start' if value==0 else 'end' if value==.35 else 'middle')
+        d.parts.append('</g>')
     d.text('Time (ms) · zero-based scale',84,990)
     d.text('Blue line: 0.200 ms target.',84,1060,52,500,'blue')
     d.text('Calculated floors, not runtimes.',84,1130)
@@ -129,14 +136,14 @@ def concept(stem,wide):
     if stem=='a':
         d.title_lines(['Write now. Read later.'] if wide else ['Write now. Read later.','Pay twice.'])
         if wide:
-            for x,lines in [(80,['Producers','finish']),(620,['Scratch','in HBM']),(1160,['Reducer','combines'])]:
-                d.rect(x,300,360,225);d.text(lines[0],x+180,390,64,600,anchor='middle');d.text(lines[1],x+180,475,64,600,anchor='middle')
-            d.arrow(460,410,600,410);d.arrow(1000,410,1140,410,'orange')
+            for name,x,lines in [('producers',80,['Producers','finish']),('scratch',620,['Scratch','in HBM']),('reducer',1160,['Reducer','combines'])]:
+                d.node(name,x,300,360,225);d.text(lines[0],x+180,390,64,600,anchor='middle');d.text(lines[1],x+180,475,64,600,anchor='middle')
+            d.arrow(460,410,600,410,'blue','write-out','producers','scratch');d.arrow(1000,410,1140,410,'orange','reread','scratch','reducer')
             d.text('Write results, then read them back.',80,675);d.text('Smaller batches need a different schedule.',80,790)
         else:
-            for y,lines in [(280,['Producers finish']),(515,['Scratch in HBM']),(750,['Reducer combines'])]:
-                d.rect(100,y,880,120);d.text(lines[0],540,y+78,48,600,anchor='middle')
-            d.arrow(540,420,540,495);d.arrow(540,655,540,730,'orange')
+            for name,y,lines in [('producers',280,['Producers finish']),('scratch',515,['Scratch in HBM']),('reducer',750,['Reducer combines'])]:
+                d.node(name,100,y,880,120);d.text(lines[0],540,y+78,48,600,anchor='middle')
+            d.arrow(540,420,540,495,'blue','write-out','producers','scratch');d.arrow(540,655,540,730,'orange','reread','scratch','reducer')
             d.text('Write out, then read back.',72,972)
     else:
         d.title_lines(['Transfers alone miss the target'] if wide else ['Transfers alone','miss the target'])
@@ -147,10 +154,12 @@ def concept(stem,wide):
             d.rect(x0,y+30,plot*v/maxval,40,col,col,f'data-value-ms="{v}" data-axis-max-ms="0.3"');d.bars.append(dict(value_ms=str(v),x=x0,width=plot*v/maxval,plot_width=plot,axis_max_ms=.3,zero=0))
         axis_y=680 if wide else 770;d.line(x0,axis_y,x0+plot,axis_y,extra='data-quantitative-axis="ms" data-axis-max-ms="0.3"')
         for val in [0,.15,.3]:
+            d.parts.append(f'<g data-quantitative-tick-ms="{val}">')
             x=x0+plot*val/maxval;d.line(x,axis_y,x,axis_y+12);d.text(f'{val:.2f}',x,axis_y+78,64 if wide else 48,anchor='start' if val==0 else 'end' if val==.3 else 'middle')
+            d.parts.append('</g>')
         if wide:
             d.text('One layer · one device',80,240)
-            d.text('Time (ms) · assumed 8 TB/s · calculated',80,830)
+            d.text('Time (ms) · assumed 8 TB/s · calculated',80,850)
         else:
             d.text('Time (ms) · assumed 8 TB/s',72,930)
             d.text('One layer · one device · calculated',72,1000)
@@ -165,9 +174,9 @@ def audience(kind,wide):
         d.title_lines(['Write it out. Read it back.'] if wide else ['Write it out.','Read it back.'])
         # Large mechanism fills the wide canvas; no square thumbnail is shrunk.
         y=290 if wide else 340;bx=80 if wide else 72;bw=560 if wide else 390;rx=1000 if wide else 618
-        d.rect(bx,y,bw,210);d.text('On-chip',bx+bw/2,y+85,fs,600,anchor='middle');d.text('workspace',bx+bw/2,y+165,fs,600,anchor='middle')
-        d.rect(rx,y,bw,210);d.text('Off-chip memory' if wide else 'Off-chip',rx+bw/2,y+85,fs,600,anchor='middle');d.text('(HBM)' if wide else 'memory (HBM)',rx+bw/2,y+165,fs,600,anchor='middle')
-        d.arrow(bx+bw+20,y+55,rx-20,y+55,'blue','write-out');d.arrow(rx-20,y+170,bx+bw+20,y+170,'orange','reread')
+        d.node('on-chip',bx,y,bw,210);d.text('On-chip',bx+bw/2,y+85,fs,600,anchor='middle');d.text('workspace',bx+bw/2,y+165,fs,600,anchor='middle')
+        d.node('HBM',rx,y,bw,210);d.text('Off-chip memory' if wide else 'Off-chip',rx+bw/2,y+85,fs,600,anchor='middle');d.text('(HBM)' if wide else 'memory (HBM)',rx+bw/2,y+165,fs,600,anchor='middle')
+        d.arrow(bx+bw+20,y+55,rx-20,y+55,'blue','write-out','on-chip','HBM');d.arrow(rx-20,y+170,bx+bw+20,y+170,'orange','reread','HBM','on-chip')
         if wide:
             d.text('Write results out',80,650,fs,500,'blue');d.text('Reread them later',900,650,fs,500,'orange')
             d.text('Here, the final sum waits for every piece.',80,800)
@@ -204,7 +213,7 @@ def audience(kind,wide):
         d.line(x0+plot*.4,y1-25,x0+plot*.4,y2+135,'ink',3,'10 10');d.line(x0+plot*.68,y1-25,x0+plot*.68,y2+135,'ink',3,'10 10')
         ty=y2+175;d.arrow(x0,ty,x0+plot,ty,'ink','time');d.text('Time → (qualitative)',x0,ty+85,fs,500)
         if wide:
-            d.text('In the overlap, count A + B.',80,770);d.text('Reuse storage only after its last reader.',80,850)
+            d.text('In the overlap, count A + B.',80,750);d.text('Reuse storage only after its last reader.',80,830)
         else:
             d.text('In the overlap, count A + B.',72,885);d.text('Reuse after the last reader.',72,965)
     elif kind=='platform-operations':
@@ -220,19 +229,19 @@ def audience(kind,wide):
         d.title_lines(['Screen the design before building'] if wide else ['Screen the design','before building'])
         # One decision diamond. Distinct directed pass/fail lanes never cross.
         if wide:
-            cx,cy,rx,ry=800,270,440,105
+            cx,cy,rx,ry=800,270,440,120
             pts=f'{cx},{cy-ry} {cx+rx},{cy} {cx},{cy+ry} {cx-rx},{cy}'
             d.nodes['decision']=(cx-rx,cy-ry,cx+rx,cy+ry)
             d.parts.append(f'<g data-node-id="decision"><polygon points="{pts}" fill="{C["background"]}" stroke="{C["ink"]}" stroke-width="4"/></g>')
             d.text('Floor ≤ target?',cx,cy+22,64,600,anchor='middle')
-            d.node('fail-outcome',80,470,340,270);d.node('pass-outcome',1150,470,400,270)
+            d.node('fail-outcome',80,470,340,280);d.node('pass-outcome',1150,470,400,280)
             d.route([(344,270),(250,270),(250,450)],'orange','fail-end','decision','fail-outcome')
             d.route([(1256,270),(1350,270),(1350,450)],'blue','pass-end','decision','pass-outcome')
             for x,label,lines,color in [(250,'NO',['Reject','design'],'orange'),(1350,'YES',['Implement','+ measure'],'blue')]:
-                d.text(label,x,535,64,600,color,'middle');d.text(lines[0],x,625,64,600,color,'middle');d.text(lines[1],x,715,64,600,color,'middle')
-            d.text('Passing is no runtime guarantee.',80,850)
+                d.text(label,x,540,64,600,color,'middle');d.text(lines[0],x,620,64,600,color,'middle');d.text(lines[1],x,700,64,600,color,'middle')
+            d.text('Passing is no runtime guarantee.',80,830)
         else:
-            cx,cy,rx,ry=540,375,300,120
+            cx,cy,rx,ry=540,375,300,140
             pts=f'{cx},{cy-ry} {cx+rx},{cy} {cx},{cy+ry} {cx-rx},{cy}'
             d.nodes['decision']=(cx-rx,cy-ry,cx+rx,cy+ry)
             d.parts.append(f'<g data-node-id="decision"><polygon points="{pts}" fill="{C["background"]}" stroke="{C["ink"]}" stroke-width="4"/></g>')
@@ -336,6 +345,15 @@ def validate_bar_svg(d,root):
     require(len(axes)==1,'Emitted quantitative axis inventory changed')
     a=axes[0].attrib
     require(a['data-quantitative-axis']=='ms' and float(a['data-axis-max-ms'])==maximum and [float(a[k]) for k in ['x1','y1','x2','y2']]==[x0,axis_y,x0+plot,axis_y],'Emitted quantitative axis origin or extent changed')
+    tick_values=[0,.2,.35] if '05-independent' in d.stem else [0,.15,.3]
+    tick_y=910 if '05-independent' in d.stem else axis_y+78
+    ticks=[node for node in root.iter() if 'data-quantitative-tick-ms' in node.attrib]
+    require(len(ticks)==len(tick_values),'Emitted quantitative tick inventory changed')
+    for tick,value in zip(ticks,tick_values):
+        require(float(tick.attrib['data-quantitative-tick-ms'])==value and len(tick)==2,'Emitted quantitative tick value or children changed')
+        line,label=tick;position=x0+plot*value/maximum
+        require(line.tag.endswith('line') and [float(line.attrib[k]) for k in ['x1','y1','x2','y2']]==[position,axis_y,position,axis_y+12],'Emitted quantitative tick position differs from axis scale')
+        require(label.tag.endswith('text') and label.text==format(value,'.2f') and float(label.attrib['x'])==position and float(label.attrib['y'])==tick_y,'Emitted quantitative tick label differs from axis scale')
     if '05-independent' in d.stem:
         targets=[node for node in root.iter() if 'data-target-ms' in node.attrib]
         require(len(targets)==1,'Emitted target line inventory changed')
@@ -361,6 +379,36 @@ def segment_text_clearance(line,box):
     return min(end_distance(x1,y1),end_distance(x2,y2),*(corner_distance(x,y) for x in [box[0],box[2]] for y in [box[1],box[3]]))-width/2
 
 
+def outline_edges(root,d):
+    """Use actual emitted container strokes, including the decision diamond."""
+    result=[]
+    for node in root.iter():
+        if node.attrib.get('fill')!=C['background'] or 'stroke' not in node.attrib:
+            continue
+        stroke=float(node.attrib.get('stroke-width','0'))
+        if node.tag.endswith('rect'):
+            x,y,w,h=(float(node.attrib[k]) for k in ['x','y','width','height'])
+            points=[(x,y),(x+w,y),(x+w,y+h),(x,y+h)]
+        elif node.tag.endswith('polygon'):
+            points=[tuple(map(float,p.split(','))) for p in node.attrib['points'].split()]
+            require(len(points)>=3,'Outline polygon needs three vertices')
+        else:
+            continue
+        require(all(math.isfinite(v) for point in points for v in point),'Non-finite outline geometry')
+        result.extend((*a,*b,stroke) for a,b in zip(points,points[1:]+points[:1]))
+    return result
+
+
+def embed_font(svg,prefix):
+    reference=(prefix+'/Inter.ttf').encode()
+    require(svg.count(reference)==1 and b'__RETAINED_INTER_FONT__' not in svg,'Expected one retained Inter reference before embedding')
+    font=(INPUTS/'Inter.ttf').read_bytes()
+    require(sha(font)==EXPECTED_FONT,'Retained Inter changed before embedding')
+    result=svg.replace(reference,b'data:font/ttf;base64,'+base64.b64encode(font),1)
+    require(reference not in result and result.count(b'data:font/ttf;base64,')==1,'Retained Inter substitution failed')
+    return result
+
+
 def validate(d,env,cache):
     boxes=[];minimum=64 if d.w==1600 else 48 if d.w==1080 else 52
     emitted=ET.fromstring(d.finish());text_nodes=[node for node in emitted.iter() if node.tag.endswith('text')]
@@ -382,8 +430,10 @@ def validate(d,env,cache):
         boxes.append((box,label))
     lines=[tuple(float(node.attrib[k]) for k in ['x1','y1','x2','y2','stroke-width']) for node in emitted.iter() if node.tag.endswith('line')]
     obstacles=[tuple(float(node.attrib[k]) for k in ['x','y','width','height']) for node in emitted.iter() if node.tag.endswith('rect') and node.attrib.get('fill') in [C['blue'],C['orange']]]
+    outlines=outline_edges(emitted,d)
     for box,label in boxes:
         for line in lines:require(segment_text_clearance(line,box)>=16,'Text/line clearance below16px: '+d.stem+': '+label['text'])
+        for edge in outlines:require(segment_text_clearance(edge,box)>=16,'Text/container padding or clearance below 16 px: '+d.stem+': '+label['text'])
         for x,y,width,height in obstacles:
             gap=math.hypot(max(x-box[2],box[0]-x-width,0),max(y-box[3],box[1]-y-height,0))-1.5
             require(gap>=16,'Text/bar clearance below16px: '+d.stem+': '+label['text'])
@@ -395,7 +445,7 @@ def validate(d,env,cache):
         for fail in [e for e in d.edges if e['name'].startswith('fail')]:
             for passed in [e for e in d.edges if e['name'].startswith('pass')]:
                 require(max(fail['x1'],fail['x2'])<min(passed['x1'],passed['x2']),'Decision paths cross')
-    return {'minimum_font_px':minimum,'minimum_at_306_px':minimum*306/d.w,'text_boxes':[{**l,'glyph_box':list(b)} for b,l in boxes],'bars':d.bars,'directed_edges':d.edges,'all_text_inside_safe_margin':True,'no_text_text_overlap':True,'same_row_gutter_min_em':.75,'text_line_bar_clearance_min_px':16}
+    return {'minimum_font_px':minimum,'minimum_at_306_px':minimum*306/d.w,'text_boxes':[{**l,'glyph_box':list(b)} for b,l in boxes],'bars':d.bars,'directed_edges':d.edges,'all_text_inside_safe_margin':True,'no_text_text_overlap':True,'same_row_gutter_min_em':.75,'text_line_bar_clearance_min_px':16,'outline_container_clearance_min_px':16,'outline_edges_checked':len(outlines)}
 
 
 def render(output,asset_context=None):
@@ -404,8 +454,8 @@ def render(output,asset_context=None):
         env=font_env(Path(tmp));matched=run(['fc-match','-f','%{family}|%{file}','Inter'],env=env).decode()
         require(matched=='Inter|'+str(INPUTS/'Inter.ttf'),'Unexpected Inter resolution: '+matched)
         for d in all_diagrams():
-            checks=validate(d,env,cache);svg=d.finish(asset_context or output);validate_route_svg(d,svg);prefix=Path(os.path.relpath(INPUTS,(asset_context or output)/Path(d.stem).parent)).as_posix()
-            raster_svg=svg.replace((prefix+'/Inter.ttf').encode(),b'data:font/ttf;base64,'+base64.b64encode((INPUTS/'Inter.ttf').read_bytes()))
+            checks=validate(d,env,cache);svg=d.finish(asset_context or output);validate_route_svg(d,svg);prefix=asset_prefix(d.stem,asset_context or output)
+            raster_svg=embed_font(svg,prefix)
             png=run(['rsvg-convert','--format','png'],input=raster_svg,env=env)
             png=run(['magick','png:-','-background',C['background'],'-alpha','off','-strip','-define','png:color-type=2','png:-'],input=png,env=env)
             require(struct.unpack('>II',png[16:24])==(d.w,d.h),'Wrong PNG size');require(png[25]==2,'PNG must be RGB')

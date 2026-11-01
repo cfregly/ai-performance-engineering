@@ -6,7 +6,7 @@
       "title": "Transfers alone miss the target",
       "selected": {
         "path": "images/scientific/04-target-rejection.png",
-        "sha256": "3b3abbcfc4a2c1ecf0cf99275da01559b4cc736a7de215213bebb0a9074fa038",
+        "sha256": "071fbf288a6dcf7318cd87a9775309752da257e1126924d8697c5fc1e5889cc7",
         "width": 1200,
         "height": 1200
       }
@@ -16,7 +16,7 @@
       "title": "Scratch becomes traffic",
       "selected": {
         "path": "images/scientific/03-scratch-traffic.png",
-        "sha256": "3d70152c89e122fd781fb67702dd290971c169d2b65f233b3a22d8e7651e70d2",
+        "sha256": "4b1caf135c97f160d5c8facc98c84c9b765f0aae2291fdeb1258e1e9e322fda7",
         "width": 1200,
         "height": 1200
       }

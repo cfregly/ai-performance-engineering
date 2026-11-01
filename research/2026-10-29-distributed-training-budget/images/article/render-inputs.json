@@ -28,7 +28,7 @@
         "baseline_y": 801.3888888888889,
         "font_size": 31.666666666666668
       },
-      "description": "Unit-service pipeline schedule. Blank slots are idle. Slots are not milliseconds. Idle legend uses the existing legend text scale."
+      "description": "Four-stage forward/backward pipeline schedule. Blue is forward, orange is backward and blank slots are idle. Slots are not milliseconds."
     },
     {
       "target": "images/aud-performance-engineer-square.png",
@@ -51,7 +51,7 @@
         "baseline_y": 961.6666666666666,
         "font_size": 38
       },
-      "description": "Unit-service pipeline schedule. Blank slots are idle. Slots are not milliseconds. Idle legend uses the existing legend text scale."
+      "description": "Four-stage forward/backward pipeline schedule. Blue is forward, orange is backward and blank slots are idle. Slots are not milliseconds."
     },
     {
       "target": "images/article/02-topology-a.png",
@@ -69,7 +69,7 @@
           2309
         ]
       ],
-      "description": "Article figure without the original carousel corner number."
+      "description": "Placement A with one data replica per rack and one eight-GPU node per pipeline stage"
     },
     {
       "target": "images/article/aud-curious-square.png",
@@ -87,7 +87,7 @@
           1043
         ]
       ],
-      "description": "Article figure without the original carousel corner number."
+      "description": "Attention and expert parallel groups reuse the same eight GPUs"
     },
     {
       "target": "images/article/07-context-policy.png",
@@ -105,7 +105,7 @@
           2309
         ]
       ],
-      "description": "Article figure without the original carousel corner number."
+      "description": "The declared context-parallel K/V and gradient exchanges"
     },
     {
       "target": "images/article/a-square.png",
@@ -121,9 +121,29 @@
           1021,
           986,
           1042
+        ],
+        [
+          145,
+          748,
+          952,
+          984
         ]
       ],
-      "description": "Article figure without the original carousel corner number."
+      "description": "Token ownership and transfers between attention and expert layouts",
+      "footer_copy": {
+        "kind": "token-owner-reshard-copy",
+        "x": 154,
+        "baseline_y": 790,
+        "font_size": 36,
+        "line_gap": 42,
+        "lines": [
+          "Modeled reshards: 10 MiB per rank,",
+          "per layer, per microbatch.",
+          "Forward + backward combined.",
+          "Dispatch and combine traffic",
+          "is counted separately."
+        ]
+      }
     },
     {
       "target": "images/article/06-routing-skew.png",
@@ -141,7 +161,7 @@
           2310
         ]
       ],
-      "description": "Article figure without the original carousel corner number."
+      "description": "Balanced and skewed expert assignments processed without dropping tokens"
     },
     {
       "target": "images/article/aud-ml-engineer-square.png",
@@ -159,7 +179,7 @@
           1042
         ]
       ],
-      "description": "Article figure without the original carousel corner number."
+      "description": "Dense matrix work by pipeline stage, including the full output head"
     },
     {
       "target": "images/article/aud-performance-engineer-square.png",
@@ -183,7 +203,7 @@
           978
         ]
       ],
-      "description": "Unit-service pipeline schedule. Blank slots are idle. Slots are not milliseconds. Idle legend uses the existing legend text scale.",
+      "description": "An ideal one-forward one-backward pipeline schedule in abstract service slots",
       "blank_idle_legend": {
         "x": 788.8888888888889,
         "baseline_y": 961.6666666666666,
@@ -206,7 +226,7 @@
           1042
         ]
       ],
-      "description": "Article figure without the original carousel corner number."
+      "description": "Activation lifetimes across the four pipeline stages"
     },
     {
       "target": "images/article/aud-platform-operations-square.png",
@@ -224,7 +244,7 @@
           1042
         ]
       ],
-      "description": "Article figure without the original carousel corner number."
+      "description": "Declared model state, retained activations and working buffers"
     },
     {
       "target": "images/article/11-gradient-barrier.png",
@@ -242,7 +262,7 @@
           2309
         ]
       ],
-      "description": "Article figure without the original carousel corner number."
+      "description": "Gradient completion, global clipping and optimizer publication dependencies"
     },
     {
       "target": "images/article/c-square.png",
@@ -260,7 +280,7 @@
           1042
         ]
       ],
-      "description": "Article figure without the original carousel corner number."
+      "description": "Full-allreduce and reduce-scatter-first schedules for the same global norm"
     },
     {
       "target": "images/article/aud-kernel-engineer-square.png",
@@ -278,7 +298,7 @@
           1043
         ]
       ],
-      "description": "Article figure without the original carousel corner number."
+      "description": "Whole-matrix attention Muon ownership with gather, update and state publication"
     },
     {
       "target": "images/article/aud-business-capacity-square.png",
@@ -296,10 +316,10 @@
           1042
         ]
       ],
-      "description": "Article figure without the original carousel corner number."
+      "description": "Design choices to compare before building and measuring the complete update"
     }
   ],
-  "limits": "Original designed data pixels remain source raster evidence, not a claim that this wrapper reconstructs their chart geometry. Complete native diagram elements remain separately retained. Only isolated carousel badge or legend annotation regions change; every other source pixel must compare exactly.",
+  "limits": "Original designed data pixels remain source raster evidence. This wrapper reconstructs only the declared badge, idle-legend and wording annotations, preserving every other source pixel. The layout-reshard footer keeps the same 10 MiB/rank/layer/microbatch forward-plus-backward quantity.",
   "derived_outputs": [
     {
       "target": "images/aud-performance-engineer-400.png",
