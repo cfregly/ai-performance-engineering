@@ -86,7 +86,7 @@ python -m cli.aisp bench run --targets ch10 --profile minimal
 
 ## Notes
 - `cufile_gds_example.py` demonstrates integrating GPUDirect Storage into tensor-core pipelines for IO-heavy training loops.
-- `requirements_cufile.txt` holds the optional `cufile` wheel; install it only on hosts with GPUDirect Storage enabled.
+- `requirements_cufile.txt` pins the PyTorch 2.14.1 CUDA 13 bindings and the optional `nvidia-cufile` wheel. Install it only on hosts with GPUDirect Storage enabled.
 - The CUTLASS-style warp-specialization pair provides a reference implementation aligned with `sm100_mma_array_warpspecialized` for performance comparison.
 
 ## Related fast.cu experiments

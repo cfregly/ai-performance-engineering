@@ -11,7 +11,7 @@ even for a one-GPU smoke test. For a two-GPU run from the ``code/`` directory::
 from __future__ import annotations
 
 import os
-from typing import Mapping, Optional
+from collections.abc import Mapping
 
 import torch
 import torch.distributed as dist
@@ -19,7 +19,6 @@ import torch.distributed as dist
 from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import BaseBenchmark, WorkloadMetadata  # noqa: E402
 from core.profiling.nvtx_helper import get_nvtx_enabled, nvtx_range  # noqa: E402
-
 
 _TORCHRUN_ENV_KEYS = ("RANK", "WORLD_SIZE", "LOCAL_RANK")
 _TORCHRUN_EXAMPLE = (
@@ -30,9 +29,9 @@ _TORCHRUN_EXAMPLE = (
 
 
 def _resolve_torchrun_context(
-    environ: Optional[Mapping[str, str]] = None,
+    environ: Mapping[str, str] | None = None,
     *,
-    cuda_device_count: Optional[int] = None,
+    cuda_device_count: int | None = None,
 ) -> tuple[int, int, int]:
     """Return ``(rank, world_size, local_rank)`` for the supported mesh."""
     env = os.environ if environ is None else environ
@@ -49,7 +48,9 @@ def _resolve_torchrun_context(
         try:
             values[key] = int(raw)
         except ValueError as exc:
-            raise RuntimeError(f"Invalid {key}={raw!r}; expected an integer from torchrun.") from exc
+            raise RuntimeError(
+                f"Invalid {key}={raw!r}; expected an integer from torchrun."
+            ) from exc
 
     rank = values["RANK"]
     world_size = values["WORLD_SIZE"]
@@ -61,7 +62,9 @@ def _resolve_torchrun_context(
     if rank < 0 or rank >= world_size:
         raise RuntimeError(f"RANK={rank} must satisfy 0 <= RANK < WORLD_SIZE={world_size}.")
 
-    device_count = torch.cuda.device_count() if cuda_device_count is None else int(cuda_device_count)
+    device_count = (
+        torch.cuda.device_count() if cuda_device_count is None else int(cuda_device_count)
+    )
     if local_rank < 0 or local_rank >= device_count:
         raise RuntimeError(
             f"LOCAL_RANK={local_rank} is invalid for cuda.device_count()={device_count}."
@@ -74,10 +77,10 @@ class DTensorMeshBenchmark(VerificationPayloadMixin, BaseBenchmark):
         super().__init__()
         self._workload = WorkloadMetadata(bytes_per_iteration=0.0)
         self.mesh = None
-        self.tensor: Optional[torch.Tensor] = None
-        self.output: Optional[torch.Tensor] = None
-        self._payload_input_local: Optional[torch.Tensor] = None
-        self._verify_output_buffer: Optional[torch.Tensor] = None
+        self.tensor: torch.Tensor | None = None
+        self.output: torch.Tensor | None = None
+        self._payload_input_local: torch.Tensor | None = None
+        self._verify_output_buffer: torch.Tensor | None = None
         self._enable_nvtx = False
         self._empty_iteration_result = {}
         self._to_local = None
@@ -85,7 +88,8 @@ class DTensorMeshBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
     def setup(self) -> None:
         try:
-            from torch.distributed._tensor import DeviceMesh, distribute_tensor, Replicate  # type: ignore
+            from torch.distributed.device_mesh import DeviceMesh
+            from torch.distributed.tensor import Replicate, distribute_tensor
         except Exception as exc:
             raise RuntimeError(f"SKIPPED: DTensor not available ({exc})") from exc
 
@@ -114,12 +118,14 @@ class DTensorMeshBenchmark(VerificationPayloadMixin, BaseBenchmark):
         config = getattr(self, "_config", None) or self.get_config()
         self._enable_nvtx = get_nvtx_enabled(config) if config else False
 
-    def benchmark_fn(self) -> Optional[dict]:
+    def benchmark_fn(self) -> dict | None:
         if self.mesh is None or self.tensor is None:
             raise RuntimeError("SKIPPED: DTensor mesh not initialized")
 
         with nvtx_range("dtensor_mesh", enable=self._enable_nvtx):
-            self.output = (self.tensor * 2).redistribute(self.mesh, placements=self.tensor.placements)
+            self.output = (self.tensor * 2).redistribute(
+                self.mesh, placements=self.tensor.placements
+            )
         if self.output is None:
             raise RuntimeError("benchmark_fn() must produce output for verification")
         to_local = self._to_local
@@ -142,12 +148,14 @@ class DTensorMeshBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 "fp16": False,
                 "bf16": False,
                 "fp8": False,
-                "tf32": torch.backends.cuda.matmul.allow_tf32 if torch.cuda.is_available() else False,
+                "tf32": torch.backends.cuda.matmul.allow_tf32
+                if torch.cuda.is_available()
+                else False,
             },
             output_tolerance=(0.1, 1.0),
         )
 
-    def get_workload_metadata(self) -> Optional[WorkloadMetadata]:
+    def get_workload_metadata(self) -> WorkloadMetadata | None:
         return self._workload
 
     def teardown(self) -> None:

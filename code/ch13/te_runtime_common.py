@@ -52,7 +52,7 @@ def parse_te_precision_batch_size(
 
 
 def get_te_precision_output_tolerances() -> dict[str, tuple[float, float]]:
-    """Return the calibrated full-output policy for the TE2.18 precision pair."""
+    """Return the retained full-output policy for the TE precision pair."""
     return dict(_TE_PRECISION_OUTPUT_TOLERANCES)
 
 

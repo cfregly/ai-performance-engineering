@@ -48,10 +48,12 @@ make full
 make artifacts
 ```
 - This lab is Makefile/script driven today, not harness-target driven.
-- Use Docker-backed `vllm` when host `torch` and host `vllm` are mismatched.
+- The PyTorch 2.14.1 compatibility smoke must use the repository's host serving stack: PyTorch `2.14.1+cu130`, source-built vLLM `0.33.0.dev0+cu130.torch2141`, and FlashInfer `0.7.2`.
+- `scripts/vllm_docker.sh` defaults to the moving `cu130-nightly` image. It is useful for exploratory isolation, but it does not prove compatibility with the repository's exact source-built stack unless the image is overridden by a digest-pinned equivalent.
 
 ## Validation Checklist
 - `make smoke` should prove the orchestration path is alive before a full matrix run.
+- Inspect the emitted JSON `returncode` values and the final `bench_success`/`bench_failed` counts. `run_matrix.py` continues after a request-benchmark failure and can exit zero after retaining the failure.
 - `make full` should emit raw logs plus structured `results/*.json` records.
 - `make artifacts` should regenerate plots and markdown/csv reports from collected results.
 - If this lab is promoted into benchmark-pair targets later, create explicit named comparison pairs instead of a fake one-size-fits-all optimized wrapper.

@@ -1,20 +1,20 @@
 """Real wire/parser/CLI checks; GPU series below are declared input fixtures."""
 import ast
-from http.server import HTTPServer
 import json
 import os
-from pathlib import Path
 import shutil
 import subprocess
 import sys
 import threading
+from http.server import HTTPServer
+from pathlib import Path
 from urllib.request import urlopen
 
 import pytest
 import torch
 
-from monitoring import prometheus_exporter as exporter
 from core.whatif import get_scenarios
+from monitoring import prometheus_exporter as exporter
 
 CODE_ROOT = Path(__file__).resolve().parents[1]
 
@@ -143,7 +143,7 @@ def test_fp8_scenario_is_versioned_integration_guidance():
     scenario = next(s for s in get_scenarios()['scenarios'] if s['id'] == 'fp8')
     assert scenario['code_example_kind'] == 'integration_template'
     assert scenario['code_example_executable'] is False
-    assert '2.18' in scenario['code_example_api_version']
+    assert scenario['code_example_api_version'] == 'Transformer Engine 2.20.2'
     assert any('Transformer Engine' in s for s in scenario['requirements'])
     tree = ast.parse(scenario['code_example'])
     calls = [node for node in ast.walk(tree) if isinstance(node, ast.Call)]
@@ -153,12 +153,13 @@ def test_fp8_scenario_is_versioned_integration_guidance():
                    and node.func.value.id == 'torch' and node.func.attr == 'autocast' for node in calls)
 
 
-@pytest.mark.skipif(not torch.cuda.is_available(), reason='FP8 template runtime requires real CUDA and TE2.18')
+@pytest.mark.skipif(not torch.cuda.is_available(), reason='FP8 template runtime requires real CUDA and TE 2.20.2')
 def test_fp8_template_executes_real_transformer_engine_linear():
     from importlib.metadata import version
     te = pytest.importorskip('transformer_engine.pytorch')
-    if not version('transformer_engine').startswith('2.18.'):
-        pytest.skip('example contract is Transformer Engine2.18.x')
+    actual_version = version('transformer_engine')
+    if actual_version != '2.20.2':
+        pytest.fail(f'example contract requires Transformer Engine 2.20.2, found {actual_version}')
     if torch.cuda.get_device_capability()[0] < 9:
         pytest.skip('FP8 example qualification requires Hopper or newer')
     model = te.Linear(256, 256, params_dtype=torch.bfloat16, device='cuda').eval()

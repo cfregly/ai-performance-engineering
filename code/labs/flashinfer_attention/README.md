@@ -68,4 +68,4 @@ python -m cli.aisp bench run --targets labs/flashinfer_attention --profile minim
 ## Notes
 - The default head configuration targets a GPT-OSS-20B-style hidden size (`2880`) with `head_dim=64` (`45` heads).
 - Increase `seq_len` if you want larger sparse regions to dominate the timing.
-- Requires FlashInfer (`pip install flashinfer-python==0.6.3`).
+- The current PyTorch 2.14.1 B200 stack pins FlashInfer (`flashinfer-python==0.7.2`). Retained measurements predate this runtime and do not qualify the current source until the harness target passes on B200.

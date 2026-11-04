@@ -98,11 +98,18 @@ def test_reset_cuda_memory_pool_emits_runtime_warning(monkeypatch) -> None:
     assert any("ipc reset failed" in str(item.message) for item in captured)
 
 
-def test_reset_cuda_memory_pool_emits_release_pool_limitation_once(monkeypatch) -> None:
+def test_reset_cuda_memory_pool_avoids_private_allocator_apis(monkeypatch) -> None:
     import core.harness.validity_checks as validity_checks
 
-    monkeypatch.setattr(validity_checks, "_EMITTED_VALIDITY_LIMITATIONS", set())
-    monkeypatch.setattr(validity_checks, "_VALIDITY_LIMITATION_RECORDS", {})
+    calls: list[str] = []
+
+    def _private_call(name: str):
+        def _record(*_args: Any, **_kwargs: Any) -> None:
+            calls.append(name)
+            raise AssertionError(f"private allocator API called: {name}")
+
+        return _record
+
     fake_torch = SimpleNamespace(
         cuda=SimpleNamespace(
             is_available=lambda: True,
@@ -111,90 +118,27 @@ def test_reset_cuda_memory_pool_emits_release_pool_limitation_once(monkeypatch) 
             ipc_collect=lambda: None,
             reset_peak_memory_stats=lambda _device=None: None,
             reset_accumulated_memory_stats=lambda _device=None: None,
-        ),
-        _C=SimpleNamespace(
-            _cuda_releasePool=lambda: (_ for _ in ()).throw(
-                TypeError(
-                    "_cuda_releasePool(): incompatible function arguments. "
-                    "The following argument types are supported: "
-                    "(arg0: typing.SupportsInt, arg1: tuple[typing.SupportsInt, typing.SupportsInt]) -> None"
+            memory=SimpleNamespace(
+                _set_allocator_settings=_private_call(
+                    "torch.cuda.memory._set_allocator_settings"
                 )
-            )
-        ),
-    )
-    monkeypatch.setattr(validity_checks, "torch", fake_torch)
-
-    with warnings.catch_warnings(record=True) as captured:
-        warnings.simplefilter("always")
-        validity_checks.reset_cuda_memory_pool()
-        validity_checks.reset_cuda_memory_pool()
-
-    # reset_cuda_memory_pool() deliberately calls gc.collect(), which can emit
-    # warnings for unrelated objects made unreachable by earlier tests. Count
-    # this limitation precisely so those warnings cannot make the dedupe check
-    # flaky, while a duplicate release-pool warning still fails the test.
-    release_pool_warnings = [
-        item
-        for item in captured
-        if item.category is RuntimeWarning
-        and "without a zero-argument reset entrypoint" in str(item.message)
-    ]
-    assert len(release_pool_warnings) == 1
-    assert "_cuda_releasePool(): incompatible function arguments" in str(
-        release_pool_warnings[0].message
-    )
-    assert validity_checks.get_runtime_capability_limitations() == [
-        {
-            "key": "cuda_release_pool_signature",
-            "category": "allocator_cleanup",
-            "component": "cuda_memory_pool_reset",
-            "summary": "This PyTorch runtime exposes torch._C._cuda_releasePool without a zero-argument reset entrypoint; memory-pool reset will fall back to cache/IPC/stat cleanup and allocator reuse checks are partially degraded",
-            "detail": "_cuda_releasePool(): incompatible function arguments. The following argument types are supported: (arg0: typing.SupportsInt, arg1: tuple[typing.SupportsInt, typing.SupportsInt]) -> None",
-            "first_observed_at": validity_checks.get_runtime_capability_limitations()[0]["first_observed_at"],
-        }
-    ]
-
-
-def test_reset_cuda_memory_pool_emits_allocator_limitation_once(monkeypatch) -> None:
-    import core.harness.validity_checks as validity_checks
-
-    monkeypatch.setattr(validity_checks, "_EMITTED_VALIDITY_LIMITATIONS", set())
-    monkeypatch.setattr(validity_checks, "_VALIDITY_LIMITATION_RECORDS", {})
-    fake_torch = SimpleNamespace(
-        cuda=SimpleNamespace(
-            is_available=lambda: True,
-            synchronize=lambda _device=None: None,
-            empty_cache=lambda: None,
-            ipc_collect=lambda: None,
-            reset_peak_memory_stats=lambda _device=None: None,
-            reset_accumulated_memory_stats=lambda _device=None: None,
+            ),
         ),
         _C=SimpleNamespace(
-            _accelerator_setAllocatorSettings=lambda _value: (_ for _ in ()).throw(
-                RuntimeError("Unrecognized CachingAllocator option: reset_allocator")
-            )
+            _cuda_releasePool=_private_call("torch._C._cuda_releasePool"),
+            _accelerator_setAllocatorSettings=_private_call(
+                "torch._C._accelerator_setAllocatorSettings"
+            ),
+            _cuda_cudaCachingAllocator_set_allocator_settings=_private_call(
+                "torch._C._cuda_cudaCachingAllocator_set_allocator_settings"
+            ),
         ),
     )
     monkeypatch.setattr(validity_checks, "torch", fake_torch)
 
-    with warnings.catch_warnings(record=True) as captured:
-        warnings.simplefilter("always")
-        validity_checks.reset_cuda_memory_pool()
-        validity_checks.reset_cuda_memory_pool()
+    validity_checks.reset_cuda_memory_pool()
 
-    assert len(captured) == 1
-    assert "does not support the reset_allocator allocator setting" in str(captured[0].message)
-    assert "Unrecognized CachingAllocator option: reset_allocator" in str(captured[0].message)
-    assert validity_checks.get_runtime_capability_limitations() == [
-        {
-            "key": "cuda_allocator_reset_setting",
-            "category": "allocator_cleanup",
-            "component": "cuda_memory_pool_reset",
-            "summary": "This PyTorch runtime does not support the reset_allocator allocator setting; memory-pool cleanup will proceed without forcing allocator-setting resets and allocator reuse checks are partially degraded",
-            "detail": "Unrecognized CachingAllocator option: reset_allocator",
-            "first_observed_at": validity_checks.get_runtime_capability_limitations()[0]["first_observed_at"],
-        }
-    ]
+    assert calls == []
 
 
 def test_clear_compile_cache_emits_runtime_warning(monkeypatch) -> None:

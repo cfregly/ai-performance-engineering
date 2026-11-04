@@ -297,7 +297,7 @@
       "record_tree_manifest": true
     },
     "receipt_requirements": {
-      "active_lock_path": "requirements_torch2141_linux_x86_64.lock",
+      "active_lock_path": "requirements_torch2141_linux_x86_64.txt",
       "record_active_lock_sha256": true,
       "record_installed_distributions": true,
       "record_effective_build_environment": true,

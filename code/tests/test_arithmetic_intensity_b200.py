@@ -92,14 +92,14 @@ def test_lab_runtime_contract_accepts_exact_torch_cuda_and_nonbinding_triton(
     triton: str | None,
 ) -> None:
     observed = _validate_lab_runtime_versions(
-        pytorch="2.13.0+cu130",
+        pytorch="2.14.1+cu130",
         pytorch_cuda="13.0",
         triton=triton,
     )
 
     assert observed == {
         "qualification_role": "current_source_target",
-        "pytorch": "2.13.0+cu130",
+        "pytorch": "2.14.1+cu130",
         "pytorch_cuda": "13.0",
         "triton": triton,
         "triton_role": "recorded_only_nonbinding_unused_by_lab",
@@ -109,10 +109,11 @@ def test_lab_runtime_contract_accepts_exact_torch_cuda_and_nonbinding_triton(
 @pytest.mark.parametrize(
     ("pytorch", "pytorch_cuda", "mismatch"),
     [
-        ("2.9.1+cu130", "13.0", "PyTorch expected 2.13.0+cu130"),
-        ("2.11.0+cu130", "13.0", "PyTorch expected 2.13.0+cu130"),
-        ("2.13.0+cu130", "12.8", "PyTorch CUDA expected 13.0"),
-        ("2.13.0", None, "PyTorch CUDA expected 13.0"),
+        ("2.9.1+cu130", "13.0", "PyTorch expected 2.14.1+cu130"),
+        ("2.11.0+cu130", "13.0", "PyTorch expected 2.14.1+cu130"),
+        ("2.13.0+cu130", "13.0", "PyTorch expected 2.14.1+cu130"),
+        ("2.14.1+cu130", "12.8", "PyTorch CUDA expected 13.0"),
+        ("2.14.1", None, "PyTorch CUDA expected 13.0"),
     ],
 )
 def test_lab_runtime_contract_rejects_torch_or_cuda_drift(
@@ -173,7 +174,7 @@ def test_all_live_entrypoint_seams_gate_runtime_before_cuda(
     for entrypoint in entrypoints:
         with pytest.raises(
             verification_tool.DiagnosticGateError,
-            match=r"PyTorch expected 2\.13\.0\+cu130, observed 2\.11\.0\+cu130",
+            match=r"PyTorch expected 2\.14\.1\+cu130, observed 2\.11\.0\+cu130",
         ):
             entrypoint()
 
@@ -495,7 +496,7 @@ def test_confirmation_screen_lineage_and_workload_fail_closed() -> None:
         "lab_tree_sha256": screen_hash,
         "source_commit": source_commit,
         "device": device,
-        "pytorch": "2.13.0+cu130",
+        "pytorch": "2.14.1+cu130",
         "pytorch_cuda": "13.0",
     }
     screen = {

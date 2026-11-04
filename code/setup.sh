@@ -416,7 +416,7 @@ PYTORCH_TRITON_VERSION="$(requirements_pin triton)"
 FLASHINFER_EXPECTED_VERSION="$(requirements_pin flashinfer-python)"
 REQ_CMAKE_VERSION="$(requirements_pin cmake)"
 REQ_NINJA_VERSION="$(requirements_pin ninja)"
-PYTORCH_STACK_LOCK="${PROJECT_ROOT}/requirements_torch2141_linux_x86_64.lock"
+PYTORCH_STACK_LOCK="${PROJECT_ROOT}/requirements_torch2141_linux_x86_64.txt"
 if [ ! -f "${PYTORCH_STACK_LOCK}" ]; then
     echo "ERROR: The PyTorch runtime lock is missing: ${PYTORCH_STACK_LOCK}" >&2
     exit 1
@@ -2362,7 +2362,7 @@ if python3 -c 'import cutlass, cuda.bindings'; then
         exit 1
     fi
     echo "✓ PyTorch CUDA verified after CUTLASS"
-    echo "   - cuda-python==13.0.3: CUDA runtime bindings"
+    echo "   - cuda-python==13.1.1: CUDA runtime bindings"
     echo ""
     
     # Detect CUTLASS C++ header location

@@ -10,7 +10,10 @@ code/upstream/triton-tcgen05-wait-st/STATUS.md probe D).
 
 from __future__ import annotations
 
+import inspect
 import os
+import sys
+from types import ModuleType
 
 import pytest
 
@@ -57,9 +60,9 @@ def test_codegen_arch_clamp_is_gb10_only(monkeypatch: pytest.MonkeyPatch) -> Non
 
     for capability, expected in [
         ((12, 1), "sm_120"),  # GB10: the one arch the clamp exists for
-        ((12, 0), None),      # real sm_120 GPU: leave Triton's own target alone
-        ((13, 0), None),      # future arch: never clamp
-        ((10, 3), None),      # GB300: never clamp
+        ((12, 0), None),  # real sm_120 GPU: leave Triton's own target alone
+        ((13, 0), None),  # future arch: never clamp
+        ((10, 3), None),  # GB300: never clamp
     ]:
         monkeypatch.delenv("TRITON_CODEGEN_ARCH", raising=False)
         monkeypatch.setattr(
@@ -93,7 +96,7 @@ def test_patched_sm_arch_from_capability() -> None:
         pytest.skip("Triton too old for the SM-arch patch")
 
     patched = triton_compiler.sm_arch_from_capability
-    orig = patched.__defaults__[0]  # the closed-over original function
+    orig = patched.__wrapped__
 
     # GB10: the one capability the shim rewrites.
     assert patched(121) == "sm_120"
@@ -113,3 +116,158 @@ def test_patched_sm_arch_from_capability() -> None:
     # pin the exact value so a regression is unambiguous.
     if orig(103) == "sm_103a":
         assert patched(103) == "sm_103a"
+
+
+def _fake_triton_modules(make_ptx, make_cubin, *, backend_metaclass=type):
+    triton = ModuleType("triton")
+    triton.__version__ = "3.8.0"
+    backends = ModuleType("triton.backends")
+    nvidia = ModuleType("triton.backends.nvidia")
+    compiler = ModuleType("triton.backends.nvidia.compiler")
+
+    def sm_arch_from_capability(capability: int) -> str:
+        return f"sm_{capability}a" if capability in {90, 100, 103} else f"sm_{capability}"
+
+    class CUDABackend(metaclass=backend_metaclass):
+        pass
+
+    CUDABackend.make_ptx = make_ptx
+    CUDABackend.make_cubin = make_cubin
+    compiler.sm_arch_from_capability = sm_arch_from_capability
+    compiler.CUDABackend = CUDABackend
+    triton.backends = backends
+    backends.nvidia = nvidia
+    nvidia.compiler = compiler
+    return triton, backends, nvidia, compiler
+
+
+def test_triton_38_backend_signature_and_call_through(monkeypatch: pytest.MonkeyPatch) -> None:
+    from core.benchmark import triton_compat
+
+    calls: list[tuple[str, object, object, object, int]] = []
+
+    def make_ptx(self, src, metadata, opt, capability):
+        calls.append(("ptx", src, metadata, opt, capability))
+        return "ptx-result"
+
+    def make_cubin(self, src, metadata, opt, capability):
+        calls.append(("cubin", src, metadata, opt, capability))
+        return b"cubin-result"
+
+    triton, backends, nvidia, compiler = _fake_triton_modules(make_ptx, make_cubin)
+    for name, module in {
+        "triton": triton,
+        "triton.backends": backends,
+        "triton.backends.nvidia": nvidia,
+        "triton.backends.nvidia.compiler": compiler,
+    }.items():
+        monkeypatch.setitem(sys.modules, name, module)
+    monkeypatch.setattr(triton_compat, "_TRITON_ARCH_PATCHED", False)
+
+    triton_compat.ensure_triton_compat()
+
+    backend = compiler.CUDABackend()
+    metadata: dict[str, object] = {}
+    option = object()
+    assert backend.make_ptx("src", metadata, option, 121) == "ptx-result"
+    assert backend.make_cubin("src", metadata, option, 103) == b"cubin-result"
+    assert calls == [
+        ("ptx", "src", metadata, option, 120),
+        ("cubin", "src", metadata, option, 103),
+    ]
+    expected = ("self", "src", "metadata", "opt", "capability")
+    assert tuple(inspect.signature(compiler.CUDABackend.make_ptx).parameters) == expected
+    assert tuple(inspect.signature(compiler.CUDABackend.make_cubin).parameters) == expected
+    assert compiler.sm_arch_from_capability(121) == "sm_120"
+    assert compiler.sm_arch_from_capability(103) == "sm_103a"
+
+
+def test_triton_backend_signature_drift_fails_before_patch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from core.benchmark import triton_compat
+
+    def make_ptx(self, src, metadata, opt):
+        return "unsupported"
+
+    def make_cubin(self, src, metadata, opt, capability):
+        return b"cubin"
+
+    triton, backends, nvidia, compiler = _fake_triton_modules(make_ptx, make_cubin)
+    for name, module in {
+        "triton": triton,
+        "triton.backends": backends,
+        "triton.backends.nvidia": nvidia,
+        "triton.backends.nvidia.compiler": compiler,
+    }.items():
+        monkeypatch.setitem(sys.modules, name, module)
+    monkeypatch.setattr(triton_compat, "_TRITON_ARCH_PATCHED", False)
+
+    with pytest.raises(RuntimeError, match="CUDABackend.make_ptx"):
+        triton_compat.ensure_triton_compat()
+
+    assert not getattr(compiler, "_sm_arch_patch_applied", False)
+
+
+def test_triton_backend_patch_failure_rolls_back_and_retries(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from core.benchmark import triton_compat
+
+    failure_pending = True
+
+    class FailMakeCubinOnce(type):
+        def __setattr__(cls, name, value):
+            nonlocal failure_pending
+            if name == "make_cubin" and failure_pending and hasattr(value, "__wrapped__"):
+                failure_pending = False
+                raise RuntimeError("injected make_cubin assignment failure")
+            super().__setattr__(name, value)
+
+    calls: list[tuple[str, int]] = []
+
+    def make_ptx(self, src, metadata, opt, capability):
+        calls.append(("ptx", capability))
+        return "ptx-result"
+
+    def make_cubin(self, src, metadata, opt, capability):
+        calls.append(("cubin", capability))
+        return b"cubin-result"
+
+    triton, backends, nvidia, compiler = _fake_triton_modules(
+        make_ptx,
+        make_cubin,
+        backend_metaclass=FailMakeCubinOnce,
+    )
+    for name, module in {
+        "triton": triton,
+        "triton.backends": backends,
+        "triton.backends.nvidia": nvidia,
+        "triton.backends.nvidia.compiler": compiler,
+    }.items():
+        monkeypatch.setitem(sys.modules, name, module)
+    monkeypatch.setattr(triton_compat, "_TRITON_ARCH_PATCHED", False)
+
+    original_sm_arch = compiler.sm_arch_from_capability
+    original_make_ptx = compiler.CUDABackend.make_ptx
+    original_make_cubin = compiler.CUDABackend.make_cubin
+
+    with pytest.raises(RuntimeError, match="Changes were rolled back"):
+        triton_compat.ensure_triton_compat()
+
+    assert compiler.sm_arch_from_capability is original_sm_arch
+    assert compiler.CUDABackend.make_ptx is original_make_ptx
+    assert compiler.CUDABackend.make_cubin is original_make_cubin
+    assert "_sm_arch_patch_applied" not in vars(compiler)
+    assert "_capability_clamp_patch" not in vars(compiler.CUDABackend)
+    assert triton_compat._TRITON_ARCH_PATCHED is False
+
+    triton_compat.ensure_triton_compat()
+
+    backend = compiler.CUDABackend()
+    assert backend.make_ptx("src", {}, object(), 121) == "ptx-result"
+    assert backend.make_cubin("src", {}, object(), 103) == b"cubin-result"
+    assert calls == [("ptx", 120), ("cubin", 103)]
+    assert compiler._sm_arch_patch_applied is True
+    assert compiler.CUDABackend._capability_clamp_patch is True
+    assert triton_compat._TRITON_ARCH_PATCHED is True

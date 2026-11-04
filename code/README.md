@@ -162,7 +162,7 @@ python3.12 -m venv .venv-torch2141 && source .venv-torch2141/bin/activate
 python -m pip install --extra-index-url https://download.pytorch.org/whl/cu130 \
   --find-links vendor/python-wheels \
   --require-hashes --no-deps \
-  -r requirements_torch2141_linux_x86_64.lock
+  -r requirements_torch2141_linux_x86_64.txt
 python -m pip check
 python -m cli.aisp bench list-targets --chapter ch01
 python -m cli.aisp bench run --targets ch01 --profile minimal

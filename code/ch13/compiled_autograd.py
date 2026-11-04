@@ -297,7 +297,7 @@ def main() -> None:
         print("Compiled autograd not available in your PyTorch installation.")
         print("Use the pinned PyTorch 2.14.1 runtime for this example.")
         print("\nInstall the isolated runtime described in docs/environment.md:")
-        print("  python -m pip install --require-hashes --no-deps -r requirements_torch2141_linux_x86_64.lock")
+        print("  python -m pip install --require-hashes --no-deps -r requirements_torch2141_linux_x86_64.txt")
         print("!" * 80)
         return
     

@@ -135,17 +135,23 @@ def test_fp16_baseline_metrics_do_not_label_the_run_as_fp32() -> None:
     assert "precision.fp32_ms" not in metrics
 
 
-def _require_real_te218_cuda() -> None:
-    if os.environ.get("AISP_RUN_TE218_CUDA_TESTS") != "1":
-        pytest.skip("set AISP_RUN_TE218_CUDA_TESTS=1 for the real TE2.18 CUDA harness test")
+EXPECTED_TRANSFORMER_ENGINE_VERSION = "2.20.2"
+
+
+def _require_real_te_cuda() -> None:
+    if os.environ.get("AISP_RUN_TE_CUDA_TESTS") != "1":
+        pytest.skip("set AISP_RUN_TE_CUDA_TESTS=1 for the real Transformer Engine CUDA test")
     if not torch.cuda.is_available():
         pytest.skip("real Transformer Engine test requires CUDA")
     try:
         te_version = version("transformer_engine")
     except PackageNotFoundError:
         pytest.skip("real Transformer Engine test requires transformer_engine")
-    if not te_version.startswith("2.18."):
-        pytest.skip(f"real Transformer Engine test requires 2.18.x, found {te_version}")
+    if te_version != EXPECTED_TRANSFORMER_ENGINE_VERSION:
+        pytest.fail(
+            "real Transformer Engine test requires "
+            f"{EXPECTED_TRANSFORMER_ENGINE_VERSION}, found {te_version}"
+        )
 
 
 @pytest.mark.cuda
@@ -155,8 +161,8 @@ def _require_real_te218_cuda() -> None:
     "benchmark_type",
     [BaselineTEFP8Benchmark, OptimizedTEFP8Benchmark],
 )
-def test_real_te218_cuda_harness_retains_full_training_output(benchmark_type) -> None:
-    _require_real_te218_cuda()
+def test_real_te_cuda_harness_retains_full_training_output(benchmark_type) -> None:
+    _require_real_te_cuda()
     from core.harness.benchmark_harness import (
         BenchmarkHarness,
         BenchmarkMode,
@@ -201,7 +207,7 @@ def test_real_te218_cuda_harness_retains_full_training_output(benchmark_type) ->
     assert all(tensor.device.type == "cpu" for tensor in output.values())
 
 
-def _run_real_te218_step_with_target_delta(benchmark_type, target_delta: float):
+def _run_real_te_step_with_target_delta(benchmark_type, target_delta: float):
     torch.manual_seed(7391)
     torch.cuda.manual_seed_all(7391)
     benchmark = benchmark_type()
@@ -241,12 +247,12 @@ def _run_real_te218_step_with_target_delta(benchmark_type, target_delta: float):
     "benchmark_type",
     [BaselineTEFP8Benchmark, OptimizedTEFP8Benchmark],
 )
-def test_real_te218_live_target_changes_post_sgd_parameters(benchmark_type) -> None:
-    _require_real_te218_cuda()
-    control_initial, control_final = _run_real_te218_step_with_target_delta(
+def test_real_te_live_target_changes_post_sgd_parameters(benchmark_type) -> None:
+    _require_real_te_cuda()
+    control_initial, control_final = _run_real_te_step_with_target_delta(
         benchmark_type, 0.0
     )
-    changed_initial, changed_final = _run_real_te218_step_with_target_delta(
+    changed_initial, changed_final = _run_real_te_step_with_target_delta(
         benchmark_type, 8.0
     )
 

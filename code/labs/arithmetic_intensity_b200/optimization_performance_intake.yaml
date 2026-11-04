@@ -54,10 +54,13 @@ environment:
     kernel: captured_in_run_provenance
     driver: captured_in_run_provenance
     cuda: "13.0"
-    pytorch: "2.13.0+cu130_exact_readback_required"
+    pytorch: "2.14.1+cu130_exact_readback_required"
     triton: optional_recorded_at_runtime_nonbinding
     triton_role: unused_by_lab_source
     global_repository_default_changed: false
+    historical_runtime_evidence:
+      - pytorch: "2.13.0+cu130"
+        qualification_scope: historical_only_not_current_source
     frameworks: [PyTorch, cuBLAS, cuBLASLt, CUDA_extension]
     nccl: not_used
     container_orchestrator: none
@@ -83,6 +86,8 @@ current_baseline:
   dense_bf16_tflop_per_s: 1444.724349
   effective_requested_rw_copy_decimal_tb_per_s: 6.511999
   source: 2026-10-13_frozen_peak_characterization
+  source_runtime: "2.13.0+cu130"
+  qualification_scope: historical_only_not_current_source
 
 hot_path_model:
   path: labs.arithmetic_intensity_b200.optimization_benchmarks
@@ -198,7 +203,7 @@ sustained_search_and_calibration:
     GPU: NVIDIA_B200_GPU0_only
     power_limit_w: 1000
     power_or_clock_changes: forbidden
-    pytorch: "2.13.0+cu130_exact_readback_required"
+    pytorch: "2.14.1+cu130_exact_readback_required"
     pytorch_cuda: "13.0_exact_readback_required"
     triton: optional_recorded_at_runtime_nonbinding
     triton_role: unused_by_lab_source

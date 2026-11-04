@@ -10,8 +10,8 @@ from pathlib import Path
 
 import torch
 import torch.distributed as dist
-from torch.distributed._composable.fsdp import MixedPrecisionPolicy, fully_shard
 from torch.distributed.device_mesh import init_device_mesh
+from torch.distributed.fsdp import MixedPrecisionPolicy, fully_shard
 from torch.utils.data import DataLoader, DistributedSampler
 
 from core.common.device_utils import resolve_local_rank
@@ -88,7 +88,10 @@ def _build_dataloader(
         vocab_size = int(os.getenv("AISP_TINYSTORIES_VOCAB", "32000"))
         num_samples = max(steps * grad_accum * micro_batch * world_size, 256)
         tokens = torch.randint(
-            0, vocab_size, (num_samples, seq_len + 1), dtype=torch.long,
+            0,
+            vocab_size,
+            (num_samples, seq_len + 1),
+            dtype=torch.long,
             generator=torch.Generator().manual_seed(seed),
         )
         input_ids, labels = tokens[:, :-1], tokens[:, 1:]
@@ -105,7 +108,9 @@ def _build_dataloader(
                 return {"input_ids": self._input_ids[idx], "labels": self._labels[idx]}
 
         dataset = SyntheticTokenDataset(input_ids, labels)
-        sampler = DistributedSampler(dataset, num_replicas=world_size, rank=rank, shuffle=True, drop_last=True, seed=seed)
+        sampler = DistributedSampler(
+            dataset, num_replicas=world_size, rank=rank, shuffle=True, drop_last=True, seed=seed
+        )
         dataloader = DataLoader(
             dataset,
             batch_size=micro_batch,
@@ -123,7 +128,9 @@ def _build_dataloader(
     else:
         tokenizer = setup_tokenizer(MODEL_ID)
         dataset = load_tinystories(tokenizer, seq_len, is_main_process=rank == 0)
-    sampler = DistributedSampler(dataset, num_replicas=world_size, rank=rank, shuffle=True, drop_last=True, seed=seed)
+    sampler = DistributedSampler(
+        dataset, num_replicas=world_size, rank=rank, shuffle=True, drop_last=True, seed=seed
+    )
     dataloader = DataLoader(
         dataset,
         batch_size=micro_batch,
@@ -317,7 +324,8 @@ def main():
                 loss_value = float(loss_value_buffer.detach().cpu()[0]) * args.grad_accum
                 msg = (
                     f"[optimized_fsdp2_multigpu] step {optimizer_step}/{total_updates} "
-                    f"loss={loss_value:.4f}" + ThroughputTracker.format(metrics, include_memory=True)
+                    f"loss={loss_value:.4f}"
+                    + ThroughputTracker.format(metrics, include_memory=True)
                 )
                 print(msg, flush=True)
 
@@ -332,7 +340,10 @@ def main():
     dist.all_reduce(elapsed, op=dist.ReduceOp.MAX)
     if is_main:
         print(f"rank0 time_per_iter_ms: {elapsed.item() / optimizer_step:.9f}", flush=True)
-        print(f"completed_optimizer_steps: {optimizer_step}; completed_microbatches: {micro_step}", flush=True)
+        print(
+            f"completed_optimizer_steps: {optimizer_step}; completed_microbatches: {micro_step}",
+            flush=True,
+        )
 
     dist.barrier()
     if is_main:

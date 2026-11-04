@@ -16,15 +16,16 @@ Run the CPU-only checks from `code/`:
 python -m labs.arithmetic_intensity_b200 formulas --output <artifact-dir>/formulas.json
 ```
 
-Live commands and harness benchmark pairs use a lab-specific isolated runtime. They
-require exact readback of PyTorch 2.13.0+cu130 and the CUDA 13.0 version reported by
-PyTorch. This lab's qualification target remains independently pinned. The repository-wide
-default is PyTorch 2.14.1+cu130. Retained PyTorch 2.11.0+cu130 results are historical and do
-not qualify the current source. The frozen cuBLASLt algorithm must report as supported and
-pass full-output correctness on 2.13.0. Reselect it through the bounded search if that check
-fails. The lab does not use Triton kernels. An installed Triton version is recorded in
-provenance but does not gate a run. Retained harness evidence used Triton 3.6.0, so a prior
-3.7.1 pin was not a valid requirement. Use a separate environment for live lab commands.
+Live commands and harness benchmark pairs require exact readback of PyTorch
+2.14.1+cu130 and the CUDA 13.0 version reported by PyTorch. This matches the
+repository's current B200 runtime. Retained PyTorch 2.11.0+cu130 and
+2.13.0+cu130 results are historical and do not qualify the current source. The
+frozen cuBLASLt algorithm must report as supported and pass full-output
+correctness on 2.14.1. Reselect it through the bounded search if that check
+fails. The lab does not use Triton kernels. An installed Triton version is
+recorded in provenance but does not gate a run. Retained harness evidence used
+Triton 3.6.0, so neither that version nor a prior 3.7.1 pin qualifies the
+current PyTorch 2.14.1 stack.
 
 Every live measurement command requires a named B200 at compute capability 10.0, BF16
 support, the strict environment checks, and the repository clock-lock context. The supplied

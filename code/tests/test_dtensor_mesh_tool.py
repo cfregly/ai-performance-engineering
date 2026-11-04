@@ -2,9 +2,19 @@
 
 from __future__ import annotations
 
+import inspect
+
 import pytest
 
-from ch13.dtensor_mesh_tool import _resolve_torchrun_context, get_benchmark
+from ch13.dtensor_mesh_tool import DTensorMeshBenchmark, _resolve_torchrun_context, get_benchmark
+
+
+def test_dtensor_setup_uses_public_pytorch_214_api() -> None:
+    source = inspect.getsource(DTensorMeshBenchmark.setup)
+
+    assert "from torch.distributed.device_mesh import DeviceMesh" in source
+    assert "from torch.distributed.tensor import Replicate, distribute_tensor" in source
+    assert "torch.distributed._tensor" not in source
 
 
 def test_dtensor_tool_does_not_report_an_unexecuted_precision_mode() -> None:
@@ -33,9 +43,7 @@ def test_supported_one_and_two_rank_launches_are_resolved(
     device_count: int,
     expected: tuple[int, int, int],
 ) -> None:
-    assert (
-        _resolve_torchrun_context(environ, cuda_device_count=device_count) == expected
-    )
+    assert _resolve_torchrun_context(environ, cuda_device_count=device_count) == expected
 
 
 @pytest.mark.parametrize(

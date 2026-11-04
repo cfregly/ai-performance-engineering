@@ -34,10 +34,13 @@ execution:
     driver: captured_at_runtime
     cuda: "13.0_exact_PyTorch_readback_required"
     nccl: not_used
-    pytorch: "2.13.0+cu130_exact_readback_required"
+    pytorch: "2.14.1+cu130_exact_readback_required"
     triton: optional_recorded_at_runtime_nonbinding
     triton_role: unused_by_lab_source
     global_repository_default_changed: false
+    historical_runtime_evidence:
+      - pytorch: "2.13.0+cu130"
+        qualification_scope: historical_only_not_current_source
     runtime_or_server: none
   hardware_tier:
     gpu_model: NVIDIA_B200

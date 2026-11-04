@@ -4,7 +4,7 @@ Run the commands below from the repository's `code/` directory unless a block
 explicitly changes into it. The reviewed dependency source is
 [requirements_latest.txt](../code/requirements_latest.txt). Current Linux x86-64
 CPython 3.12 installs consume the complete, hash-locked graph in
-[requirements_torch2141_linux_x86_64.lock](../code/requirements_torch2141_linux_x86_64.lock)
+[requirements_torch2141_linux_x86_64.txt](../code/requirements_torch2141_linux_x86_64.txt)
 through [setup.sh](../code/setup.sh). The default serving runtime is built from
 the commit in [vllm_source_build.json](../code/vllm_source_build.json) by
 [build_vllm_for_torch.py](../code/scripts/build_vllm_for_torch.py).
@@ -82,7 +82,7 @@ sudo bash setup.sh
 ```
 
 Run it from a git checkout. The script installs the current Python graph from
-`requirements_torch2141_linux_x86_64.lock`, including the reviewed CMake and
+`requirements_torch2141_linux_x86_64.txt`, including the reviewed CMake and
 ninja pins, instead of Ubuntu's apt CMake, which is 3.22 on
 22.04 and 3.28 on 24.04. It puts the pip CMake first on `PATH`. Before any CMake
 build, it reads the newest `cmake_minimum_required` from the tracked first-party
@@ -126,7 +126,7 @@ python -m pip install \
   --find-links vendor/python-wheels \
   --require-hashes \
   --no-deps \
-  -r requirements_torch2141_linux_x86_64.lock
+  -r requirements_torch2141_linux_x86_64.txt
 python -m pip check
 
 # Optional serving runtime. Choose a new absolute output path for each build.

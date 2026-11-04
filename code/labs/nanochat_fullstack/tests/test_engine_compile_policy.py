@@ -139,9 +139,10 @@ def test_compile_mode_guard_matches_only_verified_runtime() -> None:
         ((10, 0), "2.9.1", "13.0", "3.5.1"),
         ((10, 0), "2.9.1+cu130", "13.1", "3.5.1"),
         ((10, 0), "2.9.1+cu130", "13.0", "3.5.2"),
+        ((10, 0), "2.14.1+cu130", "13.0", "3.8.0"),
     ],
 )
-def test_compile_mode_guard_passes_through_near_misses(
+def test_compile_mode_guard_passes_through_unverified_runtimes(
     capability,
     torch_version,
     cuda_version,

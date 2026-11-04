@@ -31,18 +31,11 @@ def _write_benchmark(
         setup_limitation = """
         from core.harness import validity_checks
         validity_checks._emit_validity_limitation_once(
-            "cuda_allocator_reset_setting",
-            "This PyTorch runtime does not support the reset_allocator allocator setting; memory-pool cleanup will proceed without forcing allocator-setting resets and allocator reuse checks are partially degraded",
-            exc=RuntimeError("Unrecognized CachingAllocator option: reset_allocator"),
-            component="cuda_memory_pool_reset",
-            category="allocator_cleanup",
-        )
-        validity_checks._emit_validity_limitation_once(
-            "cuda_release_pool_signature",
-            "This PyTorch runtime exposes torch._C._cuda_releasePool without a zero-argument reset entrypoint; memory-pool reset will fall back to cache/IPC/stat cleanup and allocator reuse checks are partially degraded",
-            exc=TypeError("_cuda_releasePool(): incompatible function arguments"),
-            component="cuda_memory_pool_reset",
-            category="allocator_cleanup",
+            "fixture_runtime_capability",
+            "The manifest fixture records one structured runtime capability limit",
+            exc=RuntimeError("fixture capability detail"),
+            component="manifest_integration_fixture",
+            category="test_fixture",
         )
 """
     code = """\
@@ -202,23 +195,13 @@ def test_bench_commands_persists_runtime_capability_limitations_in_results_json(
     assert runtime_limitations, "runtime capability limitations missing from persisted manifest"
 
     limitation_map = {entry["key"]: entry for entry in runtime_limitations}
-    assert "cuda_allocator_reset_setting" in limitation_map
-    assert "cuda_release_pool_signature" in limitation_map
+    assert set(limitation_map) == {"fixture_runtime_capability"}
 
-    reset_allocator = limitation_map["cuda_allocator_reset_setting"]
-    assert reset_allocator["category"] == "allocator_cleanup"
-    assert reset_allocator["component"] == "cuda_memory_pool_reset"
+    limitation = limitation_map["fixture_runtime_capability"]
+    assert limitation["category"] == "test_fixture"
+    assert limitation["component"] == "manifest_integration_fixture"
     assert (
-        reset_allocator["summary"]
-        == "This PyTorch runtime does not support the reset_allocator allocator setting; memory-pool cleanup will proceed without forcing allocator-setting resets and allocator reuse checks are partially degraded"
+        limitation["summary"]
+        == "The manifest fixture records one structured runtime capability limit"
     )
-    assert reset_allocator["detail"] == "Unrecognized CachingAllocator option: reset_allocator"
-
-    release_pool = limitation_map["cuda_release_pool_signature"]
-    assert release_pool["category"] == "allocator_cleanup"
-    assert release_pool["component"] == "cuda_memory_pool_reset"
-    assert (
-        release_pool["summary"]
-        == "This PyTorch runtime exposes torch._C._cuda_releasePool without a zero-argument reset entrypoint; memory-pool reset will fall back to cache/IPC/stat cleanup and allocator reuse checks are partially degraded"
-    )
-    assert release_pool["detail"].startswith("_cuda_releasePool(): incompatible function arguments")
+    assert limitation["detail"] == "fixture capability detail"
