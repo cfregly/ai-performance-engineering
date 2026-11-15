@@ -55,6 +55,8 @@ bundle = capture_event(
 ```
 
 The API retains the supplied values before executing a reference or baseline.
+Completed observed calls require contiguous input tensors. The API rejects a
+strided view before copying it, so capture cannot silently change its layout.
 Describe their actual source. An input from a generated application test remains
 test data. A profiler timeline by itself does not contain these values. Capturing
 the complete values requires copying them out of the caller, which can perturb
@@ -68,7 +70,8 @@ next call, so a generator can reuse its buffers. An optional `status` can be
 `completed`, `failed` or `cancelled`. Failed and cancelled source calls must include `error` and can pass
 an empty input dictionary when inputs were unavailable. Their places in the
 roster remain visible, and the capture does not rerun them or replace their state
-with a successful reference call.
+with a successful reference call. Available values from failed and cancelled
+calls remain diagnostic records, including values supplied through strided views.
 
 Bundles contain `manifest.json`, `manifest.sha256`, and raw contiguous tensor
 files. Every descriptor records shape, dtype, byte order, byte count and SHA-256.

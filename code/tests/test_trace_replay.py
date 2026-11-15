@@ -224,6 +224,66 @@ def _observed_call(event_id, operation, parameters, inputs, **status):
     }
 
 
+def _strided_observed_input(operation):
+    if operation == "prefix_scan":
+        storage = torch.arange(16, dtype=torch.int32)
+        return storage, storage[::2], {"numel": 8}
+    storage = torch.arange(48, dtype=torch.float32).reshape(4, 12)
+    return storage, storage[:, ::2], {"rows": 4, "cols": 6}
+
+
+@pytest.mark.parametrize("operation", ["prefix_scan", "online_softmax"])
+def test_public_capture_rejects_completed_strided_inputs_before_cloning(tmp_path: Path, operation):
+    from labs.trace_replay.runner import capture_event
+
+    storage, x, parameters = _strided_observed_input(operation)
+    original_storage = storage.clone()
+    original_stride = x.stride()
+    output_dir = tmp_path / "capture"
+    assert not x.is_contiguous()
+
+    with pytest.raises(ValueError, match="completed observed calls require contiguous input tensors"):
+        capture_event(
+            operation, parameters, {"x": x}, event_id="strided",
+            source={"kind": "observed_call", "description": "Caller supplied a stride-two input view"},
+            output_dir=output_dir, device="cpu",
+        )
+
+    assert torch.equal(storage, original_storage)
+    assert x.stride() == original_stride
+    assert not x.is_contiguous()
+    assert not output_dir.exists()
+
+
+@pytest.mark.parametrize("operation", ["prefix_scan", "online_softmax"])
+@pytest.mark.parametrize("status", ["failed", "cancelled"])
+def test_public_capture_retains_strided_values_from_incomplete_calls(tmp_path: Path, operation, status):
+    from labs.trace_replay.runner import capture_events
+    from labs.trace_replay.storage import read_tensor
+
+    storage, x, parameters = _strided_observed_input(operation)
+    original_storage = storage.clone()
+    original_values = x.clone()
+    original_stride = x.stride()
+    error = "Source operation did not complete"
+
+    bundle = capture_events(
+        [_observed_call("incomplete", operation, parameters, {"x": x}, status=status, error=error)],
+        tmp_path / "capture", device="cpu",
+    )
+
+    event = bundle.event("incomplete")
+    assert event["status"] == status
+    assert event["error"] == error
+    assert event["outputs"] == {}
+    assert torch.equal(read_tensor(bundle.root, event["inputs"]["x"]), original_values)
+    assert torch.equal(storage, original_storage)
+    assert x.stride() == original_stride
+    receipt = json.loads(next((bundle.root / "failures").glob("*.json")).read_text())
+    assert receipt["status"] == status
+    assert receipt["phase"] == "source"
+
+
 def test_observed_roster_preserves_order_values_and_source_dispositions(tmp_path: Path) -> None:
     from labs.trace_replay.runner import capture_events
     from labs.trace_replay.storage import load_event_inputs, read_tensor

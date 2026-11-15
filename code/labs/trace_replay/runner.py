@@ -231,6 +231,8 @@ def capture_events(calls, output_dir, device="cpu") -> Bundle:
             not isinstance(value, torch.Tensor) for value in call["inputs"].values()
         ):
             raise ValueError("observed call inputs must be a dictionary of tensors")
+        if status == "completed" and any(not value.is_contiguous() for value in call["inputs"].values()):
+            raise ValueError("completed observed calls require contiguous input tensors")
         inputs = {name: value.detach().clone() for name, value in call["inputs"].items()}
         events.append({
             "event_id": event_id, "operation": call["operation"], "parameters": dict(call["parameters"]),
