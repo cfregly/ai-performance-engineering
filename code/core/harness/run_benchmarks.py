@@ -5462,6 +5462,36 @@ def _update_expectation_entry_after_profiler_gate(
     return update_result, payload
 
 
+def _timing_configuration_receipt(
+    *,
+    iterations: int,
+    warmup: int,
+    adaptive_iterations: bool,
+    timing: Optional[Any],
+) -> Dict[str, Any]:
+    """Keep applied configuration separate from retained timing sample counts."""
+    return {
+        "configured_iterations": int(iterations),
+        "configured_warmup_iterations": int(warmup),
+        "adaptive_iterations": bool(adaptive_iterations),
+        "observed_timing_samples": int(timing.iterations) if timing is not None else None,
+        "observed_warmup_iterations": int(timing.warmup_iterations) if timing is not None else None,
+    }
+
+
+def _expectation_provenance_from_result(
+    result_entry: Dict[str, Any],
+    **identity: Any,
+) -> RunProvenance:
+    """Use baseline configured counts while preserving each candidate's receipt."""
+    configuration = result_entry["baseline_timing_configuration"]
+    return RunProvenance(
+        iterations=int(configuration["configured_iterations"]),
+        warmup_iterations=int(configuration["configured_warmup_iterations"]),
+        **identity,
+    )
+
+
 def _expectation_entry_from_result(
     result_entry: Dict[str, Any],
     best_opt: Dict[str, Any],
@@ -6468,6 +6498,12 @@ def _test_chapter_impl(
                     target_label=f"{chapter_name}:{example_name}",
                 )
                 baseline_timing = baseline_result.timing
+                result_entry["baseline_timing_configuration"] = _timing_configuration_receipt(
+                    iterations=baseline_config.iterations,
+                    warmup=baseline_config.warmup,
+                    adaptive_iterations=baseline_config.adaptive_iterations,
+                    timing=baseline_timing,
+                )
                 baseline_memory = baseline_result.memory
                 baseline_custom_metrics = getattr(baseline_result, "custom_metrics", None) or {}
                 baseline_story_metadata = getattr(baseline_result, "story_metadata", None) or {}
@@ -7437,6 +7473,12 @@ def _test_chapter_impl(
                         'speedup': speedup,
                         'optimization_goal': str(opt_goal or "speed").strip().lower(),
                     }
+                    opt_result["timing_configuration"] = _timing_configuration_receipt(
+                        iterations=optimized_config.iterations,
+                        warmup=optimized_config.warmup,
+                        adaptive_iterations=optimized_config.adaptive_iterations,
+                        timing=optimized_timing,
+                    )
 
                     # POST-TIMING VERIFICATION: validate workload equivalence + outputs using the timing-run artifacts.
                     if verify_input:
@@ -8514,13 +8556,12 @@ def _test_chapter_impl(
                         step_detail="expectations update",
                     )
                     old_entry = expectations_store.get_entry(example_key)
-                    provenance = RunProvenance(
+                    provenance = _expectation_provenance_from_result(
+                        result_entry,
                         git_commit=git_commit or "unknown",
                         hardware_key=expectation_hardware_key,
                         profile_name=profile_type,
                         timestamp=datetime.now().isoformat(),
-                        iterations=int(iterations),
-                        warmup_iterations=int(warmup),
                         execution_environment=execution_environment.kind,
                         validity_profile=validity_profile,
                         dmi_product_name=execution_environment.dmi_product_name,
@@ -8870,6 +8911,12 @@ def _test_chapter_impl(
 
             baseline_time = baseline_result.mean_ms
             result_entry['baseline_time_ms'] = baseline_time
+            result_entry["baseline_timing_configuration"] = _timing_configuration_receipt(
+                iterations=cuda_iterations,
+                warmup=cuda_warmup,
+                adaptive_iterations=False,
+                timing=baseline_result,
+            )
 
             # Enhanced baseline metrics display with emojis and formatting (same as Python)
             logger.info(f"    Baseline: {format_time_ms(baseline_time)} ms")
@@ -9407,6 +9454,12 @@ def _test_chapter_impl(
                     'speedup': speedup,
                     'optimization_goal': str(result_entry.get("optimization_goal") or "speed").strip().lower(),
                 }
+                opt_result["timing_configuration"] = _timing_configuration_receipt(
+                    iterations=cuda_iterations,
+                    warmup=cuda_warmup,
+                    adaptive_iterations=False,
+                    timing=optimized_result,
+                )
                 _record_timing_fields(
                     opt_result,
                     "",
@@ -10007,13 +10060,12 @@ def _test_chapter_impl(
                         step_detail="expectations update",
                     )
                     old_entry = expectations_store.get_entry(example_key)
-                    provenance = RunProvenance(
+                    provenance = _expectation_provenance_from_result(
+                        result_entry,
                         git_commit=git_commit or "unknown",
                         hardware_key=expectation_hardware_key,
                         profile_name=profile_type,
                         timestamp=datetime.now().isoformat(),
-                        iterations=int(iterations),
-                        warmup_iterations=int(warmup),
                         execution_environment=execution_environment.kind,
                         validity_profile=validity_profile,
                         dmi_product_name=execution_environment.dmi_product_name,
