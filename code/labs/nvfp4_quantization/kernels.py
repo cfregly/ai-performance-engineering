@@ -2,6 +2,7 @@
 
 import triton
 import triton.language as tl
+from triton.language.extra.cuda import libdevice
 
 
 @triton.jit
@@ -46,7 +47,10 @@ def fused_quantize(
             (offsets < num_cols) & active,
             other=0,
         ).to(tl.float32)
-        values = (x / (1.0 + tl.exp(-x)) * up).to(tl.bfloat16).to(tl.float32)
+        # Match the materialized FP32 activation before BF16 rounding. Fast
+        # approximate exp/div can cross a BF16 boundary and change packed codes.
+        activation = tl.div_rn(x, 1.0 + libdevice.exp(-x))
+        values = (activation * up).to(tl.bfloat16).to(tl.float32)
     else:
         values = x
     blocks = tl.reshape(values, (block_size // 16, 16))
