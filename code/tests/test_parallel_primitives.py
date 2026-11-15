@@ -6,7 +6,11 @@ import itertools
 import pytest
 import torch
 
-from ch09.online_softmax_common import materialized_softmax, online_softmax
+from ch09.online_softmax_common import (
+    materialized_softmax,
+    online_softmax,
+    online_softmax_launch_config,
+)
 from labs.prefix_scan.reference import inclusive_scan
 
 
@@ -31,6 +35,21 @@ def test_online_normalizer_matches_double_precision_softmax(columns, block):
 def test_online_normalizer_handles_fully_masked_first_tile():
     x = torch.tensor([[-torch.inf, -torch.inf, 1000.0, 999.0]])
     torch.testing.assert_close(online_softmax(x, 2), torch.softmax(x, 1))
+
+
+@pytest.mark.parametrize("cols", [257, 4097, 8193])
+def test_online_normalizer_selected_tiles_preserve_masked_and_ragged_rows(cols):
+    block_size, num_warps = online_softmax_launch_config(cols)
+    assert block_size & (block_size - 1) == 0
+    assert 256 <= block_size <= 4096
+    assert num_warps in {4, 8}
+    generator = torch.Generator().manual_seed(217)
+    values = torch.randn(2, cols, generator=generator, dtype=torch.float64) * 300
+    values[:, : min(cols - 1, block_size)] = -torch.inf
+
+    torch.testing.assert_close(
+        online_softmax(values, block_size), torch.softmax(values, dim=1), rtol=1e-12, atol=1e-14
+    )
 
 
 def test_online_normalizer_translation_invariance_and_noncontiguous_input():
@@ -138,7 +157,7 @@ def test_cuda_hierarchical_scan_ragged_tiles_and_replay(size):
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="real NVIDIA CUDA GPU required")
-@pytest.mark.parametrize("cols", [1, 257, 8193])
+@pytest.mark.parametrize("cols", [1, 257, 4097, 8193])
 def test_cuda_online_softmax_and_actual_verification_payload(cols):
     pytest.importorskip("triton")
     from ch09.online_softmax_common import OnlineSoftmaxBenchmark
@@ -153,7 +172,8 @@ def test_cuda_online_softmax_and_actual_verification_payload(cols):
         assert bench.output is None
         with pytest.raises(RuntimeError, match="benchmark_fn"):
             bench.capture_verification_payload()
-        bench.x[:, : min(cols - 1, 256)] = -torch.inf
+        block_size, _ = online_softmax_launch_config(cols)
+        bench.x[:, : min(cols - 1, block_size)] = -torch.inf
         bench.benchmark_fn()
         bench.capture_verification_payload()
         torch.testing.assert_close(

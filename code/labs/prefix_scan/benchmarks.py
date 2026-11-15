@@ -27,7 +27,7 @@ class ScanPlan:
     does not claim to implement the paper's single-pass decoupled look-back.
     """
 
-    def __init__(self, x: torch.Tensor, block_size: int = 1024):
+    def __init__(self, x: torch.Tensor, block_size: int = 4096):
         if x.device.type != "cuda":
             raise RuntimeError("SKIPPED: ScanPlan requires CUDA")
         if x.ndim != 1 or x.dtype != torch.int32 or not x.is_contiguous() or not x.numel():
@@ -39,31 +39,34 @@ class ScanPlan:
         self.levels = []
         current = x
         while True:
-            blocks = (current.numel() + block_size - 1) // block_size
+            level_block_size = min(block_size, 1 << (current.numel() - 1).bit_length())
+            blocks = (current.numel() + level_block_size - 1) // level_block_size
             output = torch.empty_like(current)
             totals = torch.empty(blocks, dtype=x.dtype, device=x.device)
-            self.levels.append((current, output, totals))
+            self.levels.append((current, output, totals, level_block_size))
             if blocks == 1:
                 break
             current = totals
         self.output = self.levels[0][1]
 
     def run(self) -> torch.Tensor:
-        for source, output, totals in self.levels:
+        for source, output, totals, level_block_size in self.levels:
             self.kernels.scan_tiles[(totals.numel(),)](
                 source,
                 output,
                 totals,
                 source.numel(),
-                self.block_size,
+                level_block_size,
+                num_warps=4,
             )
         for index in range(len(self.levels) - 2, -1, -1):
-            source, output, totals = self.levels[index]
+            source, output, totals, level_block_size = self.levels[index]
             self.kernels.add_tile_carries[(totals.numel(),)](
                 output,
                 self.levels[index + 1][1],
                 source.numel(),
-                self.block_size,
+                level_block_size,
+                num_warps=4,
             )
         return self.output
 

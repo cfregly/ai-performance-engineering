@@ -54,12 +54,22 @@ def load_kernels():
         raise RuntimeError("SKIPPED: Online softmax require Triton") from exc
 
 
+def online_softmax_launch_config(cols: int) -> tuple[int, int]:
+    """Use wider tiles to reduce serial updates while bounding live values."""
+    if type(cols) is not int or cols <= 0:
+        raise ValueError("cols must be a positive integer")
+    block_size = min(4096, max(256, 1 << (cols - 1).bit_length()))
+    num_warps = 4 if block_size <= 1024 else 8
+    return block_size, num_warps
+
+
 class OnlineSoftmaxBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def __init__(self, optimized, rows=128, cols=8193, *, input_tensors=None):
         super().__init__()
         if any(type(v) is not int or v <= 0 for v in (rows, cols)):
             raise ValueError("rows and cols must be positive integers")
         self.optimized, self.rows, self.cols = optimized, rows, cols
+        self.block_size, self.num_warps = online_softmax_launch_config(cols)
         self._input_tensors = input_tensors
         self.x = self.output = self.kernels = None
         self._scratch = None
@@ -101,7 +111,13 @@ class OnlineSoftmaxBenchmark(VerificationPayloadMixin, BaseBenchmark):
         if self.x is None:
             raise RuntimeError("setup() must run first")
         if self.optimized:
-            self.kernels.online_softmax_rows[(self.rows,)](self.x, self._scratch, self.cols, 256)
+            self.kernels.online_softmax_rows[(self.rows,)](
+                self.x,
+                self._scratch,
+                self.cols,
+                self.block_size,
+                num_warps=self.num_warps,
+            )
             self.output = self._scratch
         else:
             self.output = materialized_softmax(self.x)
