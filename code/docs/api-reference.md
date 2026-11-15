@@ -518,6 +518,41 @@ digests. See the [serving guide](../labs/serving_comparison/README.md) before us
 These utilities do not add dashboard endpoints because the dashboard does not
 currently consume them.
 
+## Operator trace replay
+
+`aisp tools trace-replay` captures complete operator input tensors, validates
+retained bundles, and replays each event through the native benchmark pairs.
+The initial operators are prefix scan, online softmax, and fused NVFP4
+quantization. The [replay lab](../labs/trace_replay/README.md) documents the
+capture plan, input provenance, and supported hardware.
+
+```bash
+python -m cli.aisp tools trace-replay -- capture --plan capture-plan.json --output-dir captured --device cpu
+python -m cli.aisp tools trace-replay -- validate --bundle captured
+python -m cli.aisp tools trace-replay -- replay --bundle captured --output-dir replay-results
+```
+
+CPU captures use the numerical references. Their manifests identify the capture
+backend and distinguish generated recipes from observed application inputs.
+GPU replay preserves full outputs and uses the existing correctness, clock,
+runtime, and profiler checks. Each event receives its own result and failure
+record. Event order is preserved, while request arrival pacing and stream overlap
+remain outside this operator replay contract.
+
+MCP exposes the same CLI through `tools_trace_replay`:
+
+```json
+{"args": ["validate", "--bundle", "captured"], "include_context": false}
+```
+
+`args` defaults to `--help` and is forwarded as an argument vector. Paths refer
+to the MCP server filesystem. The tool adds no invocation deadline. Existing
+benchmark policies still apply. Results include the command, exit code, stdout,
+and stderr. CLI and MCP cancellation forwards SIGINT through the owned launch
+groups and waits for child cleanup without a deadline. MCP returns the retained
+output with `cancelled: true` after cleanup. The dashboard has no new endpoint
+because it does not consume this workflow.
+
 ## Best Practices
 
 ### 1. Start with Triage

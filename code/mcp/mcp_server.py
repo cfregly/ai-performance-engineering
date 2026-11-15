@@ -10837,6 +10837,44 @@ from core.tools.tools_commands import DIAGNOSTIC_TOOLS
 
 
 @register_tool(
+    "tools_trace_replay",
+    "Tags: tools, traces, replay, kernels, correctness. "
+    "Capture actual operator tensors, validate a retained bundle, or replay native benchmark pairs. "
+    "Forwards args unchanged to `aisp tools trace-replay`. Use args=['--help'] for commands. "
+    "Replay requires the declared GPU and uses the existing benchmark verification and profiler paths. "
+    "CPU reference captures and generated inputs retain their origin labels. "
+    "Independent operator replay does not recreate request arrivals or stream overlap. "
+    "The invocation adds no wall-clock deadline. Results include stdout, stderr, and exit status.",
+    {
+        "type": "object",
+        "properties": with_context_params({
+            "args": {
+                "type": "array", "items": {"type": "string"}, "default": ["--help"],
+                "description": "CLI argument vector. Bundle and output paths refer to the server filesystem.",
+            },
+        }),
+    },
+)
+def tool_tools_trace_replay(params: Dict[str, Any]) -> Dict[str, Any]:
+    from core.utils.cooperative_subprocess import CooperativeProcessInterrupted, run_cooperative_process
+
+    include_context, context_level = extract_context_opts(params)
+    args = params.get("args", ["--help"])
+    if not isinstance(args, list) or not all(isinstance(value, str) for value in args):
+        return make_error("args must be a list of strings", include_context, context_level)
+    command = [sys.executable, "-m", "cli.aisp", "tools", "trace-replay", "--", *args]
+    try:
+        result = run_cooperative_process(command, env=_subprocess_env(), cwd=CODE_ROOT)
+    except CooperativeProcessInterrupted as exc:
+        result = exc.result
+        result["success"] = False
+        result["error"] = "Cancelled after the owned CLI completed cleanup"
+    if result["returncode"] != 0 and not result.get("error"):
+        result["error"] = result["stderr"] or result["stdout"] or f"trace-replay failed with code {result['returncode']}"
+    return attach_context_if_requested(result, include_context, context_level)
+
+
+@register_tool(
     "tools_diagnostics",
     "Tags: tools, network, fabric, collective, serving, diagnostics. "
     "Run a diagnostic tool or analyze retained evidence through the same aisp CLI. "

@@ -255,7 +255,7 @@ Generated from `mcp.mcp_server.TOOLS`. Run `python -m scripts.generate_mcp_docs`
 - `cluster_watch_promote`: Attach a detached watcher process that waits for a PID to exit, validates run artifacts, then promotes the run
 - `cost_estimate`: Cloud cost estimation for GPU fleets
 
-### Tools (7)
+### Tools (8)
 - `tools_compare_precision`: Run the precision/accuracy comparison tool (non-benchmark utility)
 - `tools_cost_per_token`: Run the cost-per-token calculator (non-benchmark utility)
 - `tools_detect_cutlass`: Run CUTLASS environment detection (non-benchmark utility)
@@ -263,6 +263,7 @@ Generated from `mcp.mcp_server.TOOLS`. Run `python -m scripts.generate_mcp_docs`
 - `tools_dump_hw`: Dump comprehensive hardware capability report (non-benchmark utility)
 - `tools_kv_cache`: Run the KV-cache size calculator (non-benchmark utility)
 - `tools_probe_hw`: Probe GPU capabilities dynamically and cache results (non-benchmark utility)
+- `tools_trace_replay`: Capture actual operator tensors, validate a retained bundle, or replay native benchmark pairs
 
 ### Utility (5)
 - `context_full`: Get full comprehensive context: complete system state

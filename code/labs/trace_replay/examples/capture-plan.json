@@ -1,0 +1,35 @@
+{
+  "schema_version": "native-operator-capture-plan.v1",
+  "events": [
+    {
+      "event_id": "scan-ragged",
+      "operation": "prefix_scan",
+      "parameters": {"numel": 1027},
+      "seed": 42,
+      "source": {
+        "kind": "generated_by_recipe",
+        "description": "Illustrative int32 values drawn uniformly from -3 through 3 on CPU"
+      }
+    },
+    {
+      "event_id": "softmax-ragged",
+      "operation": "online_softmax",
+      "parameters": {"rows": 3, "cols": 257},
+      "seed": 43,
+      "source": {
+        "kind": "generated_by_recipe",
+        "description": "Illustrative FP32 standard normal values multiplied by 8 on CPU"
+      }
+    },
+    {
+      "event_id": "quantize-ragged",
+      "operation": "nvfp4.quantize",
+      "parameters": {"batch": 2, "rows": 3, "cols": 48},
+      "seed": 44,
+      "source": {
+        "kind": "generated_by_recipe",
+        "description": "Illustrative native BF16 NVFP4 input recipe generated on CPU"
+      }
+    }
+  ]
+}

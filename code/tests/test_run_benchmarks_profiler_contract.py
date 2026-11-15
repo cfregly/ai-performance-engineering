@@ -125,6 +125,7 @@ def test_collect_required_profiler_failures_captures_baseline_and_optimized_fail
         "optimized_profiler_statuses": {
             "nsys": "failed",
             "ncu": "succeeded",
+            "torch": "succeeded",
         }
     }
 
@@ -132,6 +133,7 @@ def test_collect_required_profiler_failures_captures_baseline_and_optimized_fail
         result_entry,
         best_opt,
         profiling_requested=True,
+        required_profilers=("nsys", "ncu", "torch"),
     )
 
     assert failures == [
@@ -146,9 +148,95 @@ def test_collect_required_profiler_failures_ignores_disabled_profiling() -> None
         {"baseline_profiler_statuses": {"nsys": "failed"}},
         {"optimized_profiler_statuses": {"ncu": "failed"}},
         profiling_requested=False,
+        required_profilers=("nsys", "ncu", "torch"),
     )
 
     assert failures == []
+
+
+@pytest.mark.parametrize("arm", ["baseline", "optimized"])
+@pytest.mark.parametrize("statuses", [None, {}, {"nsys": "succeeded"}])
+def test_required_profiler_contract_rejects_missing_outcomes(arm, statuses) -> None:
+    result_entry = {"baseline_profiler_statuses": {"nsys": "succeeded", "ncu": "succeeded"}}
+    best_opt = {"optimized_profiler_statuses": {"nsys": "succeeded", "ncu": "succeeded"}}
+    entry = result_entry if arm == "baseline" else best_opt
+    entry.pop(f"{arm}_profiler_statuses")
+    if statuses is not None:
+        entry[f"{arm}_profiler_statuses"] = statuses
+
+    failures = _collect_required_profiler_failures(
+        result_entry,
+        best_opt,
+        profiling_requested=True,
+        required_profilers=("nsys", "ncu"),
+    )
+
+    assert failures == [
+        f"{arm}:{profiler}:missing"
+        for profiler in ("ncu", "nsys")
+        if not statuses or profiler not in statuses
+    ]
+
+
+def test_required_profiler_contract_ignores_unrequested_outcomes() -> None:
+    failures = _collect_required_profiler_failures(
+        {"baseline_profiler_statuses": {"nsys": "succeeded", "torch": "failed"}},
+        {"optimized_profiler_statuses": {"nsys": "succeeded", "ncu": "skipped"}},
+        profiling_requested=True,
+        required_profilers=("nsys",),
+    )
+
+    assert failures == []
+
+
+def test_required_profiler_contract_preserves_explicit_not_applicable_reasons() -> None:
+    failures = _collect_required_profiler_failures(
+        {
+            "baseline_profiler_statuses": {"nsys": "succeeded", "ncu": "succeeded"},
+            "baseline_profiler_not_applicable": {"torch": "CUDA executes in a compiled child"},
+        },
+        {
+            "optimized_profiler_statuses": {"nsys": "succeeded", "ncu": "succeeded"},
+            "optimized_profiler_not_applicable": {"torch": "CUDA executes in a compiled child"},
+        },
+        profiling_requested=True,
+        required_profilers=("nsys", "ncu", "torch"),
+    )
+
+    assert failures == []
+
+
+def test_required_profiler_contract_checks_baseline_when_no_optimization_completed() -> None:
+    failures = _collect_required_profiler_failures(
+        {"baseline_profiler_statuses": {"nsys": "succeeded"}},
+        None,
+        profiling_requested=True,
+        required_profilers=("nsys", "ncu"),
+    )
+
+    assert failures == ["baseline:ncu:missing"]
+
+
+def test_missing_optimized_profiles_fail_the_actual_result_gate() -> None:
+    result_entry = {
+        "baseline_profiler_statuses": {"nsys": "succeeded", "ncu": "succeeded"},
+        "best_speedup": 2.0,
+    }
+    best_opt = {"status": "succeeded", "speedup": 2.0}
+
+    failures = _collect_required_profiler_failures(
+        result_entry,
+        best_opt,
+        profiling_requested=True,
+        required_profilers=("nsys", "ncu"),
+    )
+
+    status = run_benchmarks._classify_benchmark_status(
+        result_entry, None, profiler_failures=failures
+    )
+
+    assert status == "failed_profiler"
+    assert failures == ["optimized:ncu:missing", "optimized:nsys:missing"]
 
 
 def test_format_required_profiler_failure_is_explicit() -> None:

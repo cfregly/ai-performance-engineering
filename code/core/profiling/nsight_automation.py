@@ -489,6 +489,29 @@ class NsightAutomation:
                 result_stdout, result_stderr = process.communicate(
                     timeout=timeout_seconds if timeout_seconds and timeout_seconds > 0 else None,
                 )
+            except KeyboardInterrupt:
+                finalize = self._finalize_timed_out_nsys(
+                    process, grace_seconds=finalize_grace_seconds,
+                )
+                self.last_error = "Nsight Systems capture cancelled"
+                self.last_run.update(
+                    {
+                        "status": "cancelled",
+                        "stdout": str(finalize.get("stdout", "")),
+                        "stderr": str(finalize.get("stderr", "")),
+                        "returncode": process.returncode,
+                        "timeout_hit": False,
+                        "graceful_finalize_attempted": True,
+                        "graceful_finalize_completed": bool(finalize.get("completed")),
+                        "finalize_signals": finalize.get("signals", []),
+                    }
+                )
+                output_path.with_suffix(".stdout.log").write_text(self.last_run["stdout"])
+                output_path.with_suffix(".stderr.log").write_text(self.last_run["stderr"])
+                output_path.with_suffix(".command.json").write_text(
+                    json.dumps(self.last_run, indent=2)
+                )
+                raise
             except subprocess.TimeoutExpired as exc:
                 partial_stdout = str(exc.stdout or "")
                 partial_stderr = str(exc.stderr or "")
