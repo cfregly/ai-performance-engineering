@@ -1394,7 +1394,9 @@ class VerifyRunner:
                         )
                     if input_tensor.numel() == 0:
                         return False, f"Jitter check failed: integer input '{tensor_name}' is empty"
-                    if bool(((input_tensor < low) | (input_tensor >= high)).any()):
+                    # Both comparison scalars must fit the tensor dtype. The
+                    # exclusive upper bound can be one past its largest value.
+                    if bool(((input_tensor < low) | (input_tensor > high - 1)).any()):
                         return False, (
                             f"Jitter check failed: integer input '{tensor_name}' contains "
                             f"values outside [{low}, {high})"

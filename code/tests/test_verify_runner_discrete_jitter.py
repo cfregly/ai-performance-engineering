@@ -86,6 +86,21 @@ def test_integer_jitter_without_declared_domain_is_explicitly_advisory(tmp_path)
     assert torch.equal(work.token_ids, original)
 
 
+@pytest.mark.parametrize("dtype", [torch.uint8, torch.int8, torch.int16, torch.int32])
+def test_integer_jitter_accepts_the_full_dtype_domain(tmp_path, dtype) -> None:
+    domain = torch.iinfo(dtype)
+    original = torch.tensor([[domain.min, domain.max, 0, 1]], dtype=dtype)
+    work = _DiscreteWork(original.clone(), (domain.min, domain.max + 1))
+
+    passed, reason = _run_jitter(tmp_path, work)
+
+    assert passed, reason
+    assert reason is None
+    assert len(work.observed_inputs) == 2
+    assert not torch.equal(work.observed_inputs[-1], original)
+    assert torch.equal(work.token_ids, original)
+
+
 def test_integer_jitter_reports_declared_domain_draw_failure(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path,
