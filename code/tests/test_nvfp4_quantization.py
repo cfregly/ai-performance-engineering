@@ -156,6 +156,9 @@ def test_fused_cuda_full_buffers_and_replayed_inputs(kind):
 
     # Include both padding/ragged cases and all six published B200 shapes.
     workloads = [NVFP4Workload(kind, 2, 3, 48)]
+    if kind == "quantize":
+        # Exercise nonbinary batch multipliers at FP4 rounding boundaries.
+        workloads.append(NVFP4Workload(kind, 8, 7, 7168))
     workloads.extend(workload for workload in WORKLOADS.values() if workload.kind == kind)
     for workload in workloads:
         inputs = build_inputs(workload, torch.device("cuda"))

@@ -58,7 +58,8 @@ def fused_quantize(
     scale = (
         (tl.max(tl.abs(blocks), axis=1) * (1.0 / 6.0) * multiplier).to(tl.float8e4nv).to(tl.float32)
     )
-    inverse = tl.where(scale == 0, 0.0, multiplier / scale)
+    # FP4 midpoint decisions require the reference's rounded FP32 division.
+    inverse = tl.where(scale == 0, 0.0, tl.div_rn(multiplier, scale))
     normalized = tl.reshape(blocks * inverse[:, None], (block_size,))
     a = tl.abs(normalized)
     code = (
