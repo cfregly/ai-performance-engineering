@@ -195,7 +195,7 @@ define the distinction. The `putmem` variants instead express their count in byt
 
 The same native source implements host-enqueued NCCL exchange and NVSHMEM
 on-stream puts, with events joining communication and interior work before the
-next iteration. The lab's [two-B200 profiles](../labs/multi_gpu_communication/README.md#observed-two-b200-diagnostic)
+next iteration. The lab's [two-B200 profiles](../labs/multi_gpu_communication/README.md#historical-two-b200-diagnostic)
 show actual overlap for host NCCL in the measured case. Device initiation can
 publish smaller pieces as a kernel produces them, at the cost of GPU execution
 resources, transport requirements, and a more complex protocol. NVSHMEM still
