@@ -652,17 +652,27 @@ python code/labs/nvshmem_device/run_lab_nvshmem_device.py --mode persistent-halo
 Use fresh output paths. The [lab instructions](../labs/nvshmem_device/README.md#build-and-run)
 provide all five commands, library-path overrides, and launcher requirements.
 
-On an allocated two-GPU B200 system with the NVSHMEM package layout expected by
-the [chapter Makefile](Makefile), the existing native pipeline target is:
+The legacy [chapter Makefile](Makefile) uses `NVSHMEM_HOME` as the **library
+directory**, unlike the new labs' installation-prefix convention. It checks
+for `libnvshmem_host.so` there and expects `libnvshmem_device.a` beside it.
+Its default header flag is hard-coded as `-I/usr/include/nvshmem`. Override
+`NVSHMEM_INCLUDE` with the complete `-I` flag for a different header directory.
+For example, on an allocated two-GPU B200 system:
 
 ```bash
-make -C code/ch04 nvshmem_pipeline_patterns_sm100 ARCH=sm_100
+make -C code/ch04 nvshmem_pipeline_patterns_sm100 ARCH=sm_100 \
+  NVSHMEM_HOME=/path/to/nvshmem/lib NVSHMEM_INCLUDE=-I/path/to/nvshmem/include
 nvshmrun -np 2 code/ch04/nvshmem_pipeline_patterns_sm100
 ```
 
 `nvshmrun` is NVSHMEM's standalone launcher. Use the compatible launcher
 installed for the selected runtime. Confirm the build actually enabled NVSHMEM
-rather than accepting educational-mode output as a communication test.
+rather than accepting educational-mode output as a communication test. A
+missing host library can select a same-named educational binary that exits
+successfully without communicating. This legacy recipe was not validated in
+the current two-B200 lab run. Legacy source-header commands and unmeasured
+performance figures are not validated by the new lab results. Prefer the new
+device lab's checked path for a complete protocol.
 
 From `code/`, the existing Python pipeline pair has a separate harness path:
 
@@ -681,8 +691,10 @@ actual problem.
 This guide was checked against current primary API documentation and local
 source. The inline fragments explain API contracts. Runtime evidence applies
 to the linked lab implementations and selected tested cases. The
-[B200 record](../labs/nvshmem_device/b200_validation.json) retains exact source
-and capture provenance. NCU validated selected-kernel duration with one observed
+[current validation record](../../docs/reviews/2026-11-16-distributed-gpu-validation.json)
+retains executed source and capture provenance, including later
+maintained-source changes. The [lab-local record](../labs/nvshmem_device/b200_validation.json)
+also retains historical runs. NCU validated selected-kernel duration with one observed
 pass and zero profiler warmup. Backup-byte metrics are unreported, so
 no-save/restore is a documented inference from the single-pass contract.
 Single-host results do not establish full hardware-counter analysis,

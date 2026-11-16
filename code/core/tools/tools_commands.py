@@ -67,7 +67,7 @@ TOOLS: Dict[str, ToolSpec] = {
         name="multi-gpu-communication",
         script_path=REPO_ROOT / "labs" / "multi_gpu_communication" / "run_lab_multi_gpu_communication.py",
         module_name="labs.multi_gpu_communication.run_lab_multi_gpu_communication",
-        description="Build and run the fixed-work Jacobi communication lab.",
+        description="Run the prebuilt fixed-work Jacobi communication lab.",
     ),
     "nvshmem-device": ToolSpec(
         name="nvshmem-device",

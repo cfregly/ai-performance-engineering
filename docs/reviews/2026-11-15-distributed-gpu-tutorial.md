@@ -33,6 +33,22 @@ explicit omission. No claim below depends on that source.
 | Hidden templates and notebooks | All masters, tasks, solutions, six instruction paths, generation files | Adopt staged questions and reference solutions. Avoid copying duplicate generated notebook/source trees. |
 | Build, CI, metadata, course scripts | Makefiles, compile-only CI, environment/deployment scripts, licenses and citation metadata | Keep current build capability checks and source credit. Do not treat compilation as GPU correctness or performance evidence. |
 
+### Deliberate scope choices
+
+The common lab keeps a one-dimensional row decomposition. It does not adopt
+the tutorial's tile decomposition and pack/unpack path or add a host-staging
+comparison. Those would change the data layout or transfer path and need
+separate equivalence and performance evidence. UCX tuning knobs, cuda-gdb,
+and Score-P remain source references rather than new runnable lessons. The
+implemented path uses the repository's existing Nsight, NVTX, and complete-output
+checks.
+
+Two exercise details were changed deliberately. The lab uses one communication
+stream for both boundary rows instead of separate top and bottom streams.
+Events join that stream with interior computation. It also uses fixed iteration
+counts and omits the norm step so both schedules perform the same work. These
+choices do not establish behavior for a convergence-controlled solver.
+
 All eight slide decks were extracted, totaling 298 PDF pages including animation
 steps. Eighteen selected diagram, chart, and timeline pages were rendered for
 visual inspection. All 46 files in exercises 04 and 07 and all 50 files in
@@ -142,10 +158,12 @@ unsupported-capability paths. The earlier CPU and CLI pass completed 55 tests,
 with six opt-in GPU integration cases skipped before devices were probed.
 
 Syntax and bytecode checks passed for ten Python modules. The two benchmark
-wrappers passed the scoped AST linter with no errors or warnings. All 42 local
-links in the new guides, lab documents, and this review resolve. The separately
-checked chapter README additions also resolve. These are focused checks, not a
-full repository test run.
+wrappers passed the scoped AST linter with no errors or warnings. The historical
+link check found 42 local destinations in the then-current guides, lab documents,
+and review. That receipt does not validate later heading changes. The current
+closure check covers 90 owned destinations, Markdown anchors, and source line
+ranges across the six edited documents. These are focused checks, not a full
+repository test run.
 
 The earlier CPU and CLI test commands were:
 

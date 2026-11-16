@@ -486,7 +486,7 @@ All operations return dictionaries with consistent structure:
 
 ## Diagnostic tools
 
-The six network, fabric, transport, collective, serving and cross-layer tools
+The network, fabric, transport, collective, serving and cross-layer tools
 share the CLI registry in `core/tools/tools_commands.py`. See the
 [diagnostic tool guide](diagnostic_tools.md) for runnable commands and artifact
 contracts.

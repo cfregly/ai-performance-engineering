@@ -16,7 +16,7 @@
   "maintained_gpu_test_file_sha256": "8a1cc623e9c43c6980591d76d996093f8bc23d33d330420f1296a0cb0299e126",
   "correctness_executed_runner_sha256": "b56f9213b6d947dc0595cb8b20407cec1cf6f85b1e37dc7e7d9879299040c7a1",
   "correctness_executed_gpu_test_file_sha256": "ac3e63c4dc842bd4f1f559eafd5f22c88e16f366e62f3e6b7c5990213082a17b",
-  "runner_revision_note": "After job1137, a failure-record write error was fixed and two CPU CLI cases were added. The nine GPU test cases and native kernels are unchanged. The maintained runner passed71 CPU/CLI checks and was used for all10 verified NCU application invocations in job1138.",
+  "runner_revision_note": "After job 1137, a failure-record write error was fixed and two CPU CLI cases were added. The nine GPU test cases and native kernels are unchanged. The maintained runner passed 71 CPU/CLI checks and was used for all 10 verified NCU application invocations in job 1138.",
   "tested_profile_selector_sha256": "0e17ceea42685e06dc9065e2658caf6be9daa8a87de508aff2bbc7b16769de91",
   "tested_report_inspector_sha256": "852c6cb0b0c9ba9d78e6e94e3db8e4dd9428351e982df931829dacf18af3a0d9",
   "environment": {
@@ -652,7 +652,7 @@
   "recorded_source_snapshot": {
     "commit": "55f23372156cf2a31f4696c0f41fccd5c989f61f",
     "native_source_url": "https://github.com/cfregly/ai-performance-engineering/blob/55f23372156cf2a31f4696c0f41fccd5c989f61f/code/labs/nvshmem_device/nvshmem_device_native.cu",
-    "scope": "Retrospective source snapshot for the initial Nsys cohort before the version metadata correction. It does not describe corrected-source jobs1137 and1138.",
+    "scope": "Retrospective source snapshot for the initial Nsys cohort before the version metadata correction. It does not describe corrected-source jobs 1137 and 1138.",
     "source_sha256": "9d62f6e9dd1268d49a73b5799408a6f54bd49d70cb50a60fae3989b0d7e2e8ee",
     "applies_to_jobs": [
       1133
@@ -689,6 +689,8 @@
         "recorded_native_source_sha256": "aa0f7f0fac1c453290098aabaebd957bf4ecdf91f7b5198dad14be5ebafb5d86"
       }
     ],
-    "scope": "The raw historical completion records bind both jobs to the corrected native bytes. Current committed-source reruns1141\u20131143 supply separately retained public diagnostic evidence. Historical raw receipts remain private."
-  }
+    "scope": "The raw historical completion records bind both jobs to the corrected native bytes. Current committed-source reruns 1141\u20131143 supply separately retained public diagnostic evidence. Historical raw receipts remain private."
+  },
+  "maintained_native_source_sha256": "46055e8d6e40805dc151a78f54cf9fa505c592672b8e70dd8ba39fb42978d48d",
+  "maintained_native_revision_note": "The maintained source corrects a replay-safety comment after the GPU captures. Its executable statements are unchanged from the corrected aa0f7f0f source pinned at ed588c27. The central November 16 record binds both source hashes."
 }

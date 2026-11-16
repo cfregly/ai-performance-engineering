@@ -33,8 +33,11 @@ two-row partitions need special care because their boundary regions can meet
 and their interior can be empty. The implementation must not update a boundary
 twice. Odd iteration counts must read the final ping-pong buffer.
 
-The CPU reference checks the completed result, including every rank's last
-owned row. Nonfinite values are failures. Reference computation, output
+The native CPU reference checks every rank's owned rows and actual received
+halos. Nonfinite values are failures. The gathered dump reconstructs periodic
+halo rows from gathered owned rows. Python checks of that dump validate the
+mesh and reconstructed boundaries, not the final remote halo transfer
+independently. Reference computation, output
 verification, setup, and warmup are excluded from the reported steady-state
 solve interval. That interval must include completion of all compute and halo
 work. Report the slowest rank rather than treating rank zero's local duration
@@ -78,8 +81,12 @@ python -m cli.aisp tools multi-gpu-communication -- --help
 
 Run these module commands from `code/`. The runner validates the build receipt
 and launches the selected native binary. Build it with the Makefile first.
-Direct native runs are component diagnostics. The runner rejects stale source
-or binary hashes and refuses to reuse an existing result path.
+Direct native runs are component diagnostics. The receipt records the Git
+commit, compiler versions, build options, binary hash, and hashes of three
+files: `jacobi_native.cu`, `jacobi_contract.hpp`, and `Makefile`. The runner
+checks those four hashes and refuses to reuse an existing result path. It does
+not hash every transitive header or build include, such as `nvtx_utils.cuh` or
+`cuda_arch.mk`. Rebuild after changing those dependencies.
 
 Use `mpirun`, `mpiexec`, or a compatible wrapper for `--launcher`. The runner
 passes `-np` and does not support `srun` directly. Pass a fresh `--json-out` path
@@ -88,8 +95,13 @@ runner acceptance result. Require a successful process exit and completed Python
 validation. A rejected run can leave its original native JSON with `status: passed`.
 The runner exits `3` for an unavailable capability and `1` for a failed run.
 
-For CUDA-aware MPI, select `--backend mpi`. The MPI build must support device
-buffers. MPI does not receive a CUDA stream argument here, so complete the
+For CUDA-aware MPI, select `--backend mpi`. Automatic capability detection uses
+Open MPI's `MPIX_Query_cuda_support` when that extension is available. For an
+MPI implementation without that query, pass `--assert-cuda-aware-mpi` only after
+confirming its documented GPU-buffer support and runtime configuration. The
+flag records the caller's assertion. It does not enable CUDA support. That
+asserted path has not been GPU-tested in the retained matrix.
+MPI does not receive a CUDA stream argument here, so complete the
 boundary producer before passing its buffer to MPI. The interior kernel can
 continue independently during the host's halo exchange. See
 [Open MPI's capability checks](https://docs.open-mpi.org/en/main/tuning-apps/accelerators/cuda.html).
@@ -99,7 +111,7 @@ a stream-ordered all-PE barrier. From this directory, rebuild with the installed
 NVSHMEM path, then select its backend:
 
 ```bash
-make -B WITH_NVSHMEM=1 NVSHMEM_HOME="$NVSHMEM_HOME"
+make -B NVTX_ENABLED=1 WITH_NVSHMEM=1 NVSHMEM_HOME="$NVSHMEM_HOME"
 mpirun -n 2 ./jacobi_native --backend nvshmem --schedule overlap \
   --nx 256 --ny 257 --iterations 5 --warmup 1 --json-out "$JACOBI_RESULTS/nvshmem.json"
 ```
@@ -111,16 +123,24 @@ NVSHMEM job, and the implementation checks that rank and PE identities agree.
 This arm uses host-submitted stream operations. It does not claim in-kernel
 device initiation or an IBGDA transport.
 
-For this NVSHMEM arm, pass the same `CUDA_VISIBLE_DEVICES` value to every PE,
-then select one GPU per local rank. The lab checks this configuration against
+For this NVSHMEM arm, every local PE must see the same full GPU set in the same
+order before selecting one GPU per local rank. Pass the same
+`CUDA_VISIBLE_DEVICES` value to every PE, as required by
 [current NVSHMEM guidance](https://docs.nvidia.com/nvshmem/api/latest/faq.html).
+The lab compares that string and checks physical rank assignment. String
+equality does not prove full visibility when a container or device cgroup masks
+GPUs separately. The launcher must establish this precondition. The lab does
+not compare complete visible-device UUID lists across local PEs.
 Per-node UUID masks with different strings are outside this arm's supported
 configuration. The MPI and NCCL arms retain ordinary explicit per-rank masks.
 
 ## Run the equivalent harness pair
 
-The pair changes only the schedule and retains the complete timed mesh for
-verification. From `code/`:
+The pair uses the same numerical source and workload options, changes the
+schedule, and retains the complete timed mesh for verification. Each wrapper's
+setup rebuilds the executable separately. The retained pair therefore used
+two binaries from the same source, not one shared binary or bit-reproducible
+builds. From `code/`:
 
 ```bash
 python -m cli.aisp bench list-targets --chapter labs/multi_gpu_communication
@@ -133,6 +153,12 @@ The real wrapper lifecycles were tested on B200. The full `bench run` pipeline
 above has not been executed for this lab. Harness overrides use `--steps` and
 `--native-warmup`, while the native executable uses `--iterations` and `--warmup`.
 Two ranks are the default because this is the validated topology.
+
+The `256 × 257` default is a deliberate correctness-smoke exception to the
+repository's usual speedup-oriented benchmark defaults. It checks the real
+wrapper path with small inputs. Overlap is not guaranteed to win at that size,
+and the retained smoke did not show a win. Choose and record a representative
+workload separately before evaluating performance.
 
 Use the same target overrides for both variants when changing shape, native
 step count, ranks, backend, registration, or graph mode. Direct native timing
@@ -198,10 +224,25 @@ site's normal launcher:
 JACOBI_PROFILE=$(mktemp -d /tmp/jacobi-profile.XXXXXX)
 export JACOBI_PROFILE
 mpirun -n 2 nsys profile --trace=cuda,nvtx,mpi \
+  --cuda-graph-trace=node \
   --output="$JACOBI_PROFILE/jacobi-overlap.%q{OMPI_COMM_WORLD_RANK}" \
   ./jacobi_native --backend nccl --schedule overlap \
-  --nx 4096 --ny 4097 --iterations 5 --warmup 1 --json-out "$JACOBI_PROFILE/profiled.json"
+  --nx 4096 --ny 4097 --iterations 20 --warmup 2 --json-out "$JACOBI_PROFILE/profiled.json"
 ```
+
+To inspect graph replay with the same workload, use a separate report prefix
+and result path, and add `--graph` to the native command:
+
+```bash
+mpirun -n 2 nsys profile --trace=cuda,nvtx,mpi \
+  --cuda-graph-trace=node \
+  --output="$JACOBI_PROFILE/jacobi-graph-overlap.%q{OMPI_COMM_WORLD_RANK}" \
+  ./jacobi_native --backend nccl --schedule overlap --graph \
+  --nx 4096 --ny 4097 --iterations 20 --warmup 2 --json-out "$JACOBI_PROFILE/profiled-graph.json"
+```
+
+The node trace flag exposes graph kernel intervals used by the overlap
+analysis. A graph-level trace alone does not supply those node intervals.
 
 Native captures, exports, logs, and JSON can contain private paths and process
 metadata. Keep them outside the source tree and audit exact bytes before sharing.
@@ -224,6 +265,13 @@ binds the tests, source and binary hashes, workload arguments, and captures.
 The [diagnostic release](https://github.com/cfregly/ai-performance-engineering/releases/tag/tutorial-multi-gpu-b200-20261116)
 retains the audited native reports, existing exports, full outputs, and checksums.
 
+The retained MPI and NVSHMEM overlap cases use a `17 × 5` grid. Each rank owns
+at most two rows, so those cases have no interior-kernel work on the separate
+compute stream. They check their numerical and communication paths, but do not
+validate overlap with a nonempty interior for either backend. The NCCL profiles
+below exercise a nonempty interior. Their observed overlap does not fill that
+MPI/NVSHMEM coverage gap.
+
 Fresh default-tool profiling retained six common-lab Nsys reports and two
 single-pass NCU stencil reports, alongside the device-lab captures. The common
 Nsys workload was `4096 × 4097`, 20 steps, and two warmup steps. Intersections
@@ -240,7 +288,9 @@ They establish overlap for the captured workload, not a new unprofiled speedup.
 NCU covers selected local stencil duration, not the full communication path.
 The first collector failed on an NCU CSV preamble after completing all Nsys
 captures. Its continuation passed, and both attempts remain identified in the
-record. The existing default `nsys` and `ncu` were unchanged.
+record. Job 1143 reused job 1142's stencil NCU report, native JSON, and output
+for rank 0 byte for byte, then re-exported the report. The existing default
+`nsys` and `ncu` were unchanged.
 
 ## Historical two-B200 diagnostic
 
@@ -341,8 +391,10 @@ inventing a one-GPU timing.
 
 ## Source credit and evidence limits
 
-The learning sequence comes from the
-[SC26 distributed GPU tutorial](https://github.com/FZJ-JSC/tutorial-multi-gpu/tree/cd34f9d40d600efd8d84e433b1a9e84ab5eff5f3)
+The learning sequence comes from
+[Efficient Distributed GPU Programming for Exascale](https://github.com/FZJ-JSC/tutorial-multi-gpu/tree/cd34f9d40d600efd8d84e433b1a9e84ab5eff5f3)
+by Andreas Herten, Lena Oden, Simon Garcia de Gonzalo, Jiri Kraus, and Oded Green
+([year-independent DOI](https://doi.org/10.5281/zenodo.5745504))
 and its upstream
 [NVIDIA programming-model examples](https://github.com/NVIDIA/multi-gpu-programming-models).
 Keep upstream license notices with any adapted source. The tutorial's MIT

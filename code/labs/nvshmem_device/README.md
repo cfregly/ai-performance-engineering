@@ -36,7 +36,8 @@ The November 16 rerun at committed source `ed588c27` again passed all nine cases
 and both wrapper lifecycles. Ten fresh Nsys reports cover the five modes on
 both ranks. Ten fresh one-pass NCU reports completed with full-output checks.
 The [current validation record](../../../docs/reviews/2026-11-16-distributed-gpu-validation.json)
-includes each capture's shape, epoch count, warmup, rank, kernel name, and hashes.
+includes each capture's shape, epoch count, warmup, rank, and hashes. NCU entries
+also identify the selected kernel.
 The [diagnostic release](https://github.com/cfregly/ai-performance-engineering/releases/tag/tutorial-multi-gpu-b200-20261116)
 contains the audited native captures, exports, full outputs, and CPU analysis.
 The shared profile audit rechecked 20 complete outputs across both labs, covering
@@ -97,6 +98,13 @@ Read the [native implementation](nvshmem_device_native.cu) and
 Use the intended installation's `nvcc`, `mpicxx`, and `mpirun` on `PATH`, with
 the matching MPI and NVSHMEM shared libraries available to every PE. Supply the
 site's MPI environment exports and binding arguments explicitly.
+
+Every local PE must see the same full GPU set in the same order. The program
+checks `CUDA_VISIBLE_DEVICES` string equality and requires enough visible
+devices for the local PEs. Those checks do not compare complete visible-device
+UUID lists. Equal strings cannot establish identical visibility when container
+or device-cgroup masks differ. Configure that visibility through the launcher
+before running the lab.
 
 Run each protocol with complete output retained:
 
@@ -309,13 +317,19 @@ Python check shown below.
 
 Do not replay a signaling kernel multiple times against a peer that has already
 advanced. The successful Compute recipe launches NCU inside MPI on one selected
-rank while its peer runs the native executable directly. The
-[tested rank selector](profile_rank.sh) requests duration and profiler metadata,
-selects the first matching steady kernel, and lets the remaining workload
+rank while its peer runs the native executable directly. The repository's
+[rank selector](profile_rank.sh), tested in historical job 1138, requests
+duration and profiler metadata, selects the first matching steady kernel, and lets the remaining workload
 finish. It uses no metric set or sections and leaves cache and clock control
 to the recorded execution setup. The
 [2025.3 CLI](https://docs.nvidia.com/nsight-compute/2025.3/NsightComputeCli/index.html)
 documents selected-rank MPI wrappers and kernel/NVTX filters.
+
+Fresh jobs 1142 and 1143 used collector-generated `selected-rank.sh` variants,
+not this repository file. Their NCU flags match this recipe. The
+[current validation record](../../../docs/reviews/2026-11-16-distributed-gpu-validation.json)
+keeps those fresh reports and selector provenance separate from the historical
+job. Treat the command below as the maintained learner recipe.
 
 ```bash
 NVDEV_NCU_DIR=$(mktemp -d /tmp/nvshmem-device-ncu.XXXXXX)

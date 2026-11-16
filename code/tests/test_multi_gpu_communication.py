@@ -601,8 +601,16 @@ def native_binary() -> tuple[Path, str]:
         ("nccl", "overlap", False, True, 5, 3),
         ("nccl", "overlap", True, True, 6, 4),
         ("mpi", "overlap", False, False, 5, 3),
+        ("mpi", "overlap", False, False, 67, 5),
         pytest.param(
             "nvshmem", "overlap", False, False, 5, 3,
+            marks=pytest.mark.skipif(
+                os.environ.get("AISP_MULTI_GPU_WITH_NVSHMEM") != "1",
+                reason="NVSHMEM integration requires AISP_MULTI_GPU_WITH_NVSHMEM=1 and a real installation",
+            ),
+        ),
+        pytest.param(
+            "nvshmem", "overlap", False, False, 67, 5,
             marks=pytest.mark.skipif(
                 os.environ.get("AISP_MULTI_GPU_WITH_NVSHMEM") != "1",
                 reason="NVSHMEM integration requires AISP_MULTI_GPU_WITH_NVSHMEM=1 and a real installation",

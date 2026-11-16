@@ -96,13 +96,17 @@ tested one-pass recipe below and label the result as preparation when selecting
 that kernel. Explain why additional replay isolation would need its own
 validation before collecting more metrics.
 
-Follow the [tested profiling recipe](README.md#profile-the-protocol-that-actually-ran)
+Follow the [one-pass profiling recipe](README.md#profile-the-protocol-that-actually-ran)
 under the repository clock-lock context on both allocated GPUs. Profile one
 rank with `profile_rank.sh` while its peer runs directly, then repeat in a fresh
 job for the other rank. Use the mode's actual kernel-name pattern and the
 independent full-output check.
 
-Inspect the ten retained results in the [B200 record](b200_validation.json).
+The repository selector was tested in historical job 1138. Fresh jobs 1142 and
+1143 used collector-generated `selected-rank.sh` variants with the same NCU
+flags. Inspect the ten fresh device results and their provenance in the
+[current validation record](../../../docs/reviews/2026-11-16-distributed-gpu-validation.json).
+The [lab-local record](b200_validation.json) also retains the historical runs.
 Explain why one requested duration metric does not prove one pass and why
 `--launch-count 1` does not control the number of profiler passes. Use the
 [native-report inspector](inspect_ncu_replay_metrics.py) to check the observed

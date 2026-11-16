@@ -18,7 +18,7 @@
     "openshmem_api": "1.3",
     "mpi": "HPC-X Open MPI 4.1.7a1",
     "nsys": "2025.3.2.474",
-    "ncu": "2025.3.1.0 build36398880"
+    "ncu": "2025.3.1.0 build 36398880"
   },
   "namespace": {
     "isolation": "Private PID, mount, UTS, IPC and network namespaces. Synthetic host/machine identity. Clean allowlisted environment. Local loopback bootstrap and two physical B200 GPUs.",
@@ -285,7 +285,7 @@
         },
         "binary_sha256": "93db3c8642900a68faf389c0815090c533b639dc979d2298f5ca9d6f8efd7651",
         "process_exit_code": 0,
-        "build_options": null
+        "build_features": {}
       },
       {
         "artifact": "wrappers/overlap_92o2u2ca/result_1.json",
@@ -320,7 +320,10 @@
         },
         "binary_sha256": "446274d1bbaa61b3d60a13ea2452d46d163bb51cf492a3b05198a6c581a4c3b7",
         "process_exit_code": 0,
-        "build_options": false
+        "build_features": {
+          "with_nccl": true,
+          "with_nvshmem": false
+        }
       },
       {
         "artifact": "wrappers/persistent-signal_jb_mc3ol/result_1.json",
@@ -352,7 +355,7 @@
         },
         "binary_sha256": "24e91122c539c36e676df1809ed8ede00e7c79a03039f7f1b2d8b64a7285b055",
         "process_exit_code": 0,
-        "build_options": null
+        "build_features": {}
       },
       {
         "artifact": "wrappers/serialized_ajy86sw4/result_1.json",
@@ -387,7 +390,10 @@
         },
         "binary_sha256": "29b1b865342478c53bee1eec29b41cb9fd49d86abc7dc052a53f5f29a2092365",
         "process_exit_code": 0,
-        "build_options": false
+        "build_features": {
+          "with_nccl": true,
+          "with_nvshmem": false
+        }
       }
     ],
     "wrapper_pairs": {
@@ -398,13 +404,13 @@
         "max_abs_error": 0.0
       }
     },
-    "wrapper_limit": "Both real benchmark lifecycles ran setup, native execution, verification payload capture, result validation and teardown. The complete CLI benchmark pipeline was not run. Retained wrapper JSON records its own build hash. The copied profile executables are separate builds."
+    "wrapper_limit": "Both real benchmark lifecycles ran setup, native execution, verification payload capture, result validation and teardown. The complete CLI benchmark pipeline was not run. Retained wrapper JSON records its own build hash. The common Jacobi profile executable and its two wrapper executables are separate builds. The device profile executable is byte-identical to its persistent-signal wrapper executable."
   },
   "nsys": {
     "job_id": 1142,
     "collection_status": "completed_captures_then_collector_failed",
     "job_status": "FAILED 1:0",
-    "failure": "After sixteen Nsys captures and exports, the first NCU CSV parser rejected a bundled Python stderr preamble. Native output checks passed. NCU collection resumed in job1143. The failed attempt remains retained.",
+    "failure": "After sixteen Nsys captures and exports, the first NCU CSV parser rejected a bundled Python stderr preamble. Native output checks passed. NCU collection resumed in job 1143. The failed attempt remains retained.",
     "report_count": 16,
     "sqlite_count": 16,
     "trace": [
@@ -1362,7 +1368,7 @@
         "kernel_name": "persistent_exchange"
       }
     ],
-    "reused_capture": "Common rank0 report, numerical JSON and output were captured in1142 and re-exported in1143 without PYTHONPATH. They were not recaptured. The same report appears in both phase archives.",
+    "reused_capture": "Common rank 0 report, numerical JSON and output were captured in 1142 and re-exported in 1143 without PYTHONPATH. They were not recaptured. The same report appears in both phase archives.",
     "measurement_limit": "Backup-byte metrics were absent. No-save/restore is a documented single-pass inference, not a measured zero-byte result. Intrusive NCU timing includes instrumentation and peer scheduling effects."
   },
   "maintained_source_delta": {
@@ -1386,35 +1392,10 @@
     "All device user kernels use one CTA per PE.",
     "Python stencil dump checks reconstruct periodic halo rows. Native verification separately checks received halos.",
     "Historical unprofiled timings remain separate from these intrusive profile captures.",
-    "Older raw captures remain private because they contain operational metadata. New assets require their own exact-byte privacy audit."
+    "Older raw captures remain private because they contain operational metadata. New assets require their own exact-byte privacy audit.",
+    "The retained MPI and host NVSHMEM GPU test cases use thin partitions with no nonempty interior launch. Their stream-overlap path with a nonempty interior remains untested in this record."
   ],
   "review_status": "Scoped review receipts are retained separately. This diagnostic record is not a publication-readiness verdict.",
-  "executed_source_sha256": {
-    "code/core/tools/tools_commands.py": "470133b3040c145c54f967fcb13ac15555a80525679a5bcffcd346bae0bf0fe4",
-    "code/labs/multi_gpu_communication/Makefile": "12f9c14ca4718ed4ca73fccba4bc74658d7f4d044bc83d1b316d010ee80b35cb",
-    "code/labs/multi_gpu_communication/__init__.py": "d11358fb512f298026470de8799426699e29bbd907d2d4b4226d31716007f276",
-    "code/labs/multi_gpu_communication/baseline_jacobi.py": "889a0b78251f31cb0cae7098b80c95cc7efc211f555bbcb7b34f76905184e771",
-    "code/labs/multi_gpu_communication/build_receipt.py": "37dcac510d84bd740a955c7ad87928bc451c21d9cfe318457082ed747fbd9a34",
-    "code/labs/multi_gpu_communication/jacobi_contract.hpp": "e0ed5c94de560a3cca6cd1cf7d8ecb3d5974704940a4a30c3755d1eac4bd8aa3",
-    "code/labs/multi_gpu_communication/jacobi_native.cu": "41e0c506d77a9acf38e93137358efd96f10d9fa506d1b6e01245dfc3b23e93ed",
-    "code/labs/multi_gpu_communication/native_benchmark.py": "a138d1649598b1af3aaa133e84eb458e8dffa9a944dd15a5f07ded00f31c11e1",
-    "code/labs/multi_gpu_communication/native_common.py": "e3e16336deddcb7e0123b88bb19523498e3d0576881c9ae7a9ac09c019aaa739",
-    "code/labs/multi_gpu_communication/optimized_jacobi.py": "1acb9f793edf8482c633b4cd4b28655d1c8df1fb47ac54d2ba0164e588dd4a8e",
-    "code/labs/multi_gpu_communication/run_lab_multi_gpu_communication.py": "9a3b85b1b384530b8b0b617603e4ddc136b64d4140d115f9a076653173e01493",
-    "code/labs/nvshmem_device/Makefile": "d6da24d7fd13ac312289249bf41153ad9ce907fa74b84ca369e5986bf7d10ecd",
-    "code/labs/nvshmem_device/__init__.py": "10a512e1f0ed67328600ac33703af4fcec596085d1b7d5d77dee47ccc836d1c5",
-    "code/labs/nvshmem_device/baseline_nvshmem_device.py": "aeea5a7f08caab89af8bc25b5581e06c6d2c67b98f0b7313986e5584c82296b6",
-    "code/labs/nvshmem_device/build_receipt.py": "1bdd3e0a82ee0b6dde75efe10010efa86d5765cedf6398a68e2ed77a5fe16e07",
-    "code/labs/nvshmem_device/inspect_ncu_replay_metrics.py": "852c6cb0b0c9ba9d78e6e94e3db8e4dd9428351e982df931829dacf18af3a0d9",
-    "code/labs/nvshmem_device/native_benchmark.py": "610cc0093176f90d81c27b05d1451e4589ac57c0946d8f511a59d5e83880def1",
-    "code/labs/nvshmem_device/nvshmem_device_native.cu": "aa0f7f0fac1c453290098aabaebd957bf4ecdf91f7b5198dad14be5ebafb5d86",
-    "code/labs/nvshmem_device/optimized_nvshmem_device.py": "37df2104889c2a5103a062a60fcb956584c7cc8252adfeb6cc4a30cb7297b737",
-    "code/labs/nvshmem_device/profile_rank.sh": "0e17ceea42685e06dc9065e2658caf6be9daa8a87de508aff2bbc7b16769de91",
-    "code/labs/nvshmem_device/run_lab_nvshmem_device.py": "6042e5b09f875f29da54b0f1187175342561d76486921d9a7ebbf4f110afda99",
-    "code/tests/test_multi_gpu_communication.py": "eddfc13a94e598e9961d5096ab5db23f5ed20f7297c4605372ea592e1192c7f2",
-    "code/tests/test_nvshmem_device.py": "8a1cc623e9c43c6980591d76d996093f8bc23d33d330420f1296a0cb0299e126",
-    "code/tests/test_tools_cli.py": "b475eb411705f3bd6ff7ff718e6154c40c1cca7d82db7d8837b7cf14cc2fe1e4"
-  },
   "scheduler_receipt": {
     "artifact": "tutorial-validation-scheduler-receipts.json",
     "sha256": "40654e72528950713c6683b3fbd0bf144a162b1649a722499e8208a5f81a99b8",
@@ -1609,5 +1590,37 @@
     ],
     "package_metadata_audit_record": "2026-11-16-distributed-gpu-package-metadata-audit.json",
     "package_metadata_audit_sha256": "3266c232d0f19560cdad88af051d2c9898153cfafe3e75547dd0fdf414eba645"
-  }
+  },
+  "source_snapshot_sha256": {
+    "code/core/tools/tools_commands.py": "470133b3040c145c54f967fcb13ac15555a80525679a5bcffcd346bae0bf0fe4",
+    "code/labs/multi_gpu_communication/Makefile": "12f9c14ca4718ed4ca73fccba4bc74658d7f4d044bc83d1b316d010ee80b35cb",
+    "code/labs/multi_gpu_communication/__init__.py": "d11358fb512f298026470de8799426699e29bbd907d2d4b4226d31716007f276",
+    "code/labs/multi_gpu_communication/baseline_jacobi.py": "889a0b78251f31cb0cae7098b80c95cc7efc211f555bbcb7b34f76905184e771",
+    "code/labs/multi_gpu_communication/build_receipt.py": "37dcac510d84bd740a955c7ad87928bc451c21d9cfe318457082ed747fbd9a34",
+    "code/labs/multi_gpu_communication/jacobi_contract.hpp": "e0ed5c94de560a3cca6cd1cf7d8ecb3d5974704940a4a30c3755d1eac4bd8aa3",
+    "code/labs/multi_gpu_communication/jacobi_native.cu": "41e0c506d77a9acf38e93137358efd96f10d9fa506d1b6e01245dfc3b23e93ed",
+    "code/labs/multi_gpu_communication/native_benchmark.py": "a138d1649598b1af3aaa133e84eb458e8dffa9a944dd15a5f07ded00f31c11e1",
+    "code/labs/multi_gpu_communication/native_common.py": "e3e16336deddcb7e0123b88bb19523498e3d0576881c9ae7a9ac09c019aaa739",
+    "code/labs/multi_gpu_communication/optimized_jacobi.py": "1acb9f793edf8482c633b4cd4b28655d1c8df1fb47ac54d2ba0164e588dd4a8e",
+    "code/labs/multi_gpu_communication/run_lab_multi_gpu_communication.py": "9a3b85b1b384530b8b0b617603e4ddc136b64d4140d115f9a076653173e01493",
+    "code/labs/nvshmem_device/Makefile": "d6da24d7fd13ac312289249bf41153ad9ce907fa74b84ca369e5986bf7d10ecd",
+    "code/labs/nvshmem_device/__init__.py": "10a512e1f0ed67328600ac33703af4fcec596085d1b7d5d77dee47ccc836d1c5",
+    "code/labs/nvshmem_device/baseline_nvshmem_device.py": "aeea5a7f08caab89af8bc25b5581e06c6d2c67b98f0b7313986e5584c82296b6",
+    "code/labs/nvshmem_device/build_receipt.py": "1bdd3e0a82ee0b6dde75efe10010efa86d5765cedf6398a68e2ed77a5fe16e07",
+    "code/labs/nvshmem_device/inspect_ncu_replay_metrics.py": "852c6cb0b0c9ba9d78e6e94e3db8e4dd9428351e982df931829dacf18af3a0d9",
+    "code/labs/nvshmem_device/native_benchmark.py": "610cc0093176f90d81c27b05d1451e4589ac57c0946d8f511a59d5e83880def1",
+    "code/labs/nvshmem_device/nvshmem_device_native.cu": "aa0f7f0fac1c453290098aabaebd957bf4ecdf91f7b5198dad14be5ebafb5d86",
+    "code/labs/nvshmem_device/optimized_nvshmem_device.py": "37df2104889c2a5103a062a60fcb956584c7cc8252adfeb6cc4a30cb7297b737",
+    "code/labs/nvshmem_device/profile_rank.sh": "0e17ceea42685e06dc9065e2658caf6be9daa8a87de508aff2bbc7b16769de91",
+    "code/labs/nvshmem_device/run_lab_nvshmem_device.py": "6042e5b09f875f29da54b0f1187175342561d76486921d9a7ebbf4f110afda99",
+    "code/tests/test_multi_gpu_communication.py": "eddfc13a94e598e9961d5096ab5db23f5ed20f7297c4605372ea592e1192c7f2",
+    "code/tests/test_nvshmem_device.py": "8a1cc623e9c43c6980591d76d996093f8bc23d33d330420f1296a0cb0299e126",
+    "code/tests/test_tools_cli.py": "b475eb411705f3bd6ff7ff718e6154c40c1cca7d82db7d8837b7cf14cc2fe1e4"
+  },
+  "source_snapshot_scope": "File inventory at the GPU-executed source commit. Presence here records source bytes and does not prove that each listed file ran. Native build receipts, per-case arguments and wrapper records identify the executed paths.",
+  "metadata_notes": [
+    "Raw MPI library-version strings contain a trailing NUL from the retained implementation output. Original JSON and reports are preserved. Curated environment fields name the implementation separately.",
+    "The repository profile_rank.sh selector was exercised in historical job 1138. Fresh job 1143 used the collector-generated selected-rank.sh. Their duration, replay and warmup flags agree by inspection. The collection sources and per-report metadata identify the fresh path.",
+    "Wrapper setup rebuilds each variant separately. Both use the same numerical source, workload and compiler options, but the resulting executable bytes are not bit-reproducible. Each wrapper artifact retains its own binary hash."
+  ]
 }

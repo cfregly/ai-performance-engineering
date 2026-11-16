@@ -2,7 +2,7 @@
 
 Use device-initiated communication when a kernel produces data that another GPU needs and moving the transfer into that kernel removes useful scheduling work. The payoff can be fewer host launches and earlier publication of a completed tile or halo. The cost is a communication protocol inside your application: topology, memory visibility, completion, and buffer reuse become your responsibility. Keep host NCCL as the baseline when its existing schedule is sufficient.
 
-This guide explains the device API and its connection to CUDA Graphs, building on [Hands-On 9 in the JSC multi-GPU tutorial](https://github.com/FZJ-JSC/tutorial-multi-gpu/tree/cd34f9d40d600efd8d84e433b1a9e84ab5eff5f3/09-H_Device-initiated_Communication_and_CUDA_Graphs). Its LSA fragment illustrates individual operations, while the GIN protocol is conceptual pseudocode. Neither supplies complete initialization, launch coordination, or error cleanup. This is not a runnable GIN solver. The native [multi-GPU communication lab](../labs/multi_gpu_communication/README.md) implements host MPI/NCCL scheduling and NVSHMEM on-stream transfers separately.
+This guide explains the device API and its connection to CUDA Graphs, building on [Hands-On 9 in the JSC multi-GPU tutorial](https://github.com/FZJ-JSC/tutorial-multi-gpu/tree/cd34f9d40d600efd8d84e433b1a9e84ab5eff5f3/09-H_Device-initiated_Communication_and_CUDA_Graphs). Its LSA fragment and GIN protocol are conceptual material, not compile-checked implementations. Neither supplies complete initialization, launch coordination, or error cleanup. This is not a runnable GIN solver. The native [multi-GPU communication lab](../labs/multi_gpu_communication/README.md) implements host MPI/NCCL scheduling and NVSHMEM on-stream transfers separately.
 
 ## Choose the API for the work
 
@@ -64,6 +64,11 @@ explains the same distinction for CPU proxy, IBGDA, and CPU-assisted IBGDA.
 
 Within device code, translate a world rank before calling an accessor that expects an LSA rank:
 
+This conceptual C++ fragment has not been compiled. Its tutorial-era team
+helpers have not been verified against the installed NCCL headers. Check the
+release's team and memory-access APIs before turning it into runnable code.
+The tested host's NCCL 2.26.2 predates the device API.
+
 ```cpp
 const ncclTeam world = ncclTeamWorld(dev_comm);
 const ncclTeam lsa = ncclTeamLsa(dev_comm);
@@ -98,8 +103,9 @@ The following is a setup checklist for a future full-GIN implementation, not
 compile-checked C++. Query `ncclCommQueryProperties` on the initialized host
 communicator and reject missing device support or insufficient connectivity.
 Allocate equal-capacity buffers, then register their symmetric windows.
-Initialize the device-communicator requirements and reserve every LSA barrier,
-GIN context, and signal the actual kernels need. For two directed edges, four
+Initialize the device-communicator requirements and reserve the LSA barriers
+and signals the actual kernels need. Select valid GIN context indices from the
+created device communicator's reported resources. For two directed edges, four
 signal slots can represent two ready notifications and two consumption
 acknowledgments. Define that mapping consistently at both ends.
 
@@ -156,7 +162,7 @@ defines the release's signal objects, `put`, `signal`, `flush`, and waits.
 
 `waitSignal` compares a cumulative signal value with a threshold and does not consume the count. Waiting for the fixed value `1` every iteration can therefore accept an old notification. A shared count can also lose the distinction between neighbors. Use increasing per-edge epochs and explicit acknowledgments, or a documented collective barrier with suitable visibility and reuse guarantees. Resetting a live signal can race with incoming increments. Strong signals order preceding puts to the same peer on the same context. Weak signals cover only their attached payload. [GIN signal, flush, and wait semantics](https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/api/device_gin.html)
 
-NVSHMEM has the same underlying obligations. A symmetric allocation provides corresponding storage, while GPU puts and stream-ordered barriers or quiet operations establish completion. A CPU barrier does not automatically complete GPU-issued communication. Scalar `nvshmem_float_p` is simple, while block puts aggregate contiguous data with fewer application calls. The transport determines the actual transactions. Every thread in the participating block must follow the block operation's contract. [NVSHMEM ordering](https://docs.nvidia.com/nvshmem/api/latest/gen/api/collectives.html), [NVSHMEM block-put examples](https://docs.nvidia.com/nvshmem/api/latest/examples.html)
+NVSHMEM has the same underlying obligations. A symmetric allocation provides corresponding storage, while GPU puts and stream-ordered barriers or quiet operations establish completion. A CPU barrier does not automatically complete GPU-issued communication. Scalar `nvshmem_float_p` is simple, while block puts aggregate contiguous data with fewer application calls. The transport determines the actual transactions. Every thread in the participating block must follow the block operation's contract. [NVSHMEM ordering](https://docs.nvidia.com/nvshmem/api/latest/gen/api/ordering.html), [NVSHMEM block-put examples](https://docs.nvidia.com/nvshmem/api/latest/examples.html)
 
 The [NVSHMEM guide](nvshmem_communication.md#publish-a-halo-from-producing-cuda-threads)
 explains scalar halo publication, cooperative nonblocking puts, quiet before
@@ -170,9 +176,12 @@ launch barrier across GPUs or a multi-CTA persistent solver. Nine two-B200
 integration cases, per-rank Nsys captures for all five modes, and ten
 selected-rank single-kernel NCU duration reports passed. Each actual NCU report
 shows one pass and zero profiler warmup. The
-[validation record](../labs/nvshmem_device/b200_validation.json) distinguishes
+[current validation record](../../docs/reviews/2026-11-16-distributed-gpu-validation.json) distinguishes
 this duration scope from full hardware counters and records unreported backup
-bytes. These NVSHMEM results do not validate the NCCL GIN protocol above.
+bytes, executed sources, and later maintained-source changes. The
+[lab-local record](../labs/nvshmem_device/b200_validation.json) also retains
+historical runs. These NVSHMEM results do not validate the NCCL device API
+fragments above.
 
 ## Capture the dependency graph and select the final buffer
 
