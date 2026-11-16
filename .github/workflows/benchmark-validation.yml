@@ -124,6 +124,8 @@ jobs:
           pytest -q \
             tests/test_benchmark_metrics.py \
             tests/test_profiler_config.py \
+            tests/test_refresh_readmes.py \
+            tests/test_trace_replay.py \
             tests/test_benchmark_fn_sync_detection.py \
             tests/test_benchmark_linter.py \
             tests/test_tier1_suite.py \

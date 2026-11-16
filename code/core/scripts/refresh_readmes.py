@@ -790,7 +790,7 @@ ENTRIES["README.md"] = Entry(
 
                 For direct script profiling, `core/scripts/profiling/profile.sh <script.py> --tool zymtrace` launches the workload with `CUDA_INJECTION64_PATH`/`ZYMTRACE_CUDA_INJECTION64_PATH` resolved and writes `zymtrace_launch_manifest.json` beside the profile artifacts. `--tool all` includes Zymtrace automatically when the injection library is available.
 
-                The same surface is exposed through MCP tool `benchmark_opportunities` for agent-driven optimization loops."""
+                MCP tool `benchmark_opportunities` exposes the same surface for agent-driven optimization loops."""
             ),
         ),
         MarkdownSection(
@@ -1006,6 +1006,10 @@ ENTRIES["labs/README.md"] = Entry(
                 workflow. It compares real serving endpoints under an explicit workload contract.
                 Use `aisp tools serving-compare`, not benchmark-pair discovery.
 
+                The [operator replay lab](trace_replay/README.md) captures tensor values and runs
+                the existing paired harness for each call. It retains per-operator results and
+                the normal profiler artifacts.
+
                 There are two useful lab classes in this repo:
 
                 - **Benchmark-pair labs**: these expose harness targets, keep correctness gates, and are the right place to make performance claims.
@@ -1063,6 +1067,7 @@ ENTRIES["labs/README.md"] = Entry(
 
             | Lab | Summary | Suggested Chapters |
             | --- | --- | --- |
+            | [labs/trace_replay/](trace_replay/README.md) | Retained operator inputs, full-output checks, and native paired replay with profiler evidence | ch06, ch09, ch19 |
             | `labs/prefix_scan/` | Inclusive scan with hierarchical and decoupled-look-back variants | ch06, ch07, ch09 |
             | `labs/nvfp4_quantization/` | Three fused quantization operation pairs with six workload configurations and shared NVFP4 scale layout | ch09, ch19 |
             | `labs/nvfp4_gemv/` | GPUMODE `nvfp4_gemv` challenge workspace | ch06, ch10 |

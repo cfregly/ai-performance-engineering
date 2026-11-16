@@ -377,18 +377,23 @@ def test_observed_generator_snapshots_reused_inputs_and_metadata_at_each_yield(t
         ]
 
 
-def test_finite_input_nvfp4_scale_overflow_retains_failed_outputs(tmp_path: Path) -> None:
+def test_finite_input_nvfp4_arithmetic_overflow_retains_failed_outputs(tmp_path: Path) -> None:
     from labs.trace_replay.runner import capture_events
     from labs.trace_replay.storage import read_tensor
 
+    # Overflow the residual sum so NaN arises before FP8 conversion. This avoids
+    # depending on how a CPU build casts an out-of-range finite scale to FP8.
+    x = torch.full((1, 2, 16), torch.finfo(torch.bfloat16).max, dtype=torch.bfloat16)
     inputs = {
-        "x": torch.ones(1, 2, 16, dtype=torch.bfloat16),
-        "global_scale": torch.tensor([1e30], dtype=torch.float32),
+        "x": x,
+        "residual": x.clone(),
+        "weight": torch.ones(16, dtype=torch.bfloat16),
+        "global_scale": torch.ones(1, dtype=torch.float32),
         "valid_rows": torch.tensor([2], dtype=torch.int32),
     }
     assert all(bool(torch.isfinite(value).all()) for value in inputs.values())
     bundle = capture_events(
-        [_observed_call("overflow", "nvfp4.quantize", {"batch": 1, "rows": 2, "cols": 16}, inputs)],
+        [_observed_call("overflow", "nvfp4.add_rmsnorm", {"batch": 1, "rows": 2, "cols": 16}, inputs)],
         tmp_path / "capture",
         device="cpu",
     )
@@ -396,11 +401,15 @@ def test_finite_input_nvfp4_scale_overflow_retains_failed_outputs(tmp_path: Path
 
     assert event["status"] == "failed"
     assert "overflow or nonfinite" in event["error"]
-    assert event["outputs"].keys() == {"packed", "scales"}
+    assert event["outputs"].keys() == {"packed", "scales", "residual"}
     scales = read_tensor(bundle.root, event["outputs"]["scales"])
     assert scales.dtype == torch.uint8
     assert not bool(torch.isfinite(scales.view(torch.float8_e4m3fn).float()).all())
     assert read_tensor(bundle.root, event["outputs"]["packed"]).numel() == 16
+    residual = read_tensor(bundle.root, event["outputs"]["residual"])
+    assert residual.dtype == torch.bfloat16
+    assert residual.shape == (1, 2, 16)
+    assert bool(torch.isinf(residual).all())
     receipt_paths = list((bundle.root / "failures").glob("*.json"))
     assert len(receipt_paths) == 1
     receipt = json.loads(receipt_paths[0].read_text())
