@@ -412,7 +412,7 @@ Origin: the 2026-06-11 GB300 sm_103a `tcgen05.wait.st` incident (runbook B69/B70
 - When Nsight Compute application replay is unstable (dynamic kernels), use `aisp bench run --ncu-replay-mode kernel` to override the minimal preset for that run.
 
 ## Validity Profiles (CRITICAL)
-- Use only two benchmark validity modes everywhere (CLI, MCP, dashboard): `strict` and `portable`.
+- Use only two benchmark validity modes everywhere (CLI, MCP, Python API): `strict` and `portable`.
 - Default is always `strict` (fail-fast, no implicit downgrades).
 - Portable mode must be explicit: `--validity-profile portable`.
 - In portable mode, expectation writes are disabled unless explicitly enabled with `--allow-portable-expectations-update`.
@@ -423,14 +423,13 @@ Origin: the 2026-06-11 GB300 sm_103a `tcgen05.wait.st` incident (runbook B69/B70
 - Use `--allow-portable-expectations-update` only when the user explicitly wants expectation files updated in portable mode.
 
 ## Defaults Consistency (CRITICAL)
-- CLI, MCP tools, dashboard, and any other entrypoints must stay in sync on defaults (flags, behaviors, and help text). If a default changes, update all entrypoints together in the same change.
+- CLI, MCP tools, Python API, and any other entrypoints must stay in sync on defaults (flags, behaviors, and help text). If a default changes, update all entrypoints together in the same change.
 
 ## Interface Parity & Documentation Consistency (CRITICAL)
-- Keep CLI, MCP, dashboard API, and docs in sync. If you add or change a capability, update all surfaces in the same change.
-- The dashboard API should expose **only** what the dashboard UI currently uses; do not expand API scope without explicit request.
+- Keep CLI, MCP, Python API, and docs in sync. If you add or change a capability, update all affected surfaces in the same change.
 - Prefer a single source of truth for tool metadata (descriptions, args, defaults). Regenerate `docs/mcp_tools.md` via `python -m scripts.generate_mcp_docs` and update `docs/api-reference.md` in the same change to avoid drift.
 - Tool descriptions and argument docs must be precise and agent-friendly: include *when to use*, *not for*, units, defaults, enum choices, and short examples to enable accurate tool selection in chat loops.
-- Postmortem (parity drift): CLI/MCP/docs/dashboard evolved independently, defaults diverged, and no enforced single-source catalog or regeneration step existed. Prevention: keep a single catalog, regenerate docs, and run parity tests whenever tool surfaces change.
+- Postmortem (parity drift): interfaces evolved independently, defaults diverged, and no enforced single-source catalog or regeneration step existed. Prevention: keep a single catalog, regenerate docs, and run parity tests whenever tool surfaces change.
 
 ## Test Realism (CRITICAL)
 - Tests MUST NOT use `precheck_only`, `dry_run`, `estimate_only`, or any other short-circuit/preview mode for benchmark, profiling, or runtime-behavior assertions.

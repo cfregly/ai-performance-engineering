@@ -46,7 +46,7 @@ It also runs post-benchmark triage and generates an HTML report unless you set
 }
 ```
 
-### Benchmark validity profile (shared with CLI/dashboard)
+### Benchmark validity profile (shared with CLI)
 
 - `validity_profile` (benchmark validity profile): `strict` (default; fail-fast with full validity checks) or `portable` (compatibility mode for virtualized/limited hosts)
 - `allow_portable_expectations_update`: optional override to allow expectation-file updates in `portable`
@@ -197,7 +197,7 @@ Generated from `mcp.mcp_server.TOOLS`. Run `python -m scripts.generate_mcp_docs`
 - `benchmark_compare`: Compare two benchmark run JSON files (baseline vs candidate)
 - `benchmark_compare_runs`: Compare two benchmark runs showing speedup deltas, regressions, and improvements
 - `benchmark_contracts`: Return the repo benchmark methodology, warehouse, and BenchmarkRun contract surfaces
-- `benchmark_data`: Fetch benchmark results with filtering/sorting/pagination (dashboard data view)
+- `benchmark_data`: Fetch benchmark results with filtering/sorting/pagination (table view)
 - `benchmark_deep_dive_compare`: ONE-SHOT deep-dive workflow: run benchmarks with profile='deep_dive' AND return structured diffs from Nsight Systems + Nsight Compute (+ any available profiler artifacts)
 - `benchmark_e2e_status`: Inspect an end-to-end e2e run package and return one normalized status snapshot
 - `benchmark_e2e_sweep`: Run the tier1 release-confidence suite, optional discovered full sweep, cluster common-eval, and optional fabric eval in one orchestrated flow

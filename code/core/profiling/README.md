@@ -318,23 +318,6 @@ class CompileReport:
     recommendations: List[str] # Optimization suggestions
 ```
 
-## Integration with Dashboard
-
-The profiling data integrates with the dashboard automatically:
-
-```bash
-# Start dashboard with profiling data
-python -m dashboard.api.server serve --port 6970
-```
-
-Access profiling visualizations at:
-- `/api/profiler/flame` - Flame graph data
-- `/api/profiler/memory` - Memory timeline
-- `/api/profiler/timeline` - CPU/GPU timeline
-- `/api/profiler/kernels` - Kernel breakdown
-- `/api/profiler/hta` - HTA analysis
-- `/api/profiler/compile` - torch.compile analysis
-
 ## Examples
 
 See [`examples/profiling_examples.py`](../../examples/profiling_examples.py) for more usage examples.

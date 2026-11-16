@@ -23,7 +23,6 @@ TARGET_DIRS = [
     *(f"ch{idx}" for idx in range(1, 10)),  # Retain legacy unpadded directories.
     "labs",
     "cli",
-    "dashboard",
     "mcp",
     "tests",
 ]

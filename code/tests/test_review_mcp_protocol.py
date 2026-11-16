@@ -1,4 +1,4 @@
-"""Focused regressions for dashboard and MCP transport boundaries."""
+"""Focused regressions for MCP transport and credential redaction."""
 
 from __future__ import annotations
 
@@ -12,26 +12,8 @@ from typing import Any
 import pytest
 
 from core.api.redaction import redact_sensitive_data
-from core.api.response import build_response
-from dashboard.api import server as dashboard_server
 from mcp import mcp_server
 from mcp.mcp_client import RobustMCPClient
-from tests.http_client import asgi_request
-
-
-@pytest.mark.parametrize("interval", ["0", "-1", "nan", "inf"])
-def test_gpu_stream_rejects_unsafe_intervals(interval: str) -> None:
-    pytest.importorskip("fastapi")
-
-    response = asgi_request(
-        dashboard_server.fastapi_app,
-        "GET",
-        "/api/gpu/stream",
-        params={"interval": interval, "max_events": "1"},
-    )
-
-    assert response.status_code == 422
-    assert "interval must be finite and at least" in response.json()["detail"]
 
 
 def test_mcp_payload_redacts_nested_credentials(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -85,34 +67,6 @@ def test_mcp_payload_redacts_nested_credentials(monkeypatch: pytest.MonkeyPatch)
     ]
     assert payload["arguments"]["max_tokens"] == 128
     assert payload["input_schema"]["properties"]["nmx_token"] == {"type": "string"}
-
-
-def test_http_envelope_redacts_credentials_from_arguments_and_results() -> None:
-    secret = "short"
-    arguments = {
-        "nmx_token": secret,
-        "max_tokens": 64,
-    }
-    result = {
-        "success": True,
-        "command": ["cluster-eval", "--nmx-token", secret],
-        "message": f"used credential {secret}",
-        "shell": f"cluster-eval --nmx-token='{secret}'",
-        "tokens_per_second": 123,
-    }
-
-    payload = build_response("cluster.common_eval", arguments, result, 1)
-    serialized = json.dumps(payload)
-
-    assert secret not in serialized
-    assert payload["arguments"] == {"nmx_token": "<redacted>", "max_tokens": 64}
-    assert payload["result"] == {
-        "success": True,
-        "command": ["cluster-eval", "--nmx-token", "<redacted>"],
-        "message": "used credential <redacted>",
-        "shell": "cluster-eval --nmx-token='<redacted>'",
-        "tokens_per_second": 123,
-    }
 
 
 def test_short_credential_redaction_preserves_adjacent_nonsensitive_text() -> None:

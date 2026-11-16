@@ -123,7 +123,7 @@ def speedtest(args: Any) -> int:
 
 
 def diagnostics(args: Any) -> int:
-    """Bundle of quick probes for dashboards."""
+    """Bundle of quick probes for automation."""
     summary = {
         "pcie": microbench.pcie_bandwidth_test(size_mb=getattr(args, "mem_size_mb", 8), iters=2),
         "memory": microbench.mem_hierarchy_test(

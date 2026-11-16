@@ -116,9 +116,6 @@ python -m cli.aisp distributed zero --model-size 70 --gpus 8
 
 # Auto-generate launch commands
 python -m cli.aisp distributed launch-plan --model-params 70 --nodes 2 --gpus 4 --tp 2 --pp 2 --dp 1 --script train.py
-
-# Launch dashboard (frontend/backend)
-python -m cli.aisp dashboard --port 6970
 ```
 
 The current Typer CLI exposes the distributed planning surfaces above. The more
@@ -255,39 +252,6 @@ print(gen.format_launch_guide(config, "ch13/train.py"))
 # Or get raw commands/configs
 commands = gen.generate_all(config, "ch13/train.py")
 deepspeed_config = commands["deepspeed"]["config"]
-```
-
-### Dashboard API
-
-The parallelism advisor is integrated with the dashboard:
-
-```bash
-# Start dashboard
-python -m dashboard.api.server serve
-
-# Core API endpoints:
-# GET /api/parallelism/topology - Get hardware topology
-# GET /api/parallelism/presets - List model presets
-# GET /api/parallelism/recommend?model=llama-70b&batch=8&seq=4096
-# GET /api/parallelism/analyze-model?model=llama-70b
-
-# Sharding & Launch:
-# GET /api/parallelism/sharding?model=llama-70b&dp=8
-# GET /api/parallelism/launch?nodes=2&gpus=8&tp=4&pp=2
-
-# Advanced Features:
-# GET /api/parallelism/validate?model=llama-70b&tp=8&dp=1
-# GET /api/parallelism/optimize?model=llama-70b&goal=throughput
-# GET /api/parallelism/profiles - List available profiles
-# GET /api/parallelism/profile?model=llama-70b&workload=pretraining
-
-# Analysis:
-# GET /api/parallelism/pareto?model=llama-70b
-# GET /api/parallelism/estimate?model=llama-70b&tokens=1e12
-# GET /api/parallelism/compare?models=llama-8b,llama-70b
-
-# Job Scripts:
-# GET /api/parallelism/slurm?name=train&nodes=4&gpus=8
 ```
 
 ## CLI Commands Summary
@@ -450,5 +414,4 @@ Implementation Steps:
 This tool integrates with:
 - `labs/moe_parallelism/plan.py` - Compatible data structures
 - `core/harness/hardware_capabilities.py` - Hardware detection
-- `dashboard/api/server.py` - Web UI and API
 - `ch04/training_multigpu_pipeline.py` - Training examples

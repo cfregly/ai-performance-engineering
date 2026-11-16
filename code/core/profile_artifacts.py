@@ -1,7 +1,7 @@
 """
 Shared helpers for exporting benchmark data and loading profiling artifacts.
 
-These utilities are reused by the dashboard handler, CLI, and MCP layers to
+These utilities are reused by the CLI and MCP layers to
 avoid duplicating file-system scans and CSV/report generation.
 """
 
@@ -263,7 +263,7 @@ def flame_graph_from_trace_events(events: List[Any], trace_path: Path) -> Dict[s
 
 
 def _record_trace_selection_failure(payload: Dict[str, Any], selection: Dict[str, Any]) -> None:
-    """Report a failed find_newest_chrome_trace in a dashboard payload."""
+    """Report a failed find_newest_chrome_trace in a profiling payload."""
     if selection["error_type"] == "no_chrome_trace":
         payload["message"] = f"{selection['error']} Run benchmarks with profiling enabled."
         return

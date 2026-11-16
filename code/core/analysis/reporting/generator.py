@@ -90,8 +90,6 @@ class ReportGenerator:
         # From benchmark data
         generator.generate_pdf(benchmarks, "report.pdf")
         
-        # From dashboard data
-        generator.generate_from_api("http://localhost:6970", "report.pdf")
     """
     
     def __init__(self, config: Optional[ReportConfig] = None):
@@ -177,31 +175,6 @@ class ReportGenerator:
         output_path.write_text(html_content)
         
         return output_path
-    
-    def generate_from_api(
-        self,
-        api_url: str,
-        output_path: Union[str, Path],
-        format: str = "pdf",
-    ) -> Path:
-        """
-        Generate report from dashboard API.
-        
-        Args:
-            api_url: Base URL of dashboard (e.g., "http://localhost:6970")
-            output_path: Output file path
-            format: "pdf" or "html"
-        """
-        import urllib.request
-        
-        # Fetch data from API
-        with urllib.request.urlopen(f"{api_url}/api/data") as response:
-            data = json.loads(response.read().decode())
-        
-        if format == "pdf":
-            return self.generate_pdf(data, output_path)
-        else:
-            return self.generate_html(data, output_path)
     
     def _parse_dict_data(self, data: Dict[str, Any]) -> List[BenchmarkData]:
         """Parse dictionary data into BenchmarkData objects."""
@@ -650,7 +623,7 @@ def generate_report(
     Convenience function to generate a report.
     
     Args:
-        data: Benchmark data (dict, JSON file path, or API URL)
+        data: Benchmark data (dict or JSON file path)
         output_path: Output file path
         format: "pdf" or "html"
         config: Report configuration
@@ -671,9 +644,8 @@ def generate_report(
                 from core.analysis.performance_analyzer import load_benchmark_data
 
                 data = load_benchmark_data(data_file=data_path)
-        elif str(data).startswith("http"):
-            # It's a URL
-            return generator.generate_from_api(str(data), output_path, format=format)
+        else:
+            raise FileNotFoundError(f"Benchmark JSON file not found: {data_path}")
     
     if format == "pdf":
         return generator.generate_pdf(data, output_path)
@@ -686,7 +658,7 @@ def main():
     import argparse
     
     parser = argparse.ArgumentParser(description="Generate PDF/HTML reports from benchmark data")
-    parser.add_argument("input", help="Input data (JSON file or API URL)")
+    parser.add_argument("input", help="Input data (JSON file)")
     parser.add_argument("-o", "--output", default="report.pdf", help="Output file path")
     parser.add_argument("-f", "--format", choices=["pdf", "html"], default="pdf", help="Output format")
     parser.add_argument("--title", default="GPU Performance Report", help="Report title")

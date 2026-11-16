@@ -279,7 +279,7 @@ def extract_from_ncu_report(ncu_rep: Path) -> Dict[str, float]:
     if not ncu_rep.exists():
         return {}
 
-    # Prefer the unified metrics extractor so we stay consistent across CLI/MCP/dashboard.
+    # Prefer the unified metrics extractor so we stay consistent across CLI/MCP.
     try:
         from core.profiling.metrics_extractor import extract_ncu_metrics
     except Exception:

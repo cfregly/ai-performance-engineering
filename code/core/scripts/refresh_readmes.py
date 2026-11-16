@@ -737,7 +737,7 @@ ENTRIES["README.md"] = Entry(
                 - `summary.json`: per-target baseline, optimized path, and best speedup
                 - `regression_summary.md`: human-readable before/after summary against the previous tier-1 run
                 - `regression_summary.json`: machine-readable regressions and improvements
-                - `trend_snapshot.json`: run-history summary for dashboards and release notes
+                - `trend_snapshot.json`: run-history summary for reports and release notes
                 - `artifacts/history/tier1/index.json`: suite history index
 
                 See [`docs/tier1_benchmark_suite.md`](docs/tier1_benchmark_suite.md) for the current target list, artifact contract, and interpretation guidance."""
@@ -790,7 +790,7 @@ ENTRIES["README.md"] = Entry(
 
                 For direct script profiling, `core/scripts/profiling/profile.sh <script.py> --tool zymtrace` launches the workload with `CUDA_INJECTION64_PATH`/`ZYMTRACE_CUDA_INJECTION64_PATH` resolved and writes `zymtrace_launch_manifest.json` beside the profile artifacts. `--tool all` includes Zymtrace automatically when the injection library is available.
 
-                The same surface is exposed through dashboard API `GET /api/benchmark/opportunities` and MCP tool `benchmark_opportunities` for agent-driven optimization loops."""
+                The same surface is exposed through MCP tool `benchmark_opportunities` for agent-driven optimization loops."""
             ),
         ),
         MarkdownSection(
@@ -826,7 +826,7 @@ ENTRIES["README.md"] = Entry(
                 - [`templates/benchmark_run.yaml`](templates/benchmark_run.yaml) for the CRD-aligned declarative `BenchmarkRun` shape the repo would map onto a Kubernetes-native service.
                 - [`cluster/docs/kubernetes_benchmark_service.md`](cluster/docs/kubernetes_benchmark_service.md) plus [`cluster/configs/benchmarkrun-crd.yaml`](cluster/configs/benchmarkrun-crd.yaml) for the cluster-native operator/CRD direction already being sketched in the repo.
 
-                Thin surfaces for these contracts are also exposed through `python -m cli.aisp tools benchmark-contracts`, dashboard API `GET /api/benchmark/contracts`, and MCP tool `benchmark_contracts`.
+                These contracts are also exposed through `python -m cli.aisp tools benchmark-contracts` and MCP tool `benchmark_contracts`.
 
                 The current harness already captures manifests, profiler artifacts, raw timings, and artifact hashes. Cryptographic provenance signing is still a documented gap, so external publication packets should record that explicitly rather than assuming hashes alone are sufficient."""
             ),

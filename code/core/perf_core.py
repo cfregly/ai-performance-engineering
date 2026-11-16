@@ -15,7 +15,7 @@ IMPORTANT: For most use cases, prefer the unified engine API:
 
 The engine provides a clean 10-domain API (gpu, system, profile, analyze,
 optimize, distributed, inference, benchmark, ai, export) that is consistent
-across CLI, MCP, and Dashboard interfaces.
+across CLI and MCP interfaces.
 
 This module is primarily for internal use by engine.py and advanced users
 who need direct access to the underlying PerformanceCoreBase methods.

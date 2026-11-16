@@ -1613,7 +1613,6 @@ def _benchmark_run_payload(candidate: BenchmarkCandidate, opportunity_type: str)
             f"python -m cli.aisp tools benchmark-run-render -- --overrides-json '{overrides_json}'"
         ),
         "mcp_tool": "render_benchmark_run",
-        "api_route": "/api/benchmark/contracts/render-run",
     }
 
 

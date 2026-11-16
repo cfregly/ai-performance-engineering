@@ -1,7 +1,7 @@
 """
 PerformanceCoreBase: shared, non-HTTP performance helpers.
 
-This is the logic side of the old dashboard handler, split out so CLI/MCP
+This module provides shared performance analysis logic so CLI/MCP
 can reuse data loading, profiling artifacts, GPU/system inspection, and
 benchmark discovery without depending on the HTTP server.
 """
@@ -673,7 +673,7 @@ class PerformanceCoreBase:
         return result
 
     def get_history_summary(self) -> dict:
-        """Combined summary used by the dashboard history tab."""
+        """Combined benchmark run-history summary."""
         runs = self.get_history_runs()
         trends = self.get_performance_trends(runs)
         run_list = runs.get("runs", [])

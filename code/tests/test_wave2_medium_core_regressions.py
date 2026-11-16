@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import subprocess
 import sys
 from contextlib import nullcontext
@@ -11,10 +10,8 @@ import torch
 
 from ch20.optimized_pipeline_sequential import OptimizedPipelineOverlapBenchmark
 from core.analysis.report_generator import generate_report_from_metrics
-from core.api.registry import ApiRoute
 from core.benchmark.expectations import METRIC_DIRECTIONS, ExpectationsStore
 from core.scripts.utilities import probe_hardware_capabilities
-from dashboard.api import server
 
 CODE_ROOT = Path(__file__).resolve().parents[1]
 
@@ -188,31 +185,6 @@ def test_w2_078_w2_079_tma_box_limits_follow_driver_contract() -> None:
     assert "cached.max_cluster_size = 4;" not in header
     assert "cached.max_cluster_size = 4;" not in generator_source
     assert "cached.max_cluster_size = 8;" in header
-
-
-def test_w2_080_sync_dashboard_handler_runs_via_worker_thread(monkeypatch) -> None:
-    calls: list[tuple[object, tuple[object, ...]]] = []
-
-    async def fake_to_thread(function, *args):
-        calls.append((function, args))
-        return function(*args)
-
-    monkeypatch.setattr(server.asyncio, "to_thread", fake_to_thread)
-    route = ApiRoute("GET", "/test", "test.route", lambda params: {"params": params})
-    endpoint = server._make_endpoint(route)
-    request = SimpleNamespace(method="GET", query_params={"value": "1"})
-
-    response = asyncio.run(endpoint(request))
-
-    assert response.status_code == 200
-    # One worker-thread call runs both the handler and build_response.
-    assert len(calls) == 1
-    function, args = calls[0]
-    assert function is server._run_route
-    assert args[:2] == (route, {"value": "1"})
-    assert isinstance(args[2], float)
-    server_source = Path(server.__file__).read_text(encoding="utf-8")
-    assert "await asyncio.to_thread(get_engine().gpu.info)" in server_source
 
 
 def test_w2_081_unattributable_sdpa_speedup_is_not_a_b200_expectation() -> None:

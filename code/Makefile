@@ -3,12 +3,9 @@
 # Common development tasks for the codebase.
 # Run `make help` to see available targets.
 
-.PHONY: help test lint lint-trusted lint-legacy-debt validate coverage check all clean dashboard dashboard-api dashboard-web
+.PHONY: help test lint lint-trusted lint-legacy-debt validate coverage check all clean
 
 PYTHON ?= python3
-DASHBOARD_API_PORT ?= 6970
-DASHBOARD_WEB_PORT ?= 3000
-DASHBOARD_CONCURRENTLY ?= dashboard/web/node_modules/.bin/concurrently
 
 AUTONOMOUS_RUFF_PATHS = \
 	core/optimization/campaign.py \
@@ -135,9 +132,6 @@ help:
 	@echo "  troubleshoot-nccl      Quick: NCCL timeout troubleshoot"
 	@echo ""
 	@echo "UI & TUI"
-	@echo "  dashboard              Start API :6970 and Next UI :3000"
-	@echo "  dashboard-api          Start only the Python API"
-	@echo "  dashboard-web          Start only the Next UI"
 	@echo "  tui                    Start terminal UI"
 	@echo ""
 	@echo "ADVANCED OPTIMIZATION"
@@ -193,7 +187,6 @@ help:
 	@echo "  make compound-optimizations MODEL=llama-70b"
 	@echo "  make deploy-config MODEL=mixtral-8x7b GPUS=8"
 	@echo "  make multi-gpu-scaling MODEL=llama-70b"
-	@echo "  make dashboard"
 	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
 # =============================================================================
@@ -260,7 +253,7 @@ alert-updates-quiet:
 	@python core/scripts/alert_dependency_updates.py --quiet
 
 # =============================================================================
-# Performance Analysis (CLI parity with Dashboard UI)
+# Performance analysis
 # =============================================================================
 
 # System diagnostics
@@ -481,25 +474,6 @@ smart-cluster:
 
 smart-status:
 	@python -m core.unified_api status
-
-# Dashboard
-dashboard:
-	@test -x "$(DASHBOARD_CONCURRENTLY)" || (echo "Run npm ci in dashboard/web first" >&2; exit 2)
-	@echo "Starting dashboard API at http://127.0.0.1:$(DASHBOARD_API_PORT)"
-	@echo "Starting dashboard UI at http://127.0.0.1:$(DASHBOARD_WEB_PORT)"
-	@BACKEND_PORT="$(DASHBOARD_API_PORT)" "$(DASHBOARD_CONCURRENTLY)" \
-		--kill-others-on-fail \
-		--names api,web \
-		"$(PYTHON) -m dashboard.api.server serve --port $(DASHBOARD_API_PORT)" \
-		"npm --prefix dashboard/web run dev -- --port $(DASHBOARD_WEB_PORT)"
-
-dashboard-api:
-	@echo "Starting dashboard API at http://127.0.0.1:$(DASHBOARD_API_PORT)"
-	@$(PYTHON) -m dashboard.api.server serve --port $(DASHBOARD_API_PORT)
-
-dashboard-web:
-	@echo "Starting dashboard UI at http://127.0.0.1:$(DASHBOARD_WEB_PORT)"
-	@BACKEND_PORT="$(DASHBOARD_API_PORT)" npm --prefix dashboard/web run dev -- --port $(DASHBOARD_WEB_PORT)
 
 # TUI (Terminal UI)
 tui:

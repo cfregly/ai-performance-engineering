@@ -21,7 +21,6 @@ import time
 import traceback
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
-from urllib.parse import urlencode
 
 try:
     import fcntl  # POSIX-only; optional for portability.
@@ -2471,7 +2470,6 @@ def build_benchmark_e2e_status_actions(
     *,
     python_executable: Optional[str] = None,
 ) -> Dict[str, Any]:
-    query = urlencode({"run_id": str(run_id)})
     status_command = [
         python_executable or sys.executable,
         "-m",
@@ -2499,9 +2497,6 @@ def build_benchmark_e2e_status_actions(
             "watch_command_shell": _cli_shell_join(watch_command),
             "watcher_command": watcher_command,
             "watcher_command_shell": _cli_shell_join(watcher_command),
-            "status_api_path": f"/api/benchmark/e2e-status?{query}",
-            "watcher_api_path": "/api/benchmark/e2e-watch",
-            "dashboard_path": f"/e2e?{query}",
             "preferred_mcp_tool": "benchmark_e2e_status",
             "watcher_mcp_tool": "benchmark_e2e_watch",
         }
@@ -2524,8 +2519,6 @@ def build_benchmark_e2e_progress_surface_hint(
                 "during long child stages."
             ),
             "status_command_shell": actions.get("status_command_shell"),
-            "status_api_path": actions.get("status_api_path"),
-            "dashboard_path": actions.get("dashboard_path"),
             "preferred_mcp_tool": actions.get("preferred_mcp_tool"),
         }
     )
@@ -2779,7 +2772,6 @@ def _benchmark_failure_issue_row(
         "fixes": [],
         "verification": {
             "status_command": actions.get("status_command_shell"),
-            "status_api_path": actions.get("status_api_path"),
             "preferred_mcp_tool": actions.get("preferred_mcp_tool"),
         },
         "evidence_paths": evidence_paths,
@@ -3467,8 +3459,6 @@ def inspect_benchmark_e2e_sweep_run(
             "summary_progress_lag_seconds": summary_progress_lag_seconds,
             "checkpoint_progress_lag_seconds": checkpoint_progress_lag_seconds,
             "status_command_shell": actions.get("status_command_shell"),
-            "status_api_path": actions.get("status_api_path"),
-            "dashboard_path": actions.get("dashboard_path"),
             "preferred_mcp_tool": actions.get("preferred_mcp_tool"),
         }
     )

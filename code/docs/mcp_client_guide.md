@@ -248,7 +248,7 @@ asyncio.run(test_duplicate())
 
 For Cursor IDE specifically, the robust client can be used in:
 - **Custom scripts** that interact with the MCP server
-- **Dashboard integrations** that need reliable MCP communication
+- **Agent integrations** that need reliable MCP communication
 - **Testing** to verify server functionality
 - **CLI tools** that wrap MCP functionality
 

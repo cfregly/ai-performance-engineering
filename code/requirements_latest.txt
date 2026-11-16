@@ -99,7 +99,7 @@ typer==0.27.3
 click==8.5.0  # Hugging Face Hub requires Click 8.4.2 or newer.
 rich==13.9.4  # Typer requires Rich 13.8 or newer.
 
-# Dashboard API server
+# Serving API dependencies
 # The current vLLM metadata requires the standard extra. This version resolves
 # with the full Typer distribution and does not install typer-slim.
 fastapi[standard]==0.136.1

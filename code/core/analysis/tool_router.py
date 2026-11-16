@@ -81,7 +81,7 @@ DEFAULT_SUGGEST_RULES: List[Dict[str, Any]] = [
     {
         "tool": "benchmark_compare",
         "keywords": ["compare benchmark results", "benchmark compare", "compare results table"],
-        "reason": "Compare benchmark results (dashboard-style diff)",
+        "reason": "Compare benchmark results",
     },
     {
         "tool": "benchmark_triage",

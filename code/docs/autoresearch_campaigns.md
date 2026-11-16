@@ -205,7 +205,7 @@ Queue summaries and novelty artifact audits validate marker content, JSON struct
 
 The module is a durable record and gate, not a scheduler. The former `AutoOptimizer` measurement loop now fails closed. Its retained adapters only move source code and do not produce measurements or promotion decisions.
 
-The dashboard exposes the incumbent, active idea beam, promotion frontier, per-case medians, confidence bounds, frozen-case findings, and hash-checked evidence links at `/campaign`.
+Read the generated `REPORT.md` and `PRIORS.md` beside the campaign ledger to inspect the incumbent, experiment outcomes, promotion findings, and retained evidence.
 
 Generated candidates never load into the controller process. The worker requires a supported hardened operating-system sandbox before it verifies or times generated code. On an unsupported host it returns a `sandbox_unavailable` result and leaves the candidate as an artifact for review. There is no flag that bypasses this check. Source promotion also requires explicit manual approval or a matching campaign attestation.
 

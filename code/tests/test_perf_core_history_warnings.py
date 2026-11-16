@@ -264,7 +264,7 @@ def test_tier1_target_history_keeps_unaccepted_outliers_out_of_canonical_headlin
     assert [point["best_speedup"] for point in result["evidence_history"]] == [2.0, 1000.0]
 
 
-def test_tier1_dashboard_consumers_order_delayed_evidence_by_generated_time(
+def test_tier1_history_consumers_order_delayed_evidence_by_generated_time(
     tmp_path: Path,
 ) -> None:
     history_root = tmp_path / "history"

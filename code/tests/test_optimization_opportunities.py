@@ -26,7 +26,6 @@ from core.analysis.optimization_opportunities import (
 )
 from core.api import handlers
 from core.api.handlers import benchmark_opportunities
-from core.api.registry import get_routes
 from core.benchmark import bench_commands
 from core.benchmark.bench_commands import app
 from core.benchmark.contracts_surface import render_benchmark_run_yaml
@@ -1759,12 +1758,7 @@ def test_benchmark_opportunities_api_can_source_mine_discovered_targets(
     assert "emerging_precision" in result["opportunities"][0]["frontier_signals"]
 
 
-def test_benchmark_opportunities_route_and_mcp_tool_are_registered(tmp_path: Path) -> None:
-    routes = {route.name: route for route in get_routes()}
-    route = routes["benchmark.opportunities"]
-    assert route.path == "/api/benchmark/opportunities"
-    assert route.mcp_tool == "benchmark_opportunities"
-
+def test_benchmark_opportunities_mcp_tool_reads_retained_results(tmp_path: Path) -> None:
     data_file = tmp_path / "benchmark_test_results.json"
     data_file.write_text(
         json.dumps(

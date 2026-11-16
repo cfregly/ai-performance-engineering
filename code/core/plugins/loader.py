@@ -4,7 +4,7 @@ Plugins can expose Typer sub-apps and register capabilities via entry points:
 
     entry_points={
         "aipe.plugins": [
-            "dashboard = aipe_ext.dashboard:typer_app",
+            "custom_tools = aipe_ext.tools:typer_app",
         ],
     }
 

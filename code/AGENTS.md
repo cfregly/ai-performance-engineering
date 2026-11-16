@@ -47,7 +47,7 @@ This repository is public. Never commit live pod names, Kubernetes namespaces or
 ### API and lifecycle discipline
 
 - Remove deprecated entrypoints, shims, aliases, flags, docs, and tests in one change. Update all references to the current API.
-- Keep CLI, MCP, dashboard behavior, defaults, help, and docs synchronized. The dashboard API exposes only UI-used behavior unless expansion is explicitly requested. Regenerate MCP docs and update the API reference when tool metadata changes.
+- Keep CLI, MCP, Python API behavior, defaults, help, and docs synchronized. Regenerate MCP docs and update the API reference when tool metadata changes.
 - Keep secrets in the repository-root `.env` or `.env.local` only for local integrations. Never print, copy into artifacts, or commit credentials.
 
 ## Scoped authority map

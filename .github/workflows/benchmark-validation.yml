@@ -8,7 +8,6 @@ on:
       - "code/labs/**"
       - "code/core/**"
       - "code/cli/**"
-      - "code/dashboard/**"
       - "code/tests/**"
       - "code/pyproject.toml"
       - "code/requirements_latest.txt"
@@ -35,7 +34,6 @@ on:
       - "code/labs/**"
       - "code/core/**"
       - "code/cli/**"
-      - "code/dashboard/**"
       - "code/tests/**"
       - "code/pyproject.toml"
       - "code/requirements_latest.txt"
@@ -150,7 +148,6 @@ jobs:
             tests/test_repository_configuration.py \
             tests/test_native_torch_extensions.py \
             tests/test_setup_bootstrap.py \
-            tests/test_dashboard_server.py \
             tests/test_ch19_dynamic_precision_pair.py \
             tests/test_validate_benchmark_pairs_tools.py::test_ch04_no_overlap_torchrun_specs_use_public_target_names \
             tests/test_validate_benchmark_pairs_tools.py::test_ch04_additional_torchrun_specs_build_without_side_effects \
@@ -228,38 +225,3 @@ jobs:
       - name: Run blocking focused mypy checks
         working-directory: code
         run: mypy core/optimization/campaign.py core/analysis/llm_patch_promotion.py
-
-  dashboard:
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v7
-
-      - name: Set up Node
-        uses: actions/setup-node@v7
-        with:
-          node-version: "24"
-          cache: npm
-          cache-dependency-path: code/dashboard/web/package-lock.json
-
-      - name: Install dashboard dependencies
-        working-directory: code/dashboard/web
-        run: npm ci
-
-      - name: Audit dashboard dependencies
-        working-directory: code/dashboard/web
-        run: npm audit --audit-level=moderate
-
-      - name: Lint dashboard
-        working-directory: code/dashboard/web
-        run: npm run lint
-
-      - name: Test dashboard
-        working-directory: code/dashboard/web
-        run: npm test -- --runInBand
-
-      - name: Build dashboard
-        working-directory: code/dashboard/web
-        run: npm run build
