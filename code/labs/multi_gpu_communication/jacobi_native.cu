@@ -151,6 +151,9 @@ struct NativeJacobi {
     int cuda_driver_version = 0;
     int nvshmem_major = 0;
     int nvshmem_minor = 0;
+    int nvshmem_patch = 0;
+    int openshmem_major = 0;
+    int openshmem_minor = 0;
     std::string device_name;
     std::array<float*, 2> fields{nullptr, nullptr};
     std::array<void*, 2> registration{nullptr, nullptr};
@@ -262,7 +265,8 @@ struct NativeJacobi {
             if (status != 0 || nvshmem_n_pes() != ranks || nvshmem_my_pe() != rank) {
                 throw std::runtime_error("NVSHMEM initialization or MPI-to-PE mapping failed");
             }
-            nvshmem_info_get_version(&nvshmem_major, &nvshmem_minor);
+            nvshmem_info_get_version(&openshmem_major, &openshmem_minor);
+            nvshmemx_vendor_get_version_info(&nvshmem_major, &nvshmem_minor, &nvshmem_patch);
         }
 #endif
         const std::size_t elements = static_cast<std::size_t>(domain.rows + 2) * options.nx;
@@ -581,7 +585,20 @@ int main(int argc, char** argv) {
                  << ",\"nccl_version\":" << solver.nccl_version << ",\"device_name\":" << json_quote(solver.device_name)
                  << ",\"mpi_version\":" << json_quote(std::to_string(mpi_major) + "." + std::to_string(mpi_minor))
                  << ",\"mpi_library\":" << json_quote(std::string(mpi_library, mpi_library_length))
-                 << ",\"nvshmem_version\":" << json_quote(std::to_string(solver.nvshmem_major) + "." + std::to_string(solver.nvshmem_minor))
+                 << ",\"nvshmem_version\":" << (options.backend == "nvshmem" ?
+                     json_quote(std::to_string(solver.nvshmem_major) + "." +
+                         std::to_string(solver.nvshmem_minor) + "." + std::to_string(solver.nvshmem_patch)) : "null")
+#ifdef AISP_HAVE_NVSHMEM
+                 << ",\"nvshmem_header_version\":" << (options.backend == "nvshmem" ?
+                     json_quote(std::to_string(NVSHMEM_VENDOR_MAJOR_VERSION) + "." +
+                         std::to_string(NVSHMEM_VENDOR_MINOR_VERSION) + "." +
+                         std::to_string(NVSHMEM_VENDOR_PATCH_VERSION)) : "null")
+#else
+                 << ",\"nvshmem_header_version\":null"
+#endif
+                 << ",\"openshmem_api_version\":" << (options.backend == "nvshmem" ?
+                     json_quote(std::to_string(solver.openshmem_major) + "." +
+                         std::to_string(solver.openshmem_minor)) : "null")
                  << ",\"timing_scope\":\"maximum_rank_full_step_after_both_streams_complete\",\"canonical\":false"
                  << ",\"rank_mapping\":[";
             for (int peer = 0; peer < ranks; ++peer) {

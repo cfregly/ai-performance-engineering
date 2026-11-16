@@ -56,13 +56,31 @@ python -m cli.aisp bench run --targets ch11:streams --profile deep_dive --single
 - Introduce adaptive policies that adjust stream usage based on runtime telemetry.
 - Connect stream-level ideas to [FA4's intra-kernel producer/consumer pipelines](../labs/flashattention4/colfax_optimization_diaries.md), where per-slot phases and warp-local signals expose otherwise serialized work.
 
+## Overlapping Communication with Compute
+
+The [common halo-exchange lab](../labs/multi_gpu_communication/README.md) applies
+stream ordering to multi-GPU communication. Submit the grouped neighbor exchange
+on a communication stream while an independent interior kernel runs elsewhere.
+Record readiness events, make boundary work wait for received halos, and prevent
+send-buffer reuse until the transfer completes. The
+[NCCL group guide](../ch04/nccl_groups.md) explains the submission boundary.
+Putting compute and communication on different streams permits overlap, but
+resource contention can erase the benefit. Check the GPU timeline and total
+iteration time. A high-priority stream is a scheduling hint and does not preempt
+running work or enforce correctness. See the
+[CUDA stream documentation](https://docs.nvidia.com/cuda/cuda-programming-guide/02-basics/asynchronous-execution.html).
+
+The chapter's `distributed_streams` target is a local pinned-memory transfer and
+elementwise workload under a legacy name. It teaches stream scheduling without
+implementing a distributed NCCL exchange.
+
 ## Directory Layout
 | Path | Description |
 | --- | --- |
 | `baseline_streams.py`, `optimized_streams.py`, `streams_overlap_demo.cu`, `streams_ordered_demo.cu`, `streams_warp_specialized_demo.cu`, `stream_overlap_base.py` | Core stream overlap demos that contrast serialized launches with overlapped workloads. |
 | `baseline_stream_ordered.py`, `baseline_stream_ordered_kv_cache.py`, `optimized_stream_ordered.py`, `optimized_stream_ordered_kv_cache.py` | Stream-ordered allocator and KV-cache examples ensuring deterministic updates while enabling overlap. |
 | `baseline_gemm_streams.py`, `optimized_gemm_streams.py`, `baseline_tensor_cores_streams.py`, `optimized_tensor_cores_streams.py` | GEMM pipelines that schedule tensor-core kernels across multiple streams to decouple math vs IO phases. |
-| `baseline_distributed_streams.py`, `optimized_distributed_streams.py`, `baseline_adaptive_streams.py`, `optimized_adaptive_streams.py` | Adaptive streaming controllers that balance NCCL, compute, and IO tasks on large systems. |
+| `baseline_distributed_streams.py`, `optimized_distributed_streams.py`, `baseline_adaptive_streams.py`, `optimized_adaptive_streams.py` | Local transfer/compute stream comparisons and adaptive scheduling. The `distributed_streams` names do not denote a multi-rank NCCL workload. |
 | `baseline_warp_specialization_multistream.*`, `optimized_warp_specialized_multistream.*`, `warp_specialized_cluster_pipeline_multistream.cu` | Warp-specialized multistream kernels demonstrating DSMEM usage and per-stream specialization. |
 | `compare.py`, `Makefile`, `expectations_{hardware_key}.json` | Harness driver plus expectation data for concurrency regressions. |
 

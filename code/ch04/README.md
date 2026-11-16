@@ -65,6 +65,33 @@ microbenchmark itself is slow.
 - Experiment with NVSHMEM pipelines to reduce host involvement in GPU synchronization.
 - Adopt symmetric memory pools to simplify KV-cache replication and optimizer state sharding.
 
+## NCCL Groups and Neighbor Exchange
+
+Use the [NCCL group guide](nccl_groups.md) and
+[common halo-exchange lab](../labs/multi_gpu_communication/README.md) to connect
+native `ncclGroupStart`/`ncclGroupEnd` with PyTorch's
+`batch_isend_irecv`. Grouping lets coupled sends and receives progress together
+and can reduce launch overhead. It adds responsibility for matching peers,
+counts, dtypes, and operation order. Post the complete exchange before waiting.
+Keep dependent computation outside the group, and use stream completion before
+consuming or reusing its buffers. `ncclGroupEnd` is not proof of GPU completion.
+See the official [group](https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/usage/groups.html)
+and [P2P](https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/usage/p2p.html) semantics.
+
+This builds on existing grouped paths. The
+[pipeline helper](pipeline_parallel_common.py) batches opposing neighbor
+transfers, and the [symmetric-memory comparison](symmetric_memory_example.py)
+uses batched NCCL P2P for its traditional ring. Grouping alone does not establish
+compute/communication overlap. Use independent work, explicit stream dependencies,
+and a GPU trace to check whether communication is hidden. A serialized exchange
+is sufficient when no useful independent work remains.
+
+Use the [NVSHMEM device lab](../labs/nvshmem_device/README.md) to continue from
+host-enqueued exchange to scalar GPU puts, cooperative block transfers, and
+fused device loops. Its five modes check complete outputs. Ready signals,
+consumed acknowledgments, and a checked one-CTA launch make the synchronization
+cost and reuse rules explicit.
+
 ## Directory Layout
 | Path | Description |
 | --- | --- |

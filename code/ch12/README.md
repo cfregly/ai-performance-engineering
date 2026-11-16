@@ -1,7 +1,20 @@
 # Chapter 12 - CUDA Graphs & Dynamic Workloads
 
 ## Summary
-Covers modern CUDA Graph capabilities-conditional capture, graph memory tuning, dynamic parallelism, and work queues-to keep irregular workloads performant without per-launch overhead. The current repo chapter emphasizes the single-GPU graph/work-queue side of the manuscript; the larger multi-GPU NCCL/NVSHMEM orchestration arc is only partially represented here.
+
+Covers CUDA Graph replay, conditional execution, dynamic parallelism, and work
+queues that can reduce repeated host submission work. The chapter primarily
+implements single-GPU graph and work-queue examples. The native communication
+lab adds rank-local NCCL graph capture across compute and communication streams.
+
+Start with [CUDA Graphs: define, instantiate, and replay](cuda_graph_lifecycle.md)
+for operation nodes and dependencies, CPU host functions, copies and memset,
+graph allocation/free, external synchronization, child graphs, and their actual
+repository coverage. The guide distinguishes template creation from executable
+instantiation and replay, explains flag and update choices, and separates a DOT
+dependency drawing from a measured timeline. Repeated launches of one
+`cudaGraphExec_t` serialize with that same executable. A launch stream still
+permits the graph's independent internal branches to run concurrently.
 
 ## Problem
 Chapter 12 is where launch overhead and dynamic work management have to justify themselves with measured wins. The useful question is not "can we capture a graph?" but "which graph or dynamic-work techniques actually reduce the real runtime once correctness and workload shape stay fixed?"
@@ -51,13 +64,45 @@ python -m cli.aisp bench run --targets ch12:cuda_graphs --profile deep_dive --si
 
 ## Learning Goals
 - Capture steady-state workloads into CUDA Graphs and study the delta vs eager launches.
+- Map operation dependencies and separate definition, instantiation, and replay costs.
+- Explain executable reuse, independent instances, parameter updates, and resource lifetimes.
 - Use conditional nodes and graph memory pools for adaptive pipelines.
 - Experiment with device-side launches (dynamic parallelism) to reduce CPU involvement.
 - Implement GPU-resident work queues and uneven partition schedulers.
 
+## Graph Replay with Distributed Communication
+
+The [common halo-exchange lab](../labs/multi_gpu_communication/README.md) connects
+capture to a repeated compute/communication schedule. Keep buffer addresses,
+halo parity, and communication order consistent across replay. Capture a complete
+buffer cycle or select the graph for the current parity. Make convergence checks
+and rank control flow agree so one rank cannot leave its peers waiting.
+The implemented solver uses fixed iteration counts. Each rank captures its own
+two-step A → B → A graph and a separate odd tail on its local GPU. This is not a
+single global graph spanning MPI processes, and the pair/tail executables are
+not a parent/child-graph hierarchy.
+[NCCL graph capture](https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/usage/cudagraph.html)
+requires matching capture and replay participation. The
+[group guide](../ch04/nccl_groups.md) explains why groups do not replace stream
+dependencies.
+
+Chapter 4 already has a
+[captured CUDA symmetric-memory ring](../ch04/symmetric_memory_example.py), with
+separate publication and consumption barriers. That ring uses the CUDA
+symmetric-memory backend. It is distinct from capturing NCCL halo exchange.
+Graph setup and stable-buffer management add cost, so report capture separately
+from replay and keep eager launches when too few iterations amortize that work.
+Check CPU API activity and GPU intervals. Replay targets launch, driver, and
+scheduling overhead around short kernels rather than making unchanged kernel
+math inherently faster. CPU-side norm checks or MPI reductions still need
+completion and can remove the intended savings. Follow the
+[graph exercises](../labs/multi_gpu_communication/TASKS.md#5-capture-a-stable-schedule)
+to inspect capture dependencies, parity, flags, and evidence limits.
+
 ## Directory Layout
 | Path | Description |
 | --- | --- |
+| [`cuda_graph_lifecycle.md`](cuda_graph_lifecycle.md) | Graph operation families, template/executable lifecycle, capture fork/join, concurrency, flags, updates, and links to implemented examples. |
 | `baseline_cuda_graphs.py`, `optimized_cuda_graphs.py`, `baseline_cuda_graphs_conditional*.cu`, `optimized_cuda_graphs_conditional*.cu` | Graph capture demos that evolve from simple replay to conditional and DSM-aware execution, including a supplementary host-dispatch-versus-device-branching conditional graph demo. |
 | `baseline_graph_bandwidth.{py,cu}`, `optimized_graph_bandwidth.{py,cu}`, `baseline_kernel_launches.py`, `optimized_kernel_launches.py` | Launch- and bandwidth-focused studies illustrating how graphs reduce CPU overhead. |
 | `baseline_dynamic_parallelism_host.cu`, `baseline_dynamic_parallelism_device.cu`, `optimized_dynamic_parallelism_host.cu`, `optimized_dynamic_parallelism_device.cu`, `dynamic_parallelism_sm121/` | Device-side launch samples showing when dynamic parallelism helps or hurts. |
@@ -83,7 +128,7 @@ python -m cli.aisp bench run --targets ch12 --profile minimal
 - `python optimized_work_queue.py --trace` exposes balanced dequeue times across CTAs when compared to the baseline's stragglers.
 
 ## Notes
-- `cuda_graphs_workload.cuh` holds reusable graph capture helpers when you want to wrap your own kernels.
+- `cuda_graphs_workload.cuh` holds the standalone graph example's stage parameters and scalar output reference.
 - `helper_*.cu` files contain host/device glue for the dynamic-parallelism case studies-copy them when bootstrapping new experiments.
 - `graph_conditional_runtime` is the canonical conditional-node benchmark. Keep `cuda_graphs_conditional` as a supplementary demo rather than a canonical speedup target.
 - For a smaller supporting lab that keeps Chapter 12's CUDA Graph story primary while adding fused reduction and padding-aware projection examples, see `labs/training_hotpath`.

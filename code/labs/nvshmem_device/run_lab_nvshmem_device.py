@@ -178,6 +178,14 @@ def validate_result(result: dict, workload: NativeWorkload) -> None:
     for name, value in expected.items():
         if type(result.get(name)) is not type(value) or result.get(name) != value:
             raise RuntimeError(f"Native result field {name!r} differs from the requested contract")
+    for name, components in (("nvshmem_version", 3), ("nvshmem_header_version", 3),
+                             ("openshmem_api_version", 2)):
+        value = result.get(name)
+        parts = value.split(".") if isinstance(value, str) else []
+        if len(parts) != components or any(not part.isascii() or not part.isdecimal() for part in parts):
+            raise RuntimeError(
+                f"Native result field {name!r} must contain {components} numeric version components"
+            )
     for name in ("setup_ms", "allocation_ms", "warmup_ms", "reset_ms", "steady_ms",
                  "time_per_iteration_ms", "verification_ms", "cleanup_ms", "max_abs_error"):
         value = result.get(name)
@@ -297,11 +305,16 @@ def main() -> int:
     except (NativeUnavailable, ValueError, RuntimeError, OSError) as error:
         unavailable = isinstance(error, NativeUnavailable)
         result = {"schema": SCHEMA, "status": "SKIPPED" if unavailable else "FAILED", "reason": str(error)}
-        if result_path is not None and not result_path.exists() and not result_path.is_symlink():
-            result_path.parent.mkdir(parents=True, exist_ok=True)
-            with result_path.open("x") as stream:
-                json.dump(result, stream, indent=2)
-                stream.write("\n")
+        try:
+            if result_path is not None and not result_path.exists() and not result_path.is_symlink():
+                result_path.parent.mkdir(parents=True, exist_ok=True)
+                with result_path.open("x") as stream:
+                    json.dump(result, stream, indent=2)
+                    stream.write("\n")
+        except OSError as record_error:
+            result["failure_record_error"] = str(record_error)
+            if not args.json:
+                print(f"Could not save the failure result: {record_error}", file=sys.stderr)
         print(json.dumps(result) if args.json else str(error))
         return 77 if unavailable else 1
     if args.json:

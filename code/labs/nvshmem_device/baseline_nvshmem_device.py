@@ -7,4 +7,3 @@ from labs.nvshmem_device.native_benchmark import NvshmemDeviceBenchmark
 
 def get_benchmark() -> BaseBenchmark:
     return attach_benchmark_metadata(NvshmemDeviceBenchmark(persistent=False), __file__)
-

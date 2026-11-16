@@ -111,6 +111,8 @@ def _metadata(workload) -> dict:
         "setup_ms": 1.0, "allocation_ms": 0.1, "warmup_ms": 0.2, "reset_ms": 0.1,
         "steady_ms": float(workload.iterations), "time_per_iteration_ms": 1.0,
         "verification_ms": 0.2, "cleanup_ms": 0.1, "max_abs_error": 0.0,
+        "nvshmem_version": "3.7.2", "nvshmem_header_version": "3.7.2",
+        "openshmem_api_version": "1.3",
     }
 
 
@@ -127,6 +129,36 @@ def test_result_parser_rejects_mismatched_contract(field: str, value) -> None:
     data[field] = value
     with pytest.raises(RuntimeError):
         runner.validate_result(data, workload)
+
+
+@pytest.mark.parametrize("field", ["nvshmem_version", "nvshmem_header_version", "openshmem_api_version"])
+def test_result_parser_requires_separate_runtime_header_and_api_versions(field: str) -> None:
+    workload = runner.NativeWorkload()
+    data = _metadata(workload)
+    del data[field]
+    with pytest.raises(RuntimeError, match=field):
+        runner.validate_result(data, workload)
+
+
+@pytest.mark.parametrize("field,value", [
+    ("nvshmem_version", "1.3"), ("nvshmem_header_version", "1.3"),
+    ("openshmem_api_version", "3.7.2"), ("nvshmem_version", "3.7.2-dev"),
+    ("nvshmem_header_version", "3..2"), ("openshmem_api_version", "1.-3"),
+    ("nvshmem_version", 3.7), ("nvshmem_version", "٣.٧.٢"),
+])
+def test_result_parser_rejects_mislabeled_or_malformed_versions(field: str, value) -> None:
+    workload = runner.NativeWorkload()
+    data = _metadata(workload)
+    data[field] = value
+    with pytest.raises(RuntimeError, match=field):
+        runner.validate_result(data, workload)
+
+
+def test_result_parser_accepts_numeric_versions_without_pinning_a_release() -> None:
+    workload = runner.NativeWorkload()
+    data = _metadata(workload)
+    data.update(nvshmem_version="4.0.0", nvshmem_header_version="3.8.1", openshmem_api_version="1.4")
+    runner.validate_result(data, workload)
 
 
 @pytest.mark.parametrize("mode", ["scalar-halo", "persistent-halo", "persistent-signal"])
@@ -226,6 +258,26 @@ def test_real_cli_missing_binary_reports_an_explicit_skip(tmp_path: Path) -> Non
     assert payload["status"] == "SKIPPED"
     assert "binary is missing" in payload["reason"]
     assert json.loads(path.read_text()) == payload
+
+
+@pytest.mark.parametrize("failure", ["invalid_workload", "missing_binary"])
+def test_real_cli_invalid_result_parent_preserves_the_original_failure(tmp_path: Path, failure: str) -> None:
+    parent = tmp_path / "not-a-directory"
+    parent.write_text("preserve this file\n")
+    path = parent / "result.json"
+    arguments = ["--nx", "2"] if failure == "invalid_workload" else ["--binary", str(tmp_path / "absent")]
+    result = subprocess.run(
+        [sys.executable, str(LAB_ROOT / "run_lab_nvshmem_device.py"),
+         *arguments, "--json-out", str(path), "--json"],
+        capture_output=True, text=True, check=False,
+    )
+    payload = json.loads(result.stdout)
+    assert result.returncode == (1 if failure == "invalid_workload" else 77)
+    assert payload["status"] == ("FAILED" if failure == "invalid_workload" else "SKIPPED")
+    assert ("nx >= 3" if failure == "invalid_workload" else "binary is missing") in payload["reason"]
+    assert str(parent) in payload["failure_record_error"]
+    assert "Traceback" not in result.stderr
+    assert parent.read_text() == "preserve this file\n"
 
 
 @pytest.fixture(scope="module")

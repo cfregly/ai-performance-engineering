@@ -1,0 +1,71 @@
+objective:
+  primary_kpi: maximum_rank_completed_epoch_ms
+  secondary_kpis: [correct_output_elements, host_launch_count]
+
+benchmark:
+  layer: component
+  grade: realism
+  variable_under_test: concurrency_model
+  control: block-signal
+  candidate: persistent-signal
+
+workload:
+  type: directed_neighbor_exchange
+  precision: float32_exact_integers
+  ranks: 2
+  directed_edges_per_rank: 2
+  elements_per_edge: 263
+  epochs: 32
+  warmup_epochs: 2
+  output: every_received_element_at_every_epoch_on_every_rank
+  constraints:
+    - Keep payload values, neighbors, epoch count, and full output fixed.
+    - Keep two logical edges distinct when both neighbors are the same PE.
+    - Complete payload updates before publishing readiness.
+    - Complete consumption before acknowledging reuse.
+    - Use one collectively launched block per PE for device waits.
+    - Reject payload ranges that exceed exact float32 integer representation.
+
+hot_path_model:
+  path: nvshmem_device_native.cu
+  phase: steady_state
+  invocation_frequency: per_rank_per_epoch
+  payload_bytes_sent: 2 * elements * 4
+  payload_bytes_received: 2 * elements * 4
+  payload_preparation: 2 * elements
+  history_elements_written: 2 * elements
+  remote_payload_operations: 2
+  notification_state: ready_and_consumed_per_directed_edge
+  block_signal_kernel_launches_per_epoch: 2
+  persistent_signal_kernel_launches_per_solve: 1
+  expected_dominant_cost: launch_and_peer_synchronization_for_small_tiles
+  expected_change: remove_repeated_host_launches_without_changing_payload_or_consumption
+  cost: cooperative_residency_and_a_device_protocol_with_busy_waits
+
+environment:
+  target_gpu: NVIDIA B200
+  target_gpu_count: 2
+  target_interconnect: NVLink
+  nsight_selection: existing_default_nsys_and_ncu
+  clock_control: core.harness.benchmark_harness.lock_gpu_clocks
+  source_and_runtime_versions: retained_in_each_run_manifest
+
+evidence:
+  state: b200_diagnostic_validated
+  validation_record: b200_validation.json
+  speedup_claim: none
+  correctness:
+    - independent_python_oracle_for_complete_received_history
+    - independent_float32_stencil_for_scalar_and_persistent_halos
+    - odd_and_even_iterations
+    - uneven_one_row_and_two_row_partitions
+    - repeated_buffer_reuse_and_non_block_multiple_tiles
+    - nonfinite_rejection
+  profiles:
+    - default_nsight_systems_all_five_modes_on_both_ranks
+    - default_nsight_compute_selected_rank_single_pass_duration_all_five_modes
+  limits:
+    - The persistent halo uses one block per PE, not a general multi-block Jacobi scheduler.
+    - Single-host evidence does not qualify an inter-node transport.
+    - NCU duration and launch metadata do not provide full hardware-counter coverage.
+    - Native diagnostic timings do not replace a complete benchmark harness result.

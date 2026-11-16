@@ -301,6 +301,9 @@ struct DeviceLab {
     int cuda_driver = 0;
     int nvshmem_major = 0;
     int nvshmem_minor = 0;
+    int nvshmem_patch = 0;
+    int openshmem_major = 0;
+    int openshmem_minor = 0;
     int query_capacity = 0;
 
     DeviceLab(Options value, int pe, int size)
@@ -370,7 +373,8 @@ struct DeviceLab {
         if (nvshmem_my_pe() != rank || nvshmem_n_pes() != ranks) {
             throw std::runtime_error("MPI rank and NVSHMEM PE mapping differ");
         }
-        nvshmem_info_get_version(&nvshmem_major, &nvshmem_minor);
+        nvshmem_info_get_version(&openshmem_major, &openshmem_minor);
+        nvshmemx_vendor_get_version_info(&nvshmem_major, &nvshmem_minor, &nvshmem_patch);
         CUDA_CHECK(cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking));
         const double allocation_start = MPI_Wtime();
         if (mesh_mode(options.mode)) {
@@ -708,7 +712,12 @@ int main(int argc, char** argv) {
                  << ",\"collective_query_capacity_rank0\":" << lab.query_capacity
                  << ",\"threads_per_block\":256,\"nvtx_enabled\":" << (AISP_NVTX_ENABLED ? "true" : "false")
                  << ",\"cuda_runtime_version\":" << lab.cuda_runtime << ",\"cuda_driver_version\":" << lab.cuda_driver
-                 << ",\"nvshmem_version\":" << json_string(std::to_string(lab.nvshmem_major) + "." + std::to_string(lab.nvshmem_minor))
+                 << ",\"nvshmem_version\":" << json_string(std::to_string(lab.nvshmem_major) + "." +
+                     std::to_string(lab.nvshmem_minor) + "." + std::to_string(lab.nvshmem_patch))
+                 << ",\"openshmem_api_version\":" << json_string(std::to_string(lab.openshmem_major) + "." +
+                     std::to_string(lab.openshmem_minor))
+                 << ",\"nvshmem_header_version\":" << json_string(std::to_string(NVSHMEM_VENDOR_MAJOR_VERSION) + "." +
+                     std::to_string(NVSHMEM_VENDOR_MINOR_VERSION) + "." + std::to_string(NVSHMEM_VENDOR_PATCH_VERSION))
                  << ",\"mpi_library_version\":" << json_string(std::string(mpi_version, std::size_t(mpi_version_length)))
                  << ",\"device_rank0\":" << json_string(lab.device_name) << "}";
             std::cout << json.str() << '\n';

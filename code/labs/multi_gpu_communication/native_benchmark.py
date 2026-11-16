@@ -162,4 +162,3 @@ class NativeJacobiBenchmark(CudaBinaryBenchmark):
 
     def teardown(self) -> None:
         self._directory = None
-

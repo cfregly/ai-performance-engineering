@@ -68,3 +68,26 @@ def test_new_chapter_parity_tools_are_registered() -> None:
         spec = tools_commands.TOOLS[tool_name]
         assert spec.module_name == module_name
         assert spec.script_path.exists()
+
+
+def test_multi_gpu_communication_tool_runs_real_help(capfd) -> None:
+    import core.tools.tools_commands as tools_commands
+
+    spec = tools_commands.TOOLS["multi-gpu-communication"]
+    assert spec.module_name == "labs.multi_gpu_communication.run_lab_multi_gpu_communication"
+    assert tools_commands._run_tool("multi-gpu-communication", ["--help"]) == 0
+    output = capfd.readouterr().out
+    assert "--registered-buffers" in output
+    assert "--graph" in output
+    assert "nvshmem" in output
+
+
+def test_nvshmem_device_tool_runs_real_help(capfd) -> None:
+    import core.tools.tools_commands as tools_commands
+
+    spec = tools_commands.TOOLS["nvshmem-device"]
+    assert spec.module_name == "labs.nvshmem_device.run_lab_nvshmem_device"
+    assert tools_commands._run_tool("nvshmem-device", ["--help"]) == 0
+    output = capfd.readouterr().out
+    for mode in ("scalar-halo", "persistent-halo", "block-signal", "persistent-signal", "persistent-atomic"):
+        assert mode in output

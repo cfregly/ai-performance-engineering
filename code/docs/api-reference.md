@@ -511,6 +511,21 @@ failure counters. It rejects unknown collector source bytes and existing output
 directories. It leaves the installed package unchanged and records both package
 digests. See the [serving guide](../labs/serving_comparison/README.md) before use.
 
+The CLI also provides `aisp tools multi-gpu-communication` for the native
+[MPI, NCCL, and NVSHMEM Jacobi lab](../labs/multi_gpu_communication/README.md).
+It accepts explicit backend, scheduling, registration, graph, and rank options.
+This CLI lab is not in the MCP diagnostic-tool allowlist. Its direct native
+timings are component diagnostics, while benchmark claims need the harness
+verification and profiling gates.
+
+`aisp tools nvshmem-device` runs the
+[device NVSHMEM lab](../labs/nvshmem_device/README.md). Select scalar or persistent
+Jacobi halos, a block signal exchange, a persistent signal exchange, or a
+persistent atomic-counter exchange. The runner requires a current native build
+receipt and verifies the complete mesh or received history with an independent
+Python reference. It retains fresh JSON, logs, and float32 output. This CLI lab
+does not add an MCP diagnostic-tool allowlist entry.
+
 ## Operator trace replay
 
 `aisp tools trace-replay` captures complete operator input tensors, validates

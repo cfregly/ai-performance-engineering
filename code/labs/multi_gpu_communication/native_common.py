@@ -92,6 +92,15 @@ def validate_result(result: dict[str, Any], workload: NativeWorkload) -> None:
     for name, value in expected.items():
         if result.get(name) != value:
             raise RuntimeError(f"Native result field {name!r} differs from the requested workload")
+    if workload.backend == "nvshmem":
+        for name, components in (("nvshmem_version", 3), ("nvshmem_header_version", 3),
+                                 ("openshmem_api_version", 2)):
+            value = result.get(name)
+            parts = value.split(".") if isinstance(value, str) else []
+            if len(parts) != components or any(not part.isascii() or not part.isdecimal() for part in parts):
+                raise RuntimeError(
+                    f"Native result field {name!r} must contain {components} numeric version components"
+                )
     for name in ("setup_ms", "allocation_registration_ms", "capture_ms", "warmup_ms",
                  "steady_ms", "time_per_iteration_ms", "verification_ms", "cleanup_ms", "max_abs_error"):
         value = result.get(name)

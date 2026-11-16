@@ -436,6 +436,82 @@ def native_controls():
         sys.modules.pop(module_name, None)
 
 
+def _result_metadata(workload) -> dict:
+    """Create contract-parser input without claiming native execution."""
+    rows, remainder = divmod(workload.ny - 2, workload.ranks)
+    versions = {
+        "nvshmem_version": "3.7.2",
+        "nvshmem_header_version": "3.7.2",
+        "openshmem_api_version": "1.3",
+    }
+    return {
+        "schema": "multi_gpu_communication.v1", "status": "passed",
+        "stopping_policy": "fixed_iterations", "backend": workload.backend,
+        "schedule": workload.schedule, "registered_buffers": workload.registered_buffers,
+        "graph": workload.graph, "nx": workload.nx, "ny": workload.ny,
+        "iterations": workload.iterations, "warmup": workload.warmup, "ranks": workload.ranks,
+        "checked_owned_elements": workload.nx * (workload.ny - 2),
+        "checked_halo_elements": 2 * workload.ranks * workload.nx,
+        "setup_ms": 1.0, "allocation_registration_ms": 0.1, "capture_ms": 0.0,
+        "warmup_ms": 0.2, "steady_ms": float(workload.iterations),
+        "time_per_iteration_ms": 1.0, "verification_ms": 0.2, "cleanup_ms": 0.1,
+        "max_abs_error": 0.0,
+        "rank_mapping": [{"rank": rank, "owned_rows": rows + int(rank < remainder)}
+                         for rank in range(workload.ranks)],
+        **{name: value if workload.backend == "nvshmem" else None
+           for name, value in versions.items()},
+    }
+
+
+@pytest.mark.parametrize("field", ["nvshmem_version", "nvshmem_header_version", "openshmem_api_version"])
+@pytest.mark.parametrize("missing", [False, True], ids=["null", "missing"])
+def test_nvshmem_result_requires_runtime_header_and_api_versions(native_controls, field: str, missing: bool) -> None:
+    workload = native_controls.NativeWorkload(backend="nvshmem")
+    result = _result_metadata(workload)
+    if missing:
+        del result[field]
+    else:
+        result[field] = None
+    with pytest.raises(RuntimeError, match=field):
+        native_controls.validate_result(result, workload)
+
+
+@pytest.mark.parametrize("field,value", [
+    ("nvshmem_version", "1.3"), ("nvshmem_header_version", "1.3"),
+    ("openshmem_api_version", "3.7.2"), ("nvshmem_version", "3.7.2-dev"),
+    ("nvshmem_header_version", "3..2"), ("openshmem_api_version", "1.-3"),
+    ("nvshmem_version", 3.7), ("nvshmem_version", "٣.٧.٢"),
+    ("openshmem_api_version", True),
+])
+def test_nvshmem_result_rejects_mislabeled_or_malformed_versions(native_controls, field: str, value) -> None:
+    workload = native_controls.NativeWorkload(backend="nvshmem")
+    result = _result_metadata(workload)
+    result[field] = value
+    with pytest.raises(RuntimeError, match=field):
+        native_controls.validate_result(result, workload)
+
+
+def test_nvshmem_result_accepts_distinct_numeric_versions_without_pinning_a_release(native_controls) -> None:
+    workload = native_controls.NativeWorkload(backend="nvshmem")
+    result = _result_metadata(workload)
+    native_controls.validate_result(result, workload)
+    result.update(nvshmem_version="4.0.0", nvshmem_header_version="3.8.1", openshmem_api_version="1.4")
+    native_controls.validate_result(result, workload)
+
+
+@pytest.mark.parametrize("backend", ["mpi", "nccl"])
+@pytest.mark.parametrize("versions", ["null", "absent", "inactive"])
+def test_result_version_checks_apply_only_to_nvshmem(native_controls, backend: str, versions: str) -> None:
+    workload = native_controls.NativeWorkload(backend=backend)
+    result = _result_metadata(workload)
+    for field in ("nvshmem_version", "nvshmem_header_version", "openshmem_api_version"):
+        if versions == "absent":
+            del result[field]
+        elif versions == "inactive":
+            result[field] = "not used by this backend"
+    native_controls.validate_result(result, workload)
+
+
 @pytest.mark.parametrize(
     "configuration",
     [
@@ -516,6 +592,7 @@ def native_binary() -> tuple[Path, str]:
 )
 def test_native_timed_output_matches_independent_stencil(
     native_binary: tuple[Path, str],
+    native_controls,
     contract_driver: Path,
     tmp_path: Path,
     backend: str,
@@ -563,6 +640,14 @@ def test_native_timed_output_matches_independent_stencil(
         pytest.skip(output)
     assert result.returncode == 0, output
     payload = json.loads(result_path.read_text(encoding="utf-8"))
+    workload = native_controls.NativeWorkload(
+        backend=backend, schedule=schedule, nx=nx, ny=ny, iterations=steps,
+        warmup=1, ranks=2, registered_buffers=registered, graph=graph,
+    )
+    native_controls.validate_result(payload, workload)
+    if backend != "nvshmem":
+        for field in ("nvshmem_version", "nvshmem_header_version", "openshmem_api_version"):
+            assert payload[field] is None
     assert payload["schema"] == "multi_gpu_communication.v1"
     assert payload["status"] == "passed"
     assert payload["canonical"] is False

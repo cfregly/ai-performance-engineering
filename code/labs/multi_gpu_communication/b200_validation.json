@@ -1,0 +1,584 @@
+{
+  "schema": "multi_gpu_communication.b200_validation.v1",
+  "date": "2026-11-15",
+  "canonical": false,
+  "scope": "Single-host two-GPU diagnostic. No multi-node or publication qualification.",
+  "source_base_commit": "275419650b448e2aedc461531dc28d2e86a995c7",
+  "source_sha256": {
+    "jacobi_contract.hpp": "e0ed5c94de560a3cca6cd1cf7d8ecb3d5974704940a4a30c3755d1eac4bd8aa3",
+    "jacobi_native.cu": "c9eaeade644d24a393691de5c22d051fa7c6f19c10deca3442cdc10f96ea6790",
+    "Makefile": "12f9c14ca4718ed4ca73fccba4bc74658d7f4d044bc83d1b316d010ee80b35cb"
+  },
+  "environment": {
+    "gpus": 2,
+    "model": "NVIDIA B200",
+    "interconnect": "NVLink",
+    "driver": "580.173.02",
+    "cuda": "13.0",
+    "nvcc": "13.0.88",
+    "nccl": "2.26.2",
+    "nvshmem": "3.7.2",
+    "mpi": "CUDA-aware HPC-X Open MPI 4.1.7a1",
+    "nsys": "2025.3.2",
+    "ncu": "2025.3.1",
+    "clock_control": "repository lock_gpu_clocks context on both GPUs",
+    "application_sm_mhz": 1965,
+    "application_memory_mhz": 3996
+  },
+  "correctness": {
+    "gpu_integration_passed": 6,
+    "gpu_integration_duration_seconds": 18.79,
+    "cpu_and_cli_passed": 55,
+    "output_contract": "All owned and halo elements checked against an independent fixed-iteration float32 stencil. Nonfinite values fail.",
+    "cases": [
+      {
+        "backend": "nccl",
+        "schedule": "serialized",
+        "registered": false,
+        "graph": false,
+        "nx": 17,
+        "ny": 5,
+        "steps": 3
+      },
+      {
+        "backend": "nccl",
+        "schedule": "overlap",
+        "registered": false,
+        "graph": false,
+        "nx": 17,
+        "ny": 4,
+        "steps": 4
+      },
+      {
+        "backend": "nccl",
+        "schedule": "overlap",
+        "registered": false,
+        "graph": true,
+        "nx": 17,
+        "ny": 5,
+        "steps": 3
+      },
+      {
+        "backend": "nccl",
+        "schedule": "overlap",
+        "registered": true,
+        "graph": true,
+        "nx": 17,
+        "ny": 6,
+        "steps": 4
+      },
+      {
+        "backend": "mpi",
+        "schedule": "overlap",
+        "registered": false,
+        "graph": false,
+        "nx": 17,
+        "ny": 5,
+        "steps": 3
+      },
+      {
+        "backend": "nvshmem",
+        "schedule": "overlap",
+        "registered": false,
+        "graph": false,
+        "nx": 17,
+        "ny": 5,
+        "steps": 3
+      }
+    ]
+  },
+  "unprofiled_workload": {
+    "backend": "nccl",
+    "ranks": 2,
+    "nx": 4096,
+    "ny": 4097,
+    "steps": 20,
+    "warmup": 2,
+    "registered": false,
+    "graph": false,
+    "sample_order": [
+      "serialized",
+      "overlap",
+      "overlap",
+      "serialized",
+      "serialized",
+      "overlap",
+      "overlap",
+      "serialized"
+    ],
+    "timing_scope": "Maximum-rank completed solve after both streams complete, divided by 20 fixed steps. Excludes setup, warmup and CPU verification."
+  },
+  "unprofiled_summary": {
+    "serialized": {
+      "samples": [
+        0.0437129,
+        0.04313745,
+        0.0425069,
+        0.04285645
+      ],
+      "median_ms": 0.04299695,
+      "min_ms": 0.0425069,
+      "max_ms": 0.0437129,
+      "stdev_ms": 0.0005097241745951103
+    },
+    "overlap": {
+      "samples": [
+        0.0280261,
+        0.0283486,
+        0.0276541,
+        0.02825565
+      ],
+      "median_ms": 0.028140875000000003,
+      "min_ms": 0.0276541,
+      "max_ms": 0.0283486,
+      "stdev_ms": 0.0003092889435867374
+    },
+    "median_ratio_serialized_over_overlap": 1.5279180196067108
+  },
+  "timing_samples": [
+    {
+      "sample": 1,
+      "schedule": "serialized",
+      "steady_ms": 0.874258,
+      "per_step_ms": 0.0437129,
+      "max_abs_error": 0
+    },
+    {
+      "sample": 2,
+      "schedule": "overlap",
+      "steady_ms": 0.560522,
+      "per_step_ms": 0.0280261,
+      "max_abs_error": 0
+    },
+    {
+      "sample": 3,
+      "schedule": "overlap",
+      "steady_ms": 0.566972,
+      "per_step_ms": 0.0283486,
+      "max_abs_error": 0
+    },
+    {
+      "sample": 4,
+      "schedule": "serialized",
+      "steady_ms": 0.862749,
+      "per_step_ms": 0.04313745,
+      "max_abs_error": 0
+    },
+    {
+      "sample": 5,
+      "schedule": "serialized",
+      "steady_ms": 0.850138,
+      "per_step_ms": 0.0425069,
+      "max_abs_error": 0
+    },
+    {
+      "sample": 6,
+      "schedule": "overlap",
+      "steady_ms": 0.553082,
+      "per_step_ms": 0.0276541,
+      "max_abs_error": 0
+    },
+    {
+      "sample": 7,
+      "schedule": "overlap",
+      "steady_ms": 0.565113,
+      "per_step_ms": 0.02825565,
+      "max_abs_error": 0
+    },
+    {
+      "sample": 8,
+      "schedule": "serialized",
+      "steady_ms": 0.857129,
+      "per_step_ms": 0.04285645,
+      "max_abs_error": 0
+    }
+  ],
+  "nsys_analysis": [
+    {
+      "schedule": "serialized",
+      "sqlite": "serialized.0.sqlite",
+      "sqlite_sha256": "22e3f291f504a735c33eddc36a9d987d2eda5ac7171a1d53a11b73488c0f1ec1",
+      "device": 0,
+      "context": 1,
+      "range": "compute_graph:jacobi_steady_state",
+      "unit": "nanoseconds",
+      "compute_union_ns": 490879,
+      "nccl_union_ns": 290240,
+      "intersection_union_ns": 0,
+      "intersection_fraction_of_nccl": 0.0
+    },
+    {
+      "schedule": "serialized",
+      "sqlite": "serialized.1.sqlite",
+      "sqlite_sha256": "24e4362754bc91d630463c72e3eb7d7fbf506299329ceb5420380b46b399b88e",
+      "device": 1,
+      "context": 1,
+      "range": "compute_graph:jacobi_steady_state",
+      "unit": "nanoseconds",
+      "compute_union_ns": 491103,
+      "nccl_union_ns": 326080,
+      "intersection_union_ns": 0,
+      "intersection_fraction_of_nccl": 0.0
+    },
+    {
+      "schedule": "overlap",
+      "sqlite": "overlap.0.sqlite",
+      "sqlite_sha256": "90baedb5ed40148240f82011b301d5f757f8c3c91a59bd86ef39fe9eccd136ea",
+      "device": 0,
+      "context": 1,
+      "range": "compute_graph:jacobi_steady_state",
+      "unit": "nanoseconds",
+      "compute_union_ns": 528767,
+      "nccl_union_ns": 298623,
+      "intersection_union_ns": 284927,
+      "intersection_fraction_of_nccl": 0.9541361516025223
+    },
+    {
+      "schedule": "overlap",
+      "sqlite": "overlap.1.sqlite",
+      "sqlite_sha256": "111c3f3736d4b7673588ac16b44e4d536944bafc94629f142ebdc9b306e5ae68",
+      "device": 1,
+      "context": 1,
+      "range": "compute_graph:jacobi_steady_state",
+      "unit": "nanoseconds",
+      "compute_union_ns": 530271,
+      "nccl_union_ns": 292351,
+      "intersection_union_ns": 279455,
+      "intersection_fraction_of_nccl": 0.9558886407092844
+    }
+  ],
+  "sanitizer": {
+    "ordinary_buffer_overlap_graph": {
+      "errors_per_rank": [
+        0,
+        0
+      ],
+      "nx": 17,
+      "ny": 7,
+      "steps": 5,
+      "warmup": 1,
+      "unused_mpi_collectives": "UCC and HCOLL explicitly excluded"
+    },
+    "registered_buffer_overlap_graph": {
+      "numerical_result": "passed",
+      "tool_exit_code": 99,
+      "api_errors_per_rank": 3,
+      "invalid_memory_access_findings": 0,
+      "api_findings": [
+        "UCC calls cuCtxGetDevice without a current context during MPI initialization",
+        "NCCL ncclMemAlloc first attempts FABRIC allocation and receives NOT_PERMITTED, then retries without FABRIC"
+      ],
+      "all_clean": false,
+      "nccl_retry_authority": "https://github.com/NVIDIA/nccl/blob/f44ac759fee12ecb3cc6891e9e739a000f66fd70/src/init.cc#L2293-L2323"
+    }
+  },
+  "ncu": {
+    "scope": "One independent local jacobi_rows stencil kernel per rank, serialized schedule, kernel replay. Communication kernels excluded.",
+    "nx": 256,
+    "ny": 257,
+    "steps": 3,
+    "warmup": 1,
+    "replay_passes_per_rank": 9,
+    "numerical_result": "passed",
+    "warnings": [
+      "Nonfatal bundled Python usercustomize import warning in profiler startup",
+      "NCU clock control disabled because repository context locks both GPUs externally"
+    ]
+  },
+  "retained_native_profile_sha256": {
+    "serialized.0.nsys-rep": "a81b1c5ffb133874f30b52fe7564abf36a327b523878796c1b592bff43f2b3ef",
+    "serialized.0.sqlite": "22e3f291f504a735c33eddc36a9d987d2eda5ac7171a1d53a11b73488c0f1ec1",
+    "overlap.1.nsys-rep": "5216ab399b41bec99eeb1af9c188b37bd79d7c58a42e8f8c78052a75681b4c7d",
+    "serialized.1.nsys-rep": "57af2e59a91156ae5c720b5147d01bbf3cfbece76817e0e0ad0f440053b8e737",
+    "stencil.0.ncu-rep": "1a15ef963858a78e7f853b37b390d210535370be0ff4458fccd7338a2491fd3e",
+    "overlap.0.sqlite": "90baedb5ed40148240f82011b301d5f757f8c3c91a59bd86ef39fe9eccd136ea",
+    "serialized.1.sqlite": "24e4362754bc91d630463c72e3eb7d7fbf506299329ceb5420380b46b399b88e",
+    "overlap.1.sqlite": "111c3f3736d4b7673588ac16b44e4d536944bafc94629f142ebdc9b306e5ae68",
+    "stencil.1.ncu-rep": "59ba9a881471a57d1d3fb18348713c1f612a39558e8cd2492e2ca13da53709e1",
+    "overlap.0.nsys-rep": "b53425d726fe7bd70335f8d250905a26ee70af85865f9e878bf2891dfdf95415"
+  },
+  "limits": [
+    "Short diagnostic timings with four samples per schedule, not a canonical benchmark",
+    "Kernel interval overlap does not measure transfer bytes or active SM concurrency",
+    "Successful registration does not prove a zero-copy transport was selected",
+    "Selected backend and mode combinations only",
+    "NCCL device LSA and GIN guide fragments were not compiled or executed with this NCCL 2.26.2 runtime",
+    "Full CLI harness uses mandatory finite stage timeouts. Uncapped wrapper lifecycle smoke is tracked separately"
+  ],
+  "wrapper": {
+    "status": "passed",
+    "mode": "uncapped_wrapper_lifecycle_smoke",
+    "nx": 64,
+    "ny": 67,
+    "steps": 5,
+    "warmup": 1,
+    "ranks": 2,
+    "backend": "nccl",
+    "registered": false,
+    "graph": false,
+    "max_pair_error": 0.0,
+    "completed_paths": [
+      "setup",
+      "benchmark_fn",
+      "capture_verification_payload",
+      "get_verify_output",
+      "get_verify_inputs",
+      "validate_result",
+      "teardown"
+    ],
+    "full_cli_harness_executed": false,
+    "full_cli_harness_limit": "Existing harness requires finite stage timeouts. This run followed the uncapped execution instruction by invoking the real wrappers directly."
+  },
+  "default_profiler_refresh": {
+    "date": "2026-11-15",
+    "status": "passed",
+    "canonical": false,
+    "nsys_version": "NVIDIA Nsight Systems version 2025.3.2.474-253236389321v0",
+    "ncu_version": "NVIDIA (R) Nsight Compute Command Line Profiler\nCopyright (c) 2018-2025 NVIDIA Corporation\nVersion 2025.3.1.0 (build 36398880) (public-release)",
+    "defaults_unchanged": true,
+    "default_commands": {
+      "nsys": {
+        "path": "/usr/local/cuda-13.0/bin/nsys",
+        "realpath": "/usr/local/cuda-13.0/bin/nsys",
+        "sha256": "7bcae8a7ea636e62fdbf53e4df87fe0348efe70ed6630b6a47ef79d6312a4786"
+      },
+      "ncu": {
+        "path": "/usr/local/cuda-13.0/bin/ncu",
+        "realpath": "/usr/local/cuda-13.0/bin/ncu",
+        "sha256": "18d8a8aa13c156cd43ebdf24ac950b5386cb229f2a4c931db47ef91cfe785920"
+      }
+    },
+    "executed_binary_sha256": "fe383741dd76ebe9145ea6aee96f650b76dc9bc718e0b045ed0b4b46599b0669",
+    "source_sha256": {
+      "jacobi_contract.hpp": "e0ed5c94de560a3cca6cd1cf7d8ecb3d5974704940a4a30c3755d1eac4bd8aa3",
+      "jacobi_native.cu": "c9eaeade644d24a393691de5c22d051fa7c6f19c10deca3442cdc10f96ea6790",
+      "Makefile": "12f9c14ca4718ed4ca73fccba4bc74658d7f4d044bc83d1b316d010ee80b35cb"
+    },
+    "application_clocks": [
+      {
+        "device": 0,
+        "sm_mhz": 1965,
+        "memory_mhz": 3996
+      },
+      {
+        "device": 1,
+        "sm_mhz": 1965,
+        "memory_mhz": 3996
+      }
+    ],
+    "captures": [
+      {
+        "name": "serialized",
+        "schedule": "serialized",
+        "graph": false,
+        "trace_scope": "node-level CUDA trace and full-run NVTX ranges",
+        "nx": 4096,
+        "ny": 4097,
+        "steps": 20,
+        "warmup": 2,
+        "registered": false,
+        "status": "passed",
+        "checked_owned_elements": 16773120,
+        "checked_halo_elements": 16384,
+        "max_abs_error": 0,
+        "output_sha256": "41f0f4c10e73c63a29300f97c56ad41bcd5a7ad6c70f688700763911d4bb14c8"
+      },
+      {
+        "name": "overlap",
+        "schedule": "overlap",
+        "graph": false,
+        "trace_scope": "node-level CUDA trace and full-run NVTX ranges",
+        "nx": 4096,
+        "ny": 4097,
+        "steps": 20,
+        "warmup": 2,
+        "registered": false,
+        "status": "passed",
+        "checked_owned_elements": 16773120,
+        "checked_halo_elements": 16384,
+        "max_abs_error": 0,
+        "output_sha256": "41f0f4c10e73c63a29300f97c56ad41bcd5a7ad6c70f688700763911d4bb14c8"
+      },
+      {
+        "name": "graph-overlap",
+        "schedule": "overlap",
+        "graph": true,
+        "trace_scope": "node-level CUDA trace and full-run NVTX ranges",
+        "nx": 4096,
+        "ny": 4097,
+        "steps": 20,
+        "warmup": 2,
+        "registered": false,
+        "status": "passed",
+        "checked_owned_elements": 16773120,
+        "checked_halo_elements": 16384,
+        "max_abs_error": 0,
+        "output_sha256": "41f0f4c10e73c63a29300f97c56ad41bcd5a7ad6c70f688700763911d4bb14c8"
+      }
+    ],
+    "ncu_scope": "One independent local stencil kernel per rank, serialized schedule, 256 by 257 grid, three solver steps. Communication kernels excluded.",
+    "ncu_numerical_status": "passed",
+    "retained_profile_sha256": {
+      "serialized.0.nsys-rep": "6263b94f5e880fa5c70c703c69ad65d917dcdb14b9787f8ff9f29e43b1773aa8",
+      "serialized.0.sqlite": "8d86afafee5dca2c0753283f9e05f402b11388194eba546167cc0743292147d9",
+      "overlap.1.nsys-rep": "0ad21ce56fdf09991a25f2f76bca4bc4d7695d5894cf831ce276ac9d55411732",
+      "serialized.1.nsys-rep": "0dbb38e626d8053a053cf8e702fa9fc5c33ca6c99bfffebcf27b66632e82fd06",
+      "stencil.0.ncu-rep": "d6367708ef2c3ec263952717b7051608e4c4367574e55494aa320cb826700a60",
+      "overlap.0.sqlite": "7f4cc6dae5f96e728924a55906ec90f5687183d0c08267a40afed8c5efdc814b",
+      "serialized.1.sqlite": "5fd3997829f9ab4654568fc03260cc6da6c0d655dcb0b68b5f4680962226eb3a",
+      "overlap.1.sqlite": "c22345ca7bc1df8f446f6725e2d7936d9cffa1f633420f8e6a833caeb03c7b3a",
+      "graph-overlap.1.nsys-rep": "7b93446b89e58eb12dc2d40bf6219a58e4c60b802a6466111908148d7e79115b",
+      "graph-overlap.0.sqlite": "369676b39a103be122aaf080bf139ec2c034f79797d2934b53b17c3ad51e0dc3",
+      "graph-overlap.1.sqlite": "f26ef6348cec4c8bc622845ee71f4c8fe1484349c57d34df6d106fdb93f32b41",
+      "graph-overlap.0.nsys-rep": "d12f3b74779087289fa7732c553259ef383f3a34f7def9300ea3596c1e34999d",
+      "stencil.1.ncu-rep": "a2bbb238b8136fe086ff9e4635cde8253f8860126dd22bede5f7ff1d4aa825a2",
+      "overlap.0.nsys-rep": "9adc1598eb3bcf4b96ee935be3466c0aa7c73940edc5e112705516e3d7429ca7"
+    },
+    "interpretation": "Profiler timings are intrusive. This refresh does not replace the separate unprofiled timing samples or establish a graph speedup.",
+    "steady_kernel_interval_analysis": [
+      {
+        "capture": "serialized",
+        "sqlite": "serialized.0.sqlite",
+        "sqlite_sha256": "8d86afafee5dca2c0753283f9e05f402b11388194eba546167cc0743292147d9",
+        "device": 0,
+        "context": 1,
+        "range": "compute_graph:jacobi_steady_state",
+        "unit": "nanoseconds",
+        "jacobi_kernel_count": 20,
+        "nccl_kernel_count": 20,
+        "compute_union_ns": 490783,
+        "nccl_union_ns": 294719,
+        "intersection_union_ns": 0,
+        "intersection_fraction_of_nccl": 0.0
+      },
+      {
+        "capture": "serialized",
+        "sqlite": "serialized.1.sqlite",
+        "sqlite_sha256": "5fd3997829f9ab4654568fc03260cc6da6c0d655dcb0b68b5f4680962226eb3a",
+        "device": 1,
+        "context": 1,
+        "range": "compute_graph:jacobi_steady_state",
+        "unit": "nanoseconds",
+        "jacobi_kernel_count": 20,
+        "nccl_kernel_count": 20,
+        "compute_union_ns": 492992,
+        "nccl_union_ns": 280863,
+        "intersection_union_ns": 0,
+        "intersection_fraction_of_nccl": 0.0
+      },
+      {
+        "capture": "overlap",
+        "sqlite": "overlap.0.sqlite",
+        "sqlite_sha256": "7f4cc6dae5f96e728924a55906ec90f5687183d0c08267a40afed8c5efdc814b",
+        "device": 0,
+        "context": 1,
+        "range": "compute_graph:jacobi_steady_state",
+        "unit": "nanoseconds",
+        "jacobi_kernel_count": 60,
+        "nccl_kernel_count": 20,
+        "compute_union_ns": 527871,
+        "nccl_union_ns": 293184,
+        "intersection_union_ns": 279840,
+        "intersection_fraction_of_nccl": 0.9544859201047806
+      },
+      {
+        "capture": "overlap",
+        "sqlite": "overlap.1.sqlite",
+        "sqlite_sha256": "c22345ca7bc1df8f446f6725e2d7936d9cffa1f633420f8e6a833caeb03c7b3a",
+        "device": 1,
+        "context": 1,
+        "range": "compute_graph:jacobi_steady_state",
+        "unit": "nanoseconds",
+        "jacobi_kernel_count": 60,
+        "nccl_kernel_count": 20,
+        "compute_union_ns": 531712,
+        "nccl_union_ns": 335200,
+        "intersection_union_ns": 308896,
+        "intersection_fraction_of_nccl": 0.921527446300716
+      },
+      {
+        "capture": "graph-overlap",
+        "sqlite": "graph-overlap.0.sqlite",
+        "sqlite_sha256": "369676b39a103be122aaf080bf139ec2c034f79797d2934b53b17c3ad51e0dc3",
+        "device": 0,
+        "context": 1,
+        "range": "compute_graph:jacobi_steady_state",
+        "unit": "nanoseconds",
+        "jacobi_kernel_count": 60,
+        "nccl_kernel_count": 20,
+        "compute_union_ns": 528223,
+        "nccl_union_ns": 310432,
+        "intersection_union_ns": 295264,
+        "intersection_fraction_of_nccl": 0.9511390578290898
+      },
+      {
+        "capture": "graph-overlap",
+        "sqlite": "graph-overlap.1.sqlite",
+        "sqlite_sha256": "f26ef6348cec4c8bc622845ee71f4c8fe1484349c57d34df6d106fdb93f32b41",
+        "device": 1,
+        "context": 1,
+        "range": "compute_graph:jacobi_steady_state",
+        "unit": "nanoseconds",
+        "jacobi_kernel_count": 60,
+        "nccl_kernel_count": 20,
+        "compute_union_ns": 529759,
+        "nccl_union_ns": 300512,
+        "intersection_union_ns": 298784,
+        "intersection_fraction_of_nccl": 0.9942498136513683
+      }
+    ],
+    "graph_replay_observations": {
+      "per_rank": {
+        "template_captures": 2,
+        "template_capture_ends": 2,
+        "executable_instantiations": 2,
+        "steady_pair_graph_launches": 10,
+        "steady_solver_steps": 20,
+        "steady_stencil_kernel_records": 60,
+        "steady_nccl_kernel_records": 20,
+        "steady_distinct_graph_kernel_nodes": 8,
+        "executions_per_kernel_node": 10,
+        "steady_individual_kernel_launch_api_calls": 0,
+        "steady_final_stream_synchronizations": 2,
+        "graph_warmup_launches_outside_steady_range": 2
+      },
+      "scope": "Runtime API rows are filtered by process and fully contained NVTX intervals. The runtime table has no device/context columns. GPU kernel records are filtered separately to one observed process/device/context.",
+      "interpretation": "API submission counts and timestamped graph nodes establish replay structure. Counts do not measure time saved."
+    },
+    "ncu_export_observations": [
+      {
+        "file": "stencil-0-raw.log",
+        "sha256": "7a921d3af0479609080c14fd90d79cb27f390aa47c1be4351ffafd22c1bcc968",
+        "csv_rows": 3,
+        "csv_columns": 608,
+        "units_rows": 1,
+        "actual_kernel_rows": 1,
+        "kernel": "jacobi_rows(float *, const float *, int, int, int)",
+        "context": "1",
+        "stream": "14"
+      },
+      {
+        "file": "stencil-1-raw.log",
+        "sha256": "77c25ad35299352b6a6129462bb1c8fbefe9a5653478b2463660a232da41c061",
+        "csv_rows": 3,
+        "csv_columns": 608,
+        "units_rows": 1,
+        "actual_kernel_rows": 1,
+        "kernel": "jacobi_rows(float *, const float *, int, int, int)",
+        "context": "1",
+        "stream": "14"
+      }
+    ]
+  },
+  "recorded_source_snapshot": {
+    "commit": "55f23372156cf2a31f4696c0f41fccd5c989f61f",
+    "native_source_url": "https://github.com/cfregly/ai-performance-engineering/blob/55f23372156cf2a31f4696c0f41fccd5c989f61f/code/labs/multi_gpu_communication/jacobi_native.cu",
+    "scope": "Retrospective source snapshot preserving executed native bytes. Original runs used the earlier base commit plus source overlays."
+  },
+  "maintained_native_source_sha256": "41e0c506d77a9acf38e93137358efd96f10d9fa506d1b6e01245dfc3b23e93ed",
+  "maintained_revision_note": "The maintained successor separates NVSHMEM vendor/runtime and header triplets from the OpenSHMEM API pair. Earlier raw output had mislabeled API 1.3 as the library version. Numerical kernels are unchanged.",
+  "landing_validation": {
+    "status": "pending"
+  },
+  "profiler_artifact_access": "Historical native captures and exports remain private because they contain host and systemwide process metadata. Their hashes identify retained evidence and are not public download links."
+}

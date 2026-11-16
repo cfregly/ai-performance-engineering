@@ -97,6 +97,22 @@ python -m cli.aisp bench run --targets ch13:precisionfp8_te --profile deep_dive 
 - Tune DataLoader, KV-cache, and optimizer states to eliminate fragmentation.
 - Exercise FP8/quantized training recipes with Transformer Engine integration.
 
+## Batched P2P in Context Parallelism
+
+The [ring-attention implementation](context_parallel_benchmark_common.py) already
+batches K/V sends to the next rank and receives from the previous rank with
+`batch_isend_irecv`. It waits for that exchange before advancing to the next
+shard. This is grouped P2P coverage, not proof that communication overlaps the
+attention computation. Preserve K/V order for each peer, tensor counts and
+dtypes, and buffer ownership until requests complete. See the
+[PyTorch P2P contract](https://docs.pytorch.org/docs/stable/distributed#torch.distributed.batch_isend_irecv).
+
+Use the [NCCL group guide](../ch04/nccl_groups.md) and
+[common halo-exchange lab](../labs/multi_gpu_communication/README.md) to study
+native grouping and independent compute. Grouping reduces submission boundaries
+when operations are ready together. It does not remove data dependencies between
+attention steps, and wider groups can delay work that was already ready.
+
 ## Directory Layout
 | Path | Description |
 | --- | --- |

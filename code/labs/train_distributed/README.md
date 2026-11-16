@@ -160,6 +160,22 @@ python -m pytest -q tests/test_audit_wave1_zero2_parity.py tests/test_audit_wave
 - Validate symmetric-memory training modes that pool NVLink bandwidth.
 - Reuse launcher utilities (torchrun) with consistent configuration.
 
+## Grouping Pipeline Transfers
+
+Chapter 4's [pipeline helper](../../ch04/pipeline_parallel_common.py) already
+uses `batch_isend_irecv` for opposing neighbor transfers. It drains completion
+requests before buffers are reused. Preserve activation/gradient order for each
+peer and match counts and dtypes. The
+[NCCL group guide](../../ch04/nccl_groups.md) maps this pattern to native groups.
+
+Group transfers that are ready at the same schedule step. A later microbatch's
+payload may depend on an earlier receive, so grouping a whole pipeline schedule
+is not a safe substitute for those dependencies. The
+[common halo-exchange lab](../multi_gpu_communication/README.md) isolates the
+additional stream/event work needed for overlap. Use that simpler workload to
+understand the cost before adding scheduling and buffer-lifetime complexity to
+training. The wrapper verification limits above still apply.
+
 ## Directory Layout
 | Path | Description |
 | --- | --- |

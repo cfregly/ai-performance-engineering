@@ -1,0 +1,658 @@
+{
+  "schema": "nvshmem_device.b200_validation.v1",
+  "date": "2026-11-16",
+  "canonical": false,
+  "status": "b200_diagnostic_validated",
+  "scope": "Two GPUs on one host. Complete numerical correctness and retained native profiler diagnostics. No multi-node or publication qualification.",
+  "source_base_commit": "275419650b448e2aedc461531dc28d2e86a995c7",
+  "source_sha256": {
+    "nvshmem_device_native.cu": "aa0f7f0fac1c453290098aabaebd957bf4ecdf91f7b5198dad14be5ebafb5d86",
+    "Makefile": "d6da24d7fd13ac312289249bf41153ad9ce907fa74b84ca369e5986bf7d10ecd",
+    "build_receipt.py": "1bdd3e0a82ee0b6dde75efe10010efa86d5765cedf6398a68e2ed77a5fe16e07",
+    "../multi_gpu_communication/jacobi_contract.hpp": "e0ed5c94de560a3cca6cd1cf7d8ecb3d5974704940a4a30c3755d1eac4bd8aa3"
+  },
+  "executed_binary_sha256": "bdbc2b50fb41051519b67c8a7c7e4adcccb7c4ceb31064722b433d03123e3c55",
+  "maintained_runner_sha256": "6042e5b09f875f29da54b0f1187175342561d76486921d9a7ebbf4f110afda99",
+  "maintained_gpu_test_file_sha256": "8a1cc623e9c43c6980591d76d996093f8bc23d33d330420f1296a0cb0299e126",
+  "correctness_executed_runner_sha256": "b56f9213b6d947dc0595cb8b20407cec1cf6f85b1e37dc7e7d9879299040c7a1",
+  "correctness_executed_gpu_test_file_sha256": "ac3e63c4dc842bd4f1f559eafd5f22c88e16f366e62f3e6b7c5990213082a17b",
+  "runner_revision_note": "After job1137, a failure-record write error was fixed and two CPU CLI cases were added. The nine GPU test cases and native kernels are unchanged. The maintained runner passed71 CPU/CLI checks and was used for all10 verified NCU application invocations in job1138.",
+  "tested_profile_selector_sha256": "0e17ceea42685e06dc9065e2658caf6be9daa8a87de508aff2bbc7b16769de91",
+  "tested_report_inspector_sha256": "852c6cb0b0c9ba9d78e6e94e3db8e4dd9428351e982df931829dacf18af3a0d9",
+  "environment": {
+    "gpus": 2,
+    "model": "NVIDIA B200",
+    "interconnect": "NVLink",
+    "driver": "580.173.02",
+    "cuda_runtime": "13.0",
+    "nvcc": "13.0.88",
+    "nvshmem_runtime": "3.7.2",
+    "nvshmem_headers": "3.7.2",
+    "openshmem_api": "1.3",
+    "mpi": "HPC-X Open MPI 4.1.7a1 with CUDA support",
+    "nsys": "2025.3.2.474",
+    "ncu": "2025.3.1.0 (build 36398880)",
+    "profiler_selection": "Existing default executables. No installation, symlink, or system default was changed.",
+    "profiler_default_executables_unchanged": true,
+    "default_executable_sha256": {
+      "nsys": "7bcae8a7ea636e62fdbf53e4df87fe0348efe70ed6630b6a47ef79d6312a4786",
+      "ncu": "18d8a8aa13c156cd43ebdf24ac950b5386cb229f2a4c931db47ef91cfe785920"
+    },
+    "clock_control": "Repository lock_gpu_clocks context on both allocated GPUs",
+    "application_clocks": [
+      {
+        "device": 0,
+        "application_sm_mhz": 1965,
+        "application_memory_mhz": 3996
+      },
+      {
+        "device": 1,
+        "application_sm_mhz": 1965,
+        "application_memory_mhz": 3996
+      }
+    ]
+  },
+  "correctness": {
+    "job_id": "1137",
+    "gpu_integration_passed": 9,
+    "gpu_integration_skipped": 0,
+    "gpu_test_duration_seconds": 40.805,
+    "local_cpu_and_cli_passed": 71,
+    "local_gpu_opt_in_skipped": 9,
+    "output_contract": "Native and independent Python checks of every final stencil element or every received tile element at every timed epoch. Nonfinite and incomplete output fail.",
+    "cases": [
+      {
+        "mode": "scalar-halo",
+        "ranks": 2,
+        "nx": 17,
+        "ny": 4,
+        "elements": 32,
+        "iterations": 4,
+        "warmup": 2,
+        "output_elements": 68,
+        "max_abs_error": 0,
+        "output_sha256": "4dce45b09a87d63d1502838aba91a16668495ac8f57b508e31072d871422ea15"
+      },
+      {
+        "mode": "scalar-halo",
+        "ranks": 2,
+        "nx": 17,
+        "ny": 5,
+        "elements": 32,
+        "iterations": 3,
+        "warmup": 2,
+        "output_elements": 85,
+        "max_abs_error": 0,
+        "output_sha256": "57777771074917f9231010905b245c59b94ef73ddfc51487e2af65f7b67890c0"
+      },
+      {
+        "mode": "scalar-halo",
+        "ranks": 2,
+        "nx": 17,
+        "ny": 8,
+        "elements": 32,
+        "iterations": 6,
+        "warmup": 2,
+        "output_elements": 136,
+        "max_abs_error": 0,
+        "output_sha256": "c665924aa83e5898b68f956c727c858e2beef9ed12a6aa73256a99c800c8c36a"
+      },
+      {
+        "mode": "persistent-halo",
+        "ranks": 2,
+        "nx": 17,
+        "ny": 4,
+        "elements": 32,
+        "iterations": 4,
+        "warmup": 2,
+        "output_elements": 68,
+        "max_abs_error": 0,
+        "output_sha256": "4dce45b09a87d63d1502838aba91a16668495ac8f57b508e31072d871422ea15"
+      },
+      {
+        "mode": "persistent-halo",
+        "ranks": 2,
+        "nx": 17,
+        "ny": 5,
+        "elements": 32,
+        "iterations": 3,
+        "warmup": 2,
+        "output_elements": 85,
+        "max_abs_error": 0,
+        "output_sha256": "57777771074917f9231010905b245c59b94ef73ddfc51487e2af65f7b67890c0"
+      },
+      {
+        "mode": "persistent-halo",
+        "ranks": 2,
+        "nx": 17,
+        "ny": 8,
+        "elements": 32,
+        "iterations": 6,
+        "warmup": 2,
+        "output_elements": 136,
+        "max_abs_error": 0,
+        "output_sha256": "c665924aa83e5898b68f956c727c858e2beef9ed12a6aa73256a99c800c8c36a"
+      },
+      {
+        "mode": "block-signal",
+        "ranks": 2,
+        "nx": 17,
+        "ny": 7,
+        "elements": 263,
+        "iterations": 17,
+        "warmup": 2,
+        "output_elements": 17884,
+        "max_abs_error": 0,
+        "output_sha256": "122b254234c866cc3ca4cf7937fcc97961d7de881e9389f98a2ce7a36305c594"
+      },
+      {
+        "mode": "persistent-signal",
+        "ranks": 2,
+        "nx": 17,
+        "ny": 7,
+        "elements": 263,
+        "iterations": 17,
+        "warmup": 2,
+        "output_elements": 17884,
+        "max_abs_error": 0,
+        "output_sha256": "122b254234c866cc3ca4cf7937fcc97961d7de881e9389f98a2ce7a36305c594"
+      },
+      {
+        "mode": "persistent-atomic",
+        "ranks": 2,
+        "nx": 17,
+        "ny": 7,
+        "elements": 263,
+        "iterations": 17,
+        "warmup": 2,
+        "output_elements": 17884,
+        "max_abs_error": 0,
+        "output_sha256": "122b254234c866cc3ca4cf7937fcc97961d7de881e9389f98a2ce7a36305c594"
+      }
+    ],
+    "wrapper_lifecycles": [
+      {
+        "module": "labs.nvshmem_device.baseline_nvshmem_device",
+        "output_shape": [
+          2,
+          5,
+          2,
+          263
+        ],
+        "input_keys": [
+          "payload_parameters"
+        ],
+        "native_time_per_epoch_ms": 0.0154238
+      },
+      {
+        "module": "labs.nvshmem_device.optimized_nvshmem_device",
+        "output_shape": [
+          2,
+          5,
+          2,
+          263
+        ],
+        "input_keys": [
+          "payload_parameters"
+        ],
+        "native_time_per_epoch_ms": 0.0092618
+      }
+    ],
+    "wrapper_full_history_max_error": 0.0,
+    "full_bench_cli_run": false,
+    "full_bench_cli_limit": "The full CLI harness requires finite stage timeouts. Uncapped real setup, timed invocation, post-timing verification capture, validation and teardown were executed instead."
+  },
+  "nsys": {
+    "job_id": "1133",
+    "native_reports": 10,
+    "sqlite_exports": 10,
+    "trace_scope": "Per-rank CUDA, NVTX and MPI tracing. Exact steady range in the default NVTX domain. No CUDA Graph replay in these device modes.",
+    "steady_nvtx_range": "compute_graph:nvshmem_device_steady_state",
+    "source_sha256": {
+      "nvshmem_device_native.cu": "9d62f6e9dd1268d49a73b5799408a6f54bd49d70cb50a60fae3989b0d7e2e8ee",
+      "Makefile": "d6da24d7fd13ac312289249bf41153ad9ce907fa74b84ca369e5986bf7d10ecd",
+      "build_receipt.py": "1bdd3e0a82ee0b6dde75efe10010efa86d5765cedf6398a68e2ed77a5fe16e07",
+      "../multi_gpu_communication/jacobi_contract.hpp": "e0ed5c94de560a3cca6cd1cf7d8ecb3d5974704940a4a30c3755d1eac4bd8aa3"
+    },
+    "binary_sha256": "1d29418b01a05eb9ed26ebc0234f88dbda79b3029065afc75bc8312ce16d7bd6",
+    "version_metadata_correction": "These earlier captures mislabeled the OpenSHMEM API 1.3 as nvshmem_version. The subsequent source change only separates vendor/runtime 3.7.2, header 3.7.2 and API 1.3 metadata. Device kernels and protocols are unchanged. Raw records were preserved.",
+    "captures": [
+      {
+        "mode": "scalar-halo",
+        "mpi_rank": 0,
+        "filename": "scalar-halo.0.sqlite",
+        "sha256": "7d8f162ee84dd62cf270463af2cabee31577d039aa294686ecb2749298f6b37e",
+        "counts_by_category": {
+          "barrier_helper": 5,
+          "scalar_compute": 5
+        },
+        "all_kernel_count": 10,
+        "all_kernels_fully_inside_range": true,
+        "all_kernels_uniquely_correlated_to_launch_on_nvtx_thread": true
+      },
+      {
+        "mode": "scalar-halo",
+        "mpi_rank": 1,
+        "filename": "scalar-halo.1.sqlite",
+        "sha256": "b3fde945c38f5710590391b5ae17e5b48edf6d12a20cd770b7f79c8040b6f53d",
+        "counts_by_category": {
+          "barrier_helper": 5,
+          "scalar_compute": 5
+        },
+        "all_kernel_count": 10,
+        "all_kernels_fully_inside_range": true,
+        "all_kernels_uniquely_correlated_to_launch_on_nvtx_thread": true
+      },
+      {
+        "mode": "persistent-halo",
+        "mpi_rank": 0,
+        "filename": "persistent-halo.0.sqlite",
+        "sha256": "47f7b10aaf0b54c65751efbfd99adb20d8250d81c43b4d56fd3aa90ea10c6fbd",
+        "counts_by_category": {
+          "persistent_halo": 1
+        },
+        "all_kernel_count": 1,
+        "all_kernels_fully_inside_range": true,
+        "all_kernels_uniquely_correlated_to_launch_on_nvtx_thread": true
+      },
+      {
+        "mode": "persistent-halo",
+        "mpi_rank": 1,
+        "filename": "persistent-halo.1.sqlite",
+        "sha256": "3267f910b015b77ef934f381a27a7244af92979149645e22aa1667b01ec8a5df",
+        "counts_by_category": {
+          "persistent_halo": 1
+        },
+        "all_kernel_count": 1,
+        "all_kernels_fully_inside_range": true,
+        "all_kernels_uniquely_correlated_to_launch_on_nvtx_thread": true
+      },
+      {
+        "mode": "block-signal",
+        "mpi_rank": 0,
+        "filename": "block-signal.0.sqlite",
+        "sha256": "7006bb7b3234a33045eb2747bdd8648d90847b2d9132381a6e1a8abaa842bd36",
+        "counts_by_category": {
+          "payload_exchange": 32,
+          "payload_prepare": 32
+        },
+        "all_kernel_count": 64,
+        "all_kernels_fully_inside_range": true,
+        "all_kernels_uniquely_correlated_to_launch_on_nvtx_thread": true
+      },
+      {
+        "mode": "block-signal",
+        "mpi_rank": 1,
+        "filename": "block-signal.1.sqlite",
+        "sha256": "ac48e4621c259414862b4496054fa2e3ba3f70da6095eb9610e06dff8f235e46",
+        "counts_by_category": {
+          "payload_exchange": 32,
+          "payload_prepare": 32
+        },
+        "all_kernel_count": 64,
+        "all_kernels_fully_inside_range": true,
+        "all_kernels_uniquely_correlated_to_launch_on_nvtx_thread": true
+      },
+      {
+        "mode": "persistent-signal",
+        "mpi_rank": 0,
+        "filename": "persistent-signal.0.sqlite",
+        "sha256": "5b66c89efa3c9dea02252263f92d1d067835dc33ed8d8f73339eda26ac8b1e0b",
+        "counts_by_category": {
+          "persistent_payload_signal": 1
+        },
+        "all_kernel_count": 1,
+        "all_kernels_fully_inside_range": true,
+        "all_kernels_uniquely_correlated_to_launch_on_nvtx_thread": true
+      },
+      {
+        "mode": "persistent-signal",
+        "mpi_rank": 1,
+        "filename": "persistent-signal.1.sqlite",
+        "sha256": "6a7e710b9f10d3542a9ee36e673a4fe682786007d7196c7cbc19d5828c81a0d8",
+        "counts_by_category": {
+          "persistent_payload_signal": 1
+        },
+        "all_kernel_count": 1,
+        "all_kernels_fully_inside_range": true,
+        "all_kernels_uniquely_correlated_to_launch_on_nvtx_thread": true
+      },
+      {
+        "mode": "persistent-atomic",
+        "mpi_rank": 0,
+        "filename": "persistent-atomic.0.sqlite",
+        "sha256": "587a498aae69feaee59fb8f0b7ad3e7a12e9611d196115dfce40da549edd5df2",
+        "counts_by_category": {
+          "persistent_payload_atomic": 1
+        },
+        "all_kernel_count": 1,
+        "all_kernels_fully_inside_range": true,
+        "all_kernels_uniquely_correlated_to_launch_on_nvtx_thread": true
+      },
+      {
+        "mode": "persistent-atomic",
+        "mpi_rank": 1,
+        "filename": "persistent-atomic.1.sqlite",
+        "sha256": "6c28d3b450882bfb02900f43fc91aedcceb567174cfb77a842cfe3bc12f3bff6",
+        "counts_by_category": {
+          "persistent_payload_atomic": 1
+        },
+        "all_kernel_count": 1,
+        "all_kernels_fully_inside_range": true,
+        "all_kernels_uniquely_correlated_to_launch_on_nvtx_thread": true
+      }
+    ],
+    "interpretation": "Launch counts establish the repeated-versus-fused schedule. One persistent kernel interval does not separate its internal epoch compute, communication, or wait times."
+  },
+  "ncu": {
+    "job_id": "1138",
+    "status": "passed",
+    "native_reports": 10,
+    "scope": "One selected application kernel per GPU and mode. Each fresh MPI invocation profiles one rank while its peer runs without NCU. Duration and launch/replay metadata only, not a broad hardware-counter set.",
+    "replay_mode": "kernel",
+    "cache_control": "none",
+    "clock_control": "none",
+    "captures": [
+      {
+        "mode": "persistent-signal",
+        "profiled_rank": 0,
+        "kernel": "void persistent_exchange<0>(float *, float *, float *, unsigned long *, unsigned long *, int *, int *, unsigned long, int, int, int, int, int)",
+        "pass_count": 1,
+        "warmup_passes": 0,
+        "backup_bytes": null,
+        "backup_bytes_observed": false,
+        "gpu_duration": {
+          "present": true,
+          "has_value": true,
+          "value": 205824.0,
+          "unit": "ns",
+          "rollup_operation": 4
+        },
+        "report": "kernel-persistent-signal-p0.ncu-rep"
+      },
+      {
+        "mode": "persistent-signal",
+        "profiled_rank": 1,
+        "kernel": "void persistent_exchange<0>(float *, float *, float *, unsigned long *, unsigned long *, int *, int *, unsigned long, int, int, int, int, int)",
+        "pass_count": 1,
+        "warmup_passes": 0,
+        "backup_bytes": null,
+        "backup_bytes_observed": false,
+        "gpu_duration": {
+          "present": true,
+          "has_value": true,
+          "value": 246432.0,
+          "unit": "ns",
+          "rollup_operation": 4
+        },
+        "report": "kernel-persistent-signal-p1.ncu-rep"
+      },
+      {
+        "mode": "persistent-halo",
+        "profiled_rank": 0,
+        "kernel": "persistent_halo(float *, float *, unsigned long *, unsigned long *, int, int, int, int, int, int)",
+        "pass_count": 1,
+        "warmup_passes": 0,
+        "backup_bytes": null,
+        "backup_bytes_observed": false,
+        "gpu_duration": {
+          "present": true,
+          "has_value": true,
+          "value": 29856.0,
+          "unit": "ns",
+          "rollup_operation": 4
+        },
+        "report": "kernel-persistent-halo-p0.ncu-rep"
+      },
+      {
+        "mode": "persistent-halo",
+        "profiled_rank": 1,
+        "kernel": "persistent_halo(float *, float *, unsigned long *, unsigned long *, int, int, int, int, int, int)",
+        "pass_count": 1,
+        "warmup_passes": 0,
+        "backup_bytes": null,
+        "backup_bytes_observed": false,
+        "gpu_duration": {
+          "present": true,
+          "has_value": true,
+          "value": 34688.0,
+          "unit": "ns",
+          "rollup_operation": 4
+        },
+        "report": "kernel-persistent-halo-p1.ncu-rep"
+      },
+      {
+        "mode": "persistent-atomic",
+        "profiled_rank": 0,
+        "kernel": "void persistent_exchange<1>(float *, float *, float *, unsigned long *, unsigned long *, int *, int *, unsigned long, int, int, int, int, int)",
+        "pass_count": 1,
+        "warmup_passes": 0,
+        "backup_bytes": null,
+        "backup_bytes_observed": false,
+        "gpu_duration": {
+          "present": true,
+          "has_value": true,
+          "value": 291008.0,
+          "unit": "ns",
+          "rollup_operation": 4
+        },
+        "report": "kernel-persistent-atomic-p0.ncu-rep"
+      },
+      {
+        "mode": "persistent-atomic",
+        "profiled_rank": 1,
+        "kernel": "void persistent_exchange<1>(float *, float *, float *, unsigned long *, unsigned long *, int *, int *, unsigned long, int, int, int, int, int)",
+        "pass_count": 1,
+        "warmup_passes": 0,
+        "backup_bytes": null,
+        "backup_bytes_observed": false,
+        "gpu_duration": {
+          "present": true,
+          "has_value": true,
+          "value": 340128.0,
+          "unit": "ns",
+          "rollup_operation": 4
+        },
+        "report": "kernel-persistent-atomic-p1.ncu-rep"
+      },
+      {
+        "mode": "block-signal",
+        "profiled_rank": 0,
+        "kernel": "block_exchange_signal(float *, float *, float *, unsigned long *, unsigned long *, unsigned long, int, int, int)",
+        "pass_count": 1,
+        "warmup_passes": 0,
+        "backup_bytes": null,
+        "backup_bytes_observed": false,
+        "gpu_duration": {
+          "present": true,
+          "has_value": true,
+          "value": 10848.0,
+          "unit": "ns",
+          "rollup_operation": 4
+        },
+        "report": "kernel-block-signal-p0.ncu-rep"
+      },
+      {
+        "mode": "block-signal",
+        "profiled_rank": 1,
+        "kernel": "block_exchange_signal(float *, float *, float *, unsigned long *, unsigned long *, unsigned long, int, int, int)",
+        "pass_count": 1,
+        "warmup_passes": 0,
+        "backup_bytes": null,
+        "backup_bytes_observed": false,
+        "gpu_duration": {
+          "present": true,
+          "has_value": true,
+          "value": 11040.0,
+          "unit": "ns",
+          "rollup_operation": 4
+        },
+        "report": "kernel-block-signal-p1.ncu-rep"
+      },
+      {
+        "mode": "scalar-halo",
+        "profiled_rank": 0,
+        "kernel": "scalar_halo(float *, const float *, int, int, int, int, int)",
+        "pass_count": 1,
+        "warmup_passes": 0,
+        "backup_bytes": null,
+        "backup_bytes_observed": false,
+        "gpu_duration": {
+          "present": true,
+          "has_value": true,
+          "value": 5056.0,
+          "unit": "ns",
+          "rollup_operation": 4
+        },
+        "report": "kernel-scalar-halo-p0.ncu-rep"
+      },
+      {
+        "mode": "scalar-halo",
+        "profiled_rank": 1,
+        "kernel": "scalar_halo(float *, const float *, int, int, int, int, int)",
+        "pass_count": 1,
+        "warmup_passes": 0,
+        "backup_bytes": null,
+        "backup_bytes_observed": false,
+        "gpu_duration": {
+          "present": true,
+          "has_value": true,
+          "value": 4384.0,
+          "unit": "ns",
+          "rollup_operation": 4
+        },
+        "report": "kernel-scalar-halo-p1.ncu-rep"
+      }
+    ],
+    "full_application_output": "Every invocation completed native and independent full-output checks with zero maximum error.",
+    "memory_backup_evidence": "Backup-byte metrics are absent from each native report and remain null. No memory save/restore is inferred from the observed one profiling pass, zero warmup passes and the documented single-pass kernel-replay contract. It is not a measured zero-byte value.",
+    "replay_authority": "https://docs.nvidia.com/nsight-compute/2025.3/ProfilingGuide/index.html#kernel-replay",
+    "earlier_attempts": [
+      {
+        "job_id": "1133",
+        "result": "Whole-MPI application-range collection stalled after completed Nsys captures and was interrupted."
+      },
+      {
+        "job_id": "1134",
+        "result": "Executable-filtered whole-MPI application-range collection stalled and was interrupted."
+      },
+      {
+        "job_id": "1136",
+        "result": "Pure preparation preflight completed in one pass with verified output. The collector then rejected an absent backup-byte field. Native report inspection established absence rather than a reported zero."
+      }
+    ],
+    "observed_diagnostic": "NVSHMEM IBRC device-enumeration messages also appear in successful local captures. They do not establish a cause for the earlier stalls or validate inter-node transport.",
+    "interpretation": "Profiler instrumentation changes scheduling and peer waits. These durations are diagnostic, not unprofiled latency or speedup evidence."
+  },
+  "unprofiled_diagnostic": {
+    "job_id": "1137",
+    "elements_per_edge": 263,
+    "timed_epochs": 32,
+    "warmup_epochs": 2,
+    "timing_scope": "Maximum-rank completed steady solve divided by timed epochs. Includes stream-ordered quiet and stream completion. Excludes setup, warmup, reset, CPU verification and cleanup.",
+    "sample_order": [
+      "block-signal",
+      "persistent-signal",
+      "persistent-signal",
+      "block-signal",
+      "block-signal",
+      "persistent-signal",
+      "persistent-signal",
+      "block-signal"
+    ],
+    "summary": {
+      "block-signal": {
+        "samples_ms": [
+          0.01453046875,
+          0.014562,
+          0.01455103125,
+          0.01459671875
+        ],
+        "median_ms": 0.014556515625,
+        "min_ms": 0.01453046875,
+        "max_ms": 0.01459671875,
+        "stdev_ms": 2.771755064814094e-05
+      },
+      "persistent-signal": {
+        "samples_ms": [
+          0.00733053125,
+          0.00735490625,
+          0.00737709375,
+          0.00734303125001
+        ],
+        "median_ms": 0.007348968750005,
+        "min_ms": 0.00733053125,
+        "max_ms": 0.00737709375,
+        "stdev_ms": 1.9815843236497208e-05
+      }
+    },
+    "all_samples_checked_elements": 33664,
+    "all_samples_max_abs_error": 0,
+    "accepted_speedup_claim": false,
+    "interpretation": "Short interleaved native diagnostic. It does not replace a full harness result or establish overall stencil scaling."
+  },
+  "retained_native_profile_and_export_sha256": {
+    "device-profiles-1133/block-signal.0.nsys-rep": "02c086282f823bae1dd9ba74476fc1b2b478f3d56deea32a732f32721951bb9f",
+    "device-profiles-1133/block-signal.0.sqlite": "7006bb7b3234a33045eb2747bdd8648d90847b2d9132381a6e1a8abaa842bd36",
+    "device-profiles-1133/block-signal.1.nsys-rep": "28536f21adb805da53caa8f5186bbb2f82d67e692799e00f12ddefce64f5c50e",
+    "device-profiles-1133/block-signal.1.sqlite": "ac48e4621c259414862b4496054fa2e3ba3f70da6095eb9610e06dff8f235e46",
+    "device-profiles-1133/persistent-atomic.0.nsys-rep": "86689e5fdb2eec022867b1e7bdecf8a77cfb9074f68a64a359508fc034afede3",
+    "device-profiles-1133/persistent-atomic.0.sqlite": "587a498aae69feaee59fb8f0b7ad3e7a12e9611d196115dfce40da549edd5df2",
+    "device-profiles-1133/persistent-atomic.1.nsys-rep": "5754bf6bbda187b9e3cb7c80ec3403e8539818c74ae138794cde6358dbbb3d5e",
+    "device-profiles-1133/persistent-atomic.1.sqlite": "6c28d3b450882bfb02900f43fc91aedcceb567174cfb77a842cfe3bc12f3bff6",
+    "device-profiles-1133/persistent-halo.0.nsys-rep": "90f7b19ff2b9e5958c73a874a8844befeb7ec10f63e69791030a842717affdf4",
+    "device-profiles-1133/persistent-halo.0.sqlite": "47f7b10aaf0b54c65751efbfd99adb20d8250d81c43b4d56fd3aa90ea10c6fbd",
+    "device-profiles-1133/persistent-halo.1.nsys-rep": "b64e358d85b8ee8ee8cdb241187229ea2d1ffbaec549b9a4166f327e3f899395",
+    "device-profiles-1133/persistent-halo.1.sqlite": "3267f910b015b77ef934f381a27a7244af92979149645e22aa1667b01ec8a5df",
+    "device-profiles-1133/persistent-signal.0.nsys-rep": "b71f3f72360e9f3303552ddfc305921ad3cf65ad720dad2f9675d142701f38d4",
+    "device-profiles-1133/persistent-signal.0.sqlite": "5b66c89efa3c9dea02252263f92d1d067835dc33ed8d8f73339eda26ac8b1e0b",
+    "device-profiles-1133/persistent-signal.1.nsys-rep": "0722ae88adf927e23e325b0c2397d6ca679385f6d3da5055761d0ab730856ba1",
+    "device-profiles-1133/persistent-signal.1.sqlite": "6a7e710b9f10d3542a9ee36e673a4fe682786007d7196c7cbc19d5828c81a0d8",
+    "device-profiles-1133/scalar-halo.0.nsys-rep": "23b98aaf6c9d6159561ab5c400a1d3f121c45833e254b69fc1e35f13d63f08ae",
+    "device-profiles-1133/scalar-halo.0.sqlite": "7d8f162ee84dd62cf270463af2cabee31577d039aa294686ecb2749298f6b37e",
+    "device-profiles-1133/scalar-halo.1.nsys-rep": "9bee10b451dea379616362831326e046eead2d25ab13bbee4c8f220f25b9fcc2",
+    "device-profiles-1133/scalar-halo.1.sqlite": "b3fde945c38f5710590391b5ae17e5b48edf6d12a20cd770b7f79c8040b6f53d",
+    "device-ncu-single-1138/kernel-block-signal-p0.ncu-rep": "b6a08a51be086371907e660f6f66d97a3ae6a6281bd52315105981709e42cfbe",
+    "device-ncu-single-1138/kernel-block-signal-p1.ncu-rep": "e31eee3ffa9cdd42b166dd84901f407db81f3ccbd4e17371e609b8e5087c6823",
+    "device-ncu-single-1138/kernel-persistent-atomic-p0.ncu-rep": "5d922e7e7b0c32a28dab07ca21afd3d597d376665132762a0490c23d5c343588",
+    "device-ncu-single-1138/kernel-persistent-atomic-p1.ncu-rep": "d10425360613a5fad66f1b45aa2be8d1abb014e289733652b7baa9626f17f21b",
+    "device-ncu-single-1138/kernel-persistent-halo-p0.ncu-rep": "39bee86fed7c020fc8d4e7166c19b0be65db37331b7399255343213b86358dd4",
+    "device-ncu-single-1138/kernel-persistent-halo-p1.ncu-rep": "51a3c6a8dede05ea8df8d6e754164582816da4833be1d3feea65b0198a969644",
+    "device-ncu-single-1138/kernel-persistent-signal-p0.ncu-rep": "5a425295dcd7e92dc2ba85cbaf9f17cb06fb8ad0c70727e21be7a5119b07496d",
+    "device-ncu-single-1138/kernel-persistent-signal-p1.ncu-rep": "046b5fe5f9d02c3e4088769c81ba5b9802fe95d5fa35a4f5e36162e19ee81e60",
+    "device-ncu-single-1138/kernel-scalar-halo-p0.ncu-rep": "794889bf7b5321c78ecee94a2dd966c0ff99fbe83b9eecc0d7b97831cee9990f",
+    "device-ncu-single-1138/kernel-scalar-halo-p1.ncu-rep": "4f7697587025613007e6ac9c2a954f5f5c3a518f1d8bdaf3b6f674ea4b3f6bbf",
+    "device-ncu-single-1138/raw-block-signal-p0.log": "d4b2b3ea629c0a164a1e3d641c5711c771ea840a2576d053d47173dc194727aa",
+    "device-ncu-single-1138/raw-block-signal-p1.log": "ae38bde62b3ef26c20b5a095461982ac640c73c5e73f58f6348af32b4282bba8",
+    "device-ncu-single-1138/raw-persistent-atomic-p0.log": "18125bcbd3b9092004e0b0b15c035238e22bfc918f268a45e022b74ede738d4d",
+    "device-ncu-single-1138/raw-persistent-atomic-p1.log": "71200fa1f9e92e875cbdd7907eeba53c5c66ffd84c8164a384dadf20632c4ca8",
+    "device-ncu-single-1138/raw-persistent-halo-p0.log": "a37c41e5f25c135db1b8aee2269e10d3a1565f131232205123dde05c12188a90",
+    "device-ncu-single-1138/raw-persistent-halo-p1.log": "4eb6b03d11eea6721bb209d69e326f116bc3c34947491e16395718e5de581468",
+    "device-ncu-single-1138/raw-persistent-signal-p0.log": "90b98215524d6e6b05afa5ed77b7a4299ce515a5cbf652915286e71290af0bd6",
+    "device-ncu-single-1138/raw-persistent-signal-p1.log": "417d9acacefff5a272a6c362ad12e6b01ac03881c40ad0f0269e678c503ec44e",
+    "device-ncu-single-1138/raw-scalar-halo-p0.log": "07a5d8466826ec04a67b38f2e10c72016f13c7fe916eba3d225b345f75fb83e4",
+    "device-ncu-single-1138/raw-scalar-halo-p1.log": "0c37ee85fa5d65de46ed73bb19dfa1fb9ddbb5dcfec06565c2ba7c571f8bedad",
+    "device-ncu-single-1138/replay-metadata-block-signal-p0.json": "816403e4d26948ffa9abc17c6f6c56f7c8ffd8ad75b257b02a4c02c0779560a6",
+    "device-ncu-single-1138/replay-metadata-block-signal-p1.json": "4fd90506dc0f8583205ae1043bf374dae708f15346000ff96c3adaefc782e532",
+    "device-ncu-single-1138/replay-metadata-persistent-atomic-p0.json": "71f2ea0833f50c3e9605c8b75ecfbfd600d4191d471cc16119ba8b163f9d5838",
+    "device-ncu-single-1138/replay-metadata-persistent-atomic-p1.json": "476c6ef4672170b1643a3bc15c4829e4e1a8b0266aa4068b35252242d28c15e4",
+    "device-ncu-single-1138/replay-metadata-persistent-halo-p0.json": "f5b6d7c10dc9f4db465298a5df7bbdbf1c65faea8c8301802fb6a578a2326d6a",
+    "device-ncu-single-1138/replay-metadata-persistent-halo-p1.json": "ec7cbc99d24ef92522df766530e13f0849e7d9bc9c688ffcb9ff4b4bbbac05ce",
+    "device-ncu-single-1138/replay-metadata-persistent-signal-p0.json": "df3785429cd443dedc54c06077aa98ce59dc50f590ec6308a32a2fd7903f03c2",
+    "device-ncu-single-1138/replay-metadata-persistent-signal-p1.json": "4f105e5ceedd3b2c14a0034d4afa3ce6faa68162501cfb332cdd15807eaaea5d",
+    "device-ncu-single-1138/replay-metadata-scalar-halo-p0.json": "59bb1b8a7506d50279f1751fb2dad041347a5804f8f1ed6e9caa8646b37e590e",
+    "device-ncu-single-1138/replay-metadata-scalar-halo-p1.json": "296a675ecf33c7fef49e16145e131ad14df460f4e2a3bf6c6e14cb3d0d127136"
+  },
+  "limits": [
+    "One CTA per PE is deliberate. A general multi-CTA persistent stencil scheduler is not implemented or qualified.",
+    "Only two GPUs on one host were tested. Larger rank counts, inter-node transport, IBGDA and NCCL GIN were not validated.",
+    "NCU uses a verified single-pass duration collection. Full persistent-kernel hardware-counter coverage was not collected.",
+    "The source base commit plus file hashes identifies these uncommitted changes. No commit, push or publication-readiness verdict is implied."
+  ],
+  "recorded_source_snapshot": {
+    "commit": "55f23372156cf2a31f4696c0f41fccd5c989f61f",
+    "native_source_url": "https://github.com/cfregly/ai-performance-engineering/blob/55f23372156cf2a31f4696c0f41fccd5c989f61f/code/labs/nvshmem_device/nvshmem_device_native.cu",
+    "scope": "Retrospective source snapshot preserving executed native bytes. Original runs used the earlier base commit plus source overlays."
+  },
+  "profiler_artifact_access": "Historical native captures and exports remain private because they contain host and systemwide process metadata. Their hashes identify retained evidence and are not public download links."
+}
