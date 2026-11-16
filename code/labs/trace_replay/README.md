@@ -29,8 +29,9 @@ PYTHONPATH=code python -m cli.aisp tools trace-replay -- validate \
 The example creates illustrative inputs. Its source remains
 `generated_by_recipe` after capture. CPU capture executes the existing reference
 functions and records `capture_backend: cpu_reference`. It does not execute or
-qualify the optimized CUDA kernels. `--device cuda` executes each native baseline
-and compares its full result with the reference before retaining the outputs.
+qualify the optimized CUDA kernels. `--device cuda` retains each native baseline
+result, then compares the full result with the reference and marks mismatches
+failed.
 NVFP4 native execution requires SM100. CUDA capture is also separate from the
 paired performance run.
 
