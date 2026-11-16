@@ -1,0 +1,8 @@
+/jacobi_native
+/jacobi_native.build.json
+/__pycache__/
+/*.nsys-rep
+/*.qdstrm
+/*.ncu-rep
+/*.sqlite
+/*.f32

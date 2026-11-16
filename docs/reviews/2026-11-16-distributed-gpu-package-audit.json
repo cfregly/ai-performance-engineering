@@ -1,0 +1,399 @@
+{
+  "approved_copy_checks": [
+    {
+      "file": "asset-manifest-1141.json",
+      "matches_approved_source_bytes": true
+    },
+    {
+      "file": "asset-manifest-1142.json",
+      "matches_approved_source_bytes": true
+    },
+    {
+      "file": "asset-manifest-1143.json",
+      "matches_approved_source_bytes": true
+    },
+    {
+      "file": "privacy-audit-1141.json",
+      "matches_approved_source_bytes": true
+    },
+    {
+      "file": "privacy-audit.json",
+      "matches_approved_source_bytes": true
+    },
+    {
+      "file": "analyze.py",
+      "matches_approved_source_bytes": true
+    },
+    {
+      "file": "profile-analysis.json",
+      "matches_approved_source_bytes": true
+    },
+    {
+      "file": "scheduler-receipts.json",
+      "matches_approved_source_bytes": true
+    }
+  ],
+  "archive_checks": [
+    {
+      "archive": "landing-public-smoke-1141.tar.gz",
+      "bytes": 11124820,
+      "directory_members": 24,
+      "expected_regular_files": 99,
+      "header_and_member_finding_counts": {
+        "missing_manifested_regular_member": 0
+      },
+      "job_id": "1141",
+      "matched_regular_files": 99,
+      "privacy_audit_reuse": "Existing exact asset manifest privacy audit reused. No numerical checks rerun.",
+      "sha256": "53fd8396d8ef9b67caefaa56b7e847cfb7ae62a6e5c631cb4d43e0013318fa16"
+    },
+    {
+      "archive": "landing-public-profiles-1142.tar.gz",
+      "bytes": 162969282,
+      "directory_members": 2,
+      "expected_regular_files": 95,
+      "header_and_member_finding_counts": {
+        "missing_manifested_regular_member": 0
+      },
+      "job_id": "1142",
+      "matched_regular_files": 95,
+      "privacy_audit_reuse": "Existing exact asset manifest privacy audit reused. No numerical checks rerun.",
+      "sha256": "60651c9d851eeee77cf35aae8409fc7ceb7baf441fcbe38cd86571cecd5a71e6"
+    },
+    {
+      "archive": "landing-public-ncu-1143.tar.gz",
+      "bytes": 12677507,
+      "directory_members": 2,
+      "expected_regular_files": 99,
+      "header_and_member_finding_counts": {
+        "missing_manifested_regular_member": 0
+      },
+      "job_id": "1143",
+      "matched_regular_files": 99,
+      "privacy_audit_reuse": "Existing exact asset manifest privacy audit reused. No numerical checks rerun.",
+      "sha256": "6ab7b11dc36029cc3bd65eb3b7ec6a8df13714efffa6272f5aa2cc9caf2d3c5c"
+    }
+  ],
+  "blocking_class_counts": {
+    "archive_missing_manifested_regular_member": 0,
+    "changed_approved_copy": 0,
+    "checksum_file_coverage_gap": 0,
+    "checksum_mismatch": 0,
+    "missing_disclosure_1142_collector_failure_preserved": 0,
+    "missing_disclosure_actual_gpu_uuid_metadata_disclosed": 0,
+    "missing_disclosure_diagnostic_noncanonical_scope": 0,
+    "missing_disclosure_parser_runtime_boundary": 0,
+    "missing_disclosure_publication_boundary_preserved": 0,
+    "missing_disclosure_scientific_profiles_declared": 0,
+    "missing_disclosure_source_identity_matches": 0,
+    "missing_disclosure_synthetic_identity_disclosed": 0,
+    "missing_disclosure_vendor_build_metadata_disclosed": 0,
+    "package_changed_during_gate": 0,
+    "profile_package_file_coverage_gap": 0,
+    "profile_package_file_mismatch": 0
+  },
+  "checksum_checks": [
+    {
+      "file": "PROFILE_PACKAGE.json",
+      "matches": true
+    },
+    {
+      "file": "README.md",
+      "matches": true
+    },
+    {
+      "file": "analyze.py",
+      "matches": true
+    },
+    {
+      "file": "asset-manifest-1141.json",
+      "matches": true
+    },
+    {
+      "file": "asset-manifest-1142.json",
+      "matches": true
+    },
+    {
+      "file": "asset-manifest-1143.json",
+      "matches": true
+    },
+    {
+      "file": "collection-1141.py",
+      "matches": true
+    },
+    {
+      "file": "collection-1142.py",
+      "matches": true
+    },
+    {
+      "file": "collection-1143.py",
+      "matches": true
+    },
+    {
+      "file": "landing-public-ncu-1143.tar.gz",
+      "matches": true
+    },
+    {
+      "file": "landing-public-profiles-1142.tar.gz",
+      "matches": true
+    },
+    {
+      "file": "landing-public-smoke-1141.tar.gz",
+      "matches": true
+    },
+    {
+      "file": "privacy-audit-1141.json",
+      "matches": true
+    },
+    {
+      "file": "privacy-audit.json",
+      "matches": true
+    },
+    {
+      "file": "profile-analysis.json",
+      "matches": true
+    },
+    {
+      "file": "scheduler-receipts.json",
+      "matches": true
+    }
+  ],
+  "disclosure_checks": {
+    "1142_collector_failure_preserved": true,
+    "actual_gpu_uuid_metadata_disclosed": true,
+    "diagnostic_noncanonical_scope": true,
+    "parser_runtime_boundary": true,
+    "publication_boundary_preserved": true,
+    "scientific_profiles_declared": true,
+    "source_identity_matches": true,
+    "synthetic_identity_disclosed": true,
+    "vendor_build_metadata_disclosed": true
+  },
+  "file_count": 17,
+  "full_new_text_checks": [
+    {
+      "benign_audit_boolean_attestation_matches": 0,
+      "bytes": 3708,
+      "file": "PROFILE_PACKAGE.json",
+      "finding_class_counts": {},
+      "sha256": "8e26bc86764f4a4e3f5eced6b5149e93281f2beba1276e4ce6830a8108cf778d"
+    },
+    {
+      "benign_audit_boolean_attestation_matches": 0,
+      "bytes": 4661,
+      "file": "README.md",
+      "finding_class_counts": {},
+      "sha256": "23ce762b0c94f3ad26e1d09a6f5304841f1ad4b47023148963bc43e57d67cd91"
+    },
+    {
+      "benign_audit_boolean_attestation_matches": 0,
+      "bytes": 1419,
+      "file": "SHA256SUMS",
+      "finding_class_counts": {},
+      "sha256": "411e23f817fa77e406fba44470e42f5a426da3664646e53fa28ef8af2bc13e8c"
+    },
+    {
+      "benign_audit_boolean_attestation_matches": 0,
+      "bytes": 29945,
+      "file": "analyze.py",
+      "finding_class_counts": {},
+      "sha256": "a1523caa1751d8b25eb3016e36c9337f6eb95c42065d022ccf114f19cbacdc66"
+    },
+    {
+      "benign_audit_boolean_attestation_matches": 0,
+      "bytes": 18442,
+      "file": "asset-manifest-1141.json",
+      "finding_class_counts": {},
+      "sha256": "e9fc347b4de8d4f389d49b212d0414bda92e74704fe7d85d29a6db7ae0ff7114"
+    },
+    {
+      "benign_audit_boolean_attestation_matches": 0,
+      "bytes": 15739,
+      "file": "asset-manifest-1142.json",
+      "finding_class_counts": {},
+      "sha256": "7641cf4ae061c803960bf5eb2e90dbb46dca1c92f5d8cabe7070545dbd6cac6c"
+    },
+    {
+      "benign_audit_boolean_attestation_matches": 0,
+      "bytes": 16751,
+      "file": "asset-manifest-1143.json",
+      "finding_class_counts": {},
+      "sha256": "a047bcf55a7442e13678ac330d7ea406688d9ede1af25e27022a1b1b02bb57f8"
+    },
+    {
+      "benign_audit_boolean_attestation_matches": 0,
+      "bytes": 9704,
+      "file": "collection-1141.py",
+      "finding_class_counts": {},
+      "sha256": "8ea1821175b6fe3e4e0dd9bf5a5f6ebe2c1aa1bf311e75f409aab44c290885bd"
+    },
+    {
+      "benign_audit_boolean_attestation_matches": 0,
+      "bytes": 16778,
+      "file": "collection-1142.py",
+      "finding_class_counts": {},
+      "sha256": "c2bcb1e023b7a1ced6337449e1d68c5690b29d343e0b110c768814521e54c6f5"
+    },
+    {
+      "benign_audit_boolean_attestation_matches": 0,
+      "bytes": 18113,
+      "file": "collection-1143.py",
+      "finding_class_counts": {},
+      "sha256": "32638d403e47e5e27e0f29f96b8f08f99d1b2815f4216df5111388685648943d"
+    },
+    {
+      "benign_audit_boolean_attestation_matches": 1,
+      "bytes": 5925,
+      "file": "privacy-audit-1141.json",
+      "finding_class_counts": {},
+      "sha256": "43af99ad57e3a5b469e51936b3db035a60ca3cf14d114b79a268b9c722175bef"
+    },
+    {
+      "benign_audit_boolean_attestation_matches": 0,
+      "bytes": 41729,
+      "file": "privacy-audit.json",
+      "finding_class_counts": {},
+      "sha256": "b4f8da284930c3fabca5e73df901ebfb7a72f372a36ceed4cd62f1bab780873c"
+    },
+    {
+      "benign_audit_boolean_attestation_matches": 0,
+      "bytes": 349437,
+      "file": "profile-analysis.json",
+      "finding_class_counts": {},
+      "sha256": "2c91b09c0dadccf6d5da6c51c9eec6ab64d2761355bc03f4deb0a10079088890"
+    },
+    {
+      "benign_audit_boolean_attestation_matches": 0,
+      "bytes": 973,
+      "file": "scheduler-receipts.json",
+      "finding_class_counts": {},
+      "sha256": "40654e72528950713c6683b3fbd0bf144a162b1649a722499e8208a5f81a99b8"
+    }
+  ],
+  "gate_script_sha256": "e315b6c1bdca71abfc37677f9dc2eb3a66833deb8d1e8b69ffffce9fc5e640ac",
+  "package_manifest_sha256": "cec10967c5a2df9478dd8344e8826216adca396e4ea3f797daf8c6b8cfcbc5a9",
+  "package_stable_during_gate": true,
+  "preserved_normalization_finding": "Original 1141 archive had three absolute pytest convenience symlinks. Repacked public archive omits them and retains all 99 manifested regular-file bytes.",
+  "profile_package_file_checks": [
+    {
+      "file": "README.md",
+      "matches": true
+    },
+    {
+      "file": "analyze.py",
+      "matches": true
+    },
+    {
+      "file": "asset-manifest-1141.json",
+      "matches": true
+    },
+    {
+      "file": "asset-manifest-1142.json",
+      "matches": true
+    },
+    {
+      "file": "asset-manifest-1143.json",
+      "matches": true
+    },
+    {
+      "file": "collection-1141.py",
+      "matches": true
+    },
+    {
+      "file": "collection-1142.py",
+      "matches": true
+    },
+    {
+      "file": "collection-1143.py",
+      "matches": true
+    },
+    {
+      "file": "landing-public-ncu-1143.tar.gz",
+      "matches": true
+    },
+    {
+      "file": "landing-public-profiles-1142.tar.gz",
+      "matches": true
+    },
+    {
+      "file": "landing-public-smoke-1141.tar.gz",
+      "matches": true
+    },
+    {
+      "file": "privacy-audit-1141.json",
+      "matches": true
+    },
+    {
+      "file": "privacy-audit.json",
+      "matches": true
+    },
+    {
+      "file": "profile-analysis.json",
+      "matches": true
+    },
+    {
+      "file": "scheduler-receipts.json",
+      "matches": true
+    }
+  ],
+  "prototype_1141_vendor_addendum": {
+    "actual_private_scan": "Existing exact 99-file privacy audit reused. No repeat actual-private SQLite scan.",
+    "classification": "Static MPI vendor package build metadata. Not current namespace or physical host identity.",
+    "native_report_byte_matches": 1,
+    "sqlite_decoded_vendor_cells": 1,
+    "vendor_metadata_file_count": 46,
+    "vendor_metadata_filenames": [
+      "completion.json",
+      "nsys-public-prototype.log",
+      "public-prototype.0.nsys-rep",
+      "public-prototype.0.sqlite",
+      "public-prototype.json",
+      "pytest-temp/test_native_timed_output_match0/result.json",
+      "pytest-temp/test_native_timed_output_match1/result.json",
+      "pytest-temp/test_native_timed_output_match2/result.json",
+      "pytest-temp/test_native_timed_output_match3/result.json",
+      "pytest-temp/test_native_timed_output_match4/result.json",
+      "pytest-temp/test_native_timed_output_match5/result.json",
+      "pytest-temp/test_real_native_output_matche0/result.json",
+      "pytest-temp/test_real_native_output_matche0/result.json.native.json",
+      "pytest-temp/test_real_native_output_matche0/result.json.stdout.log",
+      "pytest-temp/test_real_native_output_matche1/result.json",
+      "pytest-temp/test_real_native_output_matche1/result.json.native.json",
+      "pytest-temp/test_real_native_output_matche1/result.json.stdout.log",
+      "pytest-temp/test_real_native_output_matche2/result.json",
+      "pytest-temp/test_real_native_output_matche2/result.json.native.json",
+      "pytest-temp/test_real_native_output_matche2/result.json.stdout.log",
+      "pytest-temp/test_real_native_output_matche3/result.json",
+      "pytest-temp/test_real_native_output_matche3/result.json.native.json",
+      "pytest-temp/test_real_native_output_matche3/result.json.stdout.log",
+      "pytest-temp/test_real_native_output_matche4/result.json",
+      "pytest-temp/test_real_native_output_matche4/result.json.native.json",
+      "pytest-temp/test_real_native_output_matche4/result.json.stdout.log",
+      "pytest-temp/test_real_native_output_matche5/result.json",
+      "pytest-temp/test_real_native_output_matche5/result.json.native.json",
+      "pytest-temp/test_real_native_output_matche5/result.json.stdout.log",
+      "pytest-temp/test_real_native_output_matche6/result.json",
+      "pytest-temp/test_real_native_output_matche6/result.json.native.json",
+      "pytest-temp/test_real_native_output_matche6/result.json.stdout.log",
+      "pytest-temp/test_real_native_output_matche7/result.json",
+      "pytest-temp/test_real_native_output_matche7/result.json.native.json",
+      "pytest-temp/test_real_native_output_matche7/result.json.stdout.log",
+      "pytest-temp/test_real_native_output_matche8/result.json",
+      "pytest-temp/test_real_native_output_matche8/result.json.native.json",
+      "pytest-temp/test_real_native_output_matche8/result.json.stdout.log",
+      "wrappers/block-signal_zkdj12_m/result_1.json",
+      "wrappers/block-signal_zkdj12_m/result_1.json.native.json",
+      "wrappers/block-signal_zkdj12_m/result_1.json.stdout.log",
+      "wrappers/overlap_92o2u2ca/result_1.json",
+      "wrappers/persistent-signal_jb_mc3ol/result_1.json",
+      "wrappers/persistent-signal_jb_mc3ol/result_1.json.native.json",
+      "wrappers/persistent-signal_jb_mc3ol/result_1.json.stdout.log",
+      "wrappers/serialized_ajy86sw4/result_1.json"
+    ]
+  },
+  "schema": "tutorial_profile_package.final_gate.v1",
+  "scope_limit": "Exact privacy, packaging, header, disclosure and hash gate only. No numerical checks, GPU, SSH, external models, publication, or repository/package edits.",
+  "source_commit": "ed588c27c6adfe3cfb0de6d1b06b143b830d3eeb",
+  "total_package_bytes": 187304933,
+  "verdict": "PASS_WITH_DISCLOSED_VENDOR_BUILD_METADATA"
+}

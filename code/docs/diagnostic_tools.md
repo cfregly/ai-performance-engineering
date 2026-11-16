@@ -12,6 +12,8 @@ checks and the remaining hardware qualification.
 | What changed on the selected RoCE or InfiniBand path? | `aisp tools fabric-diagnose` | [Fabric diagnosis](../cluster/fabric/diagnostics.md) |
 | Is the limit in host RDMA, GPU RDMA or collectives? | `aisp tools transport-diagnose` | [Transport diagnosis](../cluster/fabric/transport.md) |
 | Are collectives waiting, contending or losing overlap? | `aisp tools collective-diagnose` | [Collective diagnosis](../ch04/collective_diagnosis.md) |
+| How do grouped P2P calls, overlap, and registered buffers change one fixed numerical workload? | `aisp tools multi-gpu-communication` | [MPI, NCCL, and NVSHMEM lab](../labs/multi_gpu_communication/README.md) |
+| How do GPU-issued NVSHMEM puts, notifications, waits, and buffer reuse work together? | `aisp tools nvshmem-device` | [NVSHMEM device lab](../labs/nvshmem_device/README.md) |
 | Which engine and serving architecture meets the workload's latency objectives? | `aisp tools serving-compare` | [Serving comparison](../labs/serving_comparison/README.md) |
 | How do I expose the supported SGLang build's native failure counters before its first failure? | `aisp tools serving-prepare-runtime` | [Runtime preparation](../labs/serving_comparison/README.md#prepare-sglang-failure-counters) |
 | Does a workload symptom coincide with fabric evidence? | `aisp tools cross-layer-diagnose` | [Cross-layer diagnosis](../core/analysis/cross_layer_diagnosis.md) |
@@ -23,6 +25,8 @@ python -m cli.aisp tools network-diagnose -- --help
 python -m cli.aisp tools fabric-diagnose -- --help
 python -m cli.aisp tools transport-diagnose -- --help
 python -m cli.aisp tools collective-diagnose -- --help
+python -m cli.aisp tools multi-gpu-communication -- --help
+python -m cli.aisp tools nvshmem-device -- --help
 python -m cli.aisp tools serving-compare -- --help
 python -m cli.aisp tools serving-prepare-runtime -- --help
 python -m cli.aisp tools cross-layer-diagnose -- --help
@@ -33,6 +37,11 @@ The MCP `tools_diagnostics` tool dispatches the same command registry. For examp
 ```json
 {"tool": "network-diagnose", "args": ["--help"], "timeout_seconds": 60}
 ```
+
+MCP dispatch is restricted to its declared diagnostic-tool allowlist. The native
+`multi-gpu-communication` and `nvshmem-device` labs are CLI entrypoints and are
+not added to that MCP allowlist. Each needs a separately built native binary and
+an explicitly allocated set of GPUs.
 
 Use an existing serving deployment or explicitly selected host pair for load
 tests. State collection and offline analysis do not configure switches. The tools

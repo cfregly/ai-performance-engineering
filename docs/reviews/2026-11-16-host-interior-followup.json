@@ -1,0 +1,165 @@
+{
+  "schema": "distributed_gpu.host_interior_followup.v1",
+  "canonical": false,
+  "scope": "Two correctness cases with a nonempty interior. No new profiler capture or speedup claim.",
+  "source_commit": "96a523686765f0664f8d5abd74fcd1dd3a2a86c2",
+  "source_sha256": {
+    "jacobi_contract.hpp": "e0ed5c94de560a3cca6cd1cf7d8ecb3d5974704940a4a30c3755d1eac4bd8aa3",
+    "jacobi_native.cu": "41e0c506d77a9acf38e93137358efd96f10d9fa506d1b6e01245dfc3b23e93ed",
+    "Makefile": "12f9c14ca4718ed4ca73fccba4bc74658d7f4d044bc83d1b316d010ee80b35cb"
+  },
+  "binary_sha256": "e7c3b9a974510363c608173bc1a410498d07538f27c0740964438ad1674c48c0",
+  "test_source_sha256": "a2ba6b08368e827ba88101288e351242f55d4e52f6ae589eeeb9090200dd29bb",
+  "hardware": "Two NVIDIA B200 GPUs on one host",
+  "job_id": 1146,
+  "job_state": "COMPLETED",
+  "job_exit_code": "0:0",
+  "job_elapsed_seconds": 15,
+  "test_result": "2 passed in 10.55s",
+  "started_at_utc": "2026-11-16T20:34:40Z",
+  "ended_at_utc": "2026-11-16T20:34:55Z",
+  "workload": {
+    "nx": 17,
+    "ny": 67,
+    "iterations": 5,
+    "warmup": 1,
+    "ranks": 2,
+    "schedule": "overlap",
+    "stopping_policy": "fixed_iterations",
+    "owned_rows_per_rank": [
+      33,
+      32
+    ],
+    "interior_rows_per_rank": [
+      31,
+      30
+    ]
+  },
+  "cases": [
+    {
+      "backend": "mpi",
+      "native_max_abs_error": 0,
+      "checked_owned_elements": 1105,
+      "checked_received_halo_elements": 68,
+      "independent_full_output": {
+        "checked_elements": 1139,
+        "max_abs_error": 0.0,
+        "output_sha256": "1ee00e0e3a1e672ec7b526a88613c46004b78a94a180f0993289b5802099f9e3",
+        "method": "independent_numpy_float32_full_mesh"
+      }
+    },
+    {
+      "backend": "nvshmem",
+      "native_max_abs_error": 0,
+      "checked_owned_elements": 1105,
+      "checked_received_halo_elements": 68,
+      "independent_full_output": {
+        "checked_elements": 1139,
+        "max_abs_error": 0.0,
+        "output_sha256": "1ee00e0e3a1e672ec7b526a88613c46004b78a94a180f0993289b5802099f9e3",
+        "method": "independent_numpy_float32_full_mesh"
+      }
+    }
+  ],
+  "tool_defaults": {
+    "nsys": "2025.3.2.474",
+    "ncu": "2025.3.1.0 build 36398880",
+    "before": {
+      "nsys": {
+        "path": "/usr/local/cuda-13.0/bin/nsys",
+        "realpath": "/usr/local/cuda-13.0/bin/nsys",
+        "sha256": "7bcae8a7ea636e62fdbf53e4df87fe0348efe70ed6630b6a47ef79d6312a4786"
+      },
+      "ncu": {
+        "path": "/usr/local/cuda-13.0/bin/ncu",
+        "realpath": "/usr/local/cuda-13.0/bin/ncu",
+        "sha256": "18d8a8aa13c156cd43ebdf24ac950b5386cb229f2a4c931db47ef91cfe785920"
+      }
+    },
+    "after": {
+      "nsys": {
+        "path": "/usr/local/cuda-13.0/bin/nsys",
+        "realpath": "/usr/local/cuda-13.0/bin/nsys",
+        "sha256": "7bcae8a7ea636e62fdbf53e4df87fe0348efe70ed6630b6a47ef79d6312a4786"
+      },
+      "ncu": {
+        "path": "/usr/local/cuda-13.0/bin/ncu",
+        "realpath": "/usr/local/cuda-13.0/bin/ncu",
+        "sha256": "18d8a8aa13c156cd43ebdf24ac950b5386cb229f2a4c931db47ef91cfe785920"
+      }
+    },
+    "unchanged": true,
+    "profiling_in_this_job": false
+  },
+  "clock_control": {
+    "clock_control": "repository lock_gpu_clocks on both allocated GPUs",
+    "clocks": [
+      {
+        "device": 0,
+        "application_sm_mhz": 1965,
+        "application_memory_mhz": 3996
+      },
+      {
+        "device": 1,
+        "application_sm_mhz": 1965,
+        "application_memory_mhz": 3996
+      }
+    ],
+    "clocks_after": [
+      {
+        "device": 0,
+        "application_sm_mhz": 1965,
+        "application_memory_mhz": 3996
+      },
+      {
+        "device": 1,
+        "application_sm_mhz": 1965,
+        "application_memory_mhz": 3996
+      }
+    ]
+  },
+  "clock_scope": "Clocks shown before and after workload are inside the repository lock_gpu_clocks contexts. The job then exited those contexts. This record does not claim a separate post-context clock readback.",
+  "failed_launch": {
+    "job_id": 1145,
+    "exit_code": "127:0",
+    "workloads_started": 0,
+    "reason": "Incorrect bootstrap directory in the owned launcher. Corrected before the separately assigned job 1146."
+  },
+  "completion_sha256": "1e8a0964561fea7c80eda6c389cbe5b2ffa0e03395d51db0973e0462cd414f70",
+  "limits": [
+    "A nonempty interior and complete-output correctness do not prove GPU concurrency. Observed overlap remains specific to the retained NCCL timelines.",
+    "Python full-output checks reconstruct periodic halo rows. Native checks separately verify received halo rows.",
+    "Single-host two-GPU diagnostic. No new multi-node or transport qualification."
+  ],
+  "related_record": "2026-11-16-distributed-gpu-validation.json",
+  "publication_status": "Exact-byte audit passed. Assets await final scoped reviews, CI and public release readback. The original seventeen-asset profiler package remains unchanged.",
+  "publication_artifacts": [
+    {
+      "name": "host-interior-1146-audit.json",
+      "bytes": 6848,
+      "sha256": "a7fac4994cb8872f7a9a32c15c2b442f19d9198982c12ef0cab897c9817b24d3",
+      "download_url": "https://github.com/cfregly/ai-performance-engineering/releases/download/tutorial-multi-gpu-b200-20261116/host-interior-1146-audit.json"
+    },
+    {
+      "name": "host-interior-1146-manifest.json",
+      "bytes": 4222,
+      "sha256": "d58e9b92919fdb16b840c6cdd32c33a7c9cc7bc2135bb2e7b5b00cf868323a93",
+      "download_url": "https://github.com/cfregly/ai-performance-engineering/releases/download/tutorial-multi-gpu-b200-20261116/host-interior-1146-manifest.json"
+    },
+    {
+      "name": "landing-public-interior-1146.tar.gz",
+      "bytes": 4619741,
+      "sha256": "b3b13aae520e4677261f4cfa9e24f8fe2462ef76ad28d3ad19d1cb8792c6f00c",
+      "download_url": "https://github.com/cfregly/ai-performance-engineering/releases/download/tutorial-multi-gpu-b200-20261116/landing-public-interior-1146.tar.gz"
+    }
+  ],
+  "publication_audit": {
+    "status": "PASS_WITH_DISCLOSED_VENDOR_BUILD_METADATA",
+    "artifact": "host-interior-1146-audit.json",
+    "sha256": "a7fac4994cb8872f7a9a32c15c2b442f19d9198982c12ef0cab897c9817b24d3",
+    "regular_archive_files": 23,
+    "completion_hashes_verified": 22,
+    "omitted_pytest_links": 2,
+    "disclosure": "Static MPI vendor build metadata is retained. No private identifier or credential match was found in the exact-byte audit."
+  }
+}

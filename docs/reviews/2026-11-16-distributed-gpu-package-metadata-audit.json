@@ -1,0 +1,58 @@
+{
+  "account_status_finding_filenames": [],
+  "actions": "No package edits, numerical checks, GPU, SSH, external models or delegation.",
+  "changed_checksum_entries": [
+    "PROFILE_PACKAGE.json"
+  ],
+  "changed_files": [
+    {
+      "file": "PROFILE_PACKAGE.json",
+      "new_bytes": 3734,
+      "new_sha256": "2f52c1cd0a764e446b79ca78d6f2713701e7268cc83063724471dc7371b6a9f3",
+      "old_bytes": 3708,
+      "old_sha256": "8e26bc86764f4a4e3f5eced6b5149e93281f2beba1276e4ce6830a8108cf778d"
+    },
+    {
+      "file": "SHA256SUMS",
+      "new_bytes": 1419,
+      "new_sha256": "09e8c23e026b53bf9d2330efb9d7e1df6c4d227059caaf9bde2ffbf771fb6a97",
+      "old_bytes": 1419,
+      "old_sha256": "411e23f817fa77e406fba44470e42f5a426da3664646e53fa28ef8af2bc13e8c"
+    }
+  ],
+  "changed_profile_keys": [
+    "publication_readiness"
+  ],
+  "checks": {
+    "complete_current_checksum_coverage": true,
+    "every_current_checksum_matches": true,
+    "exact_same_17_filenames": true,
+    "exactly_two_changed_files": true,
+    "new_readiness_is_diagnostic_and_repository_tracked": true,
+    "no_account_quota_status_in_package_text": true,
+    "no_package_links_or_subdirectories": true,
+    "only_profile_checksum_entry_changed": true,
+    "only_publication_readiness_value_changed": true,
+    "other_15_files_byte_identical": true,
+    "package_stable_during_metadata_gate": true,
+    "prior_manifest_hash_matches_approved_gate": true,
+    "profile_diff_is_exact_single_string_literal_replacement": true,
+    "profile_file_records_complete_and_correct": true,
+    "profile_file_records_unchanged": true,
+    "saved_old_profile_matches_approved_bytes": true,
+    "saved_old_sums_matches_approved_bytes": true,
+    "sums_diff_is_exact_single_digest_replacement": true
+  },
+  "file_count": 17,
+  "gate_script_sha256": "e4895ceffc9c42c30471e577030907c43522182d32c740fb3a1dfbe80e0facde",
+  "limit": "Privacy and packaging verdict only. Model review results and publication readiness remain tracked in the maintained repository.",
+  "new_scope": "Exact publication_readiness string replacement, exact checksum digest replacement, current 17-file ledger and package-text account-status check.",
+  "package_manifest_sha256": "61340c02257835f76bab0c80fba797491daf5e41b67be1fa571183ed57fadc65",
+  "prior_full_gate_receipt_sha256": "20d22120091f1275a546277adde2871431c31f5f0747db0d13e4065eaaaa4887",
+  "prior_package_manifest_sha256": "cec10967c5a2df9478dd8344e8826216adca396e4ea3f797daf8c6b8cfcbc5a9",
+  "reused_scope": "All 15 unchanged files and all archive/member/privacy/header/numerical-scope boundaries from the approved full package gate. No archive was decompressed and no numerical check was run.",
+  "schema": "tutorial_profile_package.metadata_delta_gate.v1",
+  "source_commit": "ed588c27c6adfe3cfb0de6d1b06b143b830d3eeb",
+  "total_package_bytes": 187304959,
+  "verdict": "PASS_WITH_DISCLOSED_VENDOR_BUILD_METADATA"
+}

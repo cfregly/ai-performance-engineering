@@ -52,6 +52,8 @@ python -m cli.aisp bench list-targets --chapter labs/moe_cuda
 - Use `list-targets` first; the benchmark-pair labs expose clean harness targets, while the playbook/matrix labs often have their own scripts or Makefiles.
 - Use `labs/memory_bandwidth_patterns` when you want a narrow coalescing/vectorization/shared-memory bandwidth lab instead of a broader serving-path workflow.
 - Use `labs/nccl_nixl_nvshmem` when you want communication-stack tradeoffs and capability probing instead of a broader distributed-training or serving workflow.
+- Use the [multi-GPU communication lab](multi_gpu_communication/README.md) for a common halo workload that connects native NCCL groups, buffer registration, and compute/communication overlap. Start with the [group guide](../ch04/nccl_groups.md) for matching, completion, and lifetime rules.
+- Use the [NVSHMEM device lab](nvshmem_device/README.md) for GPU-issued scalar halos, cooperative block transfers, fused epochs, ready/consumed signals, and atomic counters. It verifies complete numerical outputs and exposes the launch and progress requirements.
 - If a lab does not have a clean baseline/optimized target yet, do not invent one in documentation.
 
 ## Validation Checklist
@@ -90,6 +92,8 @@ python -m cli.aisp bench list-targets --chapter labs/moe_cuda
 | `labs/moe_decode_blackwell_matrix/` | Blackwell MoE decode scenario matrix for routing locality, persistent scheduling, and graph-launch tradeoffs | ch10, ch15, ch18, ch19 |
 | `labs/moe_optimization_journey/` | MoE optimization narrative | ch15, ch19 |
 | `labs/moe_parallelism/` | MoE parallelism planning | ch04, ch15 |
+| [labs/multi_gpu_communication/](multi_gpu_communication/README.md) | Common halo workload for grouped P2P, stream dependencies, registration, and overlap tradeoffs | ch04, ch11, ch12, ch13, ch15 |
+| [labs/nvshmem_device/](nvshmem_device/README.md) | Device halo exchange and complete per-epoch verification of cooperative and persistent notification protocols | ch04, ch11, ch12 |
 | `labs/nccl_nixl_nvshmem/` | Communication-stack tradeoffs with an honest single-GPU analogue and NCCL/NIXL/NVSHMEM stack probing | ch04, ch17, ch19 |
 | `labs/nanochat_fullstack/` | End-to-end inference stack (NanoChat) | ch16 |
 | `labs/occupancy_tuning/` | Triton occupancy/schedule sweeps | ch08, ch14 |

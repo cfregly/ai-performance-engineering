@@ -41,6 +41,14 @@ This lab sits between the low-level communication primitives in `ch04` and the h
 
 The unique focus here is the communication-stack decision itself: what you can measure locally, what is blocked by runtime or topology, and how to tell those apart honestly.
 
+For a common multi-GPU application, continue with the
+[halo-exchange lab](../multi_gpu_communication/README.md). It connects neighbor
+transfers, native NCCL groups, independent compute, and buffer reuse. The
+[NCCL group guide](../../ch04/nccl_groups.md) explains matching and completion
+rules. Grouping can reduce submission overhead, while overlap adds stream and
+event bookkeeping. This lab's tier-handoff pair remains the selected-block
+memory-tier comparison described above.
+
 ## Local Reality
 | Probe field | Local outcome |
 | --- | --- |

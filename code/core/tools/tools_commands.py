@@ -63,6 +63,18 @@ TOOLS: Dict[str, ToolSpec] = {
         module_name="ch04.collective_diagnosis_tool",
         description="Run or analyze NCCL arrival, contention and overlap diagnostics.",
     ),
+    "multi-gpu-communication": ToolSpec(
+        name="multi-gpu-communication",
+        script_path=REPO_ROOT / "labs" / "multi_gpu_communication" / "run_lab_multi_gpu_communication.py",
+        module_name="labs.multi_gpu_communication.run_lab_multi_gpu_communication",
+        description="Run the prebuilt fixed-work Jacobi communication lab.",
+    ),
+    "nvshmem-device": ToolSpec(
+        name="nvshmem-device",
+        script_path=REPO_ROOT / "labs" / "nvshmem_device" / "run_lab_nvshmem_device.py",
+        module_name="labs.nvshmem_device.run_lab_nvshmem_device",
+        description="Run device NVSHMEM halos and verified signal or atomic-counter exchanges.",
+    ),
     "serving-compare": ToolSpec(
         name="serving-compare",
         script_path=REPO_ROOT / "labs" / "serving_comparison" / "serving_comparison_tool.py",

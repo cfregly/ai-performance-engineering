@@ -62,6 +62,24 @@ from whole-request routing.
 - Use decode-policy fast paths so greedy serving avoids unnecessary probability tensors.
 - Serve MoE models efficiently by pairing routing with optimized communication.
 
+## Communication Buffers in Serving
+
+Use the [NCCL group guide](../ch04/nccl_groups.md) and
+[common halo-exchange lab](../labs/multi_gpu_communication/README.md) before
+applying grouped transfers to KV movement or expert dispatch. Batch transfers
+whose payloads are ready together. A decoder or expert consuming received data
+still needs a completion dependency, and grouping dependent phases can delay
+useful work.
+
+For stable communication buffers,
+[NCCL user registration](https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/usage/bufferreg.html)
+can reduce internal copies on supported paths. Register once and reuse when the
+steady-state benefit amortizes setup. Keep registration consistent across ranks,
+retain the allocation through every transfer, and complete outstanding work
+before deregistering and freeing it. Allocator, algorithm, transport, and topology
+requirements still apply. A successful registration does not guarantee zero-copy
+execution. Short-lived request buffers may be simpler to leave unregistered.
+
 ## Directory Layout
 | Path | Description |
 | --- | --- |
