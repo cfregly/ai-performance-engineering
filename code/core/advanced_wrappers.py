@@ -1,7 +1,7 @@
 """
 Lightweight wrappers around analysis.advanced_analysis with safe fallbacks.
 
-These helpers keep the dashboard/CLI from duplicating import/try/except logic.
+These helpers keep the CLI/MCP from duplicating import/try/except logic.
 """
 
 from __future__ import annotations

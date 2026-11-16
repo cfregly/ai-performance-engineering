@@ -279,5 +279,3 @@ eval_datasets/*.json
 
 # Node / frontend
 node_modules/
-dashboard/web/.next/
-dashboard/web/.turbo/

@@ -1,0 +1,38 @@
+objective:
+  primary_kpi: per_event_median_latency_ms
+  secondary_kpis: [full_output_correctness, input_identity]
+benchmark:
+  layer: component
+  grade: realism
+  variable_under_test: kernel_implementation
+workload:
+  type: inference
+  model: retained standalone operator calls
+  constraints:
+    - Preserve every actual input tensor and declared operation parameter.
+    - Keep generated recipe inputs labeled generated_by_recipe.
+    - Compare complete packed, scale and residual buffers for NVFP4.
+    - Use the existing scan, softmax and NVFP4 quantization implementations.
+hot_path_model:
+  path: ReplayBenchmark.benchmark_fn -> existing native benchmark_fn
+  phase: steady_state
+  invocation_frequency: per_retained_event
+  invocations_per_primary_unit: 1
+  expected_dominant_cost: Defined by the selected native operator and retained shape.
+  estimated_costs:
+    allocations_or_materializations: Inherit the existing operation implementation.
+    storage_or_network_operations: 0
+  operation_cost_source: Native harness samples and profiler captures from the actual replay.
+evidence:
+  baseline_artifact: Per-event harness result linked from replay.json.
+  profile_artifacts: [nsys, ncu, pytorch]
+  static_review_findings:
+    - Independent operator timing does not reproduce serving latency or overlap.
+    - File validation, transfer, setup and full reference checks are excluded and reported.
+candidate_optimizations: []
+risk_guardrails:
+  correctness_tests:
+    - Byte-preserving BF16, int32 and uint8 storage with input hashes.
+    - Full native baseline and optimized output comparison.
+    - Live input jitter with a cached-output negative control.
+  change_windows: []

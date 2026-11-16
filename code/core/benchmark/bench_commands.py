@@ -4346,7 +4346,7 @@ if TYPER_AVAILABLE:
     @app.command("report")
     def report(
         data_file: Optional[str] = Option(
-            None, "--data-file", "-d", help="Path or URL to benchmark_test_results.json"
+            None, "--data-file", "-d", help="Path to benchmark_test_results.json"
         ),
         output: Path = Option(
             Path("report.pdf"), "--output", "-o", help="Output file (.pdf or .html)"

@@ -2111,16 +2111,6 @@ if typer:
     ) -> None:
         _run_benchmark_menu(data_file)
 
-    @app.command("dashboard", help="Launch web dashboard")
-    def dashboard_command(
-        ctx: typer.Context,
-        port: int = typer.Option(6970, "--port", "-p", help="Port to run the server on"),
-        data: Optional[Path] = typer.Option(None, "--data", "-d", help="Path to benchmark results JSON file"),
-        no_browser: bool = typer.Option(False, "--no-browser", help="Do not open browser automatically"),
-    ) -> None:
-        from dashboard.api.server import serve_dashboard
-        serve_dashboard(port=port, data_file=data, open_browser=not no_browser)
-
     @app.command("mcp", help="Start MCP server for AI chat integration")
     def mcp_command(
         ctx: typer.Context,

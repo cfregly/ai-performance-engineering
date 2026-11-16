@@ -2,9 +2,7 @@ from __future__ import annotations
 
 import json
 
-from core.engine import reset_engine
-from dashboard.api import server
-from tests.http_client import asgi_request
+from core.engine import get_engine
 
 
 def _write_run(path, timestamp, results):
@@ -12,7 +10,7 @@ def _write_run(path, timestamp, results):
     path.write_text(json.dumps(payload))
 
 
-def test_compare_runs_endpoint(tmp_path):
+def test_compare_runs_python_api(tmp_path):
     baseline_path = tmp_path / "baseline.json"
     candidate_path = tmp_path / "candidate.json"
 
@@ -69,15 +67,9 @@ def test_compare_runs_endpoint(tmp_path):
         ],
     )
 
-    reset_engine()
-    server._configure_engine(baseline_path)
-    response = asgi_request(
-        server.fastapi_app,
-        "GET",
-        f"/api/benchmark/compare?baseline={baseline_path}&candidate={candidate_path}&top=5"
+    result = get_engine().benchmark.compare(
+        {"baseline": str(baseline_path), "candidate": str(candidate_path), "top": 5}
     )
-    assert response.status_code == 200
-    result = response.json()["result"]
 
     assert result["overlap"]["common"] == 1
     assert result["overlap"]["added"] == 1
@@ -86,5 +78,3 @@ def test_compare_runs_endpoint(tmp_path):
     assert result["improvements"][0]["delta"] == 1.0
     assert result["added_benchmarks"][0]["name"] == "transfer"
     assert result["removed_benchmarks"][0]["name"] == "mem"
-
-    reset_engine()

@@ -9,7 +9,7 @@ app = typer.Typer(help="Generate PDF/HTML reports from benchmark data.")
 
 @app.command()
 def generate(
-    input: str = typer.Argument(..., help="Input data (JSON file or API URL)"),
+    input: str = typer.Argument(..., help="Input data (JSON file)"),
     output: str = typer.Option("report.pdf", "-o", "--output", help="Output file path"),
     format: str = typer.Option("pdf", "-f", "--format", help="pdf or html"),
     title: str = typer.Option("GPU Performance Report", "--title"),

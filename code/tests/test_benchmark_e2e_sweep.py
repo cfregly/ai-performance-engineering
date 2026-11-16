@@ -3843,9 +3843,9 @@ def test_benchmark_e2e_sweep_handler_returns_async_ticket(monkeypatch) -> None:
     assert ticket["progress_path"].endswith("artifacts/e2e_runs/handler_async_e2e/progress.json")
     assert ticket["actions"]["preferred_mcp_tool"] == "benchmark_e2e_status"
     assert ticket["preferred_progress_source"]["kind"] == "normalized_e2e_status"
-    assert ticket["actions"]["status_api_path"].endswith(
-        "/api/benchmark/e2e-status?run_id=handler_async_e2e"
-    )
+    assert ticket["actions"]["status_command"][-3:] == [
+        "run-e2e-status", "--run-id", "handler_async_e2e"
+    ]
 
     record = handlers.JobStore.get().get_status(ticket["job_id"])
     if record is not None:
@@ -4078,10 +4078,13 @@ def test_inspect_benchmark_e2e_sweep_run_detects_live_progress_and_child_events(
     assert status["current"]["child_artifacts"]["events_path"].endswith("benchmark_events.jsonl")
     assert status["current"]["recent_child_events"][0]["event_type"] == "example_end"
     assert status["watcher"]["watcher_pid"] == 456
-    assert status["actions"]["status_api_path"].endswith(
-        f"/api/benchmark/e2e-status?run_id={run_id}"
-    )
-    assert status["actions"]["dashboard_path"].endswith(f"/e2e?run_id={run_id}")
+    assert status["actions"]["status_command"][-3:] == [
+        "run-e2e-status", "--run-id", run_id
+    ]
+    assert status["actions"]["watcher_command"][-3:] == [
+        "watch-e2e", "--run-id", run_id
+    ]
+    assert status["actions"]["watcher_mcp_tool"] == "benchmark_e2e_watch"
 
 
 def test_inspect_benchmark_e2e_sweep_run_downgrades_stale_active_watcher_state(

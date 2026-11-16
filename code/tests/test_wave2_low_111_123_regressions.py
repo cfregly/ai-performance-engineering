@@ -203,23 +203,6 @@ def test_w2_120_grace_coherence_requires_a_grace_host(
     assert "NVLink-C2C" not in probe._build_features(rtx, nvlink_c2c=False, grace_coherence=False)
 
 
-def test_w2_121_dashboard_treats_nvidia_memory_units_as_mib() -> None:
-    gpu_card = (CODE_ROOT / "dashboard" / "web" / "src" / "components" / "GpuCard.tsx").read_text(
-        encoding="utf-8"
-    )
-    assistant = (
-        CODE_ROOT / "dashboard" / "web" / "src" / "components" / "tabs" / "AIAssistantTab.tsx"
-    ).read_text(encoding="utf-8")
-    gpu_types = (CODE_ROOT / "dashboard" / "web" / "src" / "types" / "index.ts").read_text(
-        encoding="utf-8"
-    )
-
-    for source in (gpu_card, assistant):
-        assert "mebibytesToBytes" in source
-        assert "* 1e6" not in source
-    assert "MiB (nvidia-smi units)" in gpu_types
-
-
 def _import_autotune(monkeypatch: pytest.MonkeyPatch):
     loader = types.ModuleType("tcgen05_loader")
     for name in (

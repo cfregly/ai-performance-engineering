@@ -166,7 +166,7 @@ class FusedPlan:
 
 
 class NVFP4Benchmark(VerificationPayloadMixin, BaseBenchmark):
-    def __init__(self, kind, optimized, workload=None):
+    def __init__(self, kind, optimized, workload=None, *, input_tensors=None):
         super().__init__()
         if kind not in DEFAULT_WORKLOADS:
             raise ValueError("unknown NVFP4 operation")
@@ -175,6 +175,7 @@ class NVFP4Benchmark(VerificationPayloadMixin, BaseBenchmark):
         if self.workload.kind != kind:
             raise ValueError("benchmark and workload operation differ")
         self.optimized = optimized
+        self._input_tensors = input_tensors
         self.inputs = self.plan = self.output = None
         self._register_workload_metadata()
 
@@ -205,7 +206,21 @@ class NVFP4Benchmark(VerificationPayloadMixin, BaseBenchmark):
         self.output = None
         # BaseBenchmark resolves device lazily and raises on a CPU-only host.
         require_sm100(self.device if torch.cuda.is_available() else None)
-        self.inputs = build_inputs(self.workload, self.device)
+        if self._input_tensors is None:
+            self.inputs = build_inputs(self.workload, self.device)
+        else:
+            expected = {"x", "global_scale", "valid_rows"}
+            if self.kind == "add_rmsnorm":
+                expected.update({"residual", "weight"})
+            if set(self._input_tensors) != expected or any(
+                not isinstance(value, torch.Tensor) for value in self._input_tensors.values()
+            ):
+                raise ValueError("retained NVFP4 inputs must match the operation tensor names")
+            validate_inputs(self.workload, self._input_tensors)
+            self.inputs = {
+                name: value.detach().to(self.device).clone()
+                for name, value in self._input_tensors.items()
+            }
         validate_inputs(self.workload, self.inputs)
         self.plan = FusedPlan(self.workload, self.inputs) if self.optimized else None
 

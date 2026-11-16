@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import yaml
 
-from core.api.registry import get_routes
 from core.benchmark.contracts_surface import get_benchmark_contracts_summary, render_benchmark_run_yaml
 from core.tools.tools_commands import TOOLS
+from mcp.mcp_server import HANDLERS, TOOLS as MCP_TOOLS
 
 
 def test_benchmark_contracts_summary_exposes_expected_surfaces() -> None:
@@ -24,13 +24,12 @@ def test_benchmark_contracts_summary_exposes_expected_surfaces() -> None:
     assert summary["surface_count"] == len(summary["surface_order"])
     assert summary["missing_surface_count"] == 0
     assert summary["interfaces"]["cli"] == "python -m cli.aisp tools benchmark-contracts"
-    assert summary["interfaces"]["dashboard_api"] == "/api/benchmark/contracts"
     assert summary["interfaces"]["mcp_tool"] == "benchmark_contracts"
-    assert [entry["id"] for entry in summary["interface_entries"]] == ["cli", "dashboard_api", "mcp"]
+    assert [entry["id"] for entry in summary["interface_entries"]] == ["cli", "mcp"]
     assert summary["generator"]["defaults"]["name"] == "publication-inference-stack-b200"
     assert summary["generator"]["defaults"]["comparisonVariable"] == "runtime_version"
     assert summary["generator"]["preview_yaml"].startswith("apiVersion: benchmarking.aisp.dev/v1alpha1")
-    assert [entry["id"] for entry in summary["generator"]["render_interface_entries"]] == ["cli", "dashboard_api", "mcp"]
+    assert [entry["id"] for entry in summary["generator"]["render_interface_entries"]] == ["cli", "mcp"]
 
     contracts = summary["contracts"]
     assert contracts["warehouse"]["exists"] is True
@@ -38,11 +37,12 @@ def test_benchmark_contracts_summary_exposes_expected_surfaces() -> None:
     assert contracts["benchmark_run"]["summary"]["has_sinks"] is True
 
 
-def test_benchmark_contracts_are_exposed_in_cli_and_dashboard_registry() -> None:
+def test_benchmark_contracts_are_exposed_in_cli_and_mcp() -> None:
     assert "benchmark-contracts" in TOOLS
     assert "benchmark-run-render" in TOOLS
-    assert any(route.name == "benchmark.contracts" for route in get_routes())
-    assert any(route.name == "benchmark.contracts.render_run" for route in get_routes())
+    for name in ("benchmark_contracts", "render_benchmark_run"):
+        assert name in MCP_TOOLS
+        assert callable(HANDLERS[name])
 
 
 def test_benchmark_run_renderer_tracks_template_lockstep() -> None:

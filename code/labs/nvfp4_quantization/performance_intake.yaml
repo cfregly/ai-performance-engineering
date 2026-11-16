@@ -25,5 +25,9 @@ phases:
   verification: independent reference and complete output check after timing
 evidence:
   correctness_test: tests/test_nvfp4_quantization.py
-  gpu_execution: not executed on development Mac
+  gpu_execution: Full-buffer checks passed on B200 SM100 with PyTorch 2.9.1 and CUDA 13.0.
+  numerical_findings:
+    - Match materialized FP32 SiLU before BF16 rounding.
+    - Use rounded FP32 scale division because approximate division changes FP4 midpoint decisions.
+    - Retain exact packed-byte, scale-byte and residual comparisons with nonbinary global scales.
   speedup_claim: false

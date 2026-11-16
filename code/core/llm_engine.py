@@ -1,4 +1,4 @@
-"""LLM-backed performance analysis engine used by the dashboard and CLI."""
+"""LLM-backed performance analysis engine used by CLI and MCP tools."""
 
 from __future__ import annotations
 
@@ -88,8 +88,4 @@ class PerformanceAnalysisEngine:
             "memory": memory_usage,
         }
         return self.ask(prompt, context)
-
-
-# Backwards-compat alias expected by dashboard imports
-LLMConfig = LLMConfig
 

@@ -1,6 +1,6 @@
 # AI Systems Performance - Unified API Reference
 
-This document describes the unified 10-domain API that powers all interfaces (CLI, MCP, Dashboard, Python API).
+This document describes the unified 10-domain API used by the CLI, MCP tools, and Python API.
 
 ## Architecture Overview
 
@@ -10,12 +10,12 @@ This document describes the unified 10-domain API that powers all interfaces (CL
 ├─────────────────────────────────────────────────────────────────────────────┤
 │                                                                             │
 │   User Interfaces                                                           │
-│   ┌─────────┐  ┌─────────┐  ┌─────────────┐  ┌─────────────┐               │
-│   │   CLI   │  │   MCP   │  │  Dashboard  │  │  Python API │               │
-│   │  aisp   │  │  Tools  │  │   Web UI    │  │   Direct    │               │
-│   └────┬────┘  └────┬────┘  └──────┬──────┘  └──────┬──────┘               │
-│        │            │              │                │                       │
-│        └────────────┴──────────────┴────────────────┘                       │
+│   ┌─────────┐  ┌─────────┐  ┌─────────────┐                                 │
+│   │   CLI   │  │   MCP   │  │  Python API │                                 │
+│   │  aisp   │  │  Tools  │  │   Direct    │                                 │
+│   └────┬────┘  └────┬────┘  └──────┬──────┘                                 │
+│        │            │              │                                        │
+│        └────────────┴──────────────┘                                        │
 │                              │                                              │
 │   ┌──────────────────────────▼──────────────────────────┐                   │
 │   │           PerformanceEngine (core/engine.py)         │                   │
@@ -209,8 +209,6 @@ These are repo helpers for cluster evaluations under `cluster/` (field report wo
 | `watch_cluster_run_for_promotion(...)` | Detached watcher: wait on PID, then promote | `aisp cluster watch-promote` (optional `--repo-root`) | `cluster_watch_promote` |
 | `validate_field_report_requirements(...)` | Validate `cluster/field-report*.md` requirements + artifact hygiene | `aisp cluster validate-field-report` | `cluster_validate_field_report` |
 
-**HTTP:** `POST /api/cluster/promote-run` and `POST /api/cluster/watch-promote` accept the same JSON fields as the MCP tools (including optional `repo_root`). The watch-promote route is registered for programmatic use; it is not part of the dashboard’s restricted MCP tool subset.
-
 ---
 
 ### 4. Analyze Domain
@@ -333,7 +331,7 @@ Benchmark execution, history tracking, and result comparison.
 | `data()` | Load benchmark results (filtered/paged) | - | `benchmark_data` |
 | `overview()` | Summary of latest results | - | `benchmark_overview` |
 | `trends()` | Performance trends over time | - | `benchmark_trends` |
-| `compare(params)` | Compare two benchmark runs (dashboard-style diff) | - | `benchmark_compare` |
+| `compare(params)` | Compare two benchmark runs | - | `benchmark_compare` |
 | `compare_runs(baseline, candidate)` | Compare two benchmark runs (bench CLI diff) | `aisp bench compare-runs` | `benchmark_compare_runs` |
 | `speed_test()` | Quick speed tests (diagnostic) | `aisp benchmark speed` | `hw_speed` |
 
@@ -354,7 +352,7 @@ engine.benchmark.speed_test()                   # Quick GEMM/attention test
 **Runner notes:**
 - CUDA benchmarks execute via Python wrappers (`CudaBinaryBenchmark`). Direct `.cu` runs are not supported.
 - Ad-hoc script runs should use `benchmark_main` (supports `--iterations`, `--warmup`, and defaults to `--force-sync`; disable with `--no-force-sync` or `AISP_FORCE_SYNC=0`).
-- Benchmark validity profile defaults to strict across CLI/MCP/dashboard (`--validity-profile strict` / `validity_profile=\"strict\"`).
+- Benchmark validity profile defaults to strict across CLI and MCP (`--validity-profile strict` / `validity_profile=\"strict\"`).
 - The portable profile does not request GPU clock control, including persistence-mode or application-clock changes. It relaxes application-clock verification, GPU telemetry, and virtualization reporting, and labels the result as noncanonical. It does not bypass hard failures such as unsupported platforms, swap, CPU governor, cgroup limits, missing CUDA, or foreign GPU processes (`validity_profile=\"portable\"` in MCP).
 - Portable validity profile does not update expectation files unless explicitly enabled (`--allow-portable-expectations-update` / `allow_portable_expectations_update=true`).
 - Use `--force-sync` (CLI) / `force_sync=true` (MCP) to insert a device-wide synchronize after each `benchmark_fn()` when you need an extra safety net outside standard harness timing.
@@ -449,22 +447,20 @@ engine.list_domains()     # List all domains and operations
 
 ## Interface Mapping Summary
 
-| Engine Domain | CLI Command Group | MCP Tool Prefix | Dashboard API |
-|---------------|-------------------|-----------------|---------------|
-| `gpu` | `aisp gpu` | `gpu_*` | `/api/gpu/*` |
-| `system` | `aisp system` | `system_*` | `/api/system/*` |
-| `profile` | `aisp profile` | `profile_*` | `/api/profile/*` |
-| `analyze` | `aisp analyze` | `analyze_*` | - (not exposed) |
-| `optimize` | `aisp optimize` | `optimize`, `optimize_*`, `recommend` | - (not exposed) |
-| `distributed` | `aisp distributed` | `distributed_*` | - (not exposed) |
-| `inference` | `aisp inference` | `inference_*` | - (not exposed) |
-| `benchmark` | `aisp bench` | `benchmark_*`, `run_benchmarks` | `/api/benchmark/*` |
-| `ai` | `aisp ai` | `ask`, `explain`, `ai_*` | `/api/ai/*` |
-| `export` | `aisp bench report/export` | `export_*` | - (not exposed) |
+| Engine Domain | CLI Command Group | MCP Tool Prefix |
+|---------------|-------------------|-----------------|
+| `gpu` | `aisp gpu` | `gpu_*` |
+| `system` | `aisp system` | `system_*` |
+| `profile` | `aisp profile` | `profile_*` |
+| `analyze` | `aisp analyze` | `analyze_*` |
+| `optimize` | `aisp optimize` | `optimize`, `optimize_*`, `recommend` |
+| `distributed` | `aisp distributed` | `distributed_*` |
+| `inference` | `aisp inference` | `inference_*` |
+| `benchmark` | `aisp bench` | `benchmark_*`, `run_benchmarks` |
+| `ai` | `aisp ai` | `ask`, `explain`, `ai_*` |
+| `export` | `aisp bench report/export` | `export_*` |
 
 ---
-
-**Dashboard API note:** The dashboard backend intentionally exposes only the subset of endpoints used by the UI. See `core/api/registry.py` for the authoritative list.
 
 ## Error Handling
 
@@ -515,8 +511,40 @@ failure counters. It rejects unknown collector source bytes and existing output
 directories. It leaves the installed package unchanged and records both package
 digests. See the [serving guide](../labs/serving_comparison/README.md) before use.
 
-These utilities do not add dashboard endpoints because the dashboard does not
-currently consume them.
+## Operator trace replay
+
+`aisp tools trace-replay` captures complete operator input tensors, validates
+retained bundles, and replays each event through the native benchmark pairs.
+The initial operators are prefix scan, online softmax, and fused NVFP4
+quantization. The [replay lab](../labs/trace_replay/README.md) documents the
+capture plan, input provenance, and supported hardware.
+
+```bash
+python -m cli.aisp tools trace-replay -- capture --plan capture-plan.json --output-dir captured --device cpu
+python -m cli.aisp tools trace-replay -- validate --bundle captured
+python -m cli.aisp tools trace-replay -- replay --bundle captured --output-dir replay-results
+```
+
+CPU captures use the numerical references. Their manifests identify the capture
+backend and distinguish generated recipes from observed application inputs.
+GPU replay preserves full outputs and uses the existing correctness, clock,
+runtime, and profiler checks. Each event receives its own result and failure
+record. Event order is preserved, while request arrival pacing and stream overlap
+remain outside this operator replay contract. These results do not establish
+whole application latency, throughput, or output quality.
+
+MCP exposes the same CLI through `tools_trace_replay`:
+
+```json
+{"args": ["validate", "--bundle", "captured"], "include_context": false}
+```
+
+`args` defaults to `--help` and is forwarded as an argument vector. Paths refer
+to the MCP server filesystem. The tool adds no invocation deadline. Existing
+benchmark policies still apply. Results include the command, exit code, stdout,
+and stderr. CLI and MCP cancellation forwards SIGINT through the owned launch
+groups and waits for child cleanup without a deadline. MCP returns the retained
+output with `cancelled: true` after cleanup.
 
 ## Best Practices
 

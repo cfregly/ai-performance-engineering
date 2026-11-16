@@ -737,7 +737,7 @@ ENTRIES["README.md"] = Entry(
                 - `summary.json`: per-target baseline, optimized path, and best speedup
                 - `regression_summary.md`: human-readable before/after summary against the previous tier-1 run
                 - `regression_summary.json`: machine-readable regressions and improvements
-                - `trend_snapshot.json`: run-history summary for dashboards and release notes
+                - `trend_snapshot.json`: run-history summary for reports and release notes
                 - `artifacts/history/tier1/index.json`: suite history index
 
                 See [`docs/tier1_benchmark_suite.md`](docs/tier1_benchmark_suite.md) for the current target list, artifact contract, and interpretation guidance."""
@@ -790,7 +790,7 @@ ENTRIES["README.md"] = Entry(
 
                 For direct script profiling, `core/scripts/profiling/profile.sh <script.py> --tool zymtrace` launches the workload with `CUDA_INJECTION64_PATH`/`ZYMTRACE_CUDA_INJECTION64_PATH` resolved and writes `zymtrace_launch_manifest.json` beside the profile artifacts. `--tool all` includes Zymtrace automatically when the injection library is available.
 
-                The same surface is exposed through dashboard API `GET /api/benchmark/opportunities` and MCP tool `benchmark_opportunities` for agent-driven optimization loops."""
+                MCP tool `benchmark_opportunities` exposes the same surface for agent-driven optimization loops."""
             ),
         ),
         MarkdownSection(
@@ -826,7 +826,7 @@ ENTRIES["README.md"] = Entry(
                 - [`templates/benchmark_run.yaml`](templates/benchmark_run.yaml) for the CRD-aligned declarative `BenchmarkRun` shape the repo would map onto a Kubernetes-native service.
                 - [`cluster/docs/kubernetes_benchmark_service.md`](cluster/docs/kubernetes_benchmark_service.md) plus [`cluster/configs/benchmarkrun-crd.yaml`](cluster/configs/benchmarkrun-crd.yaml) for the cluster-native operator/CRD direction already being sketched in the repo.
 
-                Thin surfaces for these contracts are also exposed through `python -m cli.aisp tools benchmark-contracts`, dashboard API `GET /api/benchmark/contracts`, and MCP tool `benchmark_contracts`.
+                These contracts are also exposed through `python -m cli.aisp tools benchmark-contracts` and MCP tool `benchmark_contracts`.
 
                 The current harness already captures manifests, profiler artifacts, raw timings, and artifact hashes. Cryptographic provenance signing is still a documented gap, so external publication packets should record that explicitly rather than assuming hashes alone are sufficient."""
             ),
@@ -1006,6 +1006,10 @@ ENTRIES["labs/README.md"] = Entry(
                 workflow. It compares real serving endpoints under an explicit workload contract.
                 Use `aisp tools serving-compare`, not benchmark-pair discovery.
 
+                The [operator replay lab](trace_replay/README.md) captures tensor values and runs
+                the existing paired harness for each call. It retains per-operator results and
+                the normal profiler artifacts.
+
                 There are two useful lab classes in this repo:
 
                 - **Benchmark-pair labs**: these expose harness targets, keep correctness gates, and are the right place to make performance claims.
@@ -1063,6 +1067,7 @@ ENTRIES["labs/README.md"] = Entry(
 
             | Lab | Summary | Suggested Chapters |
             | --- | --- | --- |
+            | [labs/trace_replay/](trace_replay/README.md) | Retained operator inputs, full-output checks, and native paired replay with profiler evidence | ch06, ch09, ch19 |
             | `labs/prefix_scan/` | Inclusive scan with hierarchical and decoupled-look-back variants | ch06, ch07, ch09 |
             | `labs/nvfp4_quantization/` | Three fused quantization operation pairs with six workload configurations and shared NVFP4 scale layout | ch09, ch19 |
             | `labs/nvfp4_gemv/` | GPUMODE `nvfp4_gemv` challenge workspace | ch06, ch10 |

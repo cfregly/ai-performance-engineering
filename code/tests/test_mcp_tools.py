@@ -179,6 +179,7 @@ CATEGORY_TOOLS: Dict[str, List[str]] = {
     ],
     "tools": [
         "tools_diagnostics",
+        "tools_trace_replay",
         "tools_kv_cache",
         "tools_cost_per_token",
         "tools_compare_precision",
@@ -236,6 +237,7 @@ BENCHMARK_SLOW_TOOLS = {
 
 TOOL_PARAMS: Dict[str, Dict[str, Any]] = {
     "tools_diagnostics": {"tool": "network-diagnose", "args": ["--help"]},
+    "tools_trace_replay": {"args": ["--help"]},
     "optimize": {
         "target": "ch10:atomic_reduction",
         "profile": "minimal",

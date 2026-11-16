@@ -239,7 +239,6 @@ The warehouse design that backs those runs lives in [`docs/performance_warehouse
 Thin interface surfaces for these contracts are exposed through:
 
 - `python -m cli.aisp tools benchmark-contracts`
-- dashboard API `GET /api/benchmark/contracts`
 - MCP tool `benchmark_contracts`
 
 That design makes the service Kubernetes-native without pretending the current repo already ships a full operator:

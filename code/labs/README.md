@@ -9,6 +9,10 @@ The [serving comparison lab](serving_comparison/README.md) is a tool and matrix
 workflow. It compares real serving endpoints under an explicit workload contract.
 Use `aisp tools serving-compare`, not benchmark-pair discovery.
 
+The [operator replay lab](trace_replay/README.md) captures tensor values and runs
+the existing paired harness for each call. It retains per-operator results and
+the normal profiler artifacts.
+
 There are two useful lab classes in this repo:
 
 - **Benchmark-pair labs**: these expose harness targets, keep correctness gates, and are the right place to make performance claims.
@@ -58,6 +62,7 @@ python -m cli.aisp bench list-targets --chapter labs/moe_cuda
 
 | Lab | Summary | Suggested Chapters |
 | --- | --- | --- |
+| [labs/trace_replay/](trace_replay/README.md) | Retained operator inputs, full-output checks, and native paired replay with profiler evidence | ch06, ch09, ch19 |
 | `labs/prefix_scan/` | Inclusive scan with hierarchical and decoupled-look-back variants | ch06, ch07, ch09 |
 | `labs/nvfp4_quantization/` | Three fused quantization operation pairs with six workload configurations and shared NVFP4 scale layout | ch09, ch19 |
 | `labs/nvfp4_gemv/` | GPUMODE `nvfp4_gemv` challenge workspace | ch06, ch10 |

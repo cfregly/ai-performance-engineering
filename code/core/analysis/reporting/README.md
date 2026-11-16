@@ -8,7 +8,7 @@ Generate polished **PDF and HTML reports** from benchmark data, profiling result
 - **Beautiful styling**: Dark theme, professional layout
 - **Customizable**: Titles, colors, content sections
 - **Multiple report types**: Benchmark, Profiling, Optimization
-- **API integration**: Generate from dashboard API
+- **Python API**: Generate reports from benchmark data
 - **CLI support**: Command-line report generation
 
 ## Quick Start
@@ -22,19 +22,9 @@ python -m cli.aisp bench report --data-file benchmark_test_results.json --output
 # Generate HTML report
 python -m cli.aisp bench report --data-file benchmark_test_results.json --output report.html --format html
 
-# Generate from running dashboard
-python -m cli.aisp bench report --data-file http://localhost:6970/api/data --output report.pdf
-
 # Custom title
 python -m cli.aisp bench report --data-file benchmark_test_results.json --output report.pdf --title "Q4 Performance Report"
 ```
-
-### From Dashboard
-
-Click the **Export** button in the dashboard and select:
-- 📕 **PDF Report** - Full formatted report
-- 🌐 **HTML Report** - Web-viewable report
-- 📄 **CSV** - Spreadsheet data
 
 ### From Python
 
@@ -202,12 +192,6 @@ class ReportGenerator:
         template: str = "default",
     ) -> Path
     
-    def generate_from_api(
-        self,
-        api_url: str,
-        output_path: Union[str, Path],
-        format: str = "pdf",
-    ) -> Path
 ```
 
 ### BenchmarkData
@@ -228,19 +212,6 @@ class BenchmarkData:
 ```
 
 ## Examples
-
-### Generate Report from Dashboard API
-
-```python
-from core.analysis.reporting import generate_report
-
-# Generate PDF from running dashboard
-generate_report(
-    "http://localhost:6970",
-    "report.pdf",
-    format="pdf"
-)
-```
 
 ### Generate Report from JSON File
 

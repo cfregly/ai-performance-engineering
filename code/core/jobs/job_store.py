@@ -1,4 +1,4 @@
-"""Shared async job store for MCP and dashboard."""
+"""Shared async job store for MCP and Engine."""
 
 from __future__ import annotations
 

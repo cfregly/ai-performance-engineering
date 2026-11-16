@@ -1,7 +1,7 @@
 """
 Shared wrappers around advanced optimization stacking/playbook helpers.
 
-These wrappers centralize imports and fallbacks so dashboard/CLI/MCP can share
+These wrappers centralize imports and fallbacks so CLI/MCP can share
 the same implementation without duplicating logic.
 """
 

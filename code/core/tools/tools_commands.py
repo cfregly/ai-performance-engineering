@@ -87,6 +87,12 @@ TOOLS: Dict[str, ToolSpec] = {
         description="Compute TTFT, TPOT, token gaps and SLO goodput from request timestamp JSONL.",
         module_name="core.analysis.serving_trace",
     ),
+    "trace-replay": ToolSpec(
+        name="trace-replay",
+        script_path=REPO_ROOT / "labs" / "trace_replay" / "trace_replay_tool.py",
+        module_name="labs.trace_replay.trace_replay_tool",
+        description="Capture operator inputs and replay native benchmark pairs with retained evidence.",
+    ),
     "kv-cache": ToolSpec(
         name="kv-cache",
         script_path=REPO_ROOT / "core" / "scripts" / "utilities" / "kv_cache_calc.py",
@@ -290,6 +296,21 @@ def _run_tool(tool: str, tool_args: Optional[List[str]]) -> int:
         argv=tool_args or [],
     )
     env = build_repo_python_env(REPO_ROOT)
+    if tool == "trace-replay":
+        from core.utils.cooperative_subprocess import (
+            CooperativeProcessInterrupted,
+            run_cooperative_process,
+        )
+
+        try:
+            captured = run_cooperative_process(cmd, env=env)
+        except CooperativeProcessInterrupted as exc:
+            sys.stdout.write(exc.result["stdout"])
+            sys.stderr.write(exc.result["stderr"])
+            raise
+        sys.stdout.write(captured["stdout"])
+        sys.stderr.write(captured["stderr"])
+        return int(captured["returncode"])
     result = subprocess.run(cmd, env=env)
     return int(result.returncode)
 

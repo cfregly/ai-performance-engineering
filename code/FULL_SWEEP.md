@@ -28,7 +28,6 @@ python -m cli.aisp bench run-e2e-status --run-id <RUN_ID> --watch
 ```bash
 python -m cli.aisp bench watch-e2e --run-id <RUN_ID>
 ```
-- The dashboard now exposes the same normalized source under `/e2e?run_id=<RUN_ID>` instead of reading raw package JSON directly.
 - For each failure or suspicious weak result:
   - root-cause it
   - fix it in the most local correct place
@@ -91,7 +90,7 @@ python -m cli.aisp bench run-e2e \
   - `artifacts/e2e_runs/<RUN_ID>/watcher_status.json`
   - `artifacts/e2e_runs/<RUN_ID>/<RUN_ID>_watcher.launch.log`
 - Use `run-e2e-status` for one normalized snapshot instead of manually diffing `summary.json`, `checkpoint.json`, `progress.json`, and child run artifacts.
-- The raw run package now includes `preferred_progress_source` and `actions` fields so humans, MCP clients, and dashboard views can discover the authoritative status surface without reconstructing it manually.
+- The raw run package includes `preferred_progress_source` and `actions` fields so humans and MCP clients can discover the authoritative status surface without reconstructing it manually.
 
 - If the host is virtualized, single-GPU, or lacks IB / Spectrum-X management-plane coverage, keep results truthful:
   - do not force `succeeded` when the correct result is `partial`

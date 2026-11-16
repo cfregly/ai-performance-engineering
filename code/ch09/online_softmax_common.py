@@ -54,13 +54,25 @@ def load_kernels():
         raise RuntimeError("SKIPPED: Online softmax require Triton") from exc
 
 
+def online_softmax_launch_config(cols: int) -> tuple[int, int]:
+    """Use wider tiles to reduce serial updates while bounding live values."""
+    if type(cols) is not int or cols <= 0:
+        raise ValueError("cols must be a positive integer")
+    block_size = min(4096, max(256, 1 << (cols - 1).bit_length()))
+    num_warps = 4 if block_size <= 1024 else 8
+    return block_size, num_warps
+
+
 class OnlineSoftmaxBenchmark(VerificationPayloadMixin, BaseBenchmark):
-    def __init__(self, optimized, rows=128, cols=8193):
+    def __init__(self, optimized, rows=128, cols=8193, *, input_tensors=None):
         super().__init__()
         if any(type(v) is not int or v <= 0 for v in (rows, cols)):
             raise ValueError("rows and cols must be positive integers")
         self.optimized, self.rows, self.cols = optimized, rows, cols
+        self.block_size, self.num_warps = online_softmax_launch_config(cols)
+        self._input_tensors = input_tensors
         self.x = self.output = self.kernels = None
+        self._scratch = None
         self.executed = False
         self.register_workload_metadata(
             custom_units_per_iteration=rows * cols, custom_unit_name="normalized_values"
@@ -68,19 +80,45 @@ class OnlineSoftmaxBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
     def setup(self):
         self.executed = False
+        self.output = None
+        self._verification_payload = None
+        self._scratch = None
+        self.kernels = None
         if not torch.cuda.is_available():
             raise RuntimeError("SKIPPED: online softmax benchmark pairs require CUDA")
-        self.x = torch.randn((self.rows, self.cols), device=self.device, dtype=torch.float32) * 8
-        self.output = torch.empty_like(self.x)
+        if self._input_tensors is None:
+            self.x = torch.randn((self.rows, self.cols), device=self.device, dtype=torch.float32) * 8
+        else:
+            if set(self._input_tensors) != {"x"}:
+                raise ValueError("softmax retained inputs must contain only x")
+            x = self._input_tensors["x"]
+            if (
+                not isinstance(x, torch.Tensor)
+                or tuple(x.shape) != (self.rows, self.cols)
+                or x.dtype != torch.float32
+                or not x.is_contiguous()
+            ):
+                raise ValueError("softmax retained x must match the contiguous FP32 workload")
+            self.x = x.detach().to(self.device).clone()
+        self._scratch = torch.empty_like(self.x)
         if self.optimized:
             self.kernels = load_kernels()
 
     def benchmark_fn(self):
         self.executed = False
+        self.output = None
+        self._verification_payload = None
         if self.x is None:
             raise RuntimeError("setup() must run first")
         if self.optimized:
-            self.kernels.online_softmax_rows[(self.rows,)](self.x, self.output, self.cols, 256)
+            self.kernels.online_softmax_rows[(self.rows,)](
+                self.x,
+                self._scratch,
+                self.cols,
+                self.block_size,
+                num_warps=self.num_warps,
+            )
+            self.output = self._scratch
         else:
             self.output = materialized_softmax(self.x)
         self.executed = True
@@ -103,4 +141,5 @@ class OnlineSoftmaxBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
     def teardown(self):
         self.x = self.output = self.kernels = None
+        self._scratch = self._verification_payload = None
         self.executed = False

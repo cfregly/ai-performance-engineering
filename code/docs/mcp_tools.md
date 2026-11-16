@@ -46,7 +46,7 @@ It also runs post-benchmark triage and generates an HTML report unless you set
 }
 ```
 
-### Benchmark validity profile (shared with CLI/dashboard)
+### Benchmark validity profile (shared with CLI)
 
 - `validity_profile` (benchmark validity profile): `strict` (default; fail-fast with full validity checks) or `portable` (compatibility mode for virtualized/limited hosts)
 - `allow_portable_expectations_update`: optional override to allow expectation-file updates in `portable`
@@ -197,7 +197,7 @@ Generated from `mcp.mcp_server.TOOLS`. Run `python -m scripts.generate_mcp_docs`
 - `benchmark_compare`: Compare two benchmark run JSON files (baseline vs candidate)
 - `benchmark_compare_runs`: Compare two benchmark runs showing speedup deltas, regressions, and improvements
 - `benchmark_contracts`: Return the repo benchmark methodology, warehouse, and BenchmarkRun contract surfaces
-- `benchmark_data`: Fetch benchmark results with filtering/sorting/pagination (dashboard data view)
+- `benchmark_data`: Fetch benchmark results with filtering/sorting/pagination (table view)
 - `benchmark_deep_dive_compare`: ONE-SHOT deep-dive workflow: run benchmarks with profile='deep_dive' AND return structured diffs from Nsight Systems + Nsight Compute (+ any available profiler artifacts)
 - `benchmark_e2e_status`: Inspect an end-to-end e2e run package and return one normalized status snapshot
 - `benchmark_e2e_sweep`: Run the tier1 release-confidence suite, optional discovered full sweep, cluster common-eval, and optional fabric eval in one orchestrated flow
@@ -255,7 +255,7 @@ Generated from `mcp.mcp_server.TOOLS`. Run `python -m scripts.generate_mcp_docs`
 - `cluster_watch_promote`: Attach a detached watcher process that waits for a PID to exit, validates run artifacts, then promotes the run
 - `cost_estimate`: Cloud cost estimation for GPU fleets
 
-### Tools (7)
+### Tools (8)
 - `tools_compare_precision`: Run the precision/accuracy comparison tool (non-benchmark utility)
 - `tools_cost_per_token`: Run the cost-per-token calculator (non-benchmark utility)
 - `tools_detect_cutlass`: Run CUTLASS environment detection (non-benchmark utility)
@@ -263,6 +263,7 @@ Generated from `mcp.mcp_server.TOOLS`. Run `python -m scripts.generate_mcp_docs`
 - `tools_dump_hw`: Dump comprehensive hardware capability report (non-benchmark utility)
 - `tools_kv_cache`: Run the KV-cache size calculator (non-benchmark utility)
 - `tools_probe_hw`: Probe GPU capabilities dynamically and cache results (non-benchmark utility)
+- `tools_trace_replay`: Capture actual operator tensors, validate a retained bundle, or replay native benchmark pairs
 
 ### Utility (5)
 - `context_full`: Get full comprehensive context: complete system state

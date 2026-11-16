@@ -259,7 +259,6 @@ def _iter_benchmark_dirs(bench_root: Path) -> Iterable[Path]:
         "out",
         "artifacts",
         "book",
-        "dashboard",
         "docs",
         "eval_datasets",
         "examples",

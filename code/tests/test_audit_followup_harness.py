@@ -598,7 +598,7 @@ def test_override_run_cannot_replace_a_default_run_bar_without_a_mixed_provenanc
 
 
 # ---------------------------------------------------------------------------
-# OOF-104: the dashboard loaders use the same trace rule as analyze_bottlenecks
+# OOF-104: profile loaders use the same trace rule as analyze_bottlenecks
 # ---------------------------------------------------------------------------
 
 
@@ -636,7 +636,7 @@ def _capture_with_newer_non_trace_json(root: Path) -> Path:
     return trace
 
 
-def test_dashboard_loaders_pick_the_newest_chrome_trace(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_profile_loaders_pick_the_newest_chrome_trace(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     trace = _capture_with_newer_non_trace_json(tmp_path)
 
     flame = profile_artifacts.load_flame_graph_data(tmp_path)
@@ -651,7 +651,7 @@ def test_dashboard_loaders_pick_the_newest_chrome_trace(tmp_path: Path, monkeypa
     assert [event["name"] for event in timeline["gpu"]] == ["gemm_kernel"]
     assert timeline["summary"]["total_time_ms"] == pytest.approx(1.1)
 
-    # The engine's bottleneck analysis and the dashboard read the same trace.
+    # The Engine's bottleneck analysis and profile loaders read the same trace.
     core = PerfCore(bench_root=tmp_path)
     monkeypatch.setattr(engine_module, "_get_handler", lambda: core)
     profile = engine_module.get_engine().analyze.bottlenecks(mode="profile")["profile"]
@@ -659,7 +659,7 @@ def test_dashboard_loaders_pick_the_newest_chrome_trace(tmp_path: Path, monkeypa
     assert core.get_flame_graph_data()["trace_path"] == str(trace)
 
 
-def test_dashboard_loaders_report_profile_dirs_without_a_trace(tmp_path: Path) -> None:
+def test_profile_loaders_report_profile_dirs_without_a_trace(tmp_path: Path) -> None:
     capture = tmp_path / "artifacts" / "runs" / "followup_run" / "profiles" / "capture"
     _write_profile_file(capture / "torch_profile_summary.json", json.dumps({"top_ops": []}), seconds=1)
     _write_profile_file(capture / "pair_manifest.json", json.dumps({"baseline": "a.json"}), seconds=2)

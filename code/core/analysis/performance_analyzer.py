@@ -55,7 +55,7 @@ def _story_note(story_metadata: Dict[str, Any]) -> str:
 
 
 def _transform_aggregated_data(all_benchmarks: dict, timestamp: str) -> dict:
-    """Transform aggregated benchmark data to dashboard format."""
+    """Transform aggregated benchmark data to the normalized result format."""
     benchmarks: List[Dict[str, Any]] = []
     all_speedups: List[float] = []
     successful = 0

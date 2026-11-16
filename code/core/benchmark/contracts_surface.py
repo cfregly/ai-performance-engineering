@@ -1,7 +1,7 @@
 """Shared benchmark methodology and warehouse contract surfaces.
 
 This module provides one small summary object that can be reused by CLI, MCP,
-and dashboard handlers without duplicating path or schema logic.
+without duplicating path or schema logic.
 """
 
 from __future__ import annotations
@@ -63,14 +63,6 @@ _INTERFACE_ENTRIES = (
         "description": "Print the shared contract summary as JSON.",
     },
     {
-        "id": "dashboard_api",
-        "label": "Dashboard API",
-        "transport": "http",
-        "entrypoint": "/api/benchmark/contracts",
-        "method": "GET",
-        "description": "Read-only route used by the contracts tab and other UI clients.",
-    },
-    {
         "id": "mcp",
         "label": "MCP",
         "transport": "mcp",
@@ -101,14 +93,6 @@ _GENERATOR_RENDER_INTERFACE_ENTRIES = (
         "transport": "cli",
         "entrypoint": "python -m cli.aisp tools benchmark-run-render -- --overrides-json '{\"name\":\"publication-inference-stack-b200\"}'",
         "description": "Render BenchmarkRun YAML through the shared Python renderer.",
-    },
-    {
-        "id": "dashboard_api",
-        "label": "Dashboard API",
-        "transport": "http",
-        "entrypoint": "/api/benchmark/contracts/render-run",
-        "method": "POST",
-        "description": "Render BenchmarkRun YAML for the dashboard generator and other API clients.",
     },
     {
         "id": "mcp",
@@ -245,15 +229,15 @@ def render_benchmark_run_yaml(overrides: Dict[str, Any] | None = None) -> Dict[s
 def get_benchmark_run_generator_config() -> Dict[str, Any]:
     """Return generator metadata and a default preview rendered by the shared backend."""
     preview = render_benchmark_run_yaml()
+    interfaces = {entry["id"]: entry["entrypoint"] for entry in _GENERATOR_RENDER_INTERFACE_ENTRIES}
     return {
         "template_path": preview["template_path"],
         "defaults": preview["applied_values"],
         "choices": _GENERATOR_CHOICES,
         "preview_yaml": preview["rendered_yaml"],
         "render_interfaces": {
-            "cli": _GENERATOR_RENDER_INTERFACE_ENTRIES[0]["entrypoint"],
-            "dashboard_api": _GENERATOR_RENDER_INTERFACE_ENTRIES[1]["entrypoint"],
-            "mcp_tool": _GENERATOR_RENDER_INTERFACE_ENTRIES[2]["entrypoint"],
+            "cli": interfaces["cli"],
+            "mcp_tool": interfaces["mcp"],
         },
         "render_interface_entries": list(_GENERATOR_RENDER_INTERFACE_ENTRIES),
     }
@@ -279,6 +263,7 @@ def get_benchmark_contracts_summary() -> Dict[str, Any]:
     contract_names = list(_SURFACES.keys())
     contracts = {name: _surface_entry(name, meta) for name, meta in _SURFACES.items()}
     missing_surfaces = [name for name in contract_names if not contracts[name]["exists"]]
+    interfaces = {entry["id"]: entry["entrypoint"] for entry in _INTERFACE_ENTRIES}
     return {
         "schema_version": SCHEMA_VERSION,
         "generated_at_utc": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
@@ -290,9 +275,8 @@ def get_benchmark_contracts_summary() -> Dict[str, Any]:
         "missing_surfaces": missing_surfaces,
         "contracts": contracts,
         "interfaces": {
-            "cli": _INTERFACE_ENTRIES[0]["entrypoint"],
-            "dashboard_api": _INTERFACE_ENTRIES[1]["entrypoint"],
-            "mcp_tool": _INTERFACE_ENTRIES[2]["entrypoint"],
+            "cli": interfaces["cli"],
+            "mcp_tool": interfaces["mcp"],
         },
         "interface_entries": list(_INTERFACE_ENTRIES),
         "generator": get_benchmark_run_generator_config(),

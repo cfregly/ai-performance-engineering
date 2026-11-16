@@ -763,29 +763,6 @@ def test_full_test_collection_gates_cpu_and_attested_gpu_workflows() -> None:
     assert "b200" in gpu_job["runs-on"]
 
 
-def test_dashboard_ci_uses_blocking_node_24_gates() -> None:
-    payload = _load_workflow("benchmark-validation.yml")
-    jobs = payload["jobs"]
-    assert isinstance(jobs, dict)
-    dashboard = jobs["dashboard"]
-    dashboard_steps = dashboard["steps"]
-
-    setup_node = next(step for step in dashboard_steps if step["name"] == "Set up Node")
-    assert setup_node["with"]["node-version"] == "24"
-    expected_commands = {
-        "npm ci",
-        "npm audit --audit-level=moderate",
-        "npm run lint",
-        "npm test -- --runInBand",
-        "npm run build",
-    }
-    actual_commands = {
-        step["run"] for step in dashboard_steps if isinstance(step, dict) and "run" in step
-    }
-    assert expected_commands <= actual_commands
-    assert all("continue-on-error" not in step for step in dashboard_steps)
-
-
 def test_workflow_path_filters_are_root_relative() -> None:
     payload = _load_workflow("benchmark-validation.yml")
     triggers = payload["on"]
@@ -795,7 +772,6 @@ def test_workflow_path_filters_are_root_relative() -> None:
         paths = triggers[event_name]["paths"]
         assert {
             "code/Makefile",
-            "code/dashboard/**",
             "code/requirements_latest.txt",
             "code/requirements_torch2141_linux_x86_64.lock",
             "code/scripts/build_vllm_for_torch.py",
@@ -862,26 +838,6 @@ def test_setup_uses_git_root_and_does_not_ignore_submodule_failure() -> None:
     assert 'git -C "${REPOSITORY_ROOT}" submodule sync --recursive' in setup
     assert 'git -C "${REPOSITORY_ROOT}" submodule update --init --recursive' in setup
     assert "submodule update --init --recursive >/dev/null 2>&1 || true" not in setup
-
-
-def test_dashboard_make_and_node_contracts_match_documented_ports() -> None:
-    makefile = (CODE_ROOT / "Makefile").read_text(encoding="utf-8")
-    package = json.loads(
-        (CODE_ROOT / "dashboard" / "web" / "package.json").read_text(encoding="utf-8")
-    )
-    readme = (CODE_ROOT / "dashboard" / "web" / "README.md").read_text(encoding="utf-8")
-
-    phony_line = next(line for line in makefile.splitlines() if line.startswith(".PHONY:"))
-    assert {"dashboard", "dashboard-api", "dashboard-web"} <= set(phony_line.split())
-    assert "DASHBOARD_API_PORT ?= 6970" in makefile
-    assert "DASHBOARD_WEB_PORT ?= 3000" in makefile
-    assert "$(PYTHON) -m dashboard.api.server serve --port $(DASHBOARD_API_PORT)" in makefile
-    assert "npm --prefix dashboard/web run dev -- --port $(DASHBOARD_WEB_PORT)" in makefile
-    assert package["engines"]["node"] == ">=24.0.0"
-    assert package["devDependencies"]["concurrently"] == "10.0.6"
-    assert "make dashboard" in readme
-    assert "127.0.0.1:6970" in readme
-    assert "127.0.0.1:3000" in readme
 
 
 def test_makefile_and_examples_use_campaign_entrypoint() -> None:

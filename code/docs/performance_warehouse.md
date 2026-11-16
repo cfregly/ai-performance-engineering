@@ -239,5 +239,4 @@ The repo now has the pieces for this contract even if it does not yet ship the f
 Thin interface surfaces are also exposed now:
 
 - CLI: `python -m cli.aisp tools benchmark-contracts`
-- Dashboard API: `GET /api/benchmark/contracts`
 - MCP: `benchmark_contracts`

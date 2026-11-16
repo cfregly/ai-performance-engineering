@@ -367,26 +367,29 @@ def _collect_required_profiler_failures(
     best_opt: Optional[Dict[str, Any]],
     *,
     profiling_requested: bool,
+    required_profilers: Sequence[str],
 ) -> List[str]:
     """Return required profiler failures for a benchmark pair.
 
     Profiling-enabled runs are only trustworthy when the requested profilers
-    actually succeed. Treat skipped or failed profiler outcomes as invalid.
+    actually succeed. Missing, skipped and failed outcomes are invalid unless
+    the arm records an explicit reason that the profiler does not apply.
     """
     if not profiling_requested:
         return []
 
     failures: List[str] = []
-    baseline_statuses = result_entry.get("baseline_profiler_statuses") or {}
-    for profiler, status in sorted(baseline_statuses.items()):
-        if status != "succeeded":
-            failures.append(f"baseline:{profiler}:{status}")
-
-    if best_opt and isinstance(best_opt, dict):
-        optimized_statuses = best_opt.get("optimized_profiler_statuses") or {}
-        for profiler, status in sorted(optimized_statuses.items()):
+    for arm, entry in (("baseline", result_entry), ("optimized", best_opt)):
+        if entry is None:
+            continue
+        statuses = entry.get(f"{arm}_profiler_statuses") or {}
+        not_applicable = entry.get(f"{arm}_profiler_not_applicable") or {}
+        for profiler in sorted(set(required_profilers)):
+            status = statuses.get(profiler)
+            if status is None and not_applicable.get(profiler):
+                continue
             if status != "succeeded":
-                failures.append(f"optimized:{profiler}:{status}")
+                failures.append(f"{arm}:{profiler}:{status if status is not None else 'missing'}")
 
     return failures
 
@@ -3689,12 +3692,24 @@ def _run_profile_subprocess(
     stdout_text = ""
     stderr_text = ""
     timed_out = False
+    interrupted = False
     failure_warning: Optional[str] = None
     try:
         if capture_output:
             stdout_text, stderr_text = process.communicate(timeout=timeout_seconds)
         else:
             process.wait(timeout=timeout_seconds)
+    except KeyboardInterrupt:
+        interrupted = True
+        _terminate_process_group(process, f"{terminate_reason}:cancelled")
+        try:
+            if capture_output:
+                stdout_text, stderr_text = process.communicate()
+            else:
+                process.wait()
+        except (subprocess.SubprocessError, OSError, ValueError) as exc:
+            failure_warning = f"Cancelled profiler could not collect trailing output: {exc}"
+        raise
     except subprocess.TimeoutExpired:
         timed_out = True
         _terminate_process_group(process, terminate_reason, timeout_seconds=timeout_seconds)
@@ -3709,18 +3724,24 @@ def _run_profile_subprocess(
         failure_warning = f"{wait_error_message}: {exc}"
         _terminate_process_group(process, terminate_reason)
 
-    if capture_output:
-        if stdout_text:
-            stdout_log.write_text(stdout_text)
-        if stderr_text:
-            stderr_log.write_text(stderr_text)
-    if not timed_out and failure_warning is None:
-        _reap_process_group_members(
-            process_group_id,
-            reason=terminate_reason,
-            preserve_pids={process.pid},
-        )
-    log_base.with_suffix(".command.json").write_text(json.dumps({"command": command}, indent=2))
+    finally:
+        if capture_output:
+            if stdout_text:
+                stdout_log.write_text(stdout_text)
+            if stderr_text:
+                stderr_log.write_text(stderr_text)
+        if interrupted and failure_warning:
+            _append_profile_warning(stderr_log, failure_warning)
+        if interrupted or (not timed_out and failure_warning is None):
+            _reap_process_group_members(
+                process_group_id,
+                reason=terminate_reason,
+                preserve_pids={process.pid},
+            )
+        receipt: Dict[str, Any] = {"command": command}
+        if interrupted:
+            receipt.update(status="cancelled", pid=process.pid, returncode=process.returncode)
+        log_base.with_suffix(".command.json").write_text(json.dumps(receipt, indent=2))
     return _ProfileSubprocessResult(
         process=process,
         stdout_log=stdout_log,
@@ -5441,6 +5462,36 @@ def _update_expectation_entry_after_profiler_gate(
     return update_result, payload
 
 
+def _timing_configuration_receipt(
+    *,
+    iterations: int,
+    warmup: int,
+    adaptive_iterations: bool,
+    timing: Optional[Any],
+) -> Dict[str, Any]:
+    """Keep applied configuration separate from retained timing sample counts."""
+    return {
+        "configured_iterations": int(iterations),
+        "configured_warmup_iterations": int(warmup),
+        "adaptive_iterations": bool(adaptive_iterations),
+        "observed_timing_samples": int(timing.iterations) if timing is not None else None,
+        "observed_warmup_iterations": int(timing.warmup_iterations) if timing is not None else None,
+    }
+
+
+def _expectation_provenance_from_result(
+    result_entry: Dict[str, Any],
+    **identity: Any,
+) -> RunProvenance:
+    """Use baseline configured counts while preserving each candidate's receipt."""
+    configuration = result_entry["baseline_timing_configuration"]
+    return RunProvenance(
+        iterations=int(configuration["configured_iterations"]),
+        warmup_iterations=int(configuration["configured_warmup_iterations"]),
+        **identity,
+    )
+
+
 def _expectation_entry_from_result(
     result_entry: Dict[str, Any],
     best_opt: Dict[str, Any],
@@ -6447,6 +6498,12 @@ def _test_chapter_impl(
                     target_label=f"{chapter_name}:{example_name}",
                 )
                 baseline_timing = baseline_result.timing
+                result_entry["baseline_timing_configuration"] = _timing_configuration_receipt(
+                    iterations=baseline_config.iterations,
+                    warmup=baseline_config.warmup,
+                    adaptive_iterations=baseline_config.adaptive_iterations,
+                    timing=baseline_timing,
+                )
                 baseline_memory = baseline_result.memory
                 baseline_custom_metrics = getattr(baseline_result, "custom_metrics", None) or {}
                 baseline_story_metadata = getattr(baseline_result, "story_metadata", None) or {}
@@ -7416,6 +7473,12 @@ def _test_chapter_impl(
                         'speedup': speedup,
                         'optimization_goal': str(opt_goal or "speed").strip().lower(),
                     }
+                    opt_result["timing_configuration"] = _timing_configuration_receipt(
+                        iterations=optimized_config.iterations,
+                        warmup=optimized_config.warmup,
+                        adaptive_iterations=optimized_config.adaptive_iterations,
+                        timing=optimized_timing,
+                    )
 
                     # POST-TIMING VERIFICATION: validate workload equivalence + outputs using the timing-run artifacts.
                     if verify_input:
@@ -8479,6 +8542,7 @@ def _test_chapter_impl(
                     result_entry,
                     best_opt,
                     profiling_requested=bool(enable_profiling and profiling_output_dir),
+                    required_profilers=("nsys", "ncu", "torch"),
                 )
                 profiler_failure_details = _collect_required_profiler_failure_details(
                     result_entry,
@@ -8492,13 +8556,12 @@ def _test_chapter_impl(
                         step_detail="expectations update",
                     )
                     old_entry = expectations_store.get_entry(example_key)
-                    provenance = RunProvenance(
+                    provenance = _expectation_provenance_from_result(
+                        result_entry,
                         git_commit=git_commit or "unknown",
                         hardware_key=expectation_hardware_key,
                         profile_name=profile_type,
                         timestamp=datetime.now().isoformat(),
-                        iterations=int(iterations),
-                        warmup_iterations=int(warmup),
                         execution_environment=execution_environment.kind,
                         validity_profile=validity_profile,
                         dmi_product_name=execution_environment.dmi_product_name,
@@ -8605,6 +8668,7 @@ def _test_chapter_impl(
                     result_entry,
                     None,
                     profiling_requested=bool(enable_profiling and profiling_output_dir),
+                    required_profilers=("nsys", "ncu", "torch"),
                 )
                 profiler_failure_details = _collect_required_profiler_failure_details(
                     result_entry,
@@ -8847,6 +8911,12 @@ def _test_chapter_impl(
 
             baseline_time = baseline_result.mean_ms
             result_entry['baseline_time_ms'] = baseline_time
+            result_entry["baseline_timing_configuration"] = _timing_configuration_receipt(
+                iterations=cuda_iterations,
+                warmup=cuda_warmup,
+                adaptive_iterations=False,
+                timing=baseline_result,
+            )
 
             # Enhanced baseline metrics display with emojis and formatting (same as Python)
             logger.info(f"    Baseline: {format_time_ms(baseline_time)} ms")
@@ -9384,6 +9454,12 @@ def _test_chapter_impl(
                     'speedup': speedup,
                     'optimization_goal': str(result_entry.get("optimization_goal") or "speed").strip().lower(),
                 }
+                opt_result["timing_configuration"] = _timing_configuration_receipt(
+                    iterations=cuda_iterations,
+                    warmup=cuda_warmup,
+                    adaptive_iterations=False,
+                    timing=optimized_result,
+                )
                 _record_timing_fields(
                     opt_result,
                     "",
@@ -9957,6 +10033,7 @@ def _test_chapter_impl(
                     result_entry,
                     best_opt,
                     profiling_requested=bool(enable_profiling and profiling_output_dir),
+                    required_profilers=("nsys", "ncu"),
                 )
                 profiler_failure_details = _collect_required_profiler_failure_details(
                     result_entry,
@@ -9983,13 +10060,12 @@ def _test_chapter_impl(
                         step_detail="expectations update",
                     )
                     old_entry = expectations_store.get_entry(example_key)
-                    provenance = RunProvenance(
+                    provenance = _expectation_provenance_from_result(
+                        result_entry,
                         git_commit=git_commit or "unknown",
                         hardware_key=expectation_hardware_key,
                         profile_name=profile_type,
                         timestamp=datetime.now().isoformat(),
-                        iterations=int(iterations),
-                        warmup_iterations=int(warmup),
                         execution_environment=execution_environment.kind,
                         validity_profile=validity_profile,
                         dmi_product_name=execution_environment.dmi_product_name,
@@ -10103,6 +10179,7 @@ def _test_chapter_impl(
                     result_entry,
                     None,
                     profiling_requested=bool(enable_profiling and profiling_output_dir),
+                    required_profilers=("nsys", "ncu"),
                 )
                 profiler_failure_details = _collect_required_profiler_failure_details(
                     result_entry,

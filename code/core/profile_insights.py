@@ -1,5 +1,5 @@
 """
-Shared profiling insights and heuristics used across dashboard, CLI, and MCP.
+Shared profiling insights and heuristics used across CLI and MCP tools.
 
 These helpers stay free of HTTP/handler state and operate on plain data
 structures so they can be reused by any interface.

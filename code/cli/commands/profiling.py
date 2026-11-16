@@ -500,7 +500,7 @@ def memory(args) -> int:
     """Report that memory timeline conversion is not implemented. Returns exit code 1."""
     from rich.console import Console
     console = Console()
-    console.print("Memory timeline conversion is not implemented by this command. No output was written. Use the dashboard for existing memory timeline artifacts.", style='red')
+    console.print("Memory timeline conversion is not implemented by this command. No output was written. Open existing memory timeline artifacts in a compatible trace viewer.", style='red')
     return 1
 
 
@@ -516,7 +516,7 @@ def hta(args) -> None:
     """Holistic Trace Analysis."""
     from rich.console import Console
     console = Console()
-    console.print("[yellow]Use 'aisp profile hta-capture' to collect a new HTA trace or view highlights in the dashboard.[/yellow]")
+    console.print("[yellow]Use 'aisp profile hta-capture' to collect a new HTA trace.[/yellow]")
 
 
 def torch_profiler(args) -> int:

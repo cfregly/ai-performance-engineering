@@ -2,14 +2,12 @@
 """
 Integration tests to verify consistency across all interfaces.
 
-Tests that CLI, MCP, Dashboard API, and Python API all expose the same
-functionality and return consistent results.
+Tests that CLI, MCP, and Python API expose their supported functionality
+and return consistent results.
 
 Run with: pytest tests/test_interface_consistency.py -v
 """
 
-import json
-import os
 import pytest
 
 
@@ -225,36 +223,6 @@ class TestCLIConsistency:
 
 
 # =============================================================================
-# Test: Dashboard endpoints map to Engine
-# =============================================================================
-
-class TestDashboardConsistency:
-    """Verify Dashboard API endpoints align with Engine domains."""
-    
-    def test_dashboard_imports(self):
-        """Dashboard should import without errors."""
-        try:
-            from dashboard.api.server import fastapi_app
-            assert fastapi_app is not None
-        except Exception as e:
-            pytest.fail(f"Dashboard import failed: {e}")
-    
-    def test_dashboard_routes_registered(self):
-        """Dashboard should register API routes from the registry."""
-        from dashboard.api.server import fastapi_app
-        from core.api.registry import get_routes
-
-        registered = set()
-        for route in fastapi_app.routes:
-            methods = getattr(route, "methods", None) or set()
-            for method in methods:
-                registered.add((route.path, method))
-
-        for api_route in get_routes():
-            assert (api_route.path, api_route.method.upper()) in registered
-
-
-# =============================================================================
 # Test: Cross-interface result consistency
 # =============================================================================
 
@@ -329,38 +297,6 @@ class TestNamingConsistency:
         
         # Should have multiple domain-prefixed tools
         assert len(domain_tools) >= 20, "Not enough domain-prefixed tools"
-
-
-# =============================================================================
-# Test: Dashboard subset consistency
-# =============================================================================
-
-class TestDashboardSubsetConsistency:
-    """Verify the dashboard subset is explicitly mapped to Engine/MCP."""
-
-    def test_dashboard_engine_ops(self):
-        """Dashboard routes should map to Engine ops when declared."""
-        from core.api.registry import get_routes
-        from core.engine import DOMAINS, get_engine
-
-        engine = get_engine()
-        for route in get_routes():
-            if not route.engine_op:
-                continue
-            assert "." in route.engine_op, f"Invalid engine_op format: {route.engine_op}"
-            domain, op = route.engine_op.split(".", 1)
-            assert domain in DOMAINS, f"Unknown engine domain: {domain}"
-            domain_obj = getattr(engine, domain)
-            assert hasattr(domain_obj, op), f"Engine missing op: {route.engine_op}"
-
-    def test_dashboard_mcp_tools(self):
-        """Dashboard routes should reference valid MCP tools when declared."""
-        from core.api.registry import get_routes
-        from mcp.mcp_server import TOOLS
-
-        for route in get_routes():
-            if route.mcp_tool:
-                assert route.mcp_tool in TOOLS, f"Missing MCP tool: {route.mcp_tool}"
 
 
 # =============================================================================

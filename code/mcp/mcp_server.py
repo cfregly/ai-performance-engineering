@@ -4961,8 +4961,8 @@ def tool_system_capabilities(params: Dict[str, Any]) -> Dict[str, Any]:
 
 @register_tool(
     "benchmark_data",
-    "Tags: benchmark, data, table, pagination, filters, dashboard. "
-    "Fetch benchmark results with filtering/sorting/pagination (dashboard data view). "
+    "Tags: benchmark, data, table, pagination, filters. "
+    "Fetch benchmark results with filtering/sorting/pagination (table view). "
     "Returns: {timestamp, summary, benchmarks, pagination, filters}. "
     "USE when: Building tables or filtering benchmark results. "
     'Example: "List failed benchmarks" or "Show top speedups". '
@@ -5023,10 +5023,10 @@ def tool_benchmark_data(params: Dict[str, Any]) -> Dict[str, Any]:
 
 @register_tool(
     "benchmark_overview",
-    "Tags: benchmark, overview, summary, dashboard. "
+    "Tags: benchmark, overview, summary. "
     "Summarize the latest benchmark results (status counts, top speedups, per-chapter stats). "
     "Returns: {summary, status_counts, top_speedups, chapter_stats}. "
-    "USE when: High-level dashboard summary. "
+    "USE when: High-level benchmark summary. "
     'Example: "Give me the latest benchmark summary". ⚡ FAST (~1s).',
     {"type": "object", "properties": with_context_params({})},
 )
@@ -5135,7 +5135,7 @@ def tool_benchmark_history(params: Dict[str, Any]) -> Dict[str, Any]:
 
 @register_tool(
     "benchmark_trends",
-    "Tags: benchmark, trends, speedup, history, dashboard. "
+    "Tags: benchmark, trends, speedup, history. "
     "Compute performance trends over time (avg/max speedup by run). "
     "Returns: {trend_points, best_ever}. "
     "USE when: Charting benchmark trends. "
@@ -10837,6 +10837,44 @@ from core.tools.tools_commands import DIAGNOSTIC_TOOLS
 
 
 @register_tool(
+    "tools_trace_replay",
+    "Tags: tools, traces, replay, kernels, correctness. "
+    "Capture actual operator tensors, validate a retained bundle, or replay native benchmark pairs. "
+    "Forwards args unchanged to `aisp tools trace-replay`. Use args=['--help'] for commands. "
+    "Replay requires the declared GPU and uses the existing benchmark verification and profiler paths. "
+    "CPU reference captures and generated inputs retain their origin labels. "
+    "Independent operator replay does not recreate request arrivals or stream overlap. "
+    "The invocation adds no wall-clock deadline. Results include stdout, stderr, and exit status.",
+    {
+        "type": "object",
+        "properties": with_context_params({
+            "args": {
+                "type": "array", "items": {"type": "string"}, "default": ["--help"],
+                "description": "CLI argument vector. Bundle and output paths refer to the server filesystem.",
+            },
+        }),
+    },
+)
+def tool_tools_trace_replay(params: Dict[str, Any]) -> Dict[str, Any]:
+    from core.utils.cooperative_subprocess import CooperativeProcessInterrupted, run_cooperative_process
+
+    include_context, context_level = extract_context_opts(params)
+    args = params.get("args", ["--help"])
+    if not isinstance(args, list) or not all(isinstance(value, str) for value in args):
+        return make_error("args must be a list of strings", include_context, context_level)
+    command = [sys.executable, "-m", "cli.aisp", "tools", "trace-replay", "--", *args]
+    try:
+        result = run_cooperative_process(command, env=_subprocess_env(), cwd=CODE_ROOT)
+    except CooperativeProcessInterrupted as exc:
+        result = exc.result
+        result["success"] = False
+        result["error"] = "Cancelled after the owned CLI completed cleanup"
+    if result["returncode"] != 0 and not result.get("error"):
+        result["error"] = result["stderr"] or result["stdout"] or f"trace-replay failed with code {result['returncode']}"
+    return attach_context_if_requested(result, include_context, context_level)
+
+
+@register_tool(
     "tools_diagnostics",
     "Tags: tools, network, fabric, collective, serving, diagnostics. "
     "Run a diagnostic tool or analyze retained evidence through the same aisp CLI. "
@@ -11141,7 +11179,7 @@ def tool_tools_probe_hw(params: Dict[str, Any]) -> Dict[str, Any]:
     "Tags: benchmark, methodology, warehouse, docs, contract. "
     "Return the repo benchmark methodology, warehouse, and BenchmarkRun contract surfaces. "
     "Returns: {schema_version, contracts, interface_entries, generator}. "
-    "⚡ FAST (<1s). USE when: You need the stable methodology/warehouse contract or want the CLI, dashboard, and MCP entrypoints in one place.",
+    "⚡ FAST (<1s). USE when: You need the stable methodology/warehouse contract or want the CLI and MCP entrypoints in one place.",
     {"type": "object", "properties": with_context_params({})},
 )
 def tool_benchmark_contracts(params: Dict[str, Any]) -> Dict[str, Any]:
@@ -11157,7 +11195,7 @@ def tool_benchmark_contracts(params: Dict[str, Any]) -> Dict[str, Any]:
     "Tags: benchmark, generator, yaml, contract. "
     "Render BenchmarkRun YAML through the shared backend template renderer. "
     "Returns: {schema_version, template_path, applied_values, rendered_yaml}. "
-    "⚡ FAST (<1s). USE when: You need a lockstep BenchmarkRun preview or want to script the same generator used by the dashboard.",
+    "⚡ FAST (<1s). USE when: You need a lockstep BenchmarkRun preview or want to script the shared BenchmarkRun generator.",
     {
         "type": "object",
         "properties": with_context_params(

@@ -27,7 +27,7 @@ class ScanPlan:
     does not claim to implement the paper's single-pass decoupled look-back.
     """
 
-    def __init__(self, x: torch.Tensor, block_size: int = 1024):
+    def __init__(self, x: torch.Tensor, block_size: int = 4096):
         if x.device.type != "cuda":
             raise RuntimeError("SKIPPED: ScanPlan requires CUDA")
         if x.ndim != 1 or x.dtype != torch.int32 or not x.is_contiguous() or not x.numel():
@@ -39,44 +39,51 @@ class ScanPlan:
         self.levels = []
         current = x
         while True:
-            blocks = (current.numel() + block_size - 1) // block_size
+            level_block_size = min(block_size, 1 << (current.numel() - 1).bit_length())
+            blocks = (current.numel() + level_block_size - 1) // level_block_size
             output = torch.empty_like(current)
             totals = torch.empty(blocks, dtype=x.dtype, device=x.device)
-            self.levels.append((current, output, totals))
+            self.levels.append((current, output, totals, level_block_size))
             if blocks == 1:
                 break
             current = totals
         self.output = self.levels[0][1]
 
     def run(self) -> torch.Tensor:
-        for source, output, totals in self.levels:
+        for source, output, totals, level_block_size in self.levels:
             self.kernels.scan_tiles[(totals.numel(),)](
                 source,
                 output,
                 totals,
                 source.numel(),
-                self.block_size,
+                level_block_size,
+                num_warps=4,
             )
         for index in range(len(self.levels) - 2, -1, -1):
-            source, output, totals = self.levels[index]
+            source, output, totals, level_block_size = self.levels[index]
             self.kernels.add_tile_carries[(totals.numel(),)](
                 output,
                 self.levels[index + 1][1],
                 source.numel(),
-                self.block_size,
+                level_block_size,
+                num_warps=4,
             )
         return self.output
 
 
 class PrefixScanBenchmark(VerificationPayloadMixin, BaseBenchmark):
-    def __init__(self, optimized, numel=1_048_579, *, lookback=False):
+    input_jitter_bounds = {"x": (-(2**31), 2**31)}
+
+    def __init__(self, optimized, numel=1_048_579, *, lookback=False, input_tensors=None):
         super().__init__()
         if type(numel) is not int or numel <= 0:
             raise ValueError("numel must be a positive integer")
         if lookback and not optimized:
             raise ValueError("lookback is an optimized scan backend")
         self.optimized, self.numel, self.lookback = optimized, numel, lookback
+        self._input_tensors = input_tensors
         self.x = self.output = self.plan = None
+        self._scratch = None
         self.executed = False
         self.register_workload_metadata(
             custom_units_per_iteration=numel, custom_unit_name="scanned_values"
@@ -84,10 +91,27 @@ class PrefixScanBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
     def setup(self):
         self.executed = False
+        self.output = None
+        self._verification_payload = None
+        self._scratch = None
+        self.plan = None
         if not torch.cuda.is_available():
             raise RuntimeError("SKIPPED: prefix scan benchmark pairs require CUDA")
-        self.x = torch.randint(-3, 4, (self.numel,), dtype=torch.int32, device=self.device)
-        self.output = torch.empty_like(self.x)
+        if self._input_tensors is None:
+            self.x = torch.randint(-3, 4, (self.numel,), dtype=torch.int32, device=self.device)
+        else:
+            if set(self._input_tensors) != {"x"}:
+                raise ValueError("scan retained inputs must contain only x")
+            x = self._input_tensors["x"]
+            if (
+                not isinstance(x, torch.Tensor)
+                or tuple(x.shape) != (self.numel,)
+                or x.dtype != torch.int32
+                or not x.is_contiguous()
+            ):
+                raise ValueError("scan retained x must match the contiguous int32 workload")
+            self.x = x.detach().to(self.device).clone()
+        self._scratch = torch.empty_like(self.x)
         if self.optimized:
             if self.lookback:
                 from labs.prefix_scan.lookback import LookbackPlan
@@ -98,9 +122,11 @@ class PrefixScanBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
     def benchmark_fn(self):
         self.executed = False
+        self.output = None
+        self._verification_payload = None
         if self.x is None:
             raise RuntimeError("setup() must run first")
-        self.output = self.plan.run() if self.optimized else inclusive_scan(self.x, self.output)
+        self.output = self.plan.run() if self.optimized else inclusive_scan(self.x, self._scratch)
         self.executed = True
 
     def capture_verification_payload(self):
@@ -109,7 +135,7 @@ class PrefixScanBenchmark(VerificationPayloadMixin, BaseBenchmark):
         expected = torch.cumsum(self.x.to(torch.int64), dim=0).to(torch.int32)
         torch.testing.assert_close(self.output, expected, rtol=0, atol=0)
         self._set_verification_payload(
-            inputs={"x": self.x},
+            inputs={"x": self.x.view(1, -1)},
             output=self.output,
             batch_size=1,
             parameter_count=0,
@@ -121,4 +147,5 @@ class PrefixScanBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
     def teardown(self):
         self.x = self.output = self.plan = None
+        self._scratch = self._verification_payload = None
         self.executed = False

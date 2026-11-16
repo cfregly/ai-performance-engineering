@@ -3898,6 +3898,8 @@ class BenchmarkHarness:
         input_data["verify_output_path"] = verify_output_path
         input_data["verify_output_max_bytes"] = _VERIFY_OUTPUT_MAX_BYTES
         start_time = time.time()
+        process: Optional[subprocess.Popen[str]] = None
+        child_pgid: Optional[int] = None
         
         try:
             import signal
@@ -4171,6 +4173,19 @@ class BenchmarkHarness:
                     times_ms = cast(List[float], [])
                     child_timing = None
         
+        except KeyboardInterrupt:
+            if process is not None:
+                _terminate_process_group(process, child_pgid, grace_seconds=2.0)
+                try:
+                    stdout, stderr = process.communicate()
+                    _maybe_write_subprocess_stream(stdout, benchmark_name, config, stream="stdout")
+                    _maybe_write_subprocess_stderr(stderr, benchmark_name, config)
+                except (subprocess.SubprocessError, OSError, ValueError) as exc:
+                    _emit_harness_warning(
+                        f"Cancelled benchmark worker {process.pid} could not retain trailing output",
+                        exc=exc,
+                    )
+            raise
         except subprocess.TimeoutExpired:
             # TIMEOUT - kill the process group
             elapsed_time = time.time() - start_time
