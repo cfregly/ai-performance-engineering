@@ -23,7 +23,7 @@ class RunSection:
 
 @dataclass
 class MarkdownSection:
-    """Named markdown section rendered before the generic chapter/lab scaffolding."""
+    """A heading and Markdown body for a README section."""
 
     heading: str
     body: str
@@ -38,9 +38,11 @@ class Entry:
     goals: Sequence[str]
     contents: Sequence[Tuple[str, str]]
     validation: Sequence[str]
+    summary_blank_line: bool = False
     intro: str = ""
     goals_intro: str = ""
     lead_sections: Sequence[MarkdownSection] = field(default_factory=tuple)
+    after_goals_sections: Sequence[MarkdownSection] = field(default_factory=tuple)
     run: Optional[RunSection] = None
     run_heading: str = "Running the Benchmarks"
     run_intro: str = (
@@ -62,6 +64,8 @@ def _format_markdown(entry: Entry) -> str:
         lines.append(entry.intro.strip())
         lines.append("")
     lines.append("## Summary")
+    if entry.summary_blank_line:
+        lines.append("")
     lines.append(entry.summary.strip())
     lines.append("")
     for section in entry.lead_sections:
@@ -76,6 +80,11 @@ def _format_markdown(entry: Entry) -> str:
     for goal in entry.goals:
         lines.append(f"- {goal}")
     lines.append("")
+    for section in entry.after_goals_sections:
+        lines.append(f"## {section.heading}")
+        lines.append("")
+        lines.append(section.body.strip())
+        lines.append("")
     lines.append("## Directory Layout")
     lines.append("| Path | Description |")
     lines.append("| --- | --- |")
@@ -428,16 +437,20 @@ def chapter_entry(
     ),
     validation_heading: str = "Validation Checklist",
     trailing_sections: Sequence[str] = (),
+    after_goals_sections: Sequence[MarkdownSection] = (),
+    summary_blank_line: bool = False,
 ) -> Entry:
     """Create a chapter README entry."""
     return Entry(
         title=title,
         summary=summary,
+        summary_blank_line=summary_blank_line,
         goals=goals,
         contents=contents,
         validation=validation,
         goals_intro=goals_intro,
         lead_sections=lead_sections,
+        after_goals_sections=after_goals_sections,
         run=_chapter_run_commands(slug),
         run_heading=run_heading,
         run_intro=run_intro,
@@ -464,6 +477,7 @@ def lab_entry(
     ),
     validation_heading: str = "Validation Checklist",
     extra_sections: Sequence[str] = (),
+    after_goals_sections: Sequence[MarkdownSection] = (),
 ) -> Entry:
     """Create a lab README entry."""
     return Entry(
@@ -473,6 +487,7 @@ def lab_entry(
         contents=contents,
         validation=validation,
         lead_sections=lead_sections,
+        after_goals_sections=after_goals_sections,
         run=run if run else _lab_run_commands(slug),
         run_heading=run_heading,
         run_intro=run_intro,
@@ -1053,6 +1068,8 @@ ENTRIES["labs/README.md"] = Entry(
             "Use `list-targets` first; the benchmark-pair labs expose clean harness targets, while the playbook/matrix labs often have their own scripts or Makefiles.",
             "Use `labs/memory_bandwidth_patterns` when you want a narrow coalescing/vectorization/shared-memory bandwidth lab instead of a broader serving-path workflow.",
             "Use `labs/nccl_nixl_nvshmem` when you want communication-stack tradeoffs and capability probing instead of a broader distributed-training or serving workflow.",
+            "Use the [multi-GPU communication lab](multi_gpu_communication/README.md) for a common halo workload that connects native NCCL groups, buffer registration, and compute/communication overlap. Start with the [group guide](../ch04/nccl_groups.md) for matching, completion, and lifetime rules.",
+            "Use the [NVSHMEM device lab](nvshmem_device/README.md) for GPU-issued scalar halos, cooperative block transfers, fused epochs, ready/consumed signals, and atomic counters. It verifies complete numerical outputs and exposes the launch and progress requirements.",
             "If a lab does not have a clean baseline/optimized target yet, do not invent one in documentation.",
         ],
     ),
@@ -1095,6 +1112,8 @@ ENTRIES["labs/README.md"] = Entry(
             | `labs/moe_decode_blackwell_matrix/` | Blackwell MoE decode scenario matrix for routing locality, persistent scheduling, and graph-launch tradeoffs | ch10, ch15, ch18, ch19 |
             | `labs/moe_optimization_journey/` | MoE optimization narrative | ch15, ch19 |
             | `labs/moe_parallelism/` | MoE parallelism planning | ch04, ch15 |
+            | [labs/multi_gpu_communication/](multi_gpu_communication/README.md) | Common halo workload for grouped P2P, stream dependencies, registration, and overlap tradeoffs | ch04, ch11, ch12, ch13, ch15 |
+            | [labs/nvshmem_device/](nvshmem_device/README.md) | Device halo exchange and complete per-epoch verification of cooperative and persistent notification protocols | ch04, ch11, ch12 |
             | `labs/nccl_nixl_nvshmem/` | Communication-stack tradeoffs with an honest single-GPU analogue and NCCL/NIXL/NVSHMEM stack probing | ch04, ch17, ch19 |
             | `labs/nanochat_fullstack/` | End-to-end inference stack (NanoChat) | ch16 |
             | `labs/occupancy_tuning/` | Triton occupancy/schedule sweeps | ch08, ch14 |
@@ -1544,6 +1563,38 @@ ENTRIES["ch04"] = chapter_entry(
         "Quantify NVLink bandwidth and topology effects when mixing local and disaggregated GPUs.",
         "Experiment with NVSHMEM pipelines to reduce host involvement in GPU synchronization.",
         "Adopt symmetric memory pools to simplify KV-cache replication and optimizer state sharding.",
+    ],
+    after_goals_sections=[
+        MarkdownSection(
+            "NCCL Groups and Neighbor Exchange",
+            dedent(
+                """\
+                Use the [NCCL group guide](nccl_groups.md) and
+                [common halo-exchange lab](../labs/multi_gpu_communication/README.md) to connect
+                native `ncclGroupStart`/`ncclGroupEnd` with PyTorch's
+                `batch_isend_irecv`. Grouping lets coupled sends and receives progress together
+                and can reduce launch overhead. It adds responsibility for matching peers,
+                counts, dtypes, and operation order. Post the complete exchange before waiting.
+                Keep dependent computation outside the group, and use stream completion before
+                consuming or reusing its buffers. `ncclGroupEnd` is not proof of GPU completion.
+                See the official [group](https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/usage/groups.html)
+                and [P2P](https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/usage/p2p.html) semantics.
+
+                This builds on existing grouped paths. The
+                [pipeline helper](pipeline_parallel_common.py) batches opposing neighbor
+                transfers, and the [symmetric-memory comparison](symmetric_memory_example.py)
+                uses batched NCCL P2P for its traditional ring. Grouping alone does not establish
+                compute/communication overlap. Use independent work, explicit stream dependencies,
+                and a GPU trace to check whether communication is hidden. A serialized exchange
+                is sufficient when no useful independent work remains.
+
+                Use the [NVSHMEM device lab](../labs/nvshmem_device/README.md) to continue from
+                host-enqueued exchange to scalar GPU puts, cooperative block transfers, and
+                fused device loops. Its five modes check complete outputs. Ready signals,
+                consumed acknowledgments, and a checked one-CTA launch make the synchronization
+                cost and reuse rules explicit."""
+            ),
+        ),
     ],
     contents=[
         ("`baseline_dataparallel.py`, `optimized_dataparallel.py`", "Single-GPU DataParallel anti-pattern vs direct GPU execution."),
@@ -2327,11 +2378,34 @@ ENTRIES["ch11"] = chapter_entry(
         "Introduce adaptive policies that adjust stream usage based on runtime telemetry.",
         "Connect stream-level ideas to [FA4's intra-kernel producer/consumer pipelines](../labs/flashattention4/colfax_optimization_diaries.md), where per-slot phases and warp-local signals expose otherwise serialized work.",
     ],
+    after_goals_sections=[
+        MarkdownSection(
+            "Overlapping Communication with Compute",
+            dedent(
+                """\
+                The [common halo-exchange lab](../labs/multi_gpu_communication/README.md) applies
+                stream ordering to multi-GPU communication. Submit the grouped neighbor exchange
+                on a communication stream while an independent interior kernel runs elsewhere.
+                Record readiness events, make boundary work wait for received halos, and prevent
+                send-buffer reuse until the transfer completes. The
+                [NCCL group guide](../ch04/nccl_groups.md) explains the submission boundary.
+                Putting compute and communication on different streams permits overlap, but
+                resource contention can erase the benefit. Check the GPU timeline and total
+                iteration time. A high-priority stream is a scheduling hint and does not preempt
+                running work or enforce correctness. See the
+                [CUDA stream documentation](https://docs.nvidia.com/cuda/cuda-programming-guide/02-basics/asynchronous-execution.html).
+
+                The chapter's `distributed_streams` target is a local pinned-memory transfer and
+                elementwise workload under a legacy name. It teaches stream scheduling without
+                implementing a distributed NCCL exchange."""
+            ),
+        ),
+    ],
     contents=[
         ("`baseline_streams.py`, `optimized_streams.py`, `streams_overlap_demo.cu`, `streams_ordered_demo.cu`, `streams_warp_specialized_demo.cu`, `stream_overlap_base.py`", "Core stream overlap demos that contrast serialized launches with overlapped workloads."),
         ("`baseline_stream_ordered.py`, `baseline_stream_ordered_kv_cache.py`, `optimized_stream_ordered.py`, `optimized_stream_ordered_kv_cache.py`", "Stream-ordered allocator and KV-cache examples ensuring deterministic updates while enabling overlap."),
         ("`baseline_gemm_streams.py`, `optimized_gemm_streams.py`, `baseline_tensor_cores_streams.py`, `optimized_tensor_cores_streams.py`", "GEMM pipelines that schedule tensor-core kernels across multiple streams to decouple math vs IO phases."),
-        ("`baseline_distributed_streams.py`, `optimized_distributed_streams.py`, `baseline_adaptive_streams.py`, `optimized_adaptive_streams.py`", "Adaptive streaming controllers that balance NCCL, compute, and IO tasks on large systems."),
+        ("`baseline_distributed_streams.py`, `optimized_distributed_streams.py`, `baseline_adaptive_streams.py`, `optimized_adaptive_streams.py`", "Local transfer/compute stream comparisons and adaptive scheduling. The `distributed_streams` names do not denote a multi-rank NCCL workload."),
         ("`baseline_warp_specialization_multistream.*`, `optimized_warp_specialized_multistream.*`, `warp_specialized_cluster_pipeline_multistream.cu`", "Warp-specialized multistream kernels demonstrating DSMEM usage and per-stream specialization."),
         ("`compare.py`, `Makefile`, `expectations_{hardware_key}.json`", "Harness driver plus expectation data for concurrency regressions."),
     ],
@@ -2353,8 +2427,21 @@ ENTRIES["ch12"] = chapter_entry(
     title="Chapter 12 - CUDA Graphs & Dynamic Workloads",
     summary=dedent(
         """\
-        Covers modern CUDA Graph capabilities-conditional capture, graph memory tuning, dynamic parallelism, and work queues-to keep irregular workloads performant without per-launch overhead. The current repo chapter emphasizes the single-GPU graph/work-queue side of the manuscript; the larger multi-GPU NCCL/NVSHMEM orchestration arc is only partially represented here."""
+        Covers CUDA Graph replay, conditional execution, dynamic parallelism, and work
+        queues that can reduce repeated host submission work. The chapter primarily
+        implements single-GPU graph and work-queue examples. The native communication
+        lab adds rank-local NCCL graph capture across compute and communication streams.
+
+        Start with [CUDA Graphs: define, instantiate, and replay](cuda_graph_lifecycle.md)
+        for operation nodes and dependencies, CPU host functions, copies and memset,
+        graph allocation/free, external synchronization, child graphs, and their actual
+        repository coverage. The guide distinguishes template creation from executable
+        instantiation and replay, explains flag and update choices, and separates a DOT
+        dependency drawing from a measured timeline. Repeated launches of one
+        `cudaGraphExec_t` serialize with that same executable. A launch stream still
+        permits the graph's independent internal branches to run concurrently."""
     ),
+    summary_blank_line=True,
     lead_sections=[
         MarkdownSection(
             "Problem",
@@ -2429,11 +2516,48 @@ ENTRIES["ch12"] = chapter_entry(
     ],
     goals=[
         "Capture steady-state workloads into CUDA Graphs and study the delta vs eager launches.",
+        "Map operation dependencies and separate definition, instantiation, and replay costs.",
+        "Explain executable reuse, independent instances, parameter updates, and resource lifetimes.",
         "Use conditional nodes and graph memory pools for adaptive pipelines.",
         "Experiment with device-side launches (dynamic parallelism) to reduce CPU involvement.",
         "Implement GPU-resident work queues and uneven partition schedulers.",
     ],
+    after_goals_sections=[
+        MarkdownSection(
+            "Graph Replay with Distributed Communication",
+            dedent(
+                """\
+                The [common halo-exchange lab](../labs/multi_gpu_communication/README.md) connects
+                capture to a repeated compute/communication schedule. Keep buffer addresses,
+                halo parity, and communication order consistent across replay. Capture a complete
+                buffer cycle or select the graph for the current parity. Make convergence checks
+                and rank control flow agree so one rank cannot leave its peers waiting.
+                The implemented solver uses fixed iteration counts. Each rank captures its own
+                two-step A → B → A graph and a separate odd tail on its local GPU. This is not a
+                single global graph spanning MPI processes, and the pair/tail executables are
+                not a parent/child-graph hierarchy.
+                [NCCL graph capture](https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/usage/cudagraph.html)
+                requires matching capture and replay participation. The
+                [group guide](../ch04/nccl_groups.md) explains why groups do not replace stream
+                dependencies.
+
+                Chapter 4 already has a
+                [captured CUDA symmetric-memory ring](../ch04/symmetric_memory_example.py), with
+                separate publication and consumption barriers. That ring uses the CUDA
+                symmetric-memory backend. It is distinct from capturing NCCL halo exchange.
+                Graph setup and stable-buffer management add cost, so report capture separately
+                from replay and keep eager launches when too few iterations amortize that work.
+                Check CPU API activity and GPU intervals. Replay targets launch, driver, and
+                scheduling overhead around short kernels rather than making unchanged kernel
+                math inherently faster. CPU-side norm checks or MPI reductions still need
+                completion and can remove the intended savings. Follow the
+                [graph exercises](../labs/multi_gpu_communication/TASKS.md#5-capture-a-stable-schedule)
+                to inspect capture dependencies, parity, flags, and evidence limits."""
+            ),
+        ),
+    ],
     contents=[
+        ("[`cuda_graph_lifecycle.md`](cuda_graph_lifecycle.md)", "Graph operation families, template/executable lifecycle, capture fork/join, concurrency, flags, updates, and links to implemented examples."),
         ("`baseline_cuda_graphs.py`, `optimized_cuda_graphs.py`, `baseline_cuda_graphs_conditional*.cu`, `optimized_cuda_graphs_conditional*.cu`", "Graph capture demos that evolve from simple replay to conditional and DSM-aware execution, including a supplementary host-dispatch-versus-device-branching conditional graph demo."),
         ("`baseline_graph_bandwidth.{py,cu}`, `optimized_graph_bandwidth.{py,cu}`, `baseline_kernel_launches.py`, `optimized_kernel_launches.py`", "Launch- and bandwidth-focused studies illustrating how graphs reduce CPU overhead."),
         ("`baseline_dynamic_parallelism_host.cu`, `baseline_dynamic_parallelism_device.cu`, `optimized_dynamic_parallelism_host.cu`, `optimized_dynamic_parallelism_device.cu`, `dynamic_parallelism_sm121/`", "Device-side launch samples showing when dynamic parallelism helps or hurts."),
@@ -2448,7 +2572,7 @@ ENTRIES["ch12"] = chapter_entry(
         "`python optimized_work_queue.py --trace` exposes balanced dequeue times across CTAs when compared to the baseline's stragglers.",
     ],
     notes=[
-        "`cuda_graphs_workload.cuh` holds reusable graph capture helpers when you want to wrap your own kernels.",
+        "`cuda_graphs_workload.cuh` holds the standalone graph example's stage parameters and scalar output reference.",
         "`helper_*.cu` files contain host/device glue for the dynamic-parallelism case studies-copy them when bootstrapping new experiments.",
         "`graph_conditional_runtime` is the canonical conditional-node benchmark. Keep `cuda_graphs_conditional` as a supplementary demo rather than a canonical speedup target.",
         "For a smaller supporting lab that keeps Chapter 12's CUDA Graph story primary while adding fused reduction and padding-aware projection examples, see `labs/training_hotpath`.",
@@ -2585,6 +2709,27 @@ ENTRIES["ch13"] = chapter_entry(
         "Apply `torch.compile`, regional compilation, and custom allocators to reduce overhead.",
         "Tune DataLoader, KV-cache, and optimizer states to eliminate fragmentation.",
         "Exercise FP8/quantized training recipes with Transformer Engine integration.",
+    ],
+    after_goals_sections=[
+        MarkdownSection(
+            "Batched P2P in Context Parallelism",
+            dedent(
+                """\
+                The [ring-attention implementation](context_parallel_benchmark_common.py) already
+                batches K/V sends to the next rank and receives from the previous rank with
+                `batch_isend_irecv`. It waits for that exchange before advancing to the next
+                shard. This is grouped P2P coverage, not proof that communication overlaps the
+                attention computation. Preserve K/V order for each peer, tensor counts and
+                dtypes, and buffer ownership until requests complete. See the
+                [PyTorch P2P contract](https://docs.pytorch.org/docs/stable/distributed#torch.distributed.batch_isend_irecv).
+
+                Use the [NCCL group guide](../ch04/nccl_groups.md) and
+                [common halo-exchange lab](../labs/multi_gpu_communication/README.md) to study
+                native grouping and independent compute. Grouping reduces submission boundaries
+                when operations are ready together. It does not remove data dependencies between
+                attention steps, and wider groups can delay work that was already ready."""
+            ),
+        ),
     ],
     contents=[
         ("`baseline_training_standard.py`, `optimized_training_standard.py`, `train.py`, `train_deepseek_v3.py`, `train_deepseek_coder.py`", "Reference training loops showcasing eager vs compiled paths and DeepSeek-inspired configs."),
@@ -2813,6 +2958,29 @@ ENTRIES["ch15"] = chapter_entry(
         "Implement continuous batching and queueing so decode throughput stays high.",
         "Use decode-policy fast paths so greedy serving avoids unnecessary probability tensors.",
         "Serve MoE models efficiently by pairing routing with optimized communication.",
+    ],
+    after_goals_sections=[
+        MarkdownSection(
+            "Communication Buffers in Serving",
+            dedent(
+                """\
+                Use the [NCCL group guide](../ch04/nccl_groups.md) and
+                [common halo-exchange lab](../labs/multi_gpu_communication/README.md) before
+                applying grouped transfers to KV movement or expert dispatch. Batch transfers
+                whose payloads are ready together. A decoder or expert consuming received data
+                still needs a completion dependency, and grouping dependent phases can delay
+                useful work.
+
+                For stable communication buffers,
+                [NCCL user registration](https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/usage/bufferreg.html)
+                can reduce internal copies on supported paths. Register once and reuse when the
+                steady-state benefit amortizes setup. Keep registration consistent across ranks,
+                retain the allocation through every transfer, and complete outstanding work
+                before deregistering and freeing it. Allocator, algorithm, transport, and topology
+                requirements still apply. A successful registration does not guarantee zero-copy
+                execution. Short-lived request buffers may be simpler to leave unregistered."""
+            ),
+        ),
     ],
     contents=[
         ('`baseline_inference_monolithic.py`, `optimized_inference_monolithic.py`', 'Single-box inference loops that establish the baseline before disaggregation.'),
@@ -4081,7 +4249,15 @@ ENTRIES["labs/nccl_nixl_nvshmem"] = lab_entry(
                 - `labs/train_distributed` and `labs/fullstack_cluster` use communication as part of broader training or cluster stories.
                 - `labs/cache_aware_disagg_inference` and `labs/dynamic_router` use communication to support serving and routing policies.
 
-                The unique focus here is the communication-stack decision itself: what you can measure locally, what is blocked by runtime or topology, and how to tell those apart honestly."""
+                The unique focus here is the communication-stack decision itself: what you can measure locally, what is blocked by runtime or topology, and how to tell those apart honestly.
+
+                For a common multi-GPU application, continue with the
+                [halo-exchange lab](../multi_gpu_communication/README.md). It connects neighbor
+                transfers, native NCCL groups, independent compute, and buffer reuse. The
+                [NCCL group guide](../../ch04/nccl_groups.md) explains matching and completion
+                rules. Grouping can reduce submission overhead, while overlap adds stream and
+                event bookkeeping. This lab's tier-handoff pair remains the selected-block
+                memory-tier comparison described above."""
             ),
         ),
         MarkdownSection(
@@ -7412,6 +7588,27 @@ ENTRIES["labs/train_distributed"] = lab_entry(
         "Exercise FSDP and ZeRO strategies with shared helper utilities.",
         "Validate symmetric-memory training modes that pool NVLink bandwidth.",
         "Reuse launcher utilities (torchrun) with consistent configuration.",
+    ],
+    after_goals_sections=[
+        MarkdownSection(
+            "Grouping Pipeline Transfers",
+            dedent(
+                """\
+                Chapter 4's [pipeline helper](../../ch04/pipeline_parallel_common.py) already
+                uses `batch_isend_irecv` for opposing neighbor transfers. It drains completion
+                requests before buffers are reused. Preserve activation/gradient order for each
+                peer and match counts and dtypes. The
+                [NCCL group guide](../../ch04/nccl_groups.md) maps this pattern to native groups.
+
+                Group transfers that are ready at the same schedule step. A later microbatch's
+                payload may depend on an earlier receive, so grouping a whole pipeline schedule
+                is not a safe substitute for those dependencies. The
+                [common halo-exchange lab](../multi_gpu_communication/README.md) isolates the
+                additional stream/event work needed for overlap. Use that simpler workload to
+                understand the cost before adding scheduling and buffer-lifetime complexity to
+                training. The wrapper verification limits above still apply."""
+            ),
+        ),
     ],
     contents=[
         ("`baseline_ddp.py`, `optimized_ddp.py`, `baseline_ddp_flash.py`, `optimized_ddp_flash.py`, `baseline_ddp_multigpu.py`, `optimized_ddp_multigpu.py`, `baseline_ddp_flash_multigpu.py`, `optimized_ddp_flash_multigpu.py`, `baseline_ddp_compression_multigpu_int8.py`, `optimized_ddp_compression_multigpu_int8.py`, `baseline_ddp_compression_multigpu_powersgd.py`, `optimized_ddp_compression_multigpu_powersgd.py`, `ddp.py`", "DDP workloads including flash-attention and compression variants (single + multi GPU)."),
