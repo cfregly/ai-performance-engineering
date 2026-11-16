@@ -578,7 +578,14 @@
   "maintained_native_source_sha256": "41e0c506d77a9acf38e93137358efd96f10d9fa506d1b6e01245dfc3b23e93ed",
   "maintained_revision_note": "The maintained successor separates NVSHMEM vendor/runtime and header triplets from the OpenSHMEM API pair. Earlier raw output had mislabeled API 1.3 as the library version. Numerical kernels are unchanged.",
   "landing_validation": {
-    "status": "pending"
+    "status": "passed",
+    "source_commit": "ed588c27c6adfe3cfb0de6d1b06b143b830d3eeb",
+    "job_id": 1141,
+    "combined_gpu_tests_passed": 15,
+    "combined_gpu_tests_skipped": 0,
+    "wrapper_lifecycles_passed": 4,
+    "record": "../../../docs/reviews/2026-11-16-distributed-gpu-validation.json",
+    "scope": "Current-source correctness and default-tool diagnostics on two B200 GPUs on one host. Native capture privacy and model-review states are recorded separately."
   },
   "profiler_artifact_access": "Historical native captures and exports remain private because they contain host and systemwide process metadata. Their hashes identify retained evidence and are not public download links."
 }

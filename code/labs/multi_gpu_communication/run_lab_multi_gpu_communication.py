@@ -54,9 +54,16 @@ def main() -> int:
     except (NativeUnavailable, ValueError, RuntimeError, OSError) as error:
         skipped = isinstance(error, NativeUnavailable)
         result = {"schema": SCHEMA, "status": "skipped" if skipped else "failed", "reason": str(error)}
-        if args.json_out is not None and not args.json_out.exists():
-            args.json_out.parent.mkdir(parents=True, exist_ok=True)
-            args.json_out.write_text(json.dumps(result, indent=2) + "\n")
+        try:
+            if args.json_out is not None and not args.json_out.exists() and not args.json_out.is_symlink():
+                args.json_out.parent.mkdir(parents=True, exist_ok=True)
+                with args.json_out.open("x") as stream:
+                    json.dump(result, stream, indent=2)
+                    stream.write("\n")
+        except OSError as record_error:
+            result["failure_record_error"] = str(record_error)
+            if not args.json:
+                print(f"Could not save the failure result: {record_error}", file=sys.stderr)
         print(json.dumps(result) if args.json else str(error))
         return 3 if skipped else 1
     if args.json:

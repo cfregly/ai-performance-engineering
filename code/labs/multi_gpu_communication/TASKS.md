@@ -6,10 +6,11 @@ part of the iteration's critical path should change and why.
 
 ## 1. Check decomposition and output first
 
-Use a grid with an uneven number of owned rows across two ranks. Check the CPU
-reference at zero iterations, then run the native solver for one, two, and five
-iterations. Native timing requires at least one step. Then try one-row and
-two-row partitions.
+Use a grid with an uneven number of owned rows across two ranks. From the
+repository root, check the CPU reference at zero iterations with
+`PYTHONPATH=code python -m pytest code/tests/test_multi_gpu_communication.py -k initial_mesh -o timeout=0`.
+Then run the native solver for one, two, and five iterations. Native timing
+requires at least one step. Then try one-row and two-row partitions.
 
 Explain which allocation holds the final result for each iteration count.
 Verify every owned row and the periodic halos against the CPU reference.

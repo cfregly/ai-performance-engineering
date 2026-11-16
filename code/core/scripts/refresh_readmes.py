@@ -2391,8 +2391,8 @@ ENTRIES["ch11"] = chapter_entry(
                 [NCCL group guide](../ch04/nccl_groups.md) explains the submission boundary.
                 Putting compute and communication on different streams permits overlap, but
                 resource contention can erase the benefit. Check the GPU timeline and total
-                iteration time. A high-priority stream is a scheduling hint and does not preempt
-                running work or enforce correctness. See the
+                iteration time. Stream priority favors higher-priority pending work without
+                guaranteeing preemption or enforcing correctness. See the
                 [CUDA stream documentation](https://docs.nvidia.com/cuda/cuda-programming-guide/02-basics/asynchronous-execution.html).
 
                 The chapter's `distributed_streams` target is a local pinned-memory transfer and

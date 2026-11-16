@@ -82,9 +82,9 @@ and prevent them from advancing until it finishes. That can remove the overlap
 the application intended.
 
 The lab queries `cudaDeviceGetStreamPriorityRange()` and gives the communication
-stream the returned highest priority. Priority is a scheduling hint. It does not
-preempt running kernels or replace event dependencies. NCCL kernels can compete
-with compute for SMs and memory bandwidth. Splitting the stencil also adds
+stream the returned highest priority. Priority favors higher-priority pending
+work. It does not guarantee preemption or replace event dependencies. NCCL
+kernels can compete with compute for SMs and memory bandwidth. Splitting the stencil also adds
 launches and synchronization. Overlap is most useful when the interior offers
 enough independent work to hide a meaningful portion of communication. A single
 stream can be sufficient for small partitions or negligible transfer cost.

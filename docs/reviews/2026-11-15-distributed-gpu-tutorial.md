@@ -313,7 +313,10 @@ verified numerical output. Those earlier captures retain their executed source
 and original metadata, including the field that had reported API version `1.3`
 under the library-version name. The final source separates runtime/header
 NVSHMEM `3.7.2` from OpenSHMEM API `1.3`. Final correctness and profiling passed
-after that metadata correction. Its native source SHA-256 is
+after that metadata correction in jobs `1137` and `1138`. Their raw completion
+records identify the corrected native SHA-256 below. The earlier `55f2337`
+snapshot preserves the initial Nsys source, not those later corrected bytes.
+The corrected source is now pinned by `ed588c27`. Its native SHA-256 is
 `aa0f7f0fac1c453290098aabaebd957bf4ecdf91f7b5198dad14be5ebafb5d86`.
 
 The existing default Nsight Compute `2025.3.1` completed ten reports: one steady
@@ -340,4 +343,43 @@ capture hashes.
 This integration is not a publication-readiness verdict or a whole-repository
 pass. NCCL device API fragments, GIN/IBGDA, multi-node transport, larger rank
 counts, and untested backend/mode combinations require their own runtime
-evidence. Exact external publication reviews have not been completed.
+evidence. Scoped independent reviews do not complete the publication-readiness
+check.
+
+## Committed-source rerun
+
+The [November 16 record](2026-11-16-distributed-gpu-validation.json) binds a fresh
+run to committed source `ed588c27`, complete test inputs, build options, exact
+executables, and retained outputs. All 15 GPU cases and four real benchmark
+wrapper lifecycles passed in job `1141`. The full CLI benchmark pipeline remains
+unexecuted.
+
+Jobs `1142` and `1143` retained 16 native Nsys reports with complete SQLite
+exports and 12 unique NCU reports with raw CSV and native API exports. Independent
+CPU analysis rechecked 20 full outputs, totaling 50,780,674 float values, with
+maximum error zero. Both eager and graph schedules overlapped compute and NCCL
+in every steady iteration on both ranks. The serialized control had no overlap.
+These are diagnostic mechanism observations, not new speedup measurements.
+
+The first collector failed on a Python stderr preamble after all Nsys captures
+and its first NCU capture completed. The continuation reused that first report
+and numerical output byte for byte, then completed the remaining captures.
+Both attempts remain separately identified. No failed attempt was relabeled.
+
+The existing default Nsight Systems `2025.3.2.474` and Nsight Compute
+`2025.3.1.0` remained unchanged. Fresh capture used private namespaces and
+synthetic host identity. Exact-byte privacy review covered the native assets
+and every SQLite row. Static MPI vendor build metadata and GPU UUIDs remain
+disclosed. Older operational captures remain private.
+
+The native device source later received a comment-only replay-safety correction.
+No native executable statement changed after these runs. The validation record keeps
+both the captured and maintained hashes. Documentation fixes also correct graph
+diagnostics and add explicit limits beside older unvalidated examples.
+
+The [diagnostic release](https://github.com/cfregly/ai-performance-engineering/releases/tag/tutorial-multi-gpu-b200-20261116)
+retains native reports, exports, meshes, collection sources, analysis, and hash
+ledgers. The [package audit](2026-11-16-distributed-gpu-package-audit.json) records
+the exact asset gate. Three absolute pytest convenience links were omitted from
+the public smoke archive. All 99 manifested regular files kept their original
+bytes. The original archive remains retained separately.

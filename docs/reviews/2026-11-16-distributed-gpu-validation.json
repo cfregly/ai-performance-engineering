@@ -1,0 +1,1613 @@
+{
+  "schema": "distributed_gpu_tutorial.b200_landing_validation.v1",
+  "date": "2026-11-16",
+  "status": "b200_diagnostic_validated",
+  "canonical": false,
+  "source_commit": "ed588c27c6adfe3cfb0de6d1b06b143b830d3eeb",
+  "source_url": "https://github.com/cfregly/ai-performance-engineering/tree/ed588c27c6adfe3cfb0de6d1b06b143b830d3eeb",
+  "environment": {
+    "gpus": 2,
+    "model": "NVIDIA B200",
+    "interconnect": "NVLink",
+    "driver": "580.173.02",
+    "cuda": "13.0",
+    "nvcc": "13.0.88",
+    "nccl": "2.26.2",
+    "nvshmem_runtime": "3.7.2",
+    "nvshmem_headers": "3.7.2",
+    "openshmem_api": "1.3",
+    "mpi": "HPC-X Open MPI 4.1.7a1",
+    "nsys": "2025.3.2.474",
+    "ncu": "2025.3.1.0 build36398880"
+  },
+  "namespace": {
+    "isolation": "Private PID, mount, UTS, IPC and network namespaces. Synthetic host/machine identity. Clean allowlisted environment. Local loopback bootstrap and two physical B200 GPUs.",
+    "canonical": false,
+    "hardware_limit": "Two physical GPUs on one host. Namespace hostname and machine identity are synthetic. Nsight SystemUID is opaque and does not prove physical host identity.",
+    "transport_limit": "Local loopback bootstrap with both GPUs visible to both ranks. No inter-node communication was exercised."
+  },
+  "profiler_defaults": {
+    "before": {
+      "nsys": {
+        "path": "/usr/local/cuda-13.0/bin/nsys",
+        "realpath": "/usr/local/cuda-13.0/bin/nsys",
+        "sha256": "7bcae8a7ea636e62fdbf53e4df87fe0348efe70ed6630b6a47ef79d6312a4786"
+      },
+      "ncu": {
+        "path": "/usr/local/cuda-13.0/bin/ncu",
+        "realpath": "/usr/local/cuda-13.0/bin/ncu",
+        "sha256": "18d8a8aa13c156cd43ebdf24ac950b5386cb229f2a4c931db47ef91cfe785920"
+      }
+    },
+    "after": {
+      "nsys": {
+        "path": "/usr/local/cuda-13.0/bin/nsys",
+        "realpath": "/usr/local/cuda-13.0/bin/nsys",
+        "sha256": "7bcae8a7ea636e62fdbf53e4df87fe0348efe70ed6630b6a47ef79d6312a4786"
+      },
+      "ncu": {
+        "path": "/usr/local/cuda-13.0/bin/ncu",
+        "realpath": "/usr/local/cuda-13.0/bin/ncu",
+        "sha256": "18d8a8aa13c156cd43ebdf24ac950b5386cb229f2a4c931db47ef91cfe785920"
+      }
+    },
+    "unchanged": true
+  },
+  "clocks": {
+    "clock_control": "repository lock_gpu_clocks on both allocated GPUs",
+    "clocks": [
+      {
+        "device": 0,
+        "application_sm_mhz": 1965,
+        "application_memory_mhz": 3996
+      },
+      {
+        "device": 1,
+        "application_sm_mhz": 1965,
+        "application_memory_mhz": 3996
+      }
+    ],
+    "clocks_after": [
+      {
+        "device": 0,
+        "application_sm_mhz": 1965,
+        "application_memory_mhz": 3996
+      },
+      {
+        "device": 1,
+        "application_sm_mhz": 1965,
+        "application_memory_mhz": 3996
+      }
+    ]
+  },
+  "profile_binaries": {
+    "multi_gpu_communication": {
+      "binary": "/results/bin/jacobi_native",
+      "build": {
+        "schema": "multi_gpu_communication.build.v1",
+        "source_commit": "ed588c27c6adfe3cfb0de6d1b06b143b830d3eeb",
+        "source_sha256": {
+          "jacobi_contract.hpp": "e0ed5c94de560a3cca6cd1cf7d8ecb3d5974704940a4a30c3755d1eac4bd8aa3",
+          "jacobi_native.cu": "41e0c506d77a9acf38e93137358efd96f10d9fa506d1b6e01245dfc3b23e93ed",
+          "Makefile": "12f9c14ca4718ed4ca73fccba4bc74658d7f4d044bc83d1b316d010ee80b35cb"
+        },
+        "binary_sha256": "8b1b9827c50287727469fa734ed7d70447a64e092a25d4d449fbb87e0d579726",
+        "architecture": "sm_100",
+        "with_nccl": true,
+        "with_nvshmem": true,
+        "compiler_versions": {
+          "nvcc": "nvcc: NVIDIA (R) Cuda compiler driver\nCopyright (c) 2005-2025 NVIDIA Corporation\nBuilt on Wed_Aug_20_01:58:59_PM_PDT_2025\nCuda compilation tools, release 13.0, V13.0.88\nBuild cuda_13.0.r13.0/compiler.36424714_0",
+          "mpicxx": "g++ (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0\nCopyright (C) 2023 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+        },
+        "build_options": {
+          "nvcc_flags": "-O3 -std=c++17 -gencode arch=compute_100a,code=[sm_100a,compute_100a] --expt-relaxed-constexpr -Xcompiler -fPIC  -DENABLE_NVTX_PROFILING -std=c++17 -lineinfo -O3",
+          "mpi_compile_flags": "-I/opt/hpcx/ompi/include -I/opt/hpcx/ompi/include/openmpi -I/opt/hpcx/ompi/include/openmpi/opal/mca/hwloc/hwloc201/hwloc/include -I/opt/hpcx/ompi/include/openmpi/opal/mca/event/libevent2022/libevent -I/opt/hpcx/ompi/include/openmpi/opal/mca/event/libevent2022/libevent/include",
+          "nccl_flags": "-DAISP_HAVE_NCCL=1 -I/opt/python-env/lib/python3.12/site-packages/nvidia/nccl/include",
+          "nccl_libs": "-L/opt/python-env/lib/python3.12/site-packages/nvidia/nccl/lib -L/opt/python-env/lib/python3.12/site-packages/nvidia/nccl/lib64 -lnccl",
+          "nvshmem_flags": "-DAISP_HAVE_NVSHMEM=1 -I/usr/include/nvshmem_13 -rdc=true",
+          "nvshmem_libs": "-L/usr/lib/x86_64-linux-gnu -lnvshmem_host /usr/lib/x86_64-linux-gnu/libnvshmem_device.a -lcuda",
+          "nvtx_libs": "-L/workspace/ai-performance-engineering/code/core/common/nvtx_stub -lnvToolsExt"
+        },
+        "compile_command": [
+          "nvcc",
+          "-O3",
+          "-std=c++17",
+          "-gencode",
+          "arch=compute_100a,code=[sm_100a,compute_100a]",
+          "--expt-relaxed-constexpr",
+          "-Xcompiler",
+          "-fPIC",
+          "-DENABLE_NVTX_PROFILING",
+          "-std=c++17",
+          "-lineinfo",
+          "-O3",
+          "-I/opt/hpcx/ompi/include",
+          "-I/opt/hpcx/ompi/include/openmpi",
+          "-I/opt/hpcx/ompi/include/openmpi/opal/mca/hwloc/hwloc201/hwloc/include",
+          "-I/opt/hpcx/ompi/include/openmpi/opal/mca/event/libevent2022/libevent",
+          "-I/opt/hpcx/ompi/include/openmpi/opal/mca/event/libevent2022/libevent/include",
+          "-DAISP_HAVE_NCCL=1",
+          "-I/opt/python-env/lib/python3.12/site-packages/nvidia/nccl/include",
+          "-DAISP_HAVE_NVSHMEM=1",
+          "-I/usr/include/nvshmem_13",
+          "-rdc=true",
+          "-ccbin=mpicxx",
+          "jacobi_native.cu",
+          "-o",
+          "jacobi_native",
+          "-L/opt/python-env/lib/python3.12/site-packages/nvidia/nccl/lib",
+          "-L/opt/python-env/lib/python3.12/site-packages/nvidia/nccl/lib64",
+          "-lnccl",
+          "-L/usr/lib/x86_64-linux-gnu",
+          "-lnvshmem_host",
+          "/usr/lib/x86_64-linux-gnu/libnvshmem_device.a",
+          "-lcuda",
+          "-L/workspace/ai-performance-engineering/code/core/common/nvtx_stub",
+          "-lnvToolsExt"
+        ]
+      }
+    },
+    "nvshmem_device": {
+      "binary": "/results/bin/nvshmem_device_native",
+      "build": {
+        "schema": "nvshmem_device.build.v1",
+        "source_commit": "ed588c27c6adfe3cfb0de6d1b06b143b830d3eeb",
+        "source_sha256": {
+          "nvshmem_device_native.cu": "aa0f7f0fac1c453290098aabaebd957bf4ecdf91f7b5198dad14be5ebafb5d86",
+          "Makefile": "d6da24d7fd13ac312289249bf41153ad9ce907fa74b84ca369e5986bf7d10ecd",
+          "build_receipt.py": "1bdd3e0a82ee0b6dde75efe10010efa86d5765cedf6398a68e2ed77a5fe16e07",
+          "../multi_gpu_communication/jacobi_contract.hpp": "e0ed5c94de560a3cca6cd1cf7d8ecb3d5974704940a4a30c3755d1eac4bd8aa3"
+        },
+        "binary_sha256": "24e91122c539c36e676df1809ed8ede00e7c79a03039f7f1b2d8b64a7285b055",
+        "architecture": "sm_100",
+        "compiler_versions": {
+          "nvcc": "nvcc: NVIDIA (R) Cuda compiler driver\nCopyright (c) 2005-2025 NVIDIA Corporation\nBuilt on Wed_Aug_20_01:58:59_PM_PDT_2025\nCuda compilation tools, release 13.0, V13.0.88\nBuild cuda_13.0.r13.0/compiler.36424714_0",
+          "mpicxx": "g++ (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0\nCopyright (C) 2023 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+        },
+        "build_options": {
+          "nvcc_flags": "-O3 -std=c++17 -gencode arch=compute_100a,code=[sm_100a,compute_100a] --expt-relaxed-constexpr -Xcompiler -fPIC  -DENABLE_NVTX_PROFILING -std=c++17 -O3 -lineinfo -rdc=true",
+          "mpi_compile_flags": "-I/opt/hpcx/ompi/include -I/opt/hpcx/ompi/include/openmpi -I/opt/hpcx/ompi/include/openmpi/opal/mca/hwloc/hwloc201/hwloc/include -I/opt/hpcx/ompi/include/openmpi/opal/mca/event/libevent2022/libevent -I/opt/hpcx/ompi/include/openmpi/opal/mca/event/libevent2022/libevent/include",
+          "nvshmem_flags": "-I/usr/include/nvshmem_13",
+          "nvshmem_libs": "-L/usr/lib/x86_64-linux-gnu -lnvshmem_host /usr/lib/x86_64-linux-gnu/libnvshmem_device.a -lcuda",
+          "nvtx_libs": "-L/workspace/ai-performance-engineering/code/core/common/nvtx_stub -lnvToolsExt"
+        },
+        "compile_command": [
+          "nvcc",
+          "-O3",
+          "-std=c++17",
+          "-gencode",
+          "arch=compute_100a,code=[sm_100a,compute_100a]",
+          "--expt-relaxed-constexpr",
+          "-Xcompiler",
+          "-fPIC",
+          "-DENABLE_NVTX_PROFILING",
+          "-std=c++17",
+          "-O3",
+          "-lineinfo",
+          "-rdc=true",
+          "-I/opt/hpcx/ompi/include",
+          "-I/opt/hpcx/ompi/include/openmpi",
+          "-I/opt/hpcx/ompi/include/openmpi/opal/mca/hwloc/hwloc201/hwloc/include",
+          "-I/opt/hpcx/ompi/include/openmpi/opal/mca/event/libevent2022/libevent",
+          "-I/opt/hpcx/ompi/include/openmpi/opal/mca/event/libevent2022/libevent/include",
+          "-I/usr/include/nvshmem_13",
+          "-ccbin=mpicxx",
+          "nvshmem_device_native.cu",
+          "-o",
+          "nvshmem_device_native",
+          "-L/usr/lib/x86_64-linux-gnu",
+          "-lnvshmem_host",
+          "/usr/lib/x86_64-linux-gnu/libnvshmem_device.a",
+          "-lcuda",
+          "-L/workspace/ai-performance-engineering/code/core/common/nvtx_stub",
+          "-lnvToolsExt"
+        ]
+      }
+    }
+  },
+  "correctness": {
+    "job_id": 1141,
+    "status": "passed",
+    "gpu_tests_passed": 15,
+    "gpu_tests_skipped": 0,
+    "cases": [
+      "test_native_timed_output_matches_independent_stencil[nccl-serialized-False-False-5-3]",
+      "test_native_timed_output_matches_independent_stencil[nccl-overlap-False-False-4-4]",
+      "test_native_timed_output_matches_independent_stencil[nccl-overlap-False-True-5-3]",
+      "test_native_timed_output_matches_independent_stencil[nccl-overlap-True-True-6-4]",
+      "test_native_timed_output_matches_independent_stencil[mpi-overlap-False-False-5-3]",
+      "test_native_timed_output_matches_independent_stencil[nvshmem-overlap-False-False-5-3]",
+      "test_real_native_output_matches_independent_python_oracle[scalar-halo-4-4-32]",
+      "test_real_native_output_matches_independent_python_oracle[scalar-halo-5-3-32]",
+      "test_real_native_output_matches_independent_python_oracle[scalar-halo-8-6-32]",
+      "test_real_native_output_matches_independent_python_oracle[persistent-halo-4-4-32]",
+      "test_real_native_output_matches_independent_python_oracle[persistent-halo-5-3-32]",
+      "test_real_native_output_matches_independent_python_oracle[persistent-halo-8-6-32]",
+      "test_real_native_output_matches_independent_python_oracle[block-signal-7-17-263]",
+      "test_real_native_output_matches_independent_python_oracle[persistent-signal-7-17-263]",
+      "test_real_native_output_matches_independent_python_oracle[persistent-atomic-7-17-263]"
+    ],
+    "junit_artifact": "landing-public-smoke-1141/gpu-tests.xml",
+    "junit_sha256": "2eb87c35dcf6804da0fe5661a059afb5a27334c73bb80d86410bbb736924c143",
+    "wrapper_lifecycles_passed": 4,
+    "wrapper_overrides": {
+      "jacobi": [
+        "--nx",
+        "17",
+        "--ny",
+        "7",
+        "--steps",
+        "5",
+        "--native-warmup",
+        "1",
+        "--ranks",
+        "2"
+      ],
+      "device": [
+        "--elements",
+        "263",
+        "--steps",
+        "5",
+        "--native-warmup",
+        "1",
+        "--ranks",
+        "2"
+      ]
+    },
+    "wrappers": [
+      {
+        "artifact": "wrappers/block-signal_zkdj12_m/result_1.json",
+        "artifact_sha256": "b2256afce46c2fb073475da3dc3c64b98e77e9d282c62e9a13e7c9b7b039989d",
+        "workload": {
+          "status": "VERIFIED",
+          "mode": "block-signal",
+          "nx": 17,
+          "ny": 7,
+          "ranks": 2,
+          "elements": 263,
+          "iterations": 5,
+          "warmup": 1,
+          "output_elements": 5260,
+          "checked_output_elements": 5260,
+          "nvtx_enabled": true,
+          "nvshmem_version": "3.7.2",
+          "nvshmem_header_version": "3.7.2",
+          "openshmem_api_version": "1.3",
+          "cuda_runtime_version": 13000,
+          "cuda_driver_version": 13000
+        },
+        "source_commit": "ed588c27c6adfe3cfb0de6d1b06b143b830d3eeb",
+        "source_sha256": {
+          "nvshmem_device_native.cu": "aa0f7f0fac1c453290098aabaebd957bf4ecdf91f7b5198dad14be5ebafb5d86",
+          "Makefile": "d6da24d7fd13ac312289249bf41153ad9ce907fa74b84ca369e5986bf7d10ecd",
+          "build_receipt.py": "1bdd3e0a82ee0b6dde75efe10010efa86d5765cedf6398a68e2ed77a5fe16e07",
+          "../multi_gpu_communication/jacobi_contract.hpp": "e0ed5c94de560a3cca6cd1cf7d8ecb3d5974704940a4a30c3755d1eac4bd8aa3"
+        },
+        "binary_sha256": "93db3c8642900a68faf389c0815090c533b639dc979d2298f5ca9d6f8efd7651",
+        "process_exit_code": 0,
+        "build_options": null
+      },
+      {
+        "artifact": "wrappers/overlap_92o2u2ca/result_1.json",
+        "artifact_sha256": "79504e6edc98bab55562004bd4fc9529e185b9228011dfcea000545c99e34fee",
+        "workload": {
+          "status": "passed",
+          "backend": "nccl",
+          "schedule": "overlap",
+          "registered_buffers": false,
+          "graph": false,
+          "mode": "diagnostic",
+          "nx": 17,
+          "ny": 7,
+          "ranks": 2,
+          "iterations": 5,
+          "warmup": 1,
+          "checked_owned_elements": 85,
+          "checked_halo_elements": 68,
+          "nvshmem_version": null,
+          "nvshmem_header_version": null,
+          "openshmem_api_version": null,
+          "cuda_runtime_version": 13000,
+          "cuda_driver_version": 13000,
+          "nccl_version": 22602
+        },
+        "source_commit": "ed588c27c6adfe3cfb0de6d1b06b143b830d3eeb",
+        "source_sha256": {
+          "jacobi_contract.hpp": "e0ed5c94de560a3cca6cd1cf7d8ecb3d5974704940a4a30c3755d1eac4bd8aa3",
+          "jacobi_native.cu": "41e0c506d77a9acf38e93137358efd96f10d9fa506d1b6e01245dfc3b23e93ed",
+          "Makefile": "12f9c14ca4718ed4ca73fccba4bc74658d7f4d044bc83d1b316d010ee80b35cb",
+          "native_common.py": "e3e16336deddcb7e0123b88bb19523498e3d0576881c9ae7a9ac09c019aaa739"
+        },
+        "binary_sha256": "446274d1bbaa61b3d60a13ea2452d46d163bb51cf492a3b05198a6c581a4c3b7",
+        "process_exit_code": 0,
+        "build_options": false
+      },
+      {
+        "artifact": "wrappers/persistent-signal_jb_mc3ol/result_1.json",
+        "artifact_sha256": "d444c8177f75747ee34af152aadd55329da1c3aa564bf4ca47e0777d6fc507ef",
+        "workload": {
+          "status": "VERIFIED",
+          "mode": "persistent-signal",
+          "nx": 17,
+          "ny": 7,
+          "ranks": 2,
+          "elements": 263,
+          "iterations": 5,
+          "warmup": 1,
+          "output_elements": 5260,
+          "checked_output_elements": 5260,
+          "nvtx_enabled": true,
+          "nvshmem_version": "3.7.2",
+          "nvshmem_header_version": "3.7.2",
+          "openshmem_api_version": "1.3",
+          "cuda_runtime_version": 13000,
+          "cuda_driver_version": 13000
+        },
+        "source_commit": "ed588c27c6adfe3cfb0de6d1b06b143b830d3eeb",
+        "source_sha256": {
+          "nvshmem_device_native.cu": "aa0f7f0fac1c453290098aabaebd957bf4ecdf91f7b5198dad14be5ebafb5d86",
+          "Makefile": "d6da24d7fd13ac312289249bf41153ad9ce907fa74b84ca369e5986bf7d10ecd",
+          "build_receipt.py": "1bdd3e0a82ee0b6dde75efe10010efa86d5765cedf6398a68e2ed77a5fe16e07",
+          "../multi_gpu_communication/jacobi_contract.hpp": "e0ed5c94de560a3cca6cd1cf7d8ecb3d5974704940a4a30c3755d1eac4bd8aa3"
+        },
+        "binary_sha256": "24e91122c539c36e676df1809ed8ede00e7c79a03039f7f1b2d8b64a7285b055",
+        "process_exit_code": 0,
+        "build_options": null
+      },
+      {
+        "artifact": "wrappers/serialized_ajy86sw4/result_1.json",
+        "artifact_sha256": "65e39dcc3cd123d7666bac08df18749c54489f46f8a232cf06c0bbe871bff7aa",
+        "workload": {
+          "status": "passed",
+          "backend": "nccl",
+          "schedule": "serialized",
+          "registered_buffers": false,
+          "graph": false,
+          "mode": "diagnostic",
+          "nx": 17,
+          "ny": 7,
+          "ranks": 2,
+          "iterations": 5,
+          "warmup": 1,
+          "checked_owned_elements": 85,
+          "checked_halo_elements": 68,
+          "nvshmem_version": null,
+          "nvshmem_header_version": null,
+          "openshmem_api_version": null,
+          "cuda_runtime_version": 13000,
+          "cuda_driver_version": 13000,
+          "nccl_version": 22602
+        },
+        "source_commit": "ed588c27c6adfe3cfb0de6d1b06b143b830d3eeb",
+        "source_sha256": {
+          "jacobi_contract.hpp": "e0ed5c94de560a3cca6cd1cf7d8ecb3d5974704940a4a30c3755d1eac4bd8aa3",
+          "jacobi_native.cu": "41e0c506d77a9acf38e93137358efd96f10d9fa506d1b6e01245dfc3b23e93ed",
+          "Makefile": "12f9c14ca4718ed4ca73fccba4bc74658d7f4d044bc83d1b316d010ee80b35cb",
+          "native_common.py": "e3e16336deddcb7e0123b88bb19523498e3d0576881c9ae7a9ac09c019aaa739"
+        },
+        "binary_sha256": "29b1b865342478c53bee1eec29b41cb9fd49d86abc7dc052a53f5f29a2092365",
+        "process_exit_code": 0,
+        "build_options": false
+      }
+    ],
+    "wrapper_pairs": {
+      "jacobi": {
+        "max_abs_error": 0.0
+      },
+      "device": {
+        "max_abs_error": 0.0
+      }
+    },
+    "wrapper_limit": "Both real benchmark lifecycles ran setup, native execution, verification payload capture, result validation and teardown. The complete CLI benchmark pipeline was not run. Retained wrapper JSON records its own build hash. The copied profile executables are separate builds."
+  },
+  "nsys": {
+    "job_id": 1142,
+    "collection_status": "completed_captures_then_collector_failed",
+    "job_status": "FAILED 1:0",
+    "failure": "After sixteen Nsys captures and exports, the first NCU CSV parser rejected a bundled Python stderr preamble. Native output checks passed. NCU collection resumed in job1143. The failed attempt remains retained.",
+    "report_count": 16,
+    "sqlite_count": 16,
+    "trace": [
+      "cuda",
+      "nvtx",
+      "mpi"
+    ],
+    "graph_tracing": "node",
+    "cpu_sampling": false,
+    "cpu_context_switch_tracing": false,
+    "nvtx_enabled_build_receipt": "Both profile build commands include -DENABLE_NVTX_PROFILING. Common native JSON does not emit this flag.",
+    "cases": [
+      {
+        "label": "jacobi-serialized",
+        "kind": "jacobi",
+        "workload": {
+          "status": "passed",
+          "backend": "nccl",
+          "schedule": "serialized",
+          "registered_buffers": false,
+          "graph": false,
+          "mode": "diagnostic",
+          "nx": 4096,
+          "ny": 4097,
+          "ranks": 2,
+          "iterations": 20,
+          "warmup": 2,
+          "checked_owned_elements": 16773120,
+          "checked_halo_elements": 16384,
+          "nvshmem_version": null,
+          "nvshmem_header_version": null,
+          "openshmem_api_version": null,
+          "cuda_runtime_version": 13000,
+          "cuda_driver_version": 13000,
+          "nccl_version": 22602
+        },
+        "independent_output_check": {
+          "checked_elements": 16781312,
+          "max_abs_error": 0.0,
+          "output_sha256": "41f0f4c10e73c63a29300f97c56ad41bcd5a7ad6c70f688700763911d4bb14c8",
+          "method": "independent_numpy_float32_full_mesh"
+        },
+        "captures": [
+          {
+            "rank": 0,
+            "native_report": "jacobi-serialized.0.nsys-rep",
+            "native_report_sha256": "b73bf6afad870d10c410a3d425dddba592f896251ba54200965ac3969a09a176",
+            "sqlite_export": "jacobi-serialized.0.sqlite",
+            "sqlite_export_sha256": "b4988292b3ba48b32d1f5cb14ed782f75ffa40a65d0eaa4c8d4768e99c831801"
+          },
+          {
+            "rank": 1,
+            "native_report": "jacobi-serialized.1.nsys-rep",
+            "native_report_sha256": "68d84eaa89c5d0dc5ea4fb388a78a66dfbd7af8700e205316e5d54ad9f578be1",
+            "sqlite_export": "jacobi-serialized.1.sqlite",
+            "sqlite_export_sha256": "9b54f5d02b40c041211c9725d7d3b996612a1e9a938d71f6c3e850bd24f94123"
+          }
+        ]
+      },
+      {
+        "label": "jacobi-overlap",
+        "kind": "jacobi",
+        "workload": {
+          "status": "passed",
+          "backend": "nccl",
+          "schedule": "overlap",
+          "registered_buffers": false,
+          "graph": false,
+          "mode": "diagnostic",
+          "nx": 4096,
+          "ny": 4097,
+          "ranks": 2,
+          "iterations": 20,
+          "warmup": 2,
+          "checked_owned_elements": 16773120,
+          "checked_halo_elements": 16384,
+          "nvshmem_version": null,
+          "nvshmem_header_version": null,
+          "openshmem_api_version": null,
+          "cuda_runtime_version": 13000,
+          "cuda_driver_version": 13000,
+          "nccl_version": 22602
+        },
+        "independent_output_check": {
+          "checked_elements": 16781312,
+          "max_abs_error": 0.0,
+          "output_sha256": "41f0f4c10e73c63a29300f97c56ad41bcd5a7ad6c70f688700763911d4bb14c8",
+          "method": "independent_numpy_float32_full_mesh"
+        },
+        "captures": [
+          {
+            "rank": 0,
+            "native_report": "jacobi-overlap.0.nsys-rep",
+            "native_report_sha256": "2fddd500aa49e4760f12b24fd534e0eb6577e90edd5c06a1ba084b1f481fb579",
+            "sqlite_export": "jacobi-overlap.0.sqlite",
+            "sqlite_export_sha256": "3139fa22a8720cbaa3a35f4a4d83163f19dd7a5e1ab3187918a0bc7d3b84b60a"
+          },
+          {
+            "rank": 1,
+            "native_report": "jacobi-overlap.1.nsys-rep",
+            "native_report_sha256": "f10629db89efe3aa91edf2e3c1c74ead6860a22e660798f5b9b1d0aa69fceaeb",
+            "sqlite_export": "jacobi-overlap.1.sqlite",
+            "sqlite_export_sha256": "c1472002458508a354289dff45b1c9fc6851982f0e7ac960d0d92d26882b4c52"
+          }
+        ]
+      },
+      {
+        "label": "jacobi-graph-overlap",
+        "kind": "jacobi",
+        "workload": {
+          "status": "passed",
+          "backend": "nccl",
+          "schedule": "overlap",
+          "registered_buffers": false,
+          "graph": true,
+          "mode": "diagnostic",
+          "nx": 4096,
+          "ny": 4097,
+          "ranks": 2,
+          "iterations": 20,
+          "warmup": 2,
+          "checked_owned_elements": 16773120,
+          "checked_halo_elements": 16384,
+          "nvshmem_version": null,
+          "nvshmem_header_version": null,
+          "openshmem_api_version": null,
+          "cuda_runtime_version": 13000,
+          "cuda_driver_version": 13000,
+          "nccl_version": 22602
+        },
+        "independent_output_check": {
+          "checked_elements": 16781312,
+          "max_abs_error": 0.0,
+          "output_sha256": "41f0f4c10e73c63a29300f97c56ad41bcd5a7ad6c70f688700763911d4bb14c8",
+          "method": "independent_numpy_float32_full_mesh"
+        },
+        "captures": [
+          {
+            "rank": 0,
+            "native_report": "jacobi-graph-overlap.0.nsys-rep",
+            "native_report_sha256": "511865ea246bbdfdf333dfa47129b2409b516f20dfc518834e4edd682450f149",
+            "sqlite_export": "jacobi-graph-overlap.0.sqlite",
+            "sqlite_export_sha256": "8c2f56e0a80330d9081199b0d10ba0bbe1030973e894b2d0d555de26809de1b5"
+          },
+          {
+            "rank": 1,
+            "native_report": "jacobi-graph-overlap.1.nsys-rep",
+            "native_report_sha256": "da90c06bed6033907617768f1a2750379af0873022e245dc2377d6b28209c7a7",
+            "sqlite_export": "jacobi-graph-overlap.1.sqlite",
+            "sqlite_export_sha256": "2f5714d2f51b43ecca748c14aaba8fb2bee74159683bdee5918e8512b94a712c"
+          }
+        ]
+      },
+      {
+        "label": "device-scalar-halo",
+        "kind": "device",
+        "workload": {
+          "status": "VERIFIED",
+          "mode": "scalar-halo",
+          "nx": 33,
+          "ny": 11,
+          "ranks": 2,
+          "elements": 32,
+          "iterations": 5,
+          "warmup": 1,
+          "output_elements": 363,
+          "checked_output_elements": 363,
+          "nvtx_enabled": true,
+          "nvshmem_version": "3.7.2",
+          "nvshmem_header_version": "3.7.2",
+          "openshmem_api_version": "1.3",
+          "cuda_runtime_version": 13000,
+          "cuda_driver_version": 13000
+        },
+        "independent_output_check": {
+          "method": "independent_python_all_elements",
+          "checked_elements": 363,
+          "max_abs_error": 0.0,
+          "absolute_tolerance": 2e-06,
+          "output_sha256": "4551d989d6a7387fea329f4cb4c279146cd8d30edbeafe5d6f84e4682f6a2f90"
+        },
+        "captures": [
+          {
+            "rank": 0,
+            "native_report": "device-scalar-halo.0.nsys-rep",
+            "native_report_sha256": "f4d131df1bc1938a46ef9283b48ff369bf23a404f8b165d9a2db9e8ac2279fdc",
+            "sqlite_export": "device-scalar-halo.0.sqlite",
+            "sqlite_export_sha256": "37202430e18729a4b29b03590496d1614118966bebd1953986296c8de1da4f6c"
+          },
+          {
+            "rank": 1,
+            "native_report": "device-scalar-halo.1.nsys-rep",
+            "native_report_sha256": "f4c0101725d1931a0ef691213f8e5188f4f28b9d07419bef87783a730ce2a764",
+            "sqlite_export": "device-scalar-halo.1.sqlite",
+            "sqlite_export_sha256": "dda310b2c53baddef8878aa9c474118b8b60c1d505ded2f3b1c01bccbd4ac4a4"
+          }
+        ]
+      },
+      {
+        "label": "device-persistent-halo",
+        "kind": "device",
+        "workload": {
+          "status": "VERIFIED",
+          "mode": "persistent-halo",
+          "nx": 33,
+          "ny": 11,
+          "ranks": 2,
+          "elements": 32,
+          "iterations": 5,
+          "warmup": 1,
+          "output_elements": 363,
+          "checked_output_elements": 363,
+          "nvtx_enabled": true,
+          "nvshmem_version": "3.7.2",
+          "nvshmem_header_version": "3.7.2",
+          "openshmem_api_version": "1.3",
+          "cuda_runtime_version": 13000,
+          "cuda_driver_version": 13000
+        },
+        "independent_output_check": {
+          "method": "independent_python_all_elements",
+          "checked_elements": 363,
+          "max_abs_error": 0.0,
+          "absolute_tolerance": 2e-06,
+          "output_sha256": "4551d989d6a7387fea329f4cb4c279146cd8d30edbeafe5d6f84e4682f6a2f90"
+        },
+        "captures": [
+          {
+            "rank": 0,
+            "native_report": "device-persistent-halo.0.nsys-rep",
+            "native_report_sha256": "c91b704935c2664329cdd354ca5eea2125e7b3c2f348a6915b6a27d10268fe60",
+            "sqlite_export": "device-persistent-halo.0.sqlite",
+            "sqlite_export_sha256": "db39fca77cc163f57ae815bf3e628804b8d4798d9b6ef6fa0fc1b6796a9be72f"
+          },
+          {
+            "rank": 1,
+            "native_report": "device-persistent-halo.1.nsys-rep",
+            "native_report_sha256": "0572e4b549d237b90ba1196201769853cbceba07a393fb30b3fdb834992d164d",
+            "sqlite_export": "device-persistent-halo.1.sqlite",
+            "sqlite_export_sha256": "62a7d16a20f4a8a48b8a703fa3bea1ac1718e5b099f89cc66e02da0c4b23855b"
+          }
+        ]
+      },
+      {
+        "label": "device-block-signal",
+        "kind": "device",
+        "workload": {
+          "status": "VERIFIED",
+          "mode": "block-signal",
+          "nx": 17,
+          "ny": 7,
+          "ranks": 2,
+          "elements": 263,
+          "iterations": 32,
+          "warmup": 2,
+          "output_elements": 33664,
+          "checked_output_elements": 33664,
+          "nvtx_enabled": true,
+          "nvshmem_version": "3.7.2",
+          "nvshmem_header_version": "3.7.2",
+          "openshmem_api_version": "1.3",
+          "cuda_runtime_version": 13000,
+          "cuda_driver_version": 13000
+        },
+        "independent_output_check": {
+          "method": "independent_python_all_elements",
+          "checked_elements": 33664,
+          "max_abs_error": 0.0,
+          "absolute_tolerance": 0.0,
+          "output_sha256": "42b5839bb18203efb124e6ffcd7f08ff48d4961a858fc0f77d7aff5916008f32"
+        },
+        "captures": [
+          {
+            "rank": 0,
+            "native_report": "device-block-signal.0.nsys-rep",
+            "native_report_sha256": "89f3d66b59e0f24832c1545a445542ce900b79b76990ae716adf14bccde41270",
+            "sqlite_export": "device-block-signal.0.sqlite",
+            "sqlite_export_sha256": "5942bf0cd0f6563147184327e859f61bb3428e963a3f990da3296d6144e3fa9f"
+          },
+          {
+            "rank": 1,
+            "native_report": "device-block-signal.1.nsys-rep",
+            "native_report_sha256": "a2c00da6312f6991a90b5444d5faccec069f074f0e63e37f33017bb55382fc4d",
+            "sqlite_export": "device-block-signal.1.sqlite",
+            "sqlite_export_sha256": "8fc5285ed512cf25897eecbbf0e5b28a4624d3bc57ced76df1ae599b3ef53f67"
+          }
+        ]
+      },
+      {
+        "label": "device-persistent-signal",
+        "kind": "device",
+        "workload": {
+          "status": "VERIFIED",
+          "mode": "persistent-signal",
+          "nx": 17,
+          "ny": 7,
+          "ranks": 2,
+          "elements": 263,
+          "iterations": 32,
+          "warmup": 2,
+          "output_elements": 33664,
+          "checked_output_elements": 33664,
+          "nvtx_enabled": true,
+          "nvshmem_version": "3.7.2",
+          "nvshmem_header_version": "3.7.2",
+          "openshmem_api_version": "1.3",
+          "cuda_runtime_version": 13000,
+          "cuda_driver_version": 13000
+        },
+        "independent_output_check": {
+          "method": "independent_python_all_elements",
+          "checked_elements": 33664,
+          "max_abs_error": 0.0,
+          "absolute_tolerance": 0.0,
+          "output_sha256": "42b5839bb18203efb124e6ffcd7f08ff48d4961a858fc0f77d7aff5916008f32"
+        },
+        "captures": [
+          {
+            "rank": 0,
+            "native_report": "device-persistent-signal.0.nsys-rep",
+            "native_report_sha256": "b783553286247c3d5856612860d22644794281081feb6a686835fd9b16c27706",
+            "sqlite_export": "device-persistent-signal.0.sqlite",
+            "sqlite_export_sha256": "2d5ff6eb4d31f080038207d6be835cae35b56d03c1ce57f18b9ca31b1136b11b"
+          },
+          {
+            "rank": 1,
+            "native_report": "device-persistent-signal.1.nsys-rep",
+            "native_report_sha256": "7eec09e72c31d76732cc87906ff0a85c39a95238cf649084af7ba968ef8a83d0",
+            "sqlite_export": "device-persistent-signal.1.sqlite",
+            "sqlite_export_sha256": "12b44d73e48a2645a842d8525479f5ccfe8ab0d9090d0610cc465d08db09349f"
+          }
+        ]
+      },
+      {
+        "label": "device-persistent-atomic",
+        "kind": "device",
+        "workload": {
+          "status": "VERIFIED",
+          "mode": "persistent-atomic",
+          "nx": 17,
+          "ny": 7,
+          "ranks": 2,
+          "elements": 263,
+          "iterations": 32,
+          "warmup": 2,
+          "output_elements": 33664,
+          "checked_output_elements": 33664,
+          "nvtx_enabled": true,
+          "nvshmem_version": "3.7.2",
+          "nvshmem_header_version": "3.7.2",
+          "openshmem_api_version": "1.3",
+          "cuda_runtime_version": 13000,
+          "cuda_driver_version": 13000
+        },
+        "independent_output_check": {
+          "method": "independent_python_all_elements",
+          "checked_elements": 33664,
+          "max_abs_error": 0.0,
+          "absolute_tolerance": 0.0,
+          "output_sha256": "42b5839bb18203efb124e6ffcd7f08ff48d4961a858fc0f77d7aff5916008f32"
+        },
+        "captures": [
+          {
+            "rank": 0,
+            "native_report": "device-persistent-atomic.0.nsys-rep",
+            "native_report_sha256": "6e70f69ba3d907a27c9c7a63e65b183e21e0dc810bcbf56647fdde98df26bc2a",
+            "sqlite_export": "device-persistent-atomic.0.sqlite",
+            "sqlite_export_sha256": "2ac21d87d1bce98b1b372326906b2a1e226fac3f08f655dde464b527268d7070"
+          },
+          {
+            "rank": 1,
+            "native_report": "device-persistent-atomic.1.nsys-rep",
+            "native_report_sha256": "6951f893ae8214c48a71960e3c8fb93f93aa5bb0950db21924c0c0fed5615f0e",
+            "sqlite_export": "device-persistent-atomic.1.sqlite",
+            "sqlite_export_sha256": "90da2533a79ed9592ff6ec9597493417ac14064df85947e5e2b1d0c40c8072e3"
+          }
+        ]
+      }
+    ]
+  },
+  "ncu": {
+    "job_id": 1143,
+    "job_status": "COMPLETED 0:0",
+    "unique_native_report_count": 12,
+    "coverage": "Selected-kernel duration and profiler metadata only. No full hardware-counter set.",
+    "replay": "kernel",
+    "cases": [
+      {
+        "kind": "jacobi",
+        "mode": "stencil",
+        "rank": 0,
+        "report": "kernel-jacobi-stencil-p0.ncu-rep",
+        "pass_count": 1,
+        "profiler_warmup_passes": 0,
+        "backup_bytes": null,
+        "backup_bytes_observed": false,
+        "memory_save_restore_evidence": "Documented single-pass kernel-replay inference, not a measured zero-byte count.",
+        "gpu_duration": {
+          "present": true,
+          "has_value": true,
+          "value": 3456.0,
+          "unit": "ns",
+          "rollup_operation": 4
+        },
+        "workload": {
+          "status": "passed",
+          "backend": "nccl",
+          "schedule": "serialized",
+          "registered_buffers": false,
+          "graph": false,
+          "mode": "diagnostic",
+          "nx": 256,
+          "ny": 257,
+          "ranks": 2,
+          "iterations": 3,
+          "warmup": 1,
+          "checked_owned_elements": 65280,
+          "checked_halo_elements": 1024,
+          "nvshmem_version": null,
+          "nvshmem_header_version": null,
+          "openshmem_api_version": null,
+          "cuda_runtime_version": 13000,
+          "cuda_driver_version": 13000,
+          "nccl_version": 22602
+        },
+        "independent_output_check": {
+          "checked_elements": 65792,
+          "max_abs_error": 0.0,
+          "output_sha256": "58e1d6f32893566670c9754cb1330ea2de849b616f9fe0a1370d6ff3df44f114",
+          "method": "independent_numpy_float32_full_mesh"
+        },
+        "native_report_sha256": "f183501369a4646a1ff5cf992872a66428ef836baf4faa75122ad1b5936a78a7",
+        "native_api_export": "replay-metadata-jacobi-stencil-p0.json",
+        "native_api_export_sha256": "b19dbaa34198b55e3e8011c2b7b98bdaa0a0556060d61f981ec7570c4ba92451",
+        "kernel_name": "jacobi_rows",
+        "capture_phase": "completed_first_phase_capture_reexported_without_pythonpath"
+      },
+      {
+        "kind": "jacobi",
+        "mode": "stencil",
+        "rank": 1,
+        "report": "kernel-jacobi-stencil-p1.ncu-rep",
+        "pass_count": 1,
+        "profiler_warmup_passes": 0,
+        "backup_bytes": null,
+        "backup_bytes_observed": false,
+        "memory_save_restore_evidence": "Documented single-pass kernel-replay inference, not a measured zero-byte count.",
+        "gpu_duration": {
+          "present": true,
+          "has_value": true,
+          "value": 3136.0,
+          "unit": "ns",
+          "rollup_operation": 4
+        },
+        "workload": {
+          "status": "passed",
+          "backend": "nccl",
+          "schedule": "serialized",
+          "registered_buffers": false,
+          "graph": false,
+          "mode": "diagnostic",
+          "nx": 256,
+          "ny": 257,
+          "ranks": 2,
+          "iterations": 3,
+          "warmup": 1,
+          "checked_owned_elements": 65280,
+          "checked_halo_elements": 1024,
+          "nvshmem_version": null,
+          "nvshmem_header_version": null,
+          "openshmem_api_version": null,
+          "cuda_runtime_version": 13000,
+          "cuda_driver_version": 13000,
+          "nccl_version": 22602
+        },
+        "independent_output_check": {
+          "checked_elements": 65792,
+          "max_abs_error": 0.0,
+          "output_sha256": "58e1d6f32893566670c9754cb1330ea2de849b616f9fe0a1370d6ff3df44f114",
+          "method": "independent_numpy_float32_full_mesh"
+        },
+        "native_report_sha256": "baba98e8c9b0a21db5c99998eb38db49daa119e9f7a1ecf38635f9330b2afe4b",
+        "native_api_export": "replay-metadata-jacobi-stencil-p1.json",
+        "native_api_export_sha256": "1256fbd9fca3551d87367f18a155bb5a1b12a9878666bd8b1cf3df0557313e55",
+        "kernel_name": "jacobi_rows"
+      },
+      {
+        "kind": "device",
+        "mode": "scalar-halo",
+        "rank": 0,
+        "report": "kernel-device-scalar-halo-p0.ncu-rep",
+        "pass_count": 1,
+        "profiler_warmup_passes": 0,
+        "backup_bytes": null,
+        "backup_bytes_observed": false,
+        "memory_save_restore_evidence": "Documented single-pass kernel-replay inference, not a measured zero-byte count.",
+        "gpu_duration": {
+          "present": true,
+          "has_value": true,
+          "value": 5152.0,
+          "unit": "ns",
+          "rollup_operation": 4
+        },
+        "workload": {
+          "status": "VERIFIED",
+          "mode": "scalar-halo",
+          "nx": 33,
+          "ny": 11,
+          "ranks": 2,
+          "elements": 32,
+          "iterations": 5,
+          "warmup": 1,
+          "output_elements": 363,
+          "checked_output_elements": 363,
+          "nvtx_enabled": true,
+          "nvshmem_version": "3.7.2",
+          "nvshmem_header_version": "3.7.2",
+          "openshmem_api_version": "1.3",
+          "cuda_runtime_version": 13000,
+          "cuda_driver_version": 13000
+        },
+        "independent_output_check": {
+          "method": "independent_python_all_elements",
+          "checked_elements": 363,
+          "max_abs_error": 0.0,
+          "absolute_tolerance": 2e-06,
+          "output_sha256": "4551d989d6a7387fea329f4cb4c279146cd8d30edbeafe5d6f84e4682f6a2f90"
+        },
+        "native_report_sha256": "ab7942aad7e4988f577250743a8b105a854ad10a1c2bfae742491b17ba1732c6",
+        "native_api_export": "replay-metadata-device-scalar-halo-p0.json",
+        "native_api_export_sha256": "378d0144305394da84a5720aa94f0b3b54bdafbee30cdf8d7675fd1a1823c761",
+        "kernel_name": "scalar_halo"
+      },
+      {
+        "kind": "device",
+        "mode": "scalar-halo",
+        "rank": 1,
+        "report": "kernel-device-scalar-halo-p1.ncu-rep",
+        "pass_count": 1,
+        "profiler_warmup_passes": 0,
+        "backup_bytes": null,
+        "backup_bytes_observed": false,
+        "memory_save_restore_evidence": "Documented single-pass kernel-replay inference, not a measured zero-byte count.",
+        "gpu_duration": {
+          "present": true,
+          "has_value": true,
+          "value": 4416.0,
+          "unit": "ns",
+          "rollup_operation": 4
+        },
+        "workload": {
+          "status": "VERIFIED",
+          "mode": "scalar-halo",
+          "nx": 33,
+          "ny": 11,
+          "ranks": 2,
+          "elements": 32,
+          "iterations": 5,
+          "warmup": 1,
+          "output_elements": 363,
+          "checked_output_elements": 363,
+          "nvtx_enabled": true,
+          "nvshmem_version": "3.7.2",
+          "nvshmem_header_version": "3.7.2",
+          "openshmem_api_version": "1.3",
+          "cuda_runtime_version": 13000,
+          "cuda_driver_version": 13000
+        },
+        "independent_output_check": {
+          "method": "independent_python_all_elements",
+          "checked_elements": 363,
+          "max_abs_error": 0.0,
+          "absolute_tolerance": 2e-06,
+          "output_sha256": "4551d989d6a7387fea329f4cb4c279146cd8d30edbeafe5d6f84e4682f6a2f90"
+        },
+        "native_report_sha256": "f851ad7d8271e5dfb4e4029990f403186f619a32484672bb8bfa77d7cf32de60",
+        "native_api_export": "replay-metadata-device-scalar-halo-p1.json",
+        "native_api_export_sha256": "75eb817549dfb565371fd2f8ad8c7ab7b7218b88c10fdbc77bb4a2aa3a247289",
+        "kernel_name": "scalar_halo"
+      },
+      {
+        "kind": "device",
+        "mode": "persistent-halo",
+        "rank": 0,
+        "report": "kernel-device-persistent-halo-p0.ncu-rep",
+        "pass_count": 1,
+        "profiler_warmup_passes": 0,
+        "backup_bytes": null,
+        "backup_bytes_observed": false,
+        "memory_save_restore_evidence": "Documented single-pass kernel-replay inference, not a measured zero-byte count.",
+        "gpu_duration": {
+          "present": true,
+          "has_value": true,
+          "value": 29600.0,
+          "unit": "ns",
+          "rollup_operation": 4
+        },
+        "workload": {
+          "status": "VERIFIED",
+          "mode": "persistent-halo",
+          "nx": 33,
+          "ny": 11,
+          "ranks": 2,
+          "elements": 32,
+          "iterations": 5,
+          "warmup": 1,
+          "output_elements": 363,
+          "checked_output_elements": 363,
+          "nvtx_enabled": true,
+          "nvshmem_version": "3.7.2",
+          "nvshmem_header_version": "3.7.2",
+          "openshmem_api_version": "1.3",
+          "cuda_runtime_version": 13000,
+          "cuda_driver_version": 13000
+        },
+        "independent_output_check": {
+          "method": "independent_python_all_elements",
+          "checked_elements": 363,
+          "max_abs_error": 0.0,
+          "absolute_tolerance": 2e-06,
+          "output_sha256": "4551d989d6a7387fea329f4cb4c279146cd8d30edbeafe5d6f84e4682f6a2f90"
+        },
+        "native_report_sha256": "031fd14e50bbb905a60e7580db4a7e52832a1c67eddd1a6cc5c39721e14a2fdb",
+        "native_api_export": "replay-metadata-device-persistent-halo-p0.json",
+        "native_api_export_sha256": "ff713281471e3815fe1293b4961b72c67c032ca0797bf07f8ecdb0c19e032436",
+        "kernel_name": "persistent_halo"
+      },
+      {
+        "kind": "device",
+        "mode": "persistent-halo",
+        "rank": 1,
+        "report": "kernel-device-persistent-halo-p1.ncu-rep",
+        "pass_count": 1,
+        "profiler_warmup_passes": 0,
+        "backup_bytes": null,
+        "backup_bytes_observed": false,
+        "memory_save_restore_evidence": "Documented single-pass kernel-replay inference, not a measured zero-byte count.",
+        "gpu_duration": {
+          "present": true,
+          "has_value": true,
+          "value": 34880.0,
+          "unit": "ns",
+          "rollup_operation": 4
+        },
+        "workload": {
+          "status": "VERIFIED",
+          "mode": "persistent-halo",
+          "nx": 33,
+          "ny": 11,
+          "ranks": 2,
+          "elements": 32,
+          "iterations": 5,
+          "warmup": 1,
+          "output_elements": 363,
+          "checked_output_elements": 363,
+          "nvtx_enabled": true,
+          "nvshmem_version": "3.7.2",
+          "nvshmem_header_version": "3.7.2",
+          "openshmem_api_version": "1.3",
+          "cuda_runtime_version": 13000,
+          "cuda_driver_version": 13000
+        },
+        "independent_output_check": {
+          "method": "independent_python_all_elements",
+          "checked_elements": 363,
+          "max_abs_error": 0.0,
+          "absolute_tolerance": 2e-06,
+          "output_sha256": "4551d989d6a7387fea329f4cb4c279146cd8d30edbeafe5d6f84e4682f6a2f90"
+        },
+        "native_report_sha256": "72807c04bd26df643ffa4777b2375ad9c9669abaf275890073dcd1b6bfe5a542",
+        "native_api_export": "replay-metadata-device-persistent-halo-p1.json",
+        "native_api_export_sha256": "80a5bbdac7d6723fd7020b9f8df4ee7684e4989f6072da73bbe3a4763140a8cb",
+        "kernel_name": "persistent_halo"
+      },
+      {
+        "kind": "device",
+        "mode": "block-signal",
+        "rank": 0,
+        "report": "kernel-device-block-signal-p0.ncu-rep",
+        "pass_count": 1,
+        "profiler_warmup_passes": 0,
+        "backup_bytes": null,
+        "backup_bytes_observed": false,
+        "memory_save_restore_evidence": "Documented single-pass kernel-replay inference, not a measured zero-byte count.",
+        "gpu_duration": {
+          "present": true,
+          "has_value": true,
+          "value": 11136.0,
+          "unit": "ns",
+          "rollup_operation": 4
+        },
+        "workload": {
+          "status": "VERIFIED",
+          "mode": "block-signal",
+          "nx": 17,
+          "ny": 7,
+          "ranks": 2,
+          "elements": 263,
+          "iterations": 32,
+          "warmup": 2,
+          "output_elements": 33664,
+          "checked_output_elements": 33664,
+          "nvtx_enabled": true,
+          "nvshmem_version": "3.7.2",
+          "nvshmem_header_version": "3.7.2",
+          "openshmem_api_version": "1.3",
+          "cuda_runtime_version": 13000,
+          "cuda_driver_version": 13000
+        },
+        "independent_output_check": {
+          "method": "independent_python_all_elements",
+          "checked_elements": 33664,
+          "max_abs_error": 0.0,
+          "absolute_tolerance": 0.0,
+          "output_sha256": "42b5839bb18203efb124e6ffcd7f08ff48d4961a858fc0f77d7aff5916008f32"
+        },
+        "native_report_sha256": "97056662846bd662129783cae53c1be8d02a4412e5df5c7e561d79a132db6246",
+        "native_api_export": "replay-metadata-device-block-signal-p0.json",
+        "native_api_export_sha256": "df8b6a314397c513d4da70dafbb523f8c6d05631fa7f27ced1f6faa221a8bfd3",
+        "kernel_name": "block_exchange_signal"
+      },
+      {
+        "kind": "device",
+        "mode": "block-signal",
+        "rank": 1,
+        "report": "kernel-device-block-signal-p1.ncu-rep",
+        "pass_count": 1,
+        "profiler_warmup_passes": 0,
+        "backup_bytes": null,
+        "backup_bytes_observed": false,
+        "memory_save_restore_evidence": "Documented single-pass kernel-replay inference, not a measured zero-byte count.",
+        "gpu_duration": {
+          "present": true,
+          "has_value": true,
+          "value": 11168.0,
+          "unit": "ns",
+          "rollup_operation": 4
+        },
+        "workload": {
+          "status": "VERIFIED",
+          "mode": "block-signal",
+          "nx": 17,
+          "ny": 7,
+          "ranks": 2,
+          "elements": 263,
+          "iterations": 32,
+          "warmup": 2,
+          "output_elements": 33664,
+          "checked_output_elements": 33664,
+          "nvtx_enabled": true,
+          "nvshmem_version": "3.7.2",
+          "nvshmem_header_version": "3.7.2",
+          "openshmem_api_version": "1.3",
+          "cuda_runtime_version": 13000,
+          "cuda_driver_version": 13000
+        },
+        "independent_output_check": {
+          "method": "independent_python_all_elements",
+          "checked_elements": 33664,
+          "max_abs_error": 0.0,
+          "absolute_tolerance": 0.0,
+          "output_sha256": "42b5839bb18203efb124e6ffcd7f08ff48d4961a858fc0f77d7aff5916008f32"
+        },
+        "native_report_sha256": "6b0d7462c1c9d0c13ac348682de39cf0f00ff05b99f3597255493391e9f02a2d",
+        "native_api_export": "replay-metadata-device-block-signal-p1.json",
+        "native_api_export_sha256": "54d31e188e87aa24e0f03f50efa4ec065506325d1e80b18017cc46784c2d1454",
+        "kernel_name": "block_exchange_signal"
+      },
+      {
+        "kind": "device",
+        "mode": "persistent-signal",
+        "rank": 0,
+        "report": "kernel-device-persistent-signal-p0.ncu-rep",
+        "pass_count": 1,
+        "profiler_warmup_passes": 0,
+        "backup_bytes": null,
+        "backup_bytes_observed": false,
+        "memory_save_restore_evidence": "Documented single-pass kernel-replay inference, not a measured zero-byte count.",
+        "gpu_duration": {
+          "present": true,
+          "has_value": true,
+          "value": 206240.0,
+          "unit": "ns",
+          "rollup_operation": 4
+        },
+        "workload": {
+          "status": "VERIFIED",
+          "mode": "persistent-signal",
+          "nx": 17,
+          "ny": 7,
+          "ranks": 2,
+          "elements": 263,
+          "iterations": 32,
+          "warmup": 2,
+          "output_elements": 33664,
+          "checked_output_elements": 33664,
+          "nvtx_enabled": true,
+          "nvshmem_version": "3.7.2",
+          "nvshmem_header_version": "3.7.2",
+          "openshmem_api_version": "1.3",
+          "cuda_runtime_version": 13000,
+          "cuda_driver_version": 13000
+        },
+        "independent_output_check": {
+          "method": "independent_python_all_elements",
+          "checked_elements": 33664,
+          "max_abs_error": 0.0,
+          "absolute_tolerance": 0.0,
+          "output_sha256": "42b5839bb18203efb124e6ffcd7f08ff48d4961a858fc0f77d7aff5916008f32"
+        },
+        "native_report_sha256": "c719ea44597f0dbe2a5ae7ded5306734ca0aed1cf99ba865db86caa1a3ec42f3",
+        "native_api_export": "replay-metadata-device-persistent-signal-p0.json",
+        "native_api_export_sha256": "39ac136b1bbc7e62a78f6bd03e90d796afb416f71c9dc37130c43af0a7c64fdb",
+        "kernel_name": "persistent_exchange"
+      },
+      {
+        "kind": "device",
+        "mode": "persistent-signal",
+        "rank": 1,
+        "report": "kernel-device-persistent-signal-p1.ncu-rep",
+        "pass_count": 1,
+        "profiler_warmup_passes": 0,
+        "backup_bytes": null,
+        "backup_bytes_observed": false,
+        "memory_save_restore_evidence": "Documented single-pass kernel-replay inference, not a measured zero-byte count.",
+        "gpu_duration": {
+          "present": true,
+          "has_value": true,
+          "value": 246784.0,
+          "unit": "ns",
+          "rollup_operation": 4
+        },
+        "workload": {
+          "status": "VERIFIED",
+          "mode": "persistent-signal",
+          "nx": 17,
+          "ny": 7,
+          "ranks": 2,
+          "elements": 263,
+          "iterations": 32,
+          "warmup": 2,
+          "output_elements": 33664,
+          "checked_output_elements": 33664,
+          "nvtx_enabled": true,
+          "nvshmem_version": "3.7.2",
+          "nvshmem_header_version": "3.7.2",
+          "openshmem_api_version": "1.3",
+          "cuda_runtime_version": 13000,
+          "cuda_driver_version": 13000
+        },
+        "independent_output_check": {
+          "method": "independent_python_all_elements",
+          "checked_elements": 33664,
+          "max_abs_error": 0.0,
+          "absolute_tolerance": 0.0,
+          "output_sha256": "42b5839bb18203efb124e6ffcd7f08ff48d4961a858fc0f77d7aff5916008f32"
+        },
+        "native_report_sha256": "efcd29d1d40d292cc06a2fb2430088eb0484b5260e214703951372850030f3cc",
+        "native_api_export": "replay-metadata-device-persistent-signal-p1.json",
+        "native_api_export_sha256": "3b090fc4ccd6c13330d9417f875ce61c6e416fabd62147de8eb348a090a0233f",
+        "kernel_name": "persistent_exchange"
+      },
+      {
+        "kind": "device",
+        "mode": "persistent-atomic",
+        "rank": 0,
+        "report": "kernel-device-persistent-atomic-p0.ncu-rep",
+        "pass_count": 1,
+        "profiler_warmup_passes": 0,
+        "backup_bytes": null,
+        "backup_bytes_observed": false,
+        "memory_save_restore_evidence": "Documented single-pass kernel-replay inference, not a measured zero-byte count.",
+        "gpu_duration": {
+          "present": true,
+          "has_value": true,
+          "value": 291136.0,
+          "unit": "ns",
+          "rollup_operation": 4
+        },
+        "workload": {
+          "status": "VERIFIED",
+          "mode": "persistent-atomic",
+          "nx": 17,
+          "ny": 7,
+          "ranks": 2,
+          "elements": 263,
+          "iterations": 32,
+          "warmup": 2,
+          "output_elements": 33664,
+          "checked_output_elements": 33664,
+          "nvtx_enabled": true,
+          "nvshmem_version": "3.7.2",
+          "nvshmem_header_version": "3.7.2",
+          "openshmem_api_version": "1.3",
+          "cuda_runtime_version": 13000,
+          "cuda_driver_version": 13000
+        },
+        "independent_output_check": {
+          "method": "independent_python_all_elements",
+          "checked_elements": 33664,
+          "max_abs_error": 0.0,
+          "absolute_tolerance": 0.0,
+          "output_sha256": "42b5839bb18203efb124e6ffcd7f08ff48d4961a858fc0f77d7aff5916008f32"
+        },
+        "native_report_sha256": "7ed2b0f4273e9eb2f0534008d58de03d37a17e7dac83f34df214b1ab3825df28",
+        "native_api_export": "replay-metadata-device-persistent-atomic-p0.json",
+        "native_api_export_sha256": "71b1c7f2efcab561fd77812dbbcba57fd9b16a4d31ebdaec5267cfb4c19b01b8",
+        "kernel_name": "persistent_exchange"
+      },
+      {
+        "kind": "device",
+        "mode": "persistent-atomic",
+        "rank": 1,
+        "report": "kernel-device-persistent-atomic-p1.ncu-rep",
+        "pass_count": 1,
+        "profiler_warmup_passes": 0,
+        "backup_bytes": null,
+        "backup_bytes_observed": false,
+        "memory_save_restore_evidence": "Documented single-pass kernel-replay inference, not a measured zero-byte count.",
+        "gpu_duration": {
+          "present": true,
+          "has_value": true,
+          "value": 339360.0,
+          "unit": "ns",
+          "rollup_operation": 4
+        },
+        "workload": {
+          "status": "VERIFIED",
+          "mode": "persistent-atomic",
+          "nx": 17,
+          "ny": 7,
+          "ranks": 2,
+          "elements": 263,
+          "iterations": 32,
+          "warmup": 2,
+          "output_elements": 33664,
+          "checked_output_elements": 33664,
+          "nvtx_enabled": true,
+          "nvshmem_version": "3.7.2",
+          "nvshmem_header_version": "3.7.2",
+          "openshmem_api_version": "1.3",
+          "cuda_runtime_version": 13000,
+          "cuda_driver_version": 13000
+        },
+        "independent_output_check": {
+          "method": "independent_python_all_elements",
+          "checked_elements": 33664,
+          "max_abs_error": 0.0,
+          "absolute_tolerance": 0.0,
+          "output_sha256": "42b5839bb18203efb124e6ffcd7f08ff48d4961a858fc0f77d7aff5916008f32"
+        },
+        "native_report_sha256": "f213b4c423cfe456a4a17d246b06420dafc393fb432d8ec2eafe7a8e2c9d1d22",
+        "native_api_export": "replay-metadata-device-persistent-atomic-p1.json",
+        "native_api_export_sha256": "0c40f624fe5b1ca6e1bc483cd32ef76d9bfe75fc7308fca26a83be55a77b25d2",
+        "kernel_name": "persistent_exchange"
+      }
+    ],
+    "reused_capture": "Common rank0 report, numerical JSON and output were captured in1142 and re-exported in1143 without PYTHONPATH. They were not recaptured. The same report appears in both phase archives.",
+    "measurement_limit": "Backup-byte metrics were absent. No-save/restore is a documented single-pass inference, not a measured zero-byte result. Intrusive NCU timing includes instrumentation and peer scheduling effects."
+  },
+  "maintained_source_delta": {
+    "description": "After these runs, a native device comment removes an unsupported replay-safety claim. The common CLI failure-record exception handler is corrected separately with CPU regressions. No native executable statement changed.",
+    "device_native_executed_sha256": "aa0f7f0fac1c453290098aabaebd957bf4ecdf91f7b5198dad14be5ebafb5d86",
+    "device_native_maintained_sha256": "46055e8d6e40805dc151a78f54cf9fa505c592672b8e70dd8ba39fb42978d48d",
+    "common_cli_failure_record": {
+      "description": "After the B200 runs, only the common CLI exception handler and two CPU regressions changed. A secondary failure-record write error retains the original failure or skip reason and exit code. The happy path, native invocation, common native helper and all native executable statements remain unchanged.",
+      "changed_files_sha256": {
+        "code/labs/multi_gpu_communication/run_lab_multi_gpu_communication.py": "1120ae98577f94248bb529c6febe7df1477b39991a69c1636d657e412931f4e4",
+        "code/tests/test_multi_gpu_communication.py": "6d51d34e85ef139aeb189d01049271c0eeccd913b990c818891ff312f26bc284"
+      },
+      "cpu_tests_passed": 80,
+      "cpu_gpu_opt_in_skipped": 6,
+      "gpu_rerun_for_this_error_path": false
+    }
+  },
+  "limits": [
+    "Single-host two-GPU diagnostic, not canonical performance qualification.",
+    "No multi-node, IBGDA, NCCL GIN or CFT validation.",
+    "All device user kernels use one CTA per PE.",
+    "Python stencil dump checks reconstruct periodic halo rows. Native verification separately checks received halos.",
+    "Historical unprofiled timings remain separate from these intrusive profile captures.",
+    "Older raw captures remain private because they contain operational metadata. New assets require their own exact-byte privacy audit."
+  ],
+  "review_status": "Scoped review receipts are retained separately. This diagnostic record is not a publication-readiness verdict.",
+  "executed_source_sha256": {
+    "code/core/tools/tools_commands.py": "470133b3040c145c54f967fcb13ac15555a80525679a5bcffcd346bae0bf0fe4",
+    "code/labs/multi_gpu_communication/Makefile": "12f9c14ca4718ed4ca73fccba4bc74658d7f4d044bc83d1b316d010ee80b35cb",
+    "code/labs/multi_gpu_communication/__init__.py": "d11358fb512f298026470de8799426699e29bbd907d2d4b4226d31716007f276",
+    "code/labs/multi_gpu_communication/baseline_jacobi.py": "889a0b78251f31cb0cae7098b80c95cc7efc211f555bbcb7b34f76905184e771",
+    "code/labs/multi_gpu_communication/build_receipt.py": "37dcac510d84bd740a955c7ad87928bc451c21d9cfe318457082ed747fbd9a34",
+    "code/labs/multi_gpu_communication/jacobi_contract.hpp": "e0ed5c94de560a3cca6cd1cf7d8ecb3d5974704940a4a30c3755d1eac4bd8aa3",
+    "code/labs/multi_gpu_communication/jacobi_native.cu": "41e0c506d77a9acf38e93137358efd96f10d9fa506d1b6e01245dfc3b23e93ed",
+    "code/labs/multi_gpu_communication/native_benchmark.py": "a138d1649598b1af3aaa133e84eb458e8dffa9a944dd15a5f07ded00f31c11e1",
+    "code/labs/multi_gpu_communication/native_common.py": "e3e16336deddcb7e0123b88bb19523498e3d0576881c9ae7a9ac09c019aaa739",
+    "code/labs/multi_gpu_communication/optimized_jacobi.py": "1acb9f793edf8482c633b4cd4b28655d1c8df1fb47ac54d2ba0164e588dd4a8e",
+    "code/labs/multi_gpu_communication/run_lab_multi_gpu_communication.py": "9a3b85b1b384530b8b0b617603e4ddc136b64d4140d115f9a076653173e01493",
+    "code/labs/nvshmem_device/Makefile": "d6da24d7fd13ac312289249bf41153ad9ce907fa74b84ca369e5986bf7d10ecd",
+    "code/labs/nvshmem_device/__init__.py": "10a512e1f0ed67328600ac33703af4fcec596085d1b7d5d77dee47ccc836d1c5",
+    "code/labs/nvshmem_device/baseline_nvshmem_device.py": "aeea5a7f08caab89af8bc25b5581e06c6d2c67b98f0b7313986e5584c82296b6",
+    "code/labs/nvshmem_device/build_receipt.py": "1bdd3e0a82ee0b6dde75efe10010efa86d5765cedf6398a68e2ed77a5fe16e07",
+    "code/labs/nvshmem_device/inspect_ncu_replay_metrics.py": "852c6cb0b0c9ba9d78e6e94e3db8e4dd9428351e982df931829dacf18af3a0d9",
+    "code/labs/nvshmem_device/native_benchmark.py": "610cc0093176f90d81c27b05d1451e4589ac57c0946d8f511a59d5e83880def1",
+    "code/labs/nvshmem_device/nvshmem_device_native.cu": "aa0f7f0fac1c453290098aabaebd957bf4ecdf91f7b5198dad14be5ebafb5d86",
+    "code/labs/nvshmem_device/optimized_nvshmem_device.py": "37df2104889c2a5103a062a60fcb956584c7cc8252adfeb6cc4a30cb7297b737",
+    "code/labs/nvshmem_device/profile_rank.sh": "0e17ceea42685e06dc9065e2658caf6be9daa8a87de508aff2bbc7b16769de91",
+    "code/labs/nvshmem_device/run_lab_nvshmem_device.py": "6042e5b09f875f29da54b0f1187175342561d76486921d9a7ebbf4f110afda99",
+    "code/tests/test_multi_gpu_communication.py": "eddfc13a94e598e9961d5096ab5db23f5ed20f7297c4605372ea592e1192c7f2",
+    "code/tests/test_nvshmem_device.py": "8a1cc623e9c43c6980591d76d996093f8bc23d33d330420f1296a0cb0299e126",
+    "code/tests/test_tools_cli.py": "b475eb411705f3bd6ff7ff718e6154c40c1cca7d82db7d8837b7cf14cc2fe1e4"
+  },
+  "scheduler_receipt": {
+    "artifact": "tutorial-validation-scheduler-receipts.json",
+    "sha256": "40654e72528950713c6683b3fbd0bf144a162b1649a722499e8208a5f81a99b8",
+    "gpu_lane_released": true,
+    "additional_gpu_jobs_planned": false
+  },
+  "independent_analysis": {
+    "status": "PASS",
+    "analysis_script_sha256": "a1523caa1751d8b25eb3016e36c9337f6eb95c42065d022ccf114f19cbacdc66",
+    "analysis_json_sha256": "2c91b09c0dadccf6d5da6c51c9eec6ab64d2761355bc03f4deb0a10079088890",
+    "complete_outputs_checked": 20,
+    "float_values_checked": 50780674,
+    "maximum_abs_error": 0.0,
+    "overlap": [
+      {
+        "label": "jacobi-serialized",
+        "rank": 0,
+        "nvtx_range": "compute_graph:jacobi_steady_state",
+        "range_duration_ns": 911547,
+        "overlap_ns": 0,
+        "positive_same_iteration_pairs": 0,
+        "fraction_of_nccl_time": 0.0
+      },
+      {
+        "label": "jacobi-serialized",
+        "rank": 1,
+        "nvtx_range": "compute_graph:jacobi_steady_state",
+        "range_duration_ns": 912548,
+        "overlap_ns": 0,
+        "positive_same_iteration_pairs": 0,
+        "fraction_of_nccl_time": 0.0
+      },
+      {
+        "label": "jacobi-overlap",
+        "rank": 0,
+        "nvtx_range": "compute_graph:jacobi_steady_state",
+        "range_duration_ns": 617122,
+        "overlap_ns": 276831,
+        "positive_same_iteration_pairs": 20,
+        "fraction_of_nccl_time": 0.9600486906582603
+      },
+      {
+        "label": "jacobi-overlap",
+        "rank": 1,
+        "nvtx_range": "compute_graph:jacobi_steady_state",
+        "range_duration_ns": 616092,
+        "overlap_ns": 278015,
+        "positive_same_iteration_pairs": 20,
+        "fraction_of_nccl_time": 0.9585170679234745
+      },
+      {
+        "label": "jacobi-graph-overlap",
+        "rank": 0,
+        "nvtx_range": "compute_graph:jacobi_steady_state",
+        "range_duration_ns": 607303,
+        "overlap_ns": 290080,
+        "positive_same_iteration_pairs": 20,
+        "fraction_of_nccl_time": 1.0
+      },
+      {
+        "label": "jacobi-graph-overlap",
+        "rank": 1,
+        "nvtx_range": "compute_graph:jacobi_steady_state",
+        "range_duration_ns": 606093,
+        "overlap_ns": 305088,
+        "positive_same_iteration_pairs": 20,
+        "fraction_of_nccl_time": 0.9878769039477774
+      }
+    ]
+  },
+  "privacy_audit": {
+    "status": "PASS_WITH_DISCLOSED_VENDOR_BUILD_METADATA",
+    "audit_sha256": "b4f8da284930c3fabca5e73df901ebfb7a72f372a36ceed4cd62f1bab780873c",
+    "nsys_cohort_asset_manifest_sha256": "7641cf4ae061c803960bf5eb2e90dbb46dca1c92f5d8cabe7070545dbd6cac6c",
+    "ncu_cohort_asset_manifest_sha256": "a047bcf55a7442e13678ac330d7ea406688d9ede1af25e27022a1b1b02bb57f8",
+    "decoded_sqlite_tables_scanned": 876,
+    "decoded_sqlite_rows_scanned": 307547,
+    "unsafe_filenames": [],
+    "disclosure": "The static MPI vendor package build signature and actual GPU UUID fields remain in native captures. They are distinct from the synthetic namespace hostname and machine identity. No original operational host identifiers, credential assignments or private workspace paths were found in the audited assets.",
+    "scope": "Exact phase1142/1143 assets plus scheduler and analysis supplements. Earlier smoke prototype has a separate exact-byte audit."
+  },
+  "artifacts": {
+    "release_url": "https://github.com/cfregly/ai-performance-engineering/releases/tag/tutorial-multi-gpu-b200-20261116",
+    "source_commit": "ed588c27c6adfe3cfb0de6d1b06b143b830d3eeb",
+    "scientific_profiles": true,
+    "package_audit_record": "2026-11-16-distributed-gpu-package-audit.json",
+    "package_audit_sha256": "20d22120091f1275a546277adde2871431c31f5f0747db0d13e4065eaaaa4887",
+    "package_manifest_sha256": "61340c02257835f76bab0c80fba797491daf5e41b67be1fa571183ed57fadc65",
+    "files": [
+      {
+        "file": "PROFILE_PACKAGE.json",
+        "url": "https://github.com/cfregly/ai-performance-engineering/releases/download/tutorial-multi-gpu-b200-20261116/PROFILE_PACKAGE.json",
+        "bytes": 3734,
+        "sha256": "2f52c1cd0a764e446b79ca78d6f2713701e7268cc83063724471dc7371b6a9f3"
+      },
+      {
+        "file": "README.md",
+        "url": "https://github.com/cfregly/ai-performance-engineering/releases/download/tutorial-multi-gpu-b200-20261116/README.md",
+        "bytes": 4661,
+        "sha256": "23ce762b0c94f3ad26e1d09a6f5304841f1ad4b47023148963bc43e57d67cd91"
+      },
+      {
+        "file": "SHA256SUMS",
+        "url": "https://github.com/cfregly/ai-performance-engineering/releases/download/tutorial-multi-gpu-b200-20261116/SHA256SUMS",
+        "bytes": 1419,
+        "sha256": "09e8c23e026b53bf9d2330efb9d7e1df6c4d227059caaf9bde2ffbf771fb6a97"
+      },
+      {
+        "file": "analyze.py",
+        "url": "https://github.com/cfregly/ai-performance-engineering/releases/download/tutorial-multi-gpu-b200-20261116/analyze.py",
+        "bytes": 29945,
+        "sha256": "a1523caa1751d8b25eb3016e36c9337f6eb95c42065d022ccf114f19cbacdc66"
+      },
+      {
+        "file": "asset-manifest-1141.json",
+        "url": "https://github.com/cfregly/ai-performance-engineering/releases/download/tutorial-multi-gpu-b200-20261116/asset-manifest-1141.json",
+        "bytes": 18442,
+        "sha256": "e9fc347b4de8d4f389d49b212d0414bda92e74704fe7d85d29a6db7ae0ff7114"
+      },
+      {
+        "file": "asset-manifest-1142.json",
+        "url": "https://github.com/cfregly/ai-performance-engineering/releases/download/tutorial-multi-gpu-b200-20261116/asset-manifest-1142.json",
+        "bytes": 15739,
+        "sha256": "7641cf4ae061c803960bf5eb2e90dbb46dca1c92f5d8cabe7070545dbd6cac6c"
+      },
+      {
+        "file": "asset-manifest-1143.json",
+        "url": "https://github.com/cfregly/ai-performance-engineering/releases/download/tutorial-multi-gpu-b200-20261116/asset-manifest-1143.json",
+        "bytes": 16751,
+        "sha256": "a047bcf55a7442e13678ac330d7ea406688d9ede1af25e27022a1b1b02bb57f8"
+      },
+      {
+        "file": "collection-1141.py",
+        "url": "https://github.com/cfregly/ai-performance-engineering/releases/download/tutorial-multi-gpu-b200-20261116/collection-1141.py",
+        "bytes": 9704,
+        "sha256": "8ea1821175b6fe3e4e0dd9bf5a5f6ebe2c1aa1bf311e75f409aab44c290885bd"
+      },
+      {
+        "file": "collection-1142.py",
+        "url": "https://github.com/cfregly/ai-performance-engineering/releases/download/tutorial-multi-gpu-b200-20261116/collection-1142.py",
+        "bytes": 16778,
+        "sha256": "c2bcb1e023b7a1ced6337449e1d68c5690b29d343e0b110c768814521e54c6f5"
+      },
+      {
+        "file": "collection-1143.py",
+        "url": "https://github.com/cfregly/ai-performance-engineering/releases/download/tutorial-multi-gpu-b200-20261116/collection-1143.py",
+        "bytes": 18113,
+        "sha256": "32638d403e47e5e27e0f29f96b8f08f99d1b2815f4216df5111388685648943d"
+      },
+      {
+        "file": "landing-public-ncu-1143.tar.gz",
+        "url": "https://github.com/cfregly/ai-performance-engineering/releases/download/tutorial-multi-gpu-b200-20261116/landing-public-ncu-1143.tar.gz",
+        "bytes": 12677507,
+        "sha256": "6ab7b11dc36029cc3bd65eb3b7ec6a8df13714efffa6272f5aa2cc9caf2d3c5c"
+      },
+      {
+        "file": "landing-public-profiles-1142.tar.gz",
+        "url": "https://github.com/cfregly/ai-performance-engineering/releases/download/tutorial-multi-gpu-b200-20261116/landing-public-profiles-1142.tar.gz",
+        "bytes": 162969282,
+        "sha256": "60651c9d851eeee77cf35aae8409fc7ceb7baf441fcbe38cd86571cecd5a71e6"
+      },
+      {
+        "file": "landing-public-smoke-1141.tar.gz",
+        "url": "https://github.com/cfregly/ai-performance-engineering/releases/download/tutorial-multi-gpu-b200-20261116/landing-public-smoke-1141.tar.gz",
+        "bytes": 11124820,
+        "sha256": "53fd8396d8ef9b67caefaa56b7e847cfb7ae62a6e5c631cb4d43e0013318fa16"
+      },
+      {
+        "file": "privacy-audit-1141.json",
+        "url": "https://github.com/cfregly/ai-performance-engineering/releases/download/tutorial-multi-gpu-b200-20261116/privacy-audit-1141.json",
+        "bytes": 5925,
+        "sha256": "43af99ad57e3a5b469e51936b3db035a60ca3cf14d114b79a268b9c722175bef"
+      },
+      {
+        "file": "privacy-audit.json",
+        "url": "https://github.com/cfregly/ai-performance-engineering/releases/download/tutorial-multi-gpu-b200-20261116/privacy-audit.json",
+        "bytes": 41729,
+        "sha256": "b4f8da284930c3fabca5e73df901ebfb7a72f372a36ceed4cd62f1bab780873c"
+      },
+      {
+        "file": "profile-analysis.json",
+        "url": "https://github.com/cfregly/ai-performance-engineering/releases/download/tutorial-multi-gpu-b200-20261116/profile-analysis.json",
+        "bytes": 349437,
+        "sha256": "2c91b09c0dadccf6d5da6c51c9eec6ab64d2761355bc03f4deb0a10079088890"
+      },
+      {
+        "file": "scheduler-receipts.json",
+        "url": "https://github.com/cfregly/ai-performance-engineering/releases/download/tutorial-multi-gpu-b200-20261116/scheduler-receipts.json",
+        "bytes": 973,
+        "sha256": "40654e72528950713c6683b3fbd0bf144a162b1649a722499e8208a5f81a99b8"
+      }
+    ],
+    "package_metadata_audit_record": "2026-11-16-distributed-gpu-package-metadata-audit.json",
+    "package_metadata_audit_sha256": "3266c232d0f19560cdad88af051d2c9898153cfafe3e75547dd0fdf414eba645"
+  }
+}

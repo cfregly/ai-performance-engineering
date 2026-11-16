@@ -80,7 +80,19 @@ The native lab uses `cudaGraphInstantiateWithFlags(exec_out, graph, flags)` with
 | `cudaGraphInstantiateFlagUseNodePriority` | Use kernel-node priorities, copied from stream priorities during capture, instead of the graph launch stream's priority. Priority remains a scheduling hint and does not replace dependencies. |
 | `cudaGraphInstantiateFlagAutoFreeOnLaunch` | Before relaunch, free graph allocations left live by an earlier execution. It concerns allocation nodes. It does not clean up ordinary `cudaMalloc` buffers or application resources. |
 
-The five-argument `cudaGraphInstantiate(exec_out, graph, error_node_out, log_buffer, buffer_size)` overload provides an optional error node and diagnostic log. It remains listed in the CUDA 13.0 and current C++ API documentation. The `WithFlags` call above takes flags in its third argument instead. `cudaGraphInstantiateWithParams` provides structured `errNode_out` and `result_out` diagnostics with instantiation parameters. Check the installed headers and the chosen API's return status. Instantiation failure is a hard error, and a failed executable must not be launched. [CUDA 13.0 flags and parameters](https://docs.nvidia.com/cuda/archive/13.0.0/cuda-runtime-api/group__CUDART__GRAPH.html), [current C++ overload and diagnostics](https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__HIGHLEVEL.html)
+The five-argument `cudaGraphInstantiate(exec_out, graph, error_node_out,
+log_buffer, buffer_size)` remains a compatibility overload. In CUDA 13.0.88,
+its inline wrapper ignores the error-node, log-buffer, and buffer-size
+arguments and calls the flags overload with zero flags. Do not expect those
+outputs to provide diagnostics. The `WithFlags` call above instead takes flags
+in its third argument. For structured diagnostics, initialize
+`cudaGraphInstantiateParams`, call `cudaGraphInstantiateWithParams`, and inspect
+the returned status plus `result_out` and `errNode_out`. This adds explicit
+error reporting when deciding which node or capability needs fixing. The lab's
+`WithFlags` path checks its return status without those structured outputs.
+Instantiation failure is a hard error, and a failed executable must not be
+launched. [CUDA 13.0.88 headers](https://developer.download.nvidia.com/compute/cuda/redist/cuda_cudart/linux-x86_64/cuda_cudart-linux-x86_64-13.0.88-archive.tar.xz),
+[CUDA 13.0 parameters and diagnostics](https://docs.nvidia.com/cuda/archive/13.0.0/cuda-runtime-api/group__CUDART__GRAPH.html)
 
 ## Streams, dependencies, and concurrent launches
 

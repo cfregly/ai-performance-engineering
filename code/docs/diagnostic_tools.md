@@ -26,6 +26,7 @@ python -m cli.aisp tools fabric-diagnose -- --help
 python -m cli.aisp tools transport-diagnose -- --help
 python -m cli.aisp tools collective-diagnose -- --help
 python -m cli.aisp tools multi-gpu-communication -- --help
+python -m cli.aisp tools nvshmem-device -- --help
 python -m cli.aisp tools serving-compare -- --help
 python -m cli.aisp tools serving-prepare-runtime -- --help
 python -m cli.aisp tools cross-layer-diagnose -- --help
@@ -38,9 +39,9 @@ The MCP `tools_diagnostics` tool dispatches the same command registry. For examp
 ```
 
 MCP dispatch is restricted to its declared diagnostic-tool allowlist. The native
-`multi-gpu-communication` lab is a CLI entrypoint and is not added to that MCP
-allowlist. It needs a separately built native binary and an explicitly allocated
-set of GPUs.
+`multi-gpu-communication` and `nvshmem-device` labs are CLI entrypoints and are
+not added to that MCP allowlist. Each needs a separately built native binary and
+an explicitly allocated set of GPUs.
 
 Use an existing serving deployment or explicitly selected host pair for load
 tests. State collection and offline analysis do not configure switches. The tools

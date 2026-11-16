@@ -274,6 +274,26 @@ def test_missing_native_binary_reports_an_explicit_skip(tmp_path: Path) -> None:
     assert json.loads(artifact.read_text(encoding="utf-8")) == payload
 
 
+@pytest.mark.parametrize("failure", ["invalid_workload", "missing_binary"])
+def test_runner_invalid_result_parent_preserves_the_original_failure(tmp_path: Path, failure: str) -> None:
+    parent = tmp_path / "not-a-directory"
+    parent.write_text("preserve this file\n")
+    artifact = parent / "result.json"
+    arguments = ["--nx", "2"] if failure == "invalid_workload" else ["--binary", str(tmp_path / "absent")]
+    result = subprocess.run(
+        [sys.executable, str(LAB_ROOT / "run_lab_multi_gpu_communication.py"),
+         *arguments, "--json-out", str(artifact), "--json"],
+        capture_output=True, text=True, check=False,
+    )
+    payload = json.loads(result.stdout)
+    assert result.returncode == (1 if failure == "invalid_workload" else 3)
+    assert payload["status"] == ("failed" if failure == "invalid_workload" else "skipped")
+    assert ("nx >= 3" if failure == "invalid_workload" else "Native binary is missing") in payload["reason"]
+    assert str(parent) in payload["failure_record_error"]
+    assert "Traceback" not in result.stderr
+    assert parent.read_text() == "preserve this file\n"
+
+
 @pytest.mark.parametrize(
     "arguments,reason",
     [

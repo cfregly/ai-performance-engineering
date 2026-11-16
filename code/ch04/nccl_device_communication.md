@@ -2,7 +2,7 @@
 
 Use device-initiated communication when a kernel produces data that another GPU needs and moving the transfer into that kernel removes useful scheduling work. The payoff can be fewer host launches and earlier publication of a completed tile or halo. The cost is a communication protocol inside your application: topology, memory visibility, completion, and buffer reuse become your responsibility. Keep host NCCL as the baseline when its existing schedule is sufficient.
 
-This guide explains the device API and its connection to CUDA Graphs, building on [Hands-On 9 in the JSC multi-GPU tutorial](https://github.com/FZJ-JSC/tutorial-multi-gpu/tree/cd34f9d40d600efd8d84e433b1a9e84ab5eff5f3/09-H_Device-initiated_Communication_and_CUDA_Graphs). Its C++ fragments illustrate individual operations. They omit complete initialization, kernels, launch coordination, and error cleanup, and do not constitute a runnable GIN solver. The native [multi-GPU communication lab](../labs/multi_gpu_communication/README.md) implements host MPI/NCCL scheduling and NVSHMEM on-stream transfers separately.
+This guide explains the device API and its connection to CUDA Graphs, building on [Hands-On 9 in the JSC multi-GPU tutorial](https://github.com/FZJ-JSC/tutorial-multi-gpu/tree/cd34f9d40d600efd8d84e433b1a9e84ab5eff5f3/09-H_Device-initiated_Communication_and_CUDA_Graphs). Its LSA fragment illustrates individual operations, while the GIN protocol is conceptual pseudocode. Neither supplies complete initialization, launch coordination, or error cleanup. This is not a runnable GIN solver. The native [multi-GPU communication lab](../labs/multi_gpu_communication/README.md) implements host MPI/NCCL scheduling and NVSHMEM on-stream transfers separately.
 
 ## Choose the API for the work
 
@@ -14,7 +14,7 @@ This guide explains the device API and its connection to CUDA Graphs, building o
 
 Grouping host calls does not turn them into user-kernel communication. It also does not prove compute/communication overlap. The actual stream dependencies and hardware execution determine that. NCCL permits capture of collective, point-to-point, and grouped operations starting with NCCL 2.9 and CUDA 11.3. Capture participation and graph launch must match across the relevant ranks. [NCCL groups](https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/usage/groups.html), [NCCL graph requirements](https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/usage/cudagraph.html)
 
-Host initiation and host waiting are separate choices. The CPU-Initiated Communication slide's blocking compute/synchronize/put/wait sequence adds a host handoff to the dependent path. The [NVSHMEM guide](nvshmem_communication.md#a-host-put-is-different-from-an-on-stream-put) explains its wait scope and strong-scaling tradeoff. Host-enqueued stream operations can overlap independent GPU work. The [native NCCL exchange](../labs/multi_gpu_communication/jacobi_native.cu#L324-L377) expresses those dependencies, and the lab's [two-B200 profiles](../labs/multi_gpu_communication/README.md#observed-two-b200-diagnostic) observed that overlap. Moving initiation into a kernel is useful when finer publication or less host orchestration justifies its protocol and GPU resource cost.
+Host initiation and host waiting are separate choices. The CPU-Initiated Communication slide's blocking compute/synchronize/put/wait sequence adds a host handoff to the dependent path. The [NVSHMEM guide](nvshmem_communication.md#a-host-put-is-different-from-an-on-stream-put) explains its wait scope and strong-scaling tradeoff. Host-enqueued stream operations can overlap independent GPU work. The [native NCCL exchange](../labs/multi_gpu_communication/jacobi_native.cu#L328-L382) expresses those dependencies, and the lab's [two-B200 profiles](../labs/multi_gpu_communication/README.md#observed-two-b200-diagnostic) observed that overlap. Moving initiation into a kernel is useful when finer publication or less host orchestration justifies its protocol and GPU resource cost.
 
 ## Read the device API stack by capability
 
@@ -32,16 +32,20 @@ assuming it uses a given device API path.
 | CFT, currently named Compute Fabric Transport | Use CUDA fabric logical endpoints for fabric transfers, reductions, and barriers | Request CFT resources and use the CFT team and endpoint queries. Hardware, driver, and toolkit must support the fabric instructions. |
 | GIN, or GPU-Initiated Networking | Issue network operations from device code | Establish GIN connectivity, backend support, context resources, and signal requirements. A backend can still use CPU progress. |
 
-The slide labels CFT as CUDA Fabric Transport and places it over large-scale
-NVLink. Current NVIDIA documentation calls it **Compute Fabric Transport** and
-dates its NCCL helpers to 2.31. Its current runnable barrier example requires
-CUDA Toolkit 13.3 and SM_100. An NVLink connection or a Blackwell GPU alone is
-insufficient evidence that CFT is usable. The CFT setup must succeed for every
-participating rank. [NCCL module overview](https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/usage/deviceapi.html),
+The rendered slide's faint middle column labels CFT as CUDA Fabric Transport
+above large-scale NVLink. Current NVIDIA documentation calls it
+**Compute Fabric Transport** and dates its NCCL helpers to 2.31. Current
+requirements include CUDA Toolkit 13.3 or later, Blackwell or newer GPUs, and
+driver 610.43.02 or later. The example barrier targets SM_100. The tested B200
+host's CUDA 13.0, NCCL 2.26.2, and driver 580.173.02 are below those three
+software requirements. An NVLink connection or a Blackwell GPU alone is
+insufficient evidence that CFT is usable. Requesting fabric resources adds
+setup and compatibility obligations, and setup must succeed on every
+participating rank. [NCCL module overview and requirements](https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/usage/deviceapi.html#requirements),
 [CFT requirements](https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/usage/cft.html),
 [CFT resource and team contracts](https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/api/device_cft.html)
 
-This guide's code below uses LSA and GIN. It does not implement or validate CFT,
+This guide illustrates LSA and the GIN protocol. It does not implement or validate CFT,
 Multimem, or the ecosystem integrations shown on the slide. A two-GPU NVLink
 run can establish behavior for its observed local path. It cannot establish
 network progress, CFT support, or framework-level integration.
@@ -90,39 +94,33 @@ Allocation alone does not register a buffer. Window registration requires `ncclM
 
 For an uneven stencil decomposition, reserve the same maximum local allocation size on every rank. Owned row counts can differ. Halo offsets must still refer to the receiving rank's layout. In a ping-pong solver, keep each pointer paired with its registered window when swapping roles. [Window registration API](https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/api/comms.html#ncclcommwindowregister)
 
-This host-side fragment illustrates a full-GIN setup. `CHECK` must stop the distributed run on failure. `comm` is an initialized host communicator, and `max_owned_rows` is the same value on every rank.
+The following is a setup checklist for a future full-GIN implementation, not
+compile-checked C++. Query `ncclCommQueryProperties` on the initialized host
+communicator and reject missing device support or insufficient connectivity.
+Allocate equal-capacity buffers, then register their symmetric windows.
+Initialize the device-communicator requirements and reserve every LSA barrier,
+GIN context, and signal the actual kernels need. For two directed edges, four
+signal slots can represent two ready notifications and two consumption
+acknowledgments. Define that mapping consistently at both ends.
 
-```cpp
-#if NCCL_VERSION_CODE < 23100
-#error "This example's capability queries require NCCL 2.31 or newer"
-#endif
+An LSA-only variant can omit GIN resources. Rail connectivity is insufficient
+for arbitrary world-rank destinations. `ncclDevCommCreate` is collective, so
+all ranks must participate and stop consistently on failure. Strong signal
+semantics can order earlier puts on the same peer/context, while weak signals
+cover only their attached payload. Choose the required ordering and supported
+backend deliberately. Consult the installed headers and
+[current setup contract](https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/api/device_setup.html)
+for the exact fields rather than treating this checklist as an implementation.
 
-ncclCommProperties_t properties = NCCL_COMM_PROPERTIES_INITIALIZER;
-CHECK(ncclCommQueryProperties(comm, &properties));
-if (!properties.deviceApiSupport ||
-    properties.ginConnectionType != NCCL_GIN_CONNECTION_FULL) {
-    fail_all_ranks("Full GIN connectivity is required by this variant");
-}
-
-const size_t bytes = size_t(nx) * size_t(max_owned_rows + 2) * sizeof(float);
-float* output = nullptr;
-ncclWindow_t output_window;
-CHECK(ncclMemAlloc(reinterpret_cast<void**>(&output), bytes));
-CHECK(ncclCommWindowRegister(
-    comm, output, bytes, &output_window, NCCL_WIN_COLL_SYMMETRIC));
-
-ncclDevCommRequirements_t requirements = NCCL_DEV_COMM_REQUIREMENTS_INITIALIZER;
-requirements.lsaBarrierCount = 1;
-requirements.ginConnectionType = NCCL_GIN_CONNECTION_FULL;
-requirements.ginSignalCount = 4;
-requirements.ginStrongSignalsRequired = true;
-ncclDevComm dev_comm;
-CHECK(ncclDevCommCreate(comm, &requirements, &dev_comm));
-```
-
-The four signal slots are an example resource reservation for two ready notifications and two consumption acknowledgments. Their mapping must be defined consistently at both ends of each directed transfer. An LSA-only variant can omit GIN resources. Rail connectivity is insufficient for arbitrary world-rank destinations. `ncclDevCommCreate` is collective, and requirements must cover every barrier and signal that the kernels use. [Device setup API](https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/api/device_setup.html)
-
-The version floor above belongs to these exact APIs. Device communication began in 2.28, but `ncclCommQueryProperties` arrived in 2.29, the requirements `ginConnectionType` field in 2.29.7, and the communicator-properties `ginConnectionType` field in 2.31. GIN device compilation also requires CUDA 12.2 or newer, with backend-specific driver and networking requirements. Compile host and device code against matching NCCL headers, and rebuild GIN kernels when upgrading NCCL. [API version annotations](https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/api/device_setup.html), [GIN compatibility requirements](https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/usage/deviceapi.html#cross-version-compatibility)
+This lesson's capability-query and full-connectivity checks require NCCL 2.31
+or newer. Device communication began in 2.28, but `ncclCommQueryProperties`
+arrived in 2.29, the requirements `ginConnectionType` field in 2.29.7, and the
+communicator-properties `ginConnectionType` field in 2.31. GIN device
+compilation also requires CUDA 12.2 or newer, with backend-specific driver and
+networking requirements. Compile host and device code against matching NCCL
+headers, and rebuild GIN kernels when upgrading NCCL. This guide does not claim
+that its GIN protocol has been compiled or run. [API version annotations](https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/api/device_setup.html),
+[GIN compatibility requirements](https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/usage/deviceapi.html#cross-version-compatibility)
 
 Keep allocations, windows, and communicators alive until all work using them has completed. Destroy graphs and executable graphs before releasing buffers they reference. Deregister a window before freeing its allocation, and destroy the device communicator before its parent host communicator. `ncclDevCommDestroy` requires that no kernel using that device communicator can still be running. [Resource lifetime requirements](https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/api/device_setup.html#nccldevcommdestroy)
 
@@ -132,32 +130,29 @@ A notification has two jobs that should be explicit: publish completed data and 
 
 For one directed transfer per epoch, start `epoch` at one and increment it once per transfer. Give each directed edge its own ready and consumed signal slots. Two halo messages sent to the same rank still need unambiguous channels. Keep a channel on the same GIN context, or track epochs separately for each context. Keep signal storage across kernel launches, and initialize it only when starting a new, fully synchronized protocol.
 
-The following sender fragment uses one issuing device thread after its producer kernel has completed on the same stream. Its receiver consumes the entire previous epoch before acknowledging it:
+This conceptual pseudocode describes one issuing thread after its producer has
+finished on the same stream. It intentionally omits API syntax and is not
+runnable or compile-checked:
 
-```cpp
-ncclGin gin(dev_comm, context_index);
-const ncclTeam world = ncclTeamWorld(dev_comm);
+```text
+sender, epoch e:
+    wait until this edge's consumed count reaches e - 1, if e > 1
+    publish the payload and an ordered ready increment to the receiver
+    complete this issuing thread's local source-buffer uses
 
-if (epoch > 1) {
-    gin.waitSignal(ncclCoopThread{}, local_consumed_slot, epoch - 1);
-}
-gin.put(world, peer_world_rank,
-        destination_window, destination_offset_bytes,
-        source_window, source_offset_bytes, payload_bytes,
-        ncclGin_StrongSignalInc{ready_slot_at_peer});
-gin.flush(ncclCoopThread{});
+receiver, epoch e:
+    wait until this edge's ready count reaches e
+    consume the complete payload and finish all reads
+    increment the sender's consumed count for this edge
 ```
 
-The matching receiver first waits for readiness. It sends its acknowledgment only after the consumer has finished every read:
-
-```cpp
-gin.waitSignal(ncclCoopThread{}, local_ready_slot, epoch);
-// Execute the consumer and complete its reads before the following signal.
-gin.signal(world, sender_world_rank,
-           ncclGin_StrongSignalInc{consumed_slot_at_sender});
-```
-
-These fragments express phases, not a complete cross-kernel implementation. If consumption occurs in another kernel, order the acknowledgment after that kernel on the stream. If many threads issue puts, their source-completion operation must cover those issuing threads and contexts. A control thread cannot substitute its own `flush` for arbitrary other producers. The one-thread `flush` above makes its own source safe to reuse. It does not prove remote consumption.
+If consumption occurs in another kernel, order the acknowledgment after that
+kernel on the stream. If many threads issue puts, source completion must cover
+those threads and contexts. A control thread cannot substitute its own
+`ncclGin::flush` for arbitrary other producers. Flush makes the covered local
+put sources reusable, not the remote destination. NVIDIA's
+[current GIN reference](https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/api/device_gin.html)
+defines the release's signal objects, `put`, `signal`, `flush`, and waits.
 
 `waitSignal` compares a cumulative signal value with a threshold and does not consume the count. Waiting for the fixed value `1` every iteration can therefore accept an old notification. A shared count can also lose the distinction between neighbors. Use increasing per-edge epochs and explicit acknowledgments, or a documented collective barrier with suitable visibility and reuse guarantees. Resetting a live signal can race with incoming increments. Strong signals order preceding puts to the same peer on the same context. Weak signals cover only their attached payload. [GIN signal, flush, and wait semantics](https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/api/device_gin.html)
 
@@ -177,7 +172,7 @@ selected-rank single-kernel NCU duration reports passed. Each actual NCU report
 shows one pass and zero profiler warmup. The
 [validation record](../labs/nvshmem_device/b200_validation.json) distinguishes
 this duration scope from full hardware counters and records unreported backup
-bytes. These NVSHMEM results do not validate the NCCL GIN fragments above.
+bytes. These NVSHMEM results do not validate the NCCL GIN protocol above.
 
 ## Capture the dependency graph and select the final buffer
 
@@ -200,6 +195,27 @@ Separate capture, instantiation, upload, and warmup from steady-state replay tim
 
 The [Chapter 4 symmetric-memory ring](symmetric_memory_example.py) already captures peer publications and both lifetime fences using the CUDA symmetric-memory backend. It reads the final parity slot after replay. This guide adds the native NCCL device interface and its explicit transport and protocol choices. The [parameterized graph lab](../labs/parameterized_cuda_graphs/README.md) covers executable memcpy-node updates for changing host bindings. That does not establish that captured NCCL peer operations can be mutated arbitrarily.
 
-The [NVSHMEM scalar/block microbenchmark](nvshmem_ibgda_microbench.cu) and [advanced NVSHMEM examples](nvshmem_advanced_multigpu.cu) provide related communication code. Use the [device lab](../labs/nvshmem_device/README.md#choose-a-mode) for the new complete-output device protocols. The [host communication lab](../labs/multi_gpu_communication/README.md) keeps the stencil workload and complete-output reference fixed while comparing serialized exchange, overlap, and NCCL registration and graph replay. Its NVSHMEM backend uses host on-stream transfers. The NCCL device API snippets in this guide remain educational material. They are not a compiled or validated GIN implementation.
+Start with the [device lab](../labs/nvshmem_device/README.md#choose-a-mode),
+including `scalar-halo`, for complete-output device protocols. The two legacy
+files below remain unvalidated sketches. The [legacy scalar/block RMA sketch](nvshmem_ibgda_microbench.cu)
+ends timing before GPU-side communication completion. Its GB/s byte count
+covers one CTA rather than all CTAs, and its MOPS count includes launched
+threads that issue no put. Do not use those rates to compare IBGDA and proxy
+transports.
+
+The [legacy advanced NVSHMEM sketches](nvshmem_advanced_multigpu.cu) have a
+different reuse problem. Their single-inbox ring and recursive paths do not
+order the next remote write after the local consumer. A peer can overwrite
+the inbox while it is being reduced or copied, including at the reduce-scatter
+to all-gather boundary with two PEs. A correct repair needs a consumption phase
+or safe buffer rotation across that boundary, with extra synchronization or
+storage. These source-level hazards were not reproduced on GPUs in this review.
+
+The [host communication lab](../labs/multi_gpu_communication/README.md) keeps
+the stencil workload and complete-output reference fixed while comparing
+serialized exchange, overlap, NCCL registration, and graph replay. Its NVSHMEM
+backend uses host on-stream transfers. The NCCL device API material in this
+guide remains educational and does not provide a compiled or validated GIN
+implementation.
 
 For a future GIN implementation, validation must include odd/even iteration counts, uneven and one-row partitions, all owned rows, finite values, and a deliberately delayed neighbor. Exercise LSA-only, mixed LSA/GIN, and forced-GIN paths separately where supported. A clean LSA run cannot validate the network protocol, and static review cannot establish a performance win.

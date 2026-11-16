@@ -72,6 +72,14 @@ reuse. Compare scalar interior-element puts with full-row block puts, including
 fixed boundary values. Explain why one CTA provides local barrier coverage but
 limits the stencil's compute throughput.
 
+Prove why the current strict ready wait already establishes the consumed
+condition before the explicit consumed waits. Trace the peer's acknowledgment,
+quiet, and ready notification. The consumed waits cannot block in this schedule.
+After startup, the separate consumed bookkeeping still adds two remote signals
+and two local wait calls per step. Count which startup steps omit them. Explain
+why a future boundary-first or relaxed-ready schedule could need those waits
+again and would require a new dependency proof.
+
 ## 7. Match profiler evidence to its scope
 
 Inspect all five modes in retained Nsight Systems reports. Identify the actual
@@ -79,10 +87,14 @@ steady range and explain the difference between a repeated exchange kernel and
 one persistent kernel. State what the timeline reveals and what it cannot
 separate inside the persistent loop.
 
-In `block-signal`, select only the pure `prepare_payload` for Nsight Compute
-kernel replay. Confirm its source has no remote write, atomic, or peer wait.
-Keep its metrics labeled as preparation. Explain why replaying the exchange or
-persistent kernel against an advanced peer is unsafe.
+In `block-signal`, confirm that `prepare_payload` has no remote write, atomic,
+or peer wait. This does not establish multi-pass replay safety beside a live
+peer. NCU memory save/restore can affect symmetric storage while the peer
+writes this PE's inbox, even though preparation itself only writes outgoing
+data. Allocation or page granularity can matter. Keep this exercise on the
+tested one-pass recipe below and label the result as preparation when selecting
+that kernel. Explain why additional replay isolation would need its own
+validation before collecting more metrics.
 
 Follow the [tested profiling recipe](README.md#profile-the-protocol-that-actually-ran)
 under the repository clock-lock context on both allocated GPUs. Profile one

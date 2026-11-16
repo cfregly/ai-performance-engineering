@@ -652,7 +652,43 @@
   "recorded_source_snapshot": {
     "commit": "55f23372156cf2a31f4696c0f41fccd5c989f61f",
     "native_source_url": "https://github.com/cfregly/ai-performance-engineering/blob/55f23372156cf2a31f4696c0f41fccd5c989f61f/code/labs/nvshmem_device/nvshmem_device_native.cu",
-    "scope": "Retrospective source snapshot preserving executed native bytes. Original runs used the earlier base commit plus source overlays."
+    "scope": "Retrospective source snapshot for the initial Nsys cohort before the version metadata correction. It does not describe corrected-source jobs1137 and1138.",
+    "source_sha256": "9d62f6e9dd1268d49a73b5799408a6f54bd49d70cb50a60fae3989b0d7e2e8ee",
+    "applies_to_jobs": [
+      1133
+    ]
   },
-  "profiler_artifact_access": "Historical native captures and exports remain private because they contain host and systemwide process metadata. Their hashes identify retained evidence and are not public download links."
+  "profiler_artifact_access": "Historical native captures and exports remain private because they contain host and systemwide process metadata. Their hashes identify retained evidence and are not public download links.",
+  "landing_validation": {
+    "status": "passed",
+    "source_commit": "ed588c27c6adfe3cfb0de6d1b06b143b830d3eeb",
+    "job_id": 1141,
+    "combined_gpu_tests_passed": 15,
+    "combined_gpu_tests_skipped": 0,
+    "wrapper_lifecycles_passed": 4,
+    "record": "../../../docs/reviews/2026-11-16-distributed-gpu-validation.json",
+    "scope": "Current-source correctness and default-tool diagnostics on two B200 GPUs on one host. Native capture privacy and model-review states are recorded separately."
+  },
+  "corrected_source_snapshot": {
+    "commit": "ed588c27c6adfe3cfb0de6d1b06b143b830d3eeb",
+    "native_source_url": "https://github.com/cfregly/ai-performance-engineering/blob/ed588c27c6adfe3cfb0de6d1b06b143b830d3eeb/code/labs/nvshmem_device/nvshmem_device_native.cu",
+    "source_sha256": "aa0f7f0fac1c453290098aabaebd957bf4ecdf91f7b5198dad14be5ebafb5d86",
+    "historical_jobs": [
+      1137,
+      1138
+    ],
+    "historical_receipts": [
+      {
+        "job": 1137,
+        "completion_sha256": "537cfb21ca391091233da728e307a71bc6c8035ef8b195d136b6d17efe3670aa",
+        "recorded_native_source_sha256": "aa0f7f0fac1c453290098aabaebd957bf4ecdf91f7b5198dad14be5ebafb5d86"
+      },
+      {
+        "job": 1138,
+        "completion_sha256": "4c07eedfe6ba12f51ad87b5fe3c344713869569c801284845991bb198a68a48b",
+        "recorded_native_source_sha256": "aa0f7f0fac1c453290098aabaebd957bf4ecdf91f7b5198dad14be5ebafb5d86"
+      }
+    ],
+    "scope": "The raw historical completion records bind both jobs to the corrected native bytes. Current committed-source reruns1141\u20131143 supply separately retained public diagnostic evidence. Historical raw receipts remain private."
+  }
 }

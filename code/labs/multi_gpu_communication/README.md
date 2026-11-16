@@ -42,7 +42,8 @@ as the whole application.
 
 ## Run the native component
 
-Use an allocated GPU environment with CUDA, an MPI C++ compiler, and NCCL. Build
+Use a Git clone and an allocated GPU environment with CUDA, an MPI C++ compiler,
+and NCCL. Build receipts require Git. Build
 against the same headers and libraries used at runtime. The native process uses
 one GPU per rank. Set the launcher's GPU visibility and binding explicitly.
 Install the MPI development headers as well as its wrapper and runtime. The
@@ -53,11 +54,13 @@ MPI implementation, supply its include flags through `MPI_COMPILE_FLAGS`.
 From this directory:
 
 ```bash
-make
+JACOBI_RESULTS=$(mktemp -d /tmp/jacobi-lab.XXXXXX)
+export JACOBI_RESULTS
+make NVTX_ENABLED=1
 mpirun -n 2 ./jacobi_native --backend nccl --schedule serialized \
-  --nx 256 --ny 257 --iterations 5 --warmup 1 --json-out serialized.json
+  --nx 256 --ny 257 --iterations 5 --warmup 1 --json-out "$JACOBI_RESULTS/serialized.json"
 mpirun -n 2 ./jacobi_native --backend nccl --schedule overlap \
-  --nx 256 --ny 257 --iterations 5 --warmup 1 --json-out overlap.json
+  --nx 256 --ny 257 --iterations 5 --warmup 1 --json-out "$JACOBI_RESULTS/overlap.json"
 ```
 
 The deliberately uneven grid and odd step count exercise decomposition and
@@ -78,6 +81,13 @@ and launches the selected native binary. Build it with the Makefile first.
 Direct native runs are component diagnostics. The runner rejects stale source
 or binary hashes and refuses to reuse an existing result path.
 
+Use `mpirun`, `mpiexec`, or a compatible wrapper for `--launcher`. The runner
+passes `-np` and does not support `srun` directly. Pass a fresh `--json-out` path
+to retain results after the runner exits. A native JSON status alone is not a
+runner acceptance result. Require a successful process exit and completed Python
+validation. A rejected run can leave its original native JSON with `status: passed`.
+The runner exits `3` for an unavailable capability and `1` for a failed run.
+
 For CUDA-aware MPI, select `--backend mpi`. The MPI build must support device
 buffers. MPI does not receive a CUDA stream argument here, so complete the
 boundary producer before passing its buffer to MPI. The interior kernel can
@@ -91,7 +101,7 @@ NVSHMEM path, then select its backend:
 ```bash
 make -B WITH_NVSHMEM=1 NVSHMEM_HOME="$NVSHMEM_HOME"
 mpirun -n 2 ./jacobi_native --backend nvshmem --schedule overlap \
-  --nx 256 --ny 257 --iterations 5 --warmup 1 --json-out nvshmem.json
+  --nx 256 --ny 257 --iterations 5 --warmup 1 --json-out "$JACOBI_RESULTS/nvshmem.json"
 ```
 
 Set `NVSHMEM_HOME` to the installed library prefix first. Every PE allocates the
@@ -115,7 +125,14 @@ verification. From `code/`:
 ```bash
 python -m cli.aisp bench list-targets --chapter labs/multi_gpu_communication
 python -m cli.aisp bench run --targets labs/multi_gpu_communication:jacobi --profile none
+python -m cli.aisp bench run --targets labs/multi_gpu_communication:jacobi --profile none \
+  --target-extra-arg 'labs/multi_gpu_communication:jacobi=--nx 4096 --ny 4097 --steps 20 --native-warmup 2 --ranks 2'
 ```
+
+The real wrapper lifecycles were tested on B200. The full `bench run` pipeline
+above has not been executed for this lab. Harness overrides use `--steps` and
+`--native-warmup`, while the native executable uses `--iterations` and `--warmup`.
+Two ranks are the default because this is the validated topology.
 
 Use the same target overrides for both variants when changing shape, native
 step count, ranks, backend, registration, or graph mode. Direct native timing
@@ -139,8 +156,9 @@ follow the boundary producer on its stream. Join both paths before the next
 iteration reads their output.
 
 The communication stream uses the highest priority returned by CUDA's priority
-query. That is a scheduling hint. It does not guarantee simultaneous execution,
-preempt running work, or make missing dependencies correct. A group that mixes
+query. That is a scheduling hint that favors higher-priority pending work.
+It does not guarantee preemption or simultaneous execution. Correctness still
+requires dependencies. A group that mixes
 the independent compute stream into the NCCL phase can introduce a join and
 remove overlap. The [group guide](../../ch04/nccl_groups.md) explains the exact
 submission and completion boundaries.
@@ -166,17 +184,28 @@ This implementation also preserves captured node priorities and requires CUDA
 Record allocation, communicator setup, registration, capture, warmup, and
 steady-state costs separately where the artifact provides them. Fixed-step
 graph results do not establish convergence-controlled solver performance.
+With graph mode and zero warmup, first-launch upload is included in the timed
+interval. The recorded graph profiles used warmup outside that interval.
 
 ## Verify overlap with native profiler evidence
 
-Capture one report per rank using your site's normal launcher. For example:
+Build with `NVTX_ENABLED=1` so the steady-state NVTX range used by the analysis
+is present. Keep the build receipt with the captures. The native JSON does not
+currently report this compile-time flag. Capture one report per rank using your
+site's normal launcher:
 
 ```bash
+JACOBI_PROFILE=$(mktemp -d /tmp/jacobi-profile.XXXXXX)
+export JACOBI_PROFILE
 mpirun -n 2 nsys profile --trace=cuda,nvtx,mpi \
-  --output='jacobi-overlap.%q{OMPI_COMM_WORLD_RANK}' \
+  --output="$JACOBI_PROFILE/jacobi-overlap.%q{OMPI_COMM_WORLD_RANK}" \
   ./jacobi_native --backend nccl --schedule overlap \
-  --nx 4096 --ny 4097 --iterations 5 --warmup 1 --json-out profiled.json
+  --nx 4096 --ny 4097 --iterations 5 --warmup 1 --json-out "$JACOBI_PROFILE/profiled.json"
 ```
+
+Native captures, exports, logs, and JSON can contain private paths and process
+metadata. Keep them outside the source tree and audit exact bytes before sharing.
+The historical captures behind the older percentages below remain private.
 
 Inspect whether interior kernels run alongside halo communication, whether
 boundary production delays communication, and whether the final dependency
@@ -185,7 +214,35 @@ identity. Keep these intrusive profiler timings separate from unprofiled
 latency comparisons. A successful run, lower host enqueue time, or multiple
 stream names does not prove GPU overlap.
 
-## Observed two-B200 diagnostic
+## Current-source B200 verification
+
+On November 16, all six common-lab GPU cases and both real wrapper lifecycles
+passed at committed source `ed588c27`. The same run passed all nine device-lab
+cases and both device wrappers. The
+[current validation record](../../../docs/reviews/2026-11-16-distributed-gpu-validation.json)
+binds the tests, source and binary hashes, workload arguments, and captures.
+The [diagnostic release](https://github.com/cfregly/ai-performance-engineering/releases/tag/tutorial-multi-gpu-b200-20261116)
+retains the audited native reports, existing exports, full outputs, and checksums.
+
+Fresh default-tool profiling retained six common-lab Nsys reports and two
+single-pass NCU stencil reports, alongside the device-lab captures. The common
+Nsys workload was `4096 × 4097`, 20 steps, and two warmup steps. Intersections
+inside `compute_graph:jacobi_steady_state` measured:
+
+| Schedule | Iterations with compute/NCCL overlap, each rank | NCCL interval time overlapped, ranks 0 / 1 |
+| --- | ---: | ---: |
+| Serialized | 0 / 20 | 0% / 0% |
+| Eager overlap | 20 / 20 | 96.00% / 95.85% |
+| Graph overlap | 20 / 20 | 100.00% / 98.79% |
+
+These are intersections of GPU kernel intervals from the node-level traces.
+They establish overlap for the captured workload, not a new unprofiled speedup.
+NCU covers selected local stencil duration, not the full communication path.
+The first collector failed on an NCU CSV preamble after completing all Nsys
+captures. Its continuation passed, and both attempts remain identified in the
+record. The existing default `nsys` and `ncu` were unchanged.
+
+## Historical two-B200 diagnostic
 
 Six GPU integration cases passed on two NVLink-connected NVIDIA B200 GPUs on
 one host. They exercised MPI, NCCL, NVSHMEM, registered buffers, graph replay,
@@ -223,6 +280,23 @@ an API error during UCC initialization and the expected NCCL `cuMemCreate`
 fabric-retry reports. It reported no illegal memory access, but it is not a clean
 sanitizer pass. NCU `2025.3.1` completed a local stencil-kernel capture only.
 That does not qualify the complete communication path.
+
+The clean historical memcheck explicitly excluded unused UCC and HCOLL MPI
+collectives. It used ordinary buffers and this workload. With the site's normal
+MPI environment, retain a separate log for each rank:
+
+```bash
+JACOBI_MEMCHECK=$(mktemp -d /tmp/jacobi-memcheck.XXXXXX)
+export JACOBI_MEMCHECK
+OMPI_MCA_coll='^ucc,hcoll' mpirun -n 2 compute-sanitizer --tool memcheck \
+  --error-exitcode 99 --log-file "$JACOBI_MEMCHECK/memcheck.%q{OMPI_COMM_WORLD_RANK}.log" \
+  ./jacobi_native --backend nccl --schedule overlap --nx 17 --ny 7 \
+  --iterations 5 --warmup 1 --graph --json-out "$JACOBI_MEMCHECK/result.json" \
+  --dump-output "$JACOBI_MEMCHECK/output.f32"
+```
+
+This exclusion applies to the tested HPC-X setup. It does not suppress CUDA
+memory findings or turn the registered-buffer attempt into a clean pass.
 
 Both Python benchmark wrappers also passed a real uncapped lifecycle smoke,
 including native execution and post-timing payload capture. Their complete

@@ -101,10 +101,14 @@ MPI_CHECK(MPI_Comm_size(comm, &size));
 if (rank != nvshmem_my_pe() || size != nvshmem_n_pes()) MPI_Abort(comm, 1);
 ```
 
-The attribute holds a pointer to the communicator handle. Keep that communicator
-alive until after `nvshmem_finalize()`. Complete work and free symmetric storage
-before finalizing NVSHMEM, then finalize MPI. MPI bootstrap does not make
-`MPI_Barrier` a completion operation for GPU-issued NVSHMEM puts.
+The attribute supplies the address of an MPI communicator handle during
+initialization. NVIDIA requires `nvshmem_finalize()` before the MPI communicator
+is destroyed. This concerns the communicator object, not the lexical scope of
+a local handle copy. With `MPI_COMM_WORLD`, finalize NVSHMEM before
+`MPI_Finalize`. Keep the attribute and its pointer valid through the
+initialization call. Complete work and free symmetric storage before finalizing
+NVSHMEM. MPI bootstrap does not make `MPI_Barrier` a completion operation for
+GPU-issued puts. [MPI bootstrap lifetime contract](https://docs.nvidia.com/nvshmem/api/latest/gen/api/setup.html#nvshmemx-init-attr)
 
 An OpenSHMEM job uses `NVSHMEMX_INIT_WITH_SHMEM` after initializing OpenSHMEM and
 must finalize NVSHMEM before `shmem_finalize`. This is a separate bootstrap
@@ -168,7 +172,7 @@ Here, the host quiet completes this host-issued transfer. The receiver still
 needs the agreed notification or phase synchronization before consuming data.
 `cudaStreamSynchronize(stream)` waits for that stream. Independent work on
 another stream can continue if dependencies and GPU resources permit it. The
-[native MPI exchange](../labs/multi_gpu_communication/jacobi_native.cu#L324-L377)
+[native MPI exchange](../labs/multi_gpu_communication/jacobi_native.cu#L328-L382)
 uses this distinction: boundary production finishes before the host calls
 `MPI_Sendrecv`, while interior work has already been submitted separately.
 See CUDA's [asynchronous execution model](https://docs.nvidia.com/cuda/cuda-programming-guide/02-basics/asynchronous-execution.html).
@@ -262,9 +266,8 @@ coalesced warp, block, or bulk operations. NVLink access depends on actual peer
 reachability and the selected transport, not a DGX label. Device calls also need
 the NVSHMEM device library and relocatable device code, such as `-rdc=true`,
 in addition to the host library. Follow the [build contract](https://docs.nvidia.com/nvshmem/api/latest/using.html#compiling-nvshmem-programs)
-and [chapter Makefile](Makefile). The existing [scalar device example](nvshmem_multigpu_examples.cu#L83-L93)
-illustrates the call. The runnable device lab's
-[`scalar-halo` mode](../labs/nvshmem_device/README.md#choose-a-mode) implements
+and [device-lab Makefile](../labs/nvshmem_device/Makefile). Start with the runnable
+device lab's [`scalar-halo` mode](../labs/nvshmem_device/README.md#choose-a-mode). It implements
 this kernel-then-stream-barrier pattern and checks the complete final stencil.
 The [common Jacobi lab](../labs/multi_gpu_communication/README.md) retains its
 separate host-on-stream NVSHMEM backend. The inline fragment above explains the
@@ -491,9 +494,11 @@ and [execution constraints](https://docs.nvidia.com/nvshmem/api/latest/using.htm
 
 NVSHMEM uses CUDA cooperative launch locally. Calling
 `cudaLaunchCooperativeKernel` alone does not replace NVSHMEM's prescribed launch
-path or a remote protocol. `nvshmemx_collective_launch` launches only on the
-calling PE's GPU. It does not coordinate launches across PEs. Every required PE
-must launch and follow matching synchronization rules. Launch residency helps
+path or a remote protocol. The current
+[launch API contract](https://docs.nvidia.com/nvshmem/api/latest/api/launch.html#nvshmemx-collective-launch)
+states that `nvshmemx_collective_launch` launches only on the calling PE's GPU
+and does not coordinate launches across PEs. Every required PE must launch and
+follow matching synchronization rules. Launch residency helps
 waiting CTAs make progress. It does not establish remote completion, readiness,
 or safe slot reuse.
 
@@ -506,13 +511,24 @@ barrier is often the simpler starting point.
 
 The runnable [`persistent-halo` mode](../labs/nvshmem_device/README.md#keep-stencil-halo-consumption-separate)
 keeps all local stencil dependencies within one CTA. It acknowledges halo epoch
-`s` only after every local stencil read finishes, waits for consumption of the
-alternating target halo before overwriting it, and publishes ready epoch
+`s` only after every local stencil read finishes, retains consumed waits before
+overwriting the alternating target halo, and publishes ready epoch
 `s + 1` after the row puts complete. The final received halo has not been read
 by a subsequent step, so its consumed epoch is `iterations - 1`. All nine
 two-B200 integration cases passed native and independent Python complete-output
 checks across the five modes. The one-CTA design limits compute throughput and
 does not establish a large-grid Jacobi speedup or a general multi-block protocol.
+
+In this strict schedule, the preceding ready wait has already established the
+consumed condition: a peer sends its acknowledgment before quiet and the ready
+notification observed at the preceding step's end. The consumed waits therefore
+cannot block. They keep the reuse obligation explicit as a second guard. After
+startup, that bookkeeping costs two remote acknowledgment signals and two local
+consumed-wait calls per step. Consumed acknowledgments begin at zero-based step
+one and consumed waits at step two. Ready notifications occur at every step.
+If a future boundary-first schedule publishes readiness earlier, those waits
+may become necessary. Relaxing the ready phase needs a new dependency proof,
+not an assumption that the current redundancy carries over.
 
 A waiting kernel can occupy resources needed by the kernel that would satisfy
 its wait. Separate streams alone do not guarantee forward progress. Put a
@@ -592,9 +608,38 @@ separate.
 | [NVSHMEM device lab](../labs/nvshmem_device/README.md) and [native source](../labs/nvshmem_device/nvshmem_device_native.cu) | Five runnable scalar, block, persistent stencil, signal, and atomic-counter modes with independent complete-output checks | Nine two-B200 integration cases, all five modes' per-rank Nsys captures, and ten one-pass selected-kernel NCU duration reports passed. The waiting kernels use one CTA per PE. This is not full hardware-counter or multi-node coverage. |
 | [Common native Jacobi exchange](../labs/multi_gpu_communication/jacobi_native.cu) | Equal-capacity symmetric allocations, unequal owned rows, neighbor-specific halo offsets, and host-enqueued stream puts followed by an on-stream world barrier | This is the stream API, not communication issued by the stencil kernel. The world barrier couples all PEs. GPU validation is separate from this guide. |
 | [Native queue and stream pipeline](nvshmem_pipeline_patterns.cu) | Queue payload before tail publication using fence, then a stream pipeline with put, quiet, ready, and consumed flags | The pipeline checks the first value of each chunk. Its no-NVSHMEM educational build does not perform communication. |
-| [Native device RMA microbenchmark](nvshmem_ibgda_microbench.cu) | Scalar and block-scoped device-initiated operations | Its enable flag is not transport proof. `--proxy-penalty-ms` injects a host sleep after CUDA-event timing and is not measured proxy overhead. Its checksum verification is not full payload acceptance. |
+| [Legacy device RMA sketch](nvshmem_ibgda_microbench.cu) | Scalar and block-scoped API shapes | Unvalidated rates. Timing excludes GPU-side RMA completion, block bytes count one CTA, and scalar MOPS counts launched rather than active threads. Do not use its rates for a transport comparison. |
+| [Legacy scalar API sketch](nvshmem_multigpu_examples.cu) | Individual scalar put calls | Its whole-array put comment is not a block-scoped API example. The host barrier does not establish GPU-issued RMA completion, and it prints samples without rejecting incorrect results. |
+| [Legacy advanced sketches](nvshmem_advanced_multigpu.cu) | Ring and recursive-exchange structures | The single-inbox ring and recursive paths do not protect consumption before the next remote overwrite, including the ring phase boundary. They are not validated protocol references. |
 | [Python pipeline channel](nvshmem_pipeline_parallel_multigpu.py) | Symmetric-allocation remote copies with ready and consumed protocols | The targeted PyTorch path uses CPU/Gloo sidebands because its signal methods are stubs. It is not GPU-native NVSHMEM signaling. |
 | [Symmetric-memory ring](symmetric_memory_example.py) | Batched NCCL P2P and a captured CUDA symmetric-memory comparison | The named CUDA-backend graph path and the NVSHMEM-default helper have different completion paths. |
+
+The legacy IBGDA sketch records its stop event before any GPU-side quiet. Its
+later host barrier is outside that interval and does not establish the missing
+GPU completion contract. The printed GB/s counts one block's bytes instead of
+all blocks, while MOPS counts threads that return without issuing a put. At the
+defaults, the byte count is 128 bytes rather than 1024 per iteration, and 2048
+launched threads are counted although only 256 issue scalar puts. Its
+`--proxy-penalty-ms` sleep occurs after CUDA-event timing and is not measured
+proxy overhead. Enabling IBGDA is not transport-selection proof, and checksum
+verification is not full payload acceptance. Read the file only as an
+unvalidated API sketch.
+
+The legacy advanced file's single receive buffer can be overwritten by a
+neighbor's next send before its consumer finishes. This includes the
+reduce-scatter to all-gather boundary, even with two PEs, and the recursive
+exchange path. A barrier before consumption does not order the next remote
+write after that consumption. A repair needs another consumption/reuse phase
+or buffer separation that covers phase boundaries, adding synchronization or
+storage. The file's separate double-buffered pattern does not validate the
+single-inbox paths. Use the new device lab for a complete, checked protocol.
+
+Do not use the legacy scalar file's commented `nvshmem_float_put` as a
+block-scoped optimization. Each calling thread would issue the whole array
+transfer. The collective block API is a different operation. That sketch also
+uses device synchronization followed by a host barrier instead of establishing
+GPU-scoped RMA completion, then prints a sample without rejecting mismatches.
+Use the lab's `scalar-halo` path for runnable scalar publication.
 
 Build the new device lab against the installed runtime, then run its complete
 persistent stencil from the repository root:
@@ -612,13 +657,12 @@ the [chapter Makefile](Makefile), the existing native pipeline target is:
 
 ```bash
 make -C code/ch04 nvshmem_pipeline_patterns_sm100 ARCH=sm_100
-nvshmemrun -np 2 code/ch04/nvshmem_pipeline_patterns_sm100
+nvshmrun -np 2 code/ch04/nvshmem_pipeline_patterns_sm100
 ```
 
-The launcher name above follows the repository Makefile. Upstream's standalone
-launcher is named `nvshmrun`. Use the compatible launcher installed for the
-selected NVSHMEM runtime. Confirm the build actually enabled NVSHMEM rather
-than accepting educational-mode output as a communication test.
+`nvshmrun` is NVSHMEM's standalone launcher. Use the compatible launcher
+installed for the selected runtime. Confirm the build actually enabled NVSHMEM
+rather than accepting educational-mode output as a communication test.
 
 From `code/`, the existing Python pipeline pair has a separate harness path:
 

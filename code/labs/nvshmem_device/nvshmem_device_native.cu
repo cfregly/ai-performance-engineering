@@ -204,7 +204,8 @@ __device__ void fill_payload(float* outgoing, std::size_t elements, int epoch, i
     }
 }
 
-// This kernel has no communication and is safe to select separately with NCU.
+// This kernel has no communication wait. Multi-pass replay still needs a
+// quiescent peer so memory restore cannot overwrite an incoming transfer.
 __global__ void prepare_payload(float* outgoing, std::size_t elements, int epoch, int pe, int ranks) {
     fill_payload(outgoing, elements, epoch, pe, ranks);
 }
