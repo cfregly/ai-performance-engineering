@@ -155,10 +155,11 @@ above has not been executed for this lab. Harness overrides use `--steps` and
 Two ranks are the default because this is the validated topology.
 
 The `256 × 257` default is a deliberate correctness-smoke exception to the
-repository's usual speedup-oriented benchmark defaults. It checks the real
-wrapper path with small inputs. Overlap is not guaranteed to win at that size,
-and the retained smoke did not show a win. Choose and record a representative
-workload separately before evaluating performance.
+repository's usual speedup-oriented benchmark defaults. It is intended for
+small correctness checks. The retained wrapper smoke used a smaller `17 × 7`
+grid and did not show a win. Overlap is not guaranteed to win at either size.
+Choose and record a representative workload separately before evaluating
+performance.
 
 Use the same target overrides for both variants when changing shape, native
 step count, ranks, backend, registration, or graph mode. Direct native timing
@@ -265,12 +266,13 @@ binds the tests, source and binary hashes, workload arguments, and captures.
 The [diagnostic release](https://github.com/cfregly/ai-performance-engineering/releases/tag/tutorial-multi-gpu-b200-20261116)
 retains the audited native reports, existing exports, full outputs, and checksums.
 
-The retained MPI and NVSHMEM overlap cases use a `17 × 5` grid. Each rank owns
-at most two rows, so those cases have no interior-kernel work on the separate
-compute stream. They check their numerical and communication paths, but do not
-validate overlap with a nonempty interior for either backend. The NCCL profiles
-below exercise a nonempty interior. Their observed overlap does not fill that
-MPI/NVSHMEM coverage gap.
+The original MPI and NVSHMEM cases used a `17 × 5` grid with no interior-kernel
+work. A later [two-case followup](../../../docs/reviews/2026-11-16-host-interior-followup.json)
+passed both backends at source `96a523686` with a `17 × 67` grid, five steps,
+and one warmup step. Each rank had a nonempty interior. Both complete outputs
+matched the independent float32 reference with zero maximum error. That run
+checks correctness of the overlap schedule. It did not collect a timeline, so
+observed GPU overlap remains specific to the NCCL profiles below.
 
 Fresh default-tool profiling retained six common-lab Nsys reports and two
 single-pass NCU stencil reports, alongside the device-lab captures. The common
@@ -331,9 +333,11 @@ fabric-retry reports. It reported no illegal memory access, but it is not a clea
 sanitizer pass. NCU `2025.3.1` completed a local stencil-kernel capture only.
 That does not qualify the complete communication path.
 
-The clean historical memcheck explicitly excluded unused UCC and HCOLL MPI
-collectives. It used ordinary buffers and this workload. With the site's normal
-MPI environment, retain a separate log for each rank:
+The clean historical memcheck record names unused UCC and HCOLL MPI collectives
+as excluded, but does not retain the exact exclusion command. The recipe below
+uses Open MPI's component selection for ordinary buffers and the same workload.
+It has not been rerun as written. With the site's normal MPI environment,
+retain a separate log for each rank:
 
 ```bash
 JACOBI_MEMCHECK=$(mktemp -d /tmp/jacobi-memcheck.XXXXXX)
@@ -345,8 +349,9 @@ OMPI_MCA_coll='^ucc,hcoll' mpirun -n 2 compute-sanitizer --tool memcheck \
   --dump-output "$JACOBI_MEMCHECK/output.f32"
 ```
 
-This exclusion applies to the tested HPC-X setup. It does not suppress CUDA
-memory findings or turn the registered-buffer attempt into a clean pass.
+This recipe is specific to an Open MPI setup with those optional components.
+It does not suppress CUDA memory findings or turn the registered-buffer
+attempt into a clean pass.
 
 Both Python benchmark wrappers also passed a real uncapped lifecycle smoke,
 including native execution and post-timing payload capture. Their complete

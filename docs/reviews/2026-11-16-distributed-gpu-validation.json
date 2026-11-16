@@ -1393,7 +1393,7 @@
     "Python stencil dump checks reconstruct periodic halo rows. Native verification separately checks received halos.",
     "Historical unprofiled timings remain separate from these intrusive profile captures.",
     "Older raw captures remain private because they contain operational metadata. New assets require their own exact-byte privacy audit.",
-    "The retained MPI and host NVSHMEM GPU test cases use thin partitions with no nonempty interior launch. Their stream-overlap path with a nonempty interior remains untested in this record."
+    "The original MPI and host NVSHMEM cases in jobs 1141–1143 use thin partitions with no nonempty interior launch. A separate later record covers their nonempty-interior correctness cases. Those backends still have no retained timeline proving GPU overlap."
   ],
   "review_status": "Scoped review receipts are retained separately. This diagnostic record is not a publication-readiness verdict.",
   "scheduler_receipt": {
@@ -1618,6 +1618,7 @@
     "code/tests/test_tools_cli.py": "b475eb411705f3bd6ff7ff718e6154c40c1cca7d82db7d8837b7cf14cc2fe1e4"
   },
   "source_snapshot_scope": "File inventory at the GPU-executed source commit. Presence here records source bytes and does not prove that each listed file ran. Native build receipts, per-case arguments and wrapper records identify the executed paths.",
+  "later_host_interior_followup": "2026-11-16-host-interior-followup.json",
   "metadata_notes": [
     "Raw MPI library-version strings contain a trailing NUL from the retained implementation output. Original JSON and reports are preserved. Curated environment fields name the implementation separately.",
     "The repository profile_rank.sh selector was exercised in historical job 1138. Fresh job 1143 used the collector-generated selected-rank.sh. Their duration, replay and warmup flags agree by inspection. The collection sources and per-report metadata identify the fresh path.",
