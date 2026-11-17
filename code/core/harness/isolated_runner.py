@@ -233,6 +233,27 @@ def _reap_descendant_processes(grace_seconds: float = 5.0) -> None:
         _wait_for_exit(sorted(remaining), timeout_seconds=2.0)
 
 
+def _validate_process_execution_owner(receipt: Any) -> bool:
+    """Accept internal thread dispatch only inside the parent's owned worker group."""
+    if receipt is None:
+        return False
+    if os.name != "posix" or not isinstance(receipt, dict):
+        raise ValueError("Uncapped isolated execution requires a POSIX process ownership receipt")
+    expected = {
+        "coordinator_pid": os.getppid(),
+        "worker_pid": os.getpid(),
+        "process_group_id": os.getpgrp(),
+    }
+    if os.getpgrp() != os.getpid() or any(
+        isinstance(receipt.get(key), bool)
+        or not isinstance(receipt.get(key), int)
+        or receipt.get(key) != value
+        for key, value in expected.items()
+    ):
+        raise ValueError("Isolated process ownership does not match this worker and process group")
+    return True
+
+
 def run_benchmark(input_data: Dict[str, Any]) -> Dict[str, Any]:
     """Run benchmark and return results in harness-expected format."""
     import importlib.util
@@ -267,6 +288,15 @@ def run_benchmark(input_data: Dict[str, Any]) -> Dict[str, Any]:
         original_argv = sys.argv
 
         try:
+            owned_process_execution = _validate_process_execution_owner(
+                input_data.get("process_execution_owner")
+            )
+            requested_timeout = config_dict.get("execution_timeout_seconds")
+            measurement_timeout = config_dict.get("measurement_timeout_seconds")
+            if measurement_timeout is None:
+                measurement_timeout = config_dict.get("timeout_seconds")
+            if (requested_timeout == 0 or measurement_timeout == 0) and not owned_process_execution:
+                raise ValueError("Uncapped isolated execution requires a matching process ownership receipt")
             # Reset CUDA state BEFORE loading the module
             reset_cuda_state(device_str)
 
@@ -328,6 +358,7 @@ def run_benchmark(input_data: Dict[str, Any]) -> Dict[str, Any]:
 
             mode = BenchmarkMode(mode_str) if mode_str else BenchmarkMode.CUSTOM
             harness = BenchmarkHarness(mode=mode, config=config)
+            harness._owned_process_execution = owned_process_execution
 
             # Capture verification artifacts at teardown-time to preserve the exact
             # timing-run state before benchmark.teardown() mutates benchmark fields.
@@ -499,15 +530,17 @@ def run_benchmark(input_data: Dict[str, Any]) -> Dict[str, Any]:
             sys.argv = original_argv
     
     stdout_buffer = io.StringIO()
-    with redirect_stdout(stdout_buffer):
-        result = _execute()
-    captured = stdout_buffer.getvalue().strip()
-    if captured:
-        try:
-            lines = [ln for ln in captured.splitlines() if ln]
-            print(json.dumps({"event": "benchmark_stdout", "lines": lines}), file=sys.stderr)
-        except Exception:
-            print(captured, file=sys.stderr)
+    try:
+        with redirect_stdout(stdout_buffer):
+            result = _execute()
+    finally:
+        captured = stdout_buffer.getvalue().strip()
+        if captured:
+            try:
+                lines = [ln for ln in captured.splitlines() if ln]
+                print(json.dumps({"event": "benchmark_stdout", "lines": lines}), file=sys.stderr)
+            except Exception:
+                print(captured, file=sys.stderr)
     return result
 
 

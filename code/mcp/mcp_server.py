@@ -174,7 +174,9 @@ from core.profiling.profiler_config import (
     validate_ncu_app_range_capture,
     validate_ncu_replay_mode,
 )
+from core.utils.cooperative_subprocess import run_cooperative_process
 from core.utils.dotenv import load_repo_dotenv
+from core.utils.execution_timeouts import validate_execution_timeout_seconds
 
 
 def _load_mcp_env() -> None:
@@ -776,12 +778,23 @@ def _run_diagnostic_tools_cli(
     return result
 
 
-def _run_bench_cli(args: List[str], timeout: Optional[int] = _BENCH_CLI_TIMEOUT) -> Dict[str, Any]:
+def _run_bench_cli(
+    args: List[str], timeout: Optional[int] = _BENCH_CLI_TIMEOUT, *, uncapped: bool = False
+) -> Dict[str, Any]:
     """Invoke bench CLI and return stdout/stderr/exit code."""
     cmd = [sys.executable, "-m", "core.benchmark.bench_commands", *args]
     env = _subprocess_env()
     started_at = time.time()
     try:
+        if uncapped:
+            result = run_cooperative_process(cmd, env=env, cwd=CODE_ROOT)
+            if result["returncode"] != 0 and not result.get("error"):
+                result["error"] = (
+                    result.get("stderr")
+                    or result.get("stdout")
+                    or f"bench CLI failed with code {result['returncode']}"
+                )
+            return result
         proc = subprocess.run(
             cmd,
             capture_output=True,
@@ -2631,9 +2644,31 @@ def tool_clock_lock_check(params: Dict[str, Any]) -> Dict[str, Any]:
                     "default": False,
                 },
                 "timeout_seconds": {
-                    "type": "integer",
-                    "description": "Max runtime before returning with partial output; set 0/null for no timeout",
+                    "type": ["integer", "null"],
+                    "description": (
+                        "Outer bench CLI timeout in seconds. Set 0 or null to remove this deadline "
+                        "and wait for owned cleanup on cancellation."
+                    ),
                     "default": 900,
+                },
+                "execution_timeout_seconds": {
+                    "type": ["integer", "null"],
+                    "minimum": 0,
+                    "description": (
+                        "Override each benchmark execution stage timeout in seconds. "
+                        "Omit or use null to retain stage defaults. "
+                        "Set 0 for owned subprocess execution without stage timeouts."
+                    ),
+                    "default": None,
+                },
+                "suite_timeout": {
+                    "type": ["integer", "null"],
+                    "minimum": 0,
+                    "description": (
+                        "Override the benchmark suite timeout in seconds. "
+                        "Omit or use null to retain the CLI default. Set 0 for no suite timeout."
+                    ),
+                    "default": None,
                 },
                 "timeout_multiplier": {
                     "type": "number",
@@ -2738,6 +2773,14 @@ def tool_clock_lock_check(params: Dict[str, Any]) -> Dict[str, Any]:
     },
 )
 def tool_run_benchmarks(params: Dict[str, Any]) -> Dict[str, Any]:
+    timeout_overrides = {}
+    for name in ("execution_timeout_seconds", "suite_timeout"):
+        try:
+            timeout_overrides[name] = validate_execution_timeout_seconds(params.get(name))
+        except ValueError:
+            return {"error": f"{name} must be a nonnegative integer or null", "success": False}
+    execution_timeout_seconds = timeout_overrides["execution_timeout_seconds"]
+    suite_timeout = timeout_overrides["suite_timeout"]
     targets = params.get("targets") or []
     for raw_target in targets:
         target_text = str(raw_target).strip()
@@ -2842,7 +2885,10 @@ def tool_run_benchmarks(params: Dict[str, Any]) -> Dict[str, Any]:
     queue_job_id = str(queue_job_id_raw).strip() if queue_job_id_raw else None
     timeout_param = params.get("timeout_seconds")
     timeout_seconds = None if timeout_param is None else int(timeout_param)
-    if test_mode and (timeout_seconds is None or timeout_seconds <= 0):
+    uncapped_timeout = "timeout_seconds" in params and (
+        timeout_seconds is None or timeout_seconds <= 0
+    )
+    if test_mode and "timeout_seconds" not in params:
         timeout_seconds = 600
     include_context, context_level = extract_context_opts(params)
 
@@ -2956,6 +3002,10 @@ def tool_run_benchmarks(params: Dict[str, Any]) -> Dict[str, Any]:
         args.extend(["--gpu-mem-clock-mhz", str(int(gpu_mem_clock_mhz))])
     if timeout_multiplier is not None:
         args.extend(["--timeout-multiplier", str(float(timeout_multiplier))])
+    if execution_timeout_seconds is not None:
+        args.extend(["--execution-timeout-seconds", str(execution_timeout_seconds)])
+    if suite_timeout is not None:
+        args.extend(["--suite-timeout", str(suite_timeout)])
     if nsys_timeout_seconds is not None:
         args.extend(["--nsys-timeout-seconds", str(int(nsys_timeout_seconds))])
     if ncu_timeout_seconds is not None:
@@ -2998,6 +3048,9 @@ def tool_run_benchmarks(params: Dict[str, Any]) -> Dict[str, Any]:
             "precheck_only": True,
             "cuda": cuda_check,
             "planned_args": args,
+            "timeout_seconds": timeout_seconds if timeout_seconds and timeout_seconds > 0 else None,
+            "execution_timeout_seconds": execution_timeout_seconds,
+            "suite_timeout": suite_timeout,
             "run_id": run_id,
             "run_dir": str(run_dir) if run_dir else None,
             "progress_path": str(progress_path) if progress_path else None,
@@ -3017,6 +3070,8 @@ def tool_run_benchmarks(params: Dict[str, Any]) -> Dict[str, Any]:
             "cuda": cuda_check,
             "command": " ".join([sys.executable, "-m", "cli.aisp", "bench", *args]),
             "timeout_seconds": timeout_seconds if timeout_seconds and timeout_seconds > 0 else None,
+            "execution_timeout_seconds": execution_timeout_seconds,
+            "suite_timeout": suite_timeout,
             "run_id": run_id,
             "run_dir": str(run_dir) if run_dir else None,
             "progress_path": str(progress_path) if progress_path else None,
@@ -3024,6 +3079,8 @@ def tool_run_benchmarks(params: Dict[str, Any]) -> Dict[str, Any]:
         }
 
     def _execute_bench_cli_only() -> Dict[str, Any]:
+        if uncapped_timeout:
+            return _attach_bench_artifact_paths(_run_bench_cli(args, timeout=None, uncapped=True))
         return _attach_bench_artifact_paths(
             _run_bench_cli(
                 args, timeout=timeout_seconds if timeout_seconds and timeout_seconds > 0 else None

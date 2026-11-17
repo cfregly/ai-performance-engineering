@@ -248,15 +248,20 @@ The baseline uses `block-signal`, and the optimized wrapper uses
 
 ```bash
 python -m cli.aisp bench list-targets --chapter labs/nvshmem_device
-python -m cli.aisp bench run --targets labs/nvshmem_device:nvshmem_device --profile none
+python -m cli.aisp bench run --targets labs/nvshmem_device:nvshmem_device --profile none \
+  --suite-timeout 0 --execution-timeout-seconds 0
 ```
 
 Use the native profiling recipe below for communication kernels. The wrappers
 reject the generic harness profiler path because MPI execution and live peer
 state require explicit collection control. B200 validation exercised both real
 wrapper lifecycles and compared their complete outputs. It did not execute the
-full `bench run` pipeline, whose mandatory finite stage timeouts conflict with
-this validation run's uncapped execution instruction.
+full `bench run` pipeline. The command above now explicitly selects uncapped
+suite and execution waits through the owned isolated subprocess. Omit those
+two flags to retain the defaults. Correctness, environment and speedup gates
+remain active. Profiler deadlines are unchanged. An interrupt requests cleanup
+and waits for the owned process group to finish. See the
+[execution deadline contract](../../docs/api-reference.md#8-benchmark-domain).
 
 ## Profile the protocol that actually ran
 

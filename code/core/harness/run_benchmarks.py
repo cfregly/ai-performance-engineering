@@ -81,6 +81,7 @@ from core.harness.progress import ProgressEvent, ProgressRecorder
 from core.harness.triton_cache_utils import reset_triton_runtime_cache
 from core.benchmark.defaults import BenchmarkDefaults, set_defaults, get_defaults
 from core.benchmark.informational_benchmarks import INFORMATIONAL_BENCHMARKS, is_informational_example
+from core.utils.execution_timeouts import validate_execution_timeout_mode, validate_execution_timeout_seconds
 from core.benchmark.run_manifest import get_gpu_state
 from core.benchmark.run_manifest import reset_gpu_state, get_git_info
 from core.benchmark.runtime_comparison import (
@@ -5188,6 +5189,13 @@ def ensure_cuda_executables_built(chapter_dir: Path) -> Tuple[bool, Optional[str
         return False, str(e)
 
 
+def _validate_execution_timeout_request(seconds: Optional[int], *, launch_via: str) -> Optional[int]:
+    """Validate the operator's timeout and require an owned launcher for zero."""
+    value = validate_execution_timeout_seconds(seconds)
+    validate_execution_timeout_mode(value, execution_mode="subprocess", launch_via=launch_via)
+    return value
+
+
 def _compute_locked_fields(
     *,
     base_config: BenchmarkConfig,
@@ -5196,6 +5204,7 @@ def _compute_locked_fields(
     cli_ncu_replay_mode_provided: bool = False,
     cli_nsys_timeout_provided: bool = False,
     cli_ncu_timeout_provided: bool = False,
+    cli_execution_timeout_provided: bool = False,
     enable_profiling: bool,
     reproducible: bool = False,
 ) -> Set[str]:
@@ -5219,6 +5228,11 @@ def _compute_locked_fields(
         locked_fields.add("nsys_timeout_seconds")
     if cli_ncu_timeout_provided:
         locked_fields.add("ncu_timeout_seconds")
+    if cli_execution_timeout_provided:
+        locked_fields.update({
+            "execution_timeout_seconds", "setup_timeout_seconds", "warmup_timeout_seconds",
+            "measurement_timeout_seconds", "timeout_seconds",
+        })
 
     runner_locked_when_true: Set[str] = {"enable_memory_tracking", "detect_setup_precomputation"}
     if enable_profiling:
@@ -5352,6 +5366,12 @@ def _merge_benchmark_config(
     )
     if merged.validity_profile == "portable":
         merged.lock_gpu_clocks = False
+
+    validate_execution_timeout_mode(
+        merged.execution_timeout_seconds,
+        execution_mode=merged.execution_mode,
+        launch_via=merged.launch_via,
+    )
 
     return merged
 
@@ -5634,6 +5654,7 @@ def _test_chapter_impl(
     progress_total_benchmarks: Optional[int] = None,
     event_logger: Optional["BenchmarkEventLogger"] = None,
     fail_on_no_benchmarks: bool = False,
+    execution_timeout_seconds: Optional[int] = None,
 ) -> Dict[str, Any]:
     """Test all benchmarks in a chapter and return results.
     
@@ -5642,6 +5663,7 @@ def _test_chapter_impl(
         enable_profiling: If True, generate profiling files (nsys, ncu, PyTorch) alongside benchmarks
         profile_output_root: Base directory for profiling artifacts (default: artifacts/runs/<run_id>/profiles)
         timeout_multiplier: Multiply all timeouts by this factor (e.g., 2.0 = double all timeouts)
+        execution_timeout_seconds: Exact setup, warmup and measurement timeout. Zero disables these deadlines.
         reproducible: If True, set all seeds to 42 and force deterministic algorithms (slower fallbacks; ops without deterministic support may fail)
         cold_start: If True, perform additional GPU state cleanup (gc.collect()) between benchmarks for cold start measurements. CUDA state is always reset by default.
         iterations: Number of benchmark iterations (defaults to 20 if not provided)
@@ -5655,6 +5677,7 @@ def _test_chapter_impl(
         env_passthrough: Environment variables to pass through to subprocess launches
         target_extra_args: Optional per-target arg overrides (target -> list of CLI args)
     """
+    execution_timeout_seconds = _validate_execution_timeout_request(execution_timeout_seconds, launch_via=launch_via)
     logger.info("launch_via arg=%s nproc_per_node=%s nnodes=%s", launch_via, nproc_per_node, nnodes)
     debug_signature_verify = str(os.environ.get("AISP_DEBUG_SIGNATURE_VERIFY", "")).strip().lower() in {
         "1",
@@ -5700,6 +5723,7 @@ def _test_chapter_impl(
         enable_profiling=enable_profiling,
         only_examples=only_examples,
         timeout_multiplier=timeout_multiplier,
+        execution_timeout_seconds=execution_timeout_seconds,
         nsys_timeout_seconds=nsys_timeout_seconds,
         ncu_timeout_seconds=ncu_timeout_seconds,
         ncu_metric_set=ncu_metric_set,
@@ -5954,6 +5978,7 @@ def _test_chapter_impl(
         warmup=warmup,
         measurement_timeout_seconds=measurement_timeout_default,
         setup_timeout_seconds=setup_timeout_default,
+        execution_timeout_seconds=execution_timeout_seconds,
         timeout_multiplier=timeout_multiplier,  # Apply timeout multiplier from CLI
         enable_memory_tracking=True,  # Enable memory metrics display
         enable_profiling=harness_internal_profiling,
@@ -6013,6 +6038,7 @@ def _test_chapter_impl(
         cli_ncu_replay_mode_provided=ncu_replay_mode is not None,
         cli_nsys_timeout_provided=nsys_timeout_seconds is not None,
         cli_ncu_timeout_provided=ncu_timeout_seconds is not None,
+        cli_execution_timeout_provided=execution_timeout_seconds is not None,
         enable_profiling=enable_profiling,
         reproducible=reproducible,
     )
@@ -12400,6 +12426,7 @@ def test_chapter(
     progress_total_benchmarks: Optional[int] = None,
     event_logger: Optional["BenchmarkEventLogger"] = None,
     fail_on_no_benchmarks: bool = False,
+    execution_timeout_seconds: Optional[int] = None,
 ) -> Dict[str, Any]:
     return _test_chapter_impl(
         chapter_dir,
@@ -12407,6 +12434,7 @@ def test_chapter(
         profile_type=profile_type,
         profile_output_root=profile_output_root,
         timeout_multiplier=timeout_multiplier,
+        execution_timeout_seconds=execution_timeout_seconds,
         reproducible=reproducible,
         cold_start=cold_start,
         iterations=iterations,
@@ -13172,6 +13200,12 @@ def main():
         help='Multiply all benchmark timeouts by this factor (e.g., 2.0 doubles every timeout).'
     )
     parser.add_argument(
+        '--execution-timeout-seconds',
+        type=int,
+        default=None,
+        help='Exact setup, warmup and measurement timeout in seconds. Use 0 for no deadline in owned subprocess execution. Profiling timeouts are unchanged.'
+    )
+    parser.add_argument(
         '--validity-profile',
         choices=list(VALIDITY_PROFILE_CHOICES),
         default=VALIDITY_PROFILE_CHOICES[0],
@@ -13225,6 +13259,12 @@ def main():
     )
     
     args = parser.parse_args()
+    try:
+        args.execution_timeout_seconds = _validate_execution_timeout_request(
+            args.execution_timeout_seconds, launch_via=args.launch_via,
+        )
+    except ValueError as exc:
+        parser.error(str(exc))
     logger.info(
         "Benchmark validity profile (--validity-profile): %s",
         (
@@ -13295,6 +13335,7 @@ def main():
         profile_type=args.profile,
         ncu_metric_set=args.ncu_metric_set,
         timeout_multiplier=args.timeout_multiplier,
+        execution_timeout_seconds=args.execution_timeout_seconds,
         nsys_timeout_seconds=args.nsys_timeout_seconds,
         ncu_timeout_seconds=args.ncu_timeout_seconds,
         validity_profile=args.validity_profile,
@@ -13460,6 +13501,7 @@ def main():
             profile_type=args.profile,
             profile_output_root=profile_output_root,
             timeout_multiplier=args.timeout_multiplier,
+            execution_timeout_seconds=args.execution_timeout_seconds,
             reproducible=args.reproducible,
             cold_start=args.cold_start,
             iterations=args.iterations,

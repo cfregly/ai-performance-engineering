@@ -52,6 +52,10 @@ from core.analysis.performance_analyzer import (
     load_benchmark_data as load_benchmark_results,
 )
 from core.plugins.loader import load_plugin_apps
+from core.utils.execution_timeouts import (
+    validate_execution_timeout_mode,
+    validate_execution_timeout_seconds,
+)
 from core.utils.warning_filters import (
     suppress_known_cuda_capability_warnings,
     warn_optional_component_unavailable,
@@ -781,6 +785,7 @@ def _execute_benchmarks(
     profile_type: str = "minimal",
     suite_timeout: Optional[int] = 14400,
     timeout_multiplier: float = 3.0,
+    execution_timeout_seconds: Optional[int] = None,
     validity_profile: str = "strict",
     allow_foreign_gpu_processes: bool = False,
     allow_portable_expectations_update: bool = False,
@@ -831,6 +836,10 @@ def _execute_benchmarks(
     enforce_external_assets: Optional[bool] = None,
 ) -> Dict[str, Any]:
     """Execute selected benchmarks with optional profiling."""
+    execution_timeout_seconds = validate_execution_timeout_seconds(execution_timeout_seconds)
+    validate_execution_timeout_mode(
+        execution_timeout_seconds, execution_mode="subprocess", launch_via=launch_via,
+    )
     validity_profile = _validate_validity_profile(validity_profile)
     portable_mode = validity_profile == "portable"
     allow_virtualization = portable_mode
@@ -1154,6 +1163,7 @@ def _execute_benchmarks(
             ncu_metric_set=ncu_metric_set,
             ncu_replay_mode=ncu_replay_mode,
             timeout_multiplier=timeout_multiplier,
+            execution_timeout_seconds=execution_timeout_seconds,
             nsys_timeout_seconds=nsys_timeout_seconds,
             ncu_timeout_seconds=ncu_timeout_seconds,
             validity_profile=validity_profile,
@@ -1501,6 +1511,7 @@ def _execute_benchmarks(
                 profile_type=profile_type if enable_profiling else "none",
                 profile_output_root=artifact_manager.profiles_dir,
                 timeout_multiplier=timeout_multiplier,
+                execution_timeout_seconds=execution_timeout_seconds,
                 reproducible=reproducible,
                 cold_start=cold_start,
                 force_synchronize=force_synchronize,
@@ -1729,6 +1740,12 @@ if TYPER_AVAILABLE:
             3.0,
             "--timeout-multiplier",
             help="Multiply all benchmark timeouts by this factor (e.g., 2.0 = double all timeouts)",
+        ),
+        execution_timeout_seconds: Optional[int] = Option(
+            None,
+            "--execution-timeout-seconds",
+            min=0,
+            help="Override setup, warmup and measurement deadlines with exact seconds. Omit to inherit defaults. Use 0 for uncapped owned subprocess execution and --suite-timeout 0 to disable the suite deadline. Profiler deadlines are unchanged.",
         ),
         validity_profile: str = Option(
             "strict",
@@ -1999,6 +2016,10 @@ if TYPER_AVAILABLE:
         # Click/Typer shuffles positional args.
         combined_targets = list(dict.fromkeys(combined_targets))
         effective_timeout = timeout_seconds if timeout_seconds is not None else suite_timeout
+        execution_timeout_seconds = validate_execution_timeout_seconds(execution_timeout_seconds)
+        validate_execution_timeout_mode(
+            execution_timeout_seconds, execution_mode="subprocess", launch_via=launch_via,
+        )
         # Set verification enforcement phase
         if verify_phase:
             os.environ["VERIFY_ENFORCEMENT_PHASE"] = verify_phase.lower()
@@ -2012,6 +2033,7 @@ if TYPER_AVAILABLE:
                 "profile_type": profile_type,
                 "output_format": output_format,
                 "suite_timeout": effective_timeout,
+                "execution_timeout_seconds": execution_timeout_seconds,
                 "verify_phase": verify_phase,
                 "single_gpu": single_gpu,
                 "validity_profile": validity_profile,
@@ -2033,6 +2055,7 @@ if TYPER_AVAILABLE:
             profile_type=profile_type,
             suite_timeout=effective_timeout,
             timeout_multiplier=timeout_multiplier,
+            execution_timeout_seconds=execution_timeout_seconds,
             validity_profile=validity_profile,
             allow_foreign_gpu_processes=allow_foreign_gpu_processes,
             allow_portable_expectations_update=allow_portable_expectations_update,

@@ -19,7 +19,7 @@ import pytest
 CODE_ROOT = Path(__file__).resolve().parents[1]
 
 
-def _ready_or_exit(server, process):
+def _ready_or_exit(server, process, stdout_path, stderr_path):
     read_fd, write_fd = os.pipe()
 
     def observe_exit():
@@ -39,8 +39,11 @@ def _ready_or_exit(server, process):
             connection, _ = server.accept()
             with connection, connection.makefile("r") as stream:
                 return json.loads(stream.readline())
-        stdout, stderr = process.communicate()
-        raise AssertionError(f"launcher exited before fixture readiness: {stdout}\n{stderr}")
+        process.wait()
+        raise AssertionError(
+            f"launcher exited before fixture readiness with status {process.returncode}. "
+            f"Full output is retained in {stdout_path} and {stderr_path}"
+        )
     finally:
         os.close(read_fd)
 
@@ -49,6 +52,13 @@ def _ready_or_exit(server, process):
 @pytest.mark.parametrize("surface", ["cli", "mcp"])
 def test_public_replay_launchers_wait_for_owned_cleanup_and_retain_output(tmp_path, surface):
     marker = tmp_path / "cleanup-completed.txt"
+    startup_stderr_path = tmp_path / "startup-stderr.txt"
+    startup_stderr = (
+        "CPU replay startup stderr begin\n"
+        + "s" * (1024 * 1024)
+        + "\nCPU replay startup stderr end\n"
+    )
+    startup_stderr_path.write_text(startup_stderr, encoding="utf-8")
     fixture = tmp_path / "cpu_replay_fixture.py"
     fixture.write_text(
         "import json, os, signal, socket, sys\n"
@@ -70,9 +80,11 @@ def test_public_replay_launchers_wait_for_owned_cleanup_and_retain_output(tmp_pa
     # Replace only the tool's entrypoint with a waiting CPU fixture. Both public
     # launch chains and their subprocess ownership code execute unchanged.
     (tmp_path / "sitecustomize.py").write_text(
-        "import os\n"
-        "from dataclasses import replace\n"
+        "import os, sys\n"
         "from pathlib import Path\n"
+        "sys.stderr.write(Path(os.environ['AISP_REPLAY_TEST_STARTUP_STDERR']).read_text(encoding='utf-8'))\n"
+        "sys.stderr.flush()\n"
+        "from dataclasses import replace\n"
         "import core.tools.tools_commands as tools\n"
         "tools.TOOLS['trace-replay'] = replace(tools.TOOLS['trace-replay'], "
         "script_path=Path(os.environ['AISP_REPLAY_TEST_FIXTURE']), module_name=None)\n",
@@ -97,23 +109,34 @@ def test_public_replay_launchers_wait_for_owned_cleanup_and_retain_output(tmp_pa
     environment["PYTHONPATH"] = str(tmp_path) + os.pathsep + str(CODE_ROOT)
     environment["AISP_REPLAY_TEST_FIXTURE"] = str(fixture)
     environment["AISP_REPLAY_TEST_MARKER"] = str(marker)
+    environment["AISP_REPLAY_TEST_STARTUP_STDERR"] = str(startup_stderr_path)
+    stdout_path = tmp_path / "launcher-stdout.log"
+    stderr_path = tmp_path / "launcher-stderr.log"
     child_pid = None
     with tempfile.TemporaryDirectory(prefix="aisp-launch-", dir="/tmp") as socket_directory:
         environment["AISP_REPLAY_TEST_SOCKET"] = str(Path(socket_directory) / "ready.sock")
-        with socket.socket(socket.AF_UNIX) as server:
+        with (
+            socket.socket(socket.AF_UNIX) as server,
+            stdout_path.open("wb") as stdout_capture,
+            stderr_path.open("wb") as stderr_capture,
+        ):
             server.bind(environment["AISP_REPLAY_TEST_SOCKET"])
             server.listen(1)
             process = subprocess.Popen(
                 command, cwd=CODE_ROOT, env=environment,
-                stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                stdout=stdout_capture, stderr=stderr_capture, text=True,
                 start_new_session=True,
             )
             try:
-                ready = _ready_or_exit(server, process)
+                ready = _ready_or_exit(server, process, stdout_path, stderr_path)
                 child_pid = ready["pid"]
                 assert ready["pgid"] == child_pid
                 os.kill(process.pid, signal.SIGINT)
-                stdout, stderr = process.communicate()
+                process.wait()
+                stdout = stdout_path.read_text(encoding="utf-8")
+                stderr = stderr_path.read_text(encoding="utf-8")
+                assert startup_stderr in stderr
+                assert stderr_path.stat().st_size >= len(startup_stderr.encode("utf-8"))
                 assert marker.read_text() == "cleanup completed"
                 with pytest.raises(ProcessLookupError):
                     os.kill(child_pid, 0)

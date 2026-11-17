@@ -349,6 +349,31 @@ engine.benchmark.overview()                     # Summary stats
 engine.benchmark.speed_test()                   # Quick GEMM/attention test
 ```
 
+`engine.benchmark.run()` currently returns a plan or a CLI recommendation. It
+does not execute a benchmark. Use the CLI, MCP `run_benchmarks`, or the Python
+`core.harness.run_benchmarks.test_chapter()` executor for actual execution.
+
+**Execution deadlines:** the CLI `--execution-timeout-seconds`, MCP
+`execution_timeout_seconds`, and Python `test_chapter()` / `BenchmarkConfig`
+argument accept an omitted value, zero, or a positive integer. Omit the override
+to retain existing deadlines and timeout multipliers. A positive integer sets
+the exact setup, warmup, measurement and legacy execution deadlines in seconds,
+including after benchmark config merging and isolated-child reconstruction.
+It is not multiplied again. Zero selects uncapped execution through an owned
+Python subprocess. Direct thread and torchrun execution reject that request
+because they do not provide the same owned-process cancellation path.
+
+The suite deadline is separate. For an uncapped CLI run, also pass
+`--suite-timeout 0`. For MCP, also select `suite_timeout=0` and the outer
+`timeout_seconds=0`. Explicit outer zero or null selects cooperative waiting.
+On interruption, the owned process group receives SIGINT and the caller waits
+for its cleanup, retaining output. This adds no forced termination deadline.
+An unresponsive child can keep the caller waiting. Profiler deadlines and
+correctness, environment and performance acceptance gates remain unchanged.
+Cooperative cleanup requires POSIX process groups and the repository's `psutil`
+dependency. Its completion receipt covers live members of that group. A launcher
+must still join peers that start a different session or process group.
+
 **Runner notes:**
 - CUDA benchmarks execute via Python wrappers (`CudaBinaryBenchmark`). Direct `.cu` runs are not supported.
 - Ad-hoc script runs should use `benchmark_main` (supports `--iterations`, `--warmup`, and defaults to `--force-sync`; disable with `--no-force-sync` or `AISP_FORCE_SYNC=0`).

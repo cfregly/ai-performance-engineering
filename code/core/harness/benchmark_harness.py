@@ -27,7 +27,7 @@ import threading
 import time
 import traceback
 import warnings
-from concurrent.futures import ThreadPoolExecutor, TimeoutError as _FuturesTimeoutError
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as _FuturesTimeoutError, wait as _wait_for_futures
 from contextlib import ExitStack, contextmanager, nullcontext
 from dataclasses import dataclass, field
 from enum import Enum
@@ -52,6 +52,15 @@ import numpy as np
 import torch
 
 from core.utils.compile_utils import enable_tf32
+from core.utils.execution_timeouts import (
+    execution_deadline_seconds,
+    validate_execution_timeout_mode,
+    validate_execution_timeout_seconds,
+)
+from core.utils.cooperative_subprocess import (
+    CooperativeProcessInterrupted,
+    communicate_cooperatively,
+)
 from core.benchmark.evaluation_provenance import (
     EvaluationFailure,
     EvaluationProvenance,
@@ -984,6 +993,8 @@ class BenchmarkConfig:
     setup_timeout_seconds: Optional[int] = field(default_factory=lambda: _get_default_value("setup_timeout_seconds", 60))
     warmup_timeout_seconds: Optional[int] = field(default_factory=lambda: _get_default_value("warmup_timeout_seconds", None))
     measurement_timeout_seconds: int = field(default_factory=lambda: _get_default_value("measurement_timeout_seconds", 180))
+    # An explicit operator override applies after multipliers. Zero requires an owned subprocess.
+    execution_timeout_seconds: Optional[int] = None
     enable_gpu_memory_logging: bool = field(default_factory=lambda: _get_default_value("enable_gpu_memory_logging", False))
     gpu_memory_log_interval_seconds: float = field(default_factory=lambda: _get_default_value("gpu_memory_log_interval_seconds", 5.0))
     gpu_memory_log_path: Optional[str] = field(default_factory=lambda: _get_default_value("gpu_memory_log_path", None))
@@ -1281,6 +1292,16 @@ class BenchmarkConfig:
         self._sync_execution_mode()
         self._sync_launch_via()
 
+        execution_timeout = validate_execution_timeout_seconds(self.execution_timeout_seconds)
+        if execution_timeout is not None:
+            for field_name in (
+                "setup_timeout_seconds",
+                "warmup_timeout_seconds",
+                "measurement_timeout_seconds",
+                "timeout_seconds",
+            ):
+                setattr(self, field_name, execution_timeout)
+
     def _sync_execution_mode(self) -> None:
         """Ensure execution_mode and use_subprocess remain consistent."""
         override = getattr(self, "_execution_mode_overridden", False)
@@ -1443,7 +1464,7 @@ class BenchmarkTimingView:
     cuda_graph_warmup_iters: int
     setup_timeout_seconds: Optional[int]
     warmup_timeout_seconds: Optional[int]
-    measurement_timeout_seconds: int
+    measurement_timeout_seconds: Optional[int]
     profiling_timeout_seconds: Optional[int]
     nsys_timeout_seconds: int
     ncu_timeout_seconds: int
@@ -1571,15 +1592,30 @@ def _build_timing_view_from_mapping(values: Dict[str, Any]) -> BenchmarkTimingVi
         max_adaptive_iterations=int(values["max_adaptive_iterations"]),
         enable_cuda_graph=bool(values["enable_cuda_graph"]),
         cuda_graph_warmup_iters=int(values["cuda_graph_warmup_iters"]),
-        setup_timeout_seconds=cast(Optional[int], values.get("setup_timeout_seconds")),
-        warmup_timeout_seconds=cast(Optional[int], values.get("warmup_timeout_seconds")),
-        measurement_timeout_seconds=int(values["measurement_timeout_seconds"]),
+        setup_timeout_seconds=cast(Optional[int], execution_deadline_seconds(values.get("setup_timeout_seconds"))),
+        warmup_timeout_seconds=cast(Optional[int], execution_deadline_seconds(values.get("warmup_timeout_seconds"))),
+        measurement_timeout_seconds=cast(Optional[int], execution_deadline_seconds(values.get("measurement_timeout_seconds"))),
         profiling_timeout_seconds=cast(Optional[int], values.get("profiling_timeout_seconds")),
         nsys_timeout_seconds=int(values["nsys_timeout_seconds"]),
         ncu_timeout_seconds=int(values["ncu_timeout_seconds"]),
         proton_timeout_seconds=int(values["proton_timeout_seconds"]),
         timeout_multiplier=float(values["timeout_multiplier"]),
     )
+
+
+def _measurement_execution_deadline(config: BenchmarkConfig) -> Optional[float]:
+    """Keep legacy fallback for None while honoring an explicit zero."""
+    value = config.measurement_timeout_seconds
+    if value is None:
+        value = config.timeout_seconds
+    if value is None:
+        raise ValueError(
+            "Execution requires a measurement timeout or legacy timeout_seconds. "
+            "Use zero for an explicitly uncapped owned subprocess."
+        )
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or value < 0 or not math.isfinite(value):
+        raise ValueError(f"Invalid measurement timeout: {value!r}")
+    return cast(Optional[float], execution_deadline_seconds(float(value)))
 
 
 def _build_profiling_view_from_mapping(values: Dict[str, Any]) -> BenchmarkProfilingView:
@@ -2391,6 +2427,23 @@ class BenchmarkHarness:
         self._runtime_initialized = False
         self._thread_executor: Optional[ThreadPoolExecutor] = None
         self._environment_probe = environment_probe or EnvironmentProbe()
+        self._owned_process_execution = False
+
+    def _validate_execution_timeout_mode(
+        self, config: BenchmarkConfig, *, actual_execution_mode: Optional[ExecutionMode] = None,
+    ) -> None:
+        requested = config.execution_timeout_seconds
+        measurement_timeout = config.measurement_timeout_seconds
+        if measurement_timeout is None:
+            measurement_timeout = config.timeout_seconds
+        if measurement_timeout == 0:
+            requested = 0
+        validate_execution_timeout_mode(
+            requested,
+            execution_mode=actual_execution_mode or config.execution_mode,
+            launch_via=config.launch_via,
+            owned_subprocess=self._owned_process_execution,
+        )
 
     def _ensure_runtime_initialized(self) -> None:
         """Perform CUDA-touching runtime setup only in the executing process."""
@@ -3233,6 +3286,7 @@ class BenchmarkHarness:
         # Clone config to avoid mutating shared instance; deepcopy prevents
         # dataclasses.replace from re-running __post_init__ (which re-applies multipliers)
         config = copy.deepcopy(self.config)
+        requested_execution_timeout = validate_execution_timeout_seconds(config.execution_timeout_seconds)
         print(f"[harness] initial launch_via={config.launch_via} execution_mode={config.execution_mode}", flush=True)
         if callable_wrapped:
             # Callable benchmarks run in-process to avoid JSON parsing of custom stdout
@@ -3302,8 +3356,16 @@ class BenchmarkHarness:
                         # Caller already chose a non-default value; keep it.
                         continue
                 setattr(config, key, value)
+        if requested_execution_timeout is not None:
+            config.execution_timeout_seconds = requested_execution_timeout
+            for field_name in (
+                "setup_timeout_seconds", "warmup_timeout_seconds",
+                "measurement_timeout_seconds", "timeout_seconds",
+            ):
+                setattr(config, field_name, requested_execution_timeout)
         config._sync_execution_mode()
         config._sync_launch_via()
+        self._validate_execution_timeout_mode(config)
         print(f"[harness] execution_mode={config.execution_mode} launch_via={config.launch_via}", flush=True)
         # The merge can select torchrun, which passes the values to the launched
         # script. With the launcher final, fail a target whose values would be ignored.
@@ -3751,6 +3813,7 @@ class BenchmarkHarness:
         declared_output_tolerances: Optional[OutputToleranceMap] = None,
     ) -> PydanticBenchmarkResult:
         """Run benchmark in subprocess for reliable timeout cancellation."""
+        self._validate_execution_timeout_mode(config)
         import json
         import inspect
         import torch
@@ -3765,6 +3828,7 @@ class BenchmarkHarness:
         proton_metrics: Dict[str, float] = {}
         times_ms: List[float] = []
         child_timing: Optional[TimingStats] = None
+        child_has_timeout = False
         inference_timing_data: Optional[Dict[str, List[float]]] = None
         seed_metadata = copy.deepcopy(getattr(self, "_seed_info", None))
         child_custom_metrics: Optional[Dict[str, float]] = None
@@ -3875,20 +3939,8 @@ class BenchmarkHarness:
         )
         if target_override_argv:
             input_data["target_override_argv"] = target_override_argv
-        # Spawn subprocess using isolated runner
-        # Use measurement_timeout_seconds (or fallback to timeout_seconds for backward compatibility).
-        # Fail fast if no timeout is configured to avoid indefinite hangs.
-        measurement_timeout = getattr(config, "measurement_timeout_seconds", None)
-        if measurement_timeout is None:
-            measurement_timeout = getattr(config, "timeout_seconds", None)
-        if measurement_timeout is None:
-            raise ValueError(
-                "Subprocess execution requires a finite timeout; set BenchmarkConfig.measurement_timeout_seconds "
-                "(or legacy timeout_seconds)."
-            )
-        if not isinstance(measurement_timeout, (int, float)) or measurement_timeout <= 0:
-            raise ValueError(f"Invalid measurement timeout: {measurement_timeout!r}")
-        measurement_timeout = float(measurement_timeout)
+        # Preserve None's legacy fallback and transport an explicit zero unchanged.
+        measurement_timeout = _measurement_execution_deadline(config)
 
         try:
             fd, verify_output_path = tempfile.mkstemp(prefix="aisp_verify_output_", suffix=".pt")
@@ -3931,6 +3983,12 @@ class BenchmarkHarness:
                 preexec_fn=_benchmark_child_preexec,
             )
             child_pgid = process.pid  # _benchmark_child_preexec() starts a fresh session.
+            if measurement_timeout is None:
+                input_data["process_execution_owner"] = {
+                    "coordinator_pid": os.getpid(),
+                    "worker_pid": process.pid,
+                    "process_group_id": child_pgid,
+                }
             execution_process_ids = {0: process.pid}
             if LOGGER_AVAILABLE:
                 logger.info(
@@ -3945,10 +4003,18 @@ class BenchmarkHarness:
             input_json = json.dumps(input_data)
             subprocess_failed = False
             try:
-                stdout, stderr = process.communicate(
-                    input=input_json,
-                    timeout=measurement_timeout + _RUNTIME_PROVENANCE_TIMEOUT_SECONDS,
-                )
+                if measurement_timeout is None:
+                    completed = communicate_cooperatively(
+                        process,
+                        process_group_id=child_pgid,
+                        input=input_json,
+                    )
+                    stdout, stderr = completed["stdout"], completed["stderr"]
+                else:
+                    stdout, stderr = process.communicate(
+                        input=input_json,
+                        timeout=measurement_timeout + _RUNTIME_PROVENANCE_TIMEOUT_SECONDS,
+                    )
             except BrokenPipeError as exc:
                 subprocess_failed = True
                 errors.append(f"Subprocess stdin closed early: {exc}")
@@ -3958,16 +4024,25 @@ class BenchmarkHarness:
                 except Exception as close_exc:
                     errors.append(f"Failed to close subprocess stdin after broken pipe: {close_exc}")
                 try:
-                    stdout, stderr = process.communicate(timeout=5)
+                    if measurement_timeout is None:
+                        process.stdin = None
+                        completed = communicate_cooperatively(
+                            process, process_group_id=child_pgid or process.pid,
+                        )
+                        stdout, stderr = completed["stdout"], completed["stderr"]
+                    else:
+                        stdout, stderr = process.communicate(timeout=5)
                 except Exception as follow_exc:
                     errors.append(f"Failed to read subprocess output after broken pipe: {follow_exc}")
                     stdout = stdout or ""
                     stderr = stderr or ""
                 if stderr:
                     _maybe_write_subprocess_stderr(stderr, benchmark_name, config)
-                _cleanup_process_group(child_pgid)
+                if measurement_timeout is not None:
+                    _cleanup_process_group(child_pgid)
             else:
-                _cleanup_process_group(child_pgid)
+                if measurement_timeout is not None:
+                    _cleanup_process_group(child_pgid)
 
             _maybe_write_subprocess_stream(stdout, benchmark_name, config, stream="stdout")
             if subprocess_failed or process.returncode != 0:
@@ -4022,6 +4097,7 @@ class BenchmarkHarness:
                         if child_runtime_provenance.process_id != process.pid:
                             raise ValueError("Runtime provenance PID does not match the launched benchmark worker")
                     if benchmark_result is not None:
+                        child_has_timeout = benchmark_result.timeout_stage is not None
                         child_device = benchmark_result.device
                         if child_device is None or torch.device(child_device) != torch.device(input_data["device"]):
                             raise ValueError("Executed child device does not match the dispatched benchmark device")
@@ -4173,8 +4249,23 @@ class BenchmarkHarness:
                     times_ms = cast(List[float], [])
                     child_timing = None
         
+        except CooperativeProcessInterrupted as exc:
+            _maybe_write_subprocess_stream(exc.result["stdout"], benchmark_name, config, stream="stdout")
+            _maybe_write_subprocess_stream(exc.result["stderr"], benchmark_name, config, stream="stderr")
+            raise
         except KeyboardInterrupt:
             if process is not None:
+                if measurement_timeout is None:
+                    try:
+                        communicate_cooperatively(
+                            process, process_group_id=child_pgid or process.pid,
+                            cancellation_requested=True,
+                        )
+                    except CooperativeProcessInterrupted as exc:
+                        _maybe_write_subprocess_stream(exc.result["stdout"], benchmark_name, config, stream="stdout")
+                        _maybe_write_subprocess_stream(exc.result["stderr"], benchmark_name, config, stream="stderr")
+                        raise
+                    raise
                 _terminate_process_group(process, child_pgid, grace_seconds=2.0)
                 try:
                     stdout, stderr = process.communicate()
@@ -4187,6 +4278,7 @@ class BenchmarkHarness:
                     )
             raise
         except subprocess.TimeoutExpired:
+            assert measurement_timeout is not None
             # TIMEOUT - kill the process group
             elapsed_time = time.time() - start_time
             
@@ -4310,6 +4402,10 @@ class BenchmarkHarness:
                 config=config,
                 watchdog=stage_watchdog,
             )
+            if measurement_timeout is None and not child_has_timeout:
+                result.timeout_stage = None
+                result.timeout_duration_seconds = None
+                result.timeout_limit_seconds = None
             if child_evaluation is not None:
                 result.evaluation = child_evaluation.model_copy(deep=True)
             if child_runtime_provenance is not None:
@@ -4439,6 +4535,7 @@ class BenchmarkHarness:
     
     def _benchmark_with_threading(self, benchmark: BaseBenchmark, config: BenchmarkConfig) -> PydanticBenchmarkResult:
         """Run benchmark using threading (alternative to subprocess method)."""
+        self._validate_execution_timeout_mode(config, actual_execution_mode=ExecutionMode.THREAD)
         self._ensure_runtime_initialized()
         import inspect
         from core.benchmark.run_manifest import RuntimeProvenance, capture_runtime_provenance
@@ -5075,27 +5172,19 @@ class BenchmarkHarness:
                                 errors.append(f"Failed to restore entry CUDA device: {str(e)}")
                                 times_ms = cast(List[float], [])
         
-        # ALWAYS run with timeout (required, default 15 seconds). Thread-mode benchmarks execute
-        # inside a managed executor so we can recycle workers if a benchmark hangs.
-        measurement_timeout = getattr(config, "measurement_timeout_seconds", None)
-        if measurement_timeout is None:
-            measurement_timeout = getattr(config, "timeout_seconds", None)
-        if measurement_timeout is None:
-            raise ValueError(
-                "Thread execution requires a finite timeout; set BenchmarkConfig.measurement_timeout_seconds "
-                "(or legacy timeout_seconds)."
-            )
-        if not isinstance(measurement_timeout, (int, float)) or measurement_timeout <= 0:
-            raise ValueError(f"Invalid measurement timeout: {measurement_timeout!r}")
-        measurement_timeout = float(measurement_timeout)
+        # A verified isolated worker can wait without a measurement deadline.
+        measurement_timeout = _measurement_execution_deadline(config)
         thread_start_time = time.time()
         self._ensure_thread_executor()
-        future = self._thread_executor.submit(run_benchmark_internal)
+        future = None
         timeout_result: Optional[PydanticBenchmarkResult] = None
         try:
+            future = self._thread_executor.submit(run_benchmark_internal)
             try:
                 future.result(timeout=measurement_timeout)
             except _FuturesTimeoutError:
+                if measurement_timeout is None:
+                    raise
                 if not provenance_started.is_set():
                     raise
                 remaining = _RUNTIME_PROVENANCE_TIMEOUT_SECONDS - (
@@ -5103,7 +5192,19 @@ class BenchmarkHarness:
                 )
                 future.result(timeout=max(0.0, remaining))
             elapsed_time = time.time() - thread_start_time
+        except KeyboardInterrupt:
+            if measurement_timeout is None and self._owned_process_execution and future is not None:
+                while not future.done():
+                    try:
+                        _wait_for_futures((future,))
+                    except KeyboardInterrupt:
+                        continue
+            raise
         except _FuturesTimeoutError:
+            if measurement_timeout is None:
+                raise
+            assert future is not None
+            assert measurement_timeout is not None
             elapsed_time = time.time() - thread_start_time
             future.cancel()
             timeout_stage = 'measurement'

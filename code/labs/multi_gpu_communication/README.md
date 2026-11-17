@@ -144,8 +144,10 @@ builds. From `code/`:
 
 ```bash
 python -m cli.aisp bench list-targets --chapter labs/multi_gpu_communication
-python -m cli.aisp bench run --targets labs/multi_gpu_communication:jacobi --profile none
 python -m cli.aisp bench run --targets labs/multi_gpu_communication:jacobi --profile none \
+  --suite-timeout 0 --execution-timeout-seconds 0
+python -m cli.aisp bench run --targets labs/multi_gpu_communication:jacobi --profile none \
+  --suite-timeout 0 --execution-timeout-seconds 0 \
   --target-extra-arg 'labs/multi_gpu_communication:jacobi=--nx 4096 --ny 4097 --steps 20 --native-warmup 2 --ranks 2'
 ```
 
@@ -153,6 +155,13 @@ The real wrapper lifecycles were tested on B200. The full `bench run` pipeline
 above has not been executed for this lab. Harness overrides use `--steps` and
 `--native-warmup`, while the native executable uses `--iterations` and `--warmup`.
 Two ranks are the default because this is the validated topology.
+
+The two explicit timeout flags select uncapped suite and execution waits for
+these commands. Omit them to retain the harness defaults. The execution override
+survives benchmark config merging and applies to the owned isolated subprocess.
+It does not relax environment, numerical or speedup gates, or profiler deadlines.
+An interrupt requests cleanup and waits for the owned process group to finish.
+See the [execution deadline contract](../../docs/api-reference.md#8-benchmark-domain).
 
 The `256 × 257` default is a deliberate correctness-smoke exception to the
 repository's usual speedup-oriented benchmark defaults. It is intended for
