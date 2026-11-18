@@ -5,15 +5,14 @@ import importlib.util
 import json
 import math
 import os
-from pathlib import Path
 import shlex
 import shutil
 import struct
 import subprocess
 import sys
+from pathlib import Path
 
 import pytest
-
 
 CODE_ROOT = Path(__file__).resolve().parents[1]
 LAB_ROOT = CODE_ROOT / "labs" / "nvshmem_device"
@@ -185,6 +184,122 @@ def _receipt(binary: Path, directory: Path = LAB_ROOT) -> dict:
              "compiler_versions": {"nvcc": "control fixture", "mpicxx": "control fixture"}}
     binary.with_name(binary.name + ".build.json").write_text(json.dumps(value))
     return value
+
+
+def _write_successful_cpu_launcher(path: Path) -> None:
+    path.write_text(
+        f"#!{sys.executable}\n"
+        + """
+import os
+from pathlib import Path
+import shutil
+import sys
+
+selected = os.environ["AISP_EXPECTED_NVSHMEM_LIBDIR"]
+inherited = os.environ["AISP_EXPECTED_INHERITED_LD_LIBRARY_PATH"]
+expected = selected + os.pathsep + inherited
+if os.environ.get("LD_LIBRARY_PATH") != expected:
+    print(f"unexpected LD_LIBRARY_PATH: {os.environ.get('LD_LIBRARY_PATH')!r}", file=sys.stderr)
+    raise SystemExit(9)
+
+def argument(name):
+    return Path(sys.argv[sys.argv.index(name) + 1])
+
+shutil.copyfile(os.environ["AISP_NATIVE_JSON_FIXTURE"], argument("--json-out"))
+shutil.copyfile(os.environ["AISP_NATIVE_OUTPUT_FIXTURE"], argument("--dump-output"))
+"""
+    )
+    path.chmod(0o700)
+
+
+@pytest.mark.parametrize("selection", ["explicit-libdir", "home-fallback"])
+@pytest.mark.skipif(
+    not all(hasattr(os, name) for name in ("waitid", "P_PID", "WEXITED", "WNOWAIT", "WNOHANG")),
+    reason="Owned launchers require POSIX waitid with WNOWAIT",
+)
+def test_real_cli_pins_the_build_nvshmem_library_directory(
+    tmp_path: Path, selection: str,
+) -> None:
+    workload = runner.NativeWorkload()
+    binary = tmp_path / "never-executed-native-binary"
+    binary.write_bytes(b"CPU launcher fixture, not a GPU executable\n")
+    _receipt(binary)
+    launcher = tmp_path / "cpu-launcher"
+    _write_successful_cpu_launcher(launcher)
+
+    native_json_fixture = tmp_path / "native-result-fixture.json"
+    native_json_fixture.write_text(json.dumps(_metadata(workload)))
+    output_fixture = tmp_path / "native-output-fixture.f32"
+    values = list(runner.expected_output(workload))
+    output_fixture.write_bytes(struct.pack(f"={len(values)}f", *values))
+
+    home = tmp_path / "nvshmem-home"
+    fallback = home / "lib"
+    explicit = tmp_path / "explicit-nvshmem-lib"
+    fallback.mkdir(parents=True)
+    explicit.mkdir()
+    selected = explicit if selection == "explicit-libdir" else fallback
+    inherited = tmp_path / "older-runtime-lib"
+    environment = dict(os.environ)
+    environment["NVSHMEM_HOME"] = str(home)
+    if selection == "explicit-libdir":
+        environment["NVSHMEM_LIBDIR"] = str(explicit)
+    else:
+        environment.pop("NVSHMEM_LIBDIR", None)
+    environment["LD_LIBRARY_PATH"] = str(inherited)
+    environment["AISP_EXPECTED_NVSHMEM_LIBDIR"] = str(selected)
+    environment["AISP_EXPECTED_INHERITED_LD_LIBRARY_PATH"] = str(inherited)
+    environment["AISP_NATIVE_JSON_FIXTURE"] = str(native_json_fixture)
+    environment["AISP_NATIVE_OUTPUT_FIXTURE"] = str(output_fixture)
+
+    result_path = tmp_path / "result.json"
+    output_path = tmp_path / "output.f32"
+    completed = subprocess.run(
+        [sys.executable, str(LAB_ROOT / "run_lab_nvshmem_device.py"),
+         "--binary", str(binary), "--launcher", str(launcher),
+         "--json-out", str(result_path), "--dump-output", str(output_path), "--json"],
+        capture_output=True, text=True, check=False, env=environment,
+    )
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    result = json.loads(result_path.read_text())
+    assert result["nvshmem_runtime_libdir"] == str(selected)
+    assert json.loads(completed.stdout) == result
+    assert environment["LD_LIBRARY_PATH"] == str(inherited)
+
+
+def test_nvshmem_child_environment_is_fail_closed_and_does_not_mutate_parent(
+    tmp_path: Path, monkeypatch,
+) -> None:
+    monkeypatch.delenv("NVSHMEM_LIBDIR", raising=False)
+    monkeypatch.delenv("NVSHMEM_HOME", raising=False)
+    with pytest.raises(runner.NativeUnavailable, match="NVSHMEM_LIBDIR or NVSHMEM_HOME"):
+        runner.nvshmem_child_environment()
+
+    home = tmp_path / "home"
+    (home / "lib").mkdir(parents=True)
+    explicit = tmp_path / "explicit"
+    explicit.mkdir()
+    inherited = str(tmp_path / "inherited")
+    monkeypatch.setenv("NVSHMEM_HOME", str(home))
+    monkeypatch.setenv("NVSHMEM_LIBDIR", str(explicit))
+    monkeypatch.setenv("LD_LIBRARY_PATH", inherited)
+    child_env, selected = runner.nvshmem_child_environment()
+    assert selected == explicit
+    assert child_env["LD_LIBRARY_PATH"] == str(explicit) + os.pathsep + inherited
+    assert os.environ["LD_LIBRARY_PATH"] == inherited
+
+    monkeypatch.delenv("NVSHMEM_LIBDIR")
+    child_env, selected = runner.nvshmem_child_environment()
+    assert selected == home / "lib"
+    assert child_env["LD_LIBRARY_PATH"] == str(home / "lib") + os.pathsep + inherited
+    assert os.environ["LD_LIBRARY_PATH"] == inherited
+
+    monkeypatch.setenv("NVSHMEM_LIBDIR", "")
+    with pytest.raises(RuntimeError, match="must not be empty"):
+        runner.nvshmem_child_environment()
+    monkeypatch.setenv("NVSHMEM_LIBDIR", str(tmp_path / "missing"))
+    with pytest.raises(RuntimeError, match="does not exist"):
+        runner.nvshmem_child_environment()
 
 
 @pytest.mark.parametrize("change", ["binary", "source", "dependency", "schema", "command"])

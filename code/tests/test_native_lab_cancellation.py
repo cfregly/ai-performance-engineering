@@ -5,27 +5,34 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-from pathlib import Path
 import signal
 import socket
 import sys
 import threading
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
-from core.utils.cooperative_subprocess import CooperativeProcessInterrupted
 from core.utils.cooperative_process_artifacts import run_recorded_cooperative_process
+from core.utils.cooperative_subprocess import CooperativeProcessInterrupted
 from labs.multi_gpu_communication import native_common as jacobi
 from labs.multi_gpu_communication.native_benchmark import NativeJacobiBenchmark
 from labs.nvshmem_device import run_lab_nvshmem_device as nvshmem
 from labs.nvshmem_device.native_benchmark import NvshmemDeviceBenchmark
 
-
 pytestmark = pytest.mark.skipif(
     os.name != "posix" or not hasattr(os, "waitid"),
     reason="Owned launchers require POSIX waitid with WNOWAIT",
 )
+
+
+@pytest.fixture(autouse=True)
+def configured_nvshmem_runtime(tmp_path: Path, monkeypatch) -> None:
+    home = tmp_path / "nvshmem-runtime"
+    (home / "lib").mkdir(parents=True)
+    monkeypatch.delenv("NVSHMEM_LIBDIR", raising=False)
+    monkeypatch.setenv("NVSHMEM_HOME", str(home))
 
 
 @pytest.mark.parametrize("value", [None, 7, False, 0.0])
@@ -353,6 +360,25 @@ def test_failed_process_creation_keeps_a_diagnostic_without_claiming_cleanup(
     assert diagnostic["receipt_available"] is False
     assert diagnostic["error_type"] == "FileNotFoundError"
     assert "execution" not in diagnostic
+
+
+def test_recorded_process_passes_a_private_child_environment(
+    tmp_path: Path, monkeypatch,
+) -> None:
+    variable = "AISP_RECORDED_PROCESS_ENV_TEST"
+    monkeypatch.setenv(variable, "parent")
+    child_env = dict(os.environ)
+    child_env[variable] = "child"
+    result = run_recorded_cooperative_process(
+        [sys.executable, "-c", f"import os; print(os.environ[{variable!r}])"],
+        output_prefix=tmp_path / "private-env",
+        env=child_env,
+    )
+    assert result["returncode"] == 0
+    assert result["stdout"] == "child\n"
+    assert os.environ[variable] == "parent"
+    receipt = json.loads((tmp_path / "private-env.execution.json").read_text())
+    assert receipt["stdout"] == "child\n"
 
 
 @pytest.mark.parametrize("existing_suffix", [".stderr.log", ".execution.json"])

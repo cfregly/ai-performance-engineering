@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
-from contextlib import ExitStack
 import json
+from collections.abc import Mapping, Sequence
+from contextlib import ExitStack
 from pathlib import Path
 from typing import Any
 
@@ -23,7 +23,12 @@ def require_owned_uncapped_native_config(config: Any, *, launcher_name: str) -> 
         )
 
 
-def run_recorded_cooperative_process(command: Sequence[str], *, output_prefix: Path) -> dict[str, Any]:
+def run_recorded_cooperative_process(
+    command: Sequence[str],
+    *,
+    output_prefix: Path,
+    env: Mapping[str, str] | None = None,
+) -> dict[str, Any]:
     """Create fresh artifact files before launch and retain diagnostics after interruption."""
     paths = {name: output_prefix.with_name(output_prefix.name + suffix) for name, suffix in (
         ("stdout", ".stdout.log"), ("stderr", ".stderr.log"), ("execution", ".execution.json"),
@@ -60,7 +65,7 @@ def run_recorded_cooperative_process(command: Sequence[str], *, output_prefix: P
                 stream.flush()
 
         try:
-            result = run_cooperative_process(command)
+            result = run_cooperative_process(command, env=env)
         except BaseException as error:
             result = getattr(error, "result", None) or getattr(error, "cooperative_process_result", None)
             if result is not None:

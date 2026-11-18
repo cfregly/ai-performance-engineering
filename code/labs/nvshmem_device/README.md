@@ -104,7 +104,10 @@ python -m cli.aisp tools nvshmem-device -- --help
 ```
 
 The [Makefile](Makefile) accepts `NVSHMEM_INCLUDE` and `NVSHMEM_LIBDIR` overrides
-for installations with different layouts. MPI include discovery uses Open MPI's
+for installations with different layouts. The runner also prepends that explicit
+`NVSHMEM_LIBDIR` to the child MPI process only. If the variable is unset, it uses
+`NVSHMEM_HOME/lib`. This keeps the runtime library aligned with the build without
+changing the shell or machine defaults. MPI include discovery uses Open MPI's
 `mpicxx --showme:compile`, or explicit `MPI_COMPILE_FLAGS` for another toolchain.
 Read the [native implementation](nvshmem_device_native.cu) and
 [runner](run_lab_nvshmem_device.py) alongside the protocol below.
