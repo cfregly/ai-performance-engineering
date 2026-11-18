@@ -154,7 +154,7 @@ def test_standalone_zero_exit_cannot_accept_a_stale_report(tmp_path: Path, monke
     )
     result = automation.profile_ncu(
         ["program"], "stale", replay_mode="app-range", metric_set="minimal",
-        nvtx_includes=[RANGE_NAME],
+        nvtx_includes=[RANGE_NAME], timeout_seconds=30,
     )
     assert result is None
     assert "not fresh" in automation.last_error

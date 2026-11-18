@@ -160,6 +160,43 @@ def test_restarted_stdio_reports_unverifiable_cleanup_and_serves_job_status(tmp_
     assert json.loads(status["result"]["content"][0]["text"])["result"]["status"] == "not_found"
 
 
+def test_active_stdio_reports_in_memory_cleanup_and_serves_job_status(
+    tmp_path, monkeypatch, capsys
+):
+    receipt = {
+        "returncode": 1,
+        "stdout": "prior child stdout",
+        "stderr": "prior child stderr",
+        "execution": {"process_group_id": 71, "completion_scope": "cleanup_incomplete"},
+    }
+    job_store = JobStore()
+    job_store.record_incomplete_cleanup(receipt)
+    monkeypatch.setattr(server, "_QUEUE_DIR", tmp_path)
+    monkeypatch.setattr(server, "JOB_STORE", job_store)
+    monkeypatch.setattr(server, "_UNVERIFIABLE_CLEANUP", {})
+    requests = [
+        _request(1, "gpu_topology_matrix", {"include_context": False}),
+        _request(2, "job_status", {"job_id": "missing-job", "include_context": False}),
+    ]
+    monkeypatch.setattr(
+        sys,
+        "stdin",
+        io.StringIO("".join(json.dumps(request) + "\n" for request in requests)),
+    )
+
+    assert server.MCPServer().run_stdio() is None
+    blocked, status = map(json.loads, capsys.readouterr().out.splitlines())
+    assert blocked["id"] == 1 and blocked["result"]["isError"]
+    refused = json.loads(blocked["result"]["content"][0]["text"])["result"]
+    assert refused["admission_blocked"] is True
+    assert refused["blocking_cleanup"] == receipt
+    assert refused["cleanup_barrier_path"] == str(tmp_path / "cleanup_incomplete.json")
+    assert "stdout" not in refused and "cancelled" not in refused
+    assert status["id"] == 2
+    assert json.loads(status["result"]["content"][0]["text"])["result"]["status"] == "not_found"
+    job_store._executor.shutdown(wait=True)
+
+
 @pytest.mark.parametrize("record", ["in_memory", "unreadable", "symlink"])
 def test_handler_exception_cannot_replace_admission_refusal(tmp_path, monkeypatch, record):
     monkeypatch.setattr(server, "_QUEUE_DIR", tmp_path)

@@ -1805,7 +1805,7 @@ def _remember_terminal_cleanup(error: BaseException) -> None:
 def _assert_owned_work_admission() -> None:
     receipt = JOB_STORE.incomplete_cleanup_receipt()
     if receipt is not None:
-        raise CooperativeCleanupIncomplete(receipt)
+        _raise_owned_work_admission_blocked(receipt, _cleanup_barrier_path())
     path = _cleanup_barrier_path()
     with _ADMISSION_LOCK:
         unverifiable = _UNVERIFIABLE_CLEANUP.get(path)

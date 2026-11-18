@@ -507,16 +507,26 @@ def test_nested_cleanup_event_stops_replay_and_persists_mcp_barrier(
     fixture, launches = _write_cleanup_fixture(tmp_path, expected_receipt)
     (tmp_path / "sitecustomize.py").write_text(
         "import os, sys\n"
+        "from types import SimpleNamespace\n"
+        "from core.tools import tools_commands\n"
         "from labs.trace_replay import runner\n"
-        "original_popen = runner.subprocess.Popen\n"
-        "runner.torch.cuda.is_available = lambda: True\n"
-        "def cpu_replay_popen(command, *args, **kwargs):\n"
+        "original_build_env = tools_commands.build_repo_python_env\n"
+        "original_run = runner.run_cooperative_process\n"
+        "hook_root = os.path.dirname(__file__)\n"
+        "runner.torch = SimpleNamespace(cuda=SimpleNamespace(is_available=lambda: True))\n"
+        "def keep_hook_first(repo_root, *args, **kwargs):\n"
+        "    env = original_build_env(repo_root, *args, **kwargs)\n"
+        "    entries = env.get('PYTHONPATH', '').split(os.pathsep)\n"
+        "    env['PYTHONPATH'] = os.pathsep.join([hook_root] + [entry for entry in entries if entry != hook_root])\n"
+        "    return env\n"
+        "def cpu_replay_run(command, *args, **kwargs):\n"
         "    values = list(command) if isinstance(command, (list, tuple)) else []\n"
         "    if values[1:5] == ['-m', 'cli.aisp', 'bench', 'run']:\n"
         "        event_id = values[values.index('--run-id') + 1]\n"
         "        command = [sys.executable, os.environ['AISP_REPLAY_TEST_FIXTURE'], event_id]\n"
-        "    return original_popen(command, *args, **kwargs)\n"
-        "runner.subprocess.Popen = cpu_replay_popen\n",
+        "    return original_run(command, *args, **kwargs)\n"
+        "tools_commands.build_repo_python_env = keep_hook_first\n"
+        "runner.run_cooperative_process = cpu_replay_run\n",
         encoding="utf-8",
     )
 
