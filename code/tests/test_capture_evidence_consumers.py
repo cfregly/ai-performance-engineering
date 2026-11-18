@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import io
 import os
 import signal
 import socket
@@ -20,6 +21,7 @@ from core.harness.benchmark_harness import (
     BenchmarkMode,
     SubprocessCaptureEvidenceError,
     TorchrunLaunchSpec,
+    _require_safe_benchmark_worker_receipt,
 )
 from core.tools.tools_commands import (
     TOOLS,
@@ -28,6 +30,7 @@ from core.tools.tools_commands import (
     _require_exact_tool_capture,
     _run_tool,
 )
+from core.utils import cooperative_subprocess as owned
 
 COOPERATIVE_CAPTURE_SUPPORTED = all(
     hasattr(os, name) for name in ("waitid", "P_PID", "WEXITED", "WNOWAIT", "WNOHANG")
@@ -142,6 +145,66 @@ def test_capture_evidence_isolated_worker_fails_before_json_parsing() -> None:
     assert "Failed to parse subprocess output" not in str(caught.value)
 
 
+@pytest.mark.parametrize(
+    ("field", "value", "raw_streams"),
+    [
+        ("capture_errors", ["CPU fixture capture failed"], None),
+        (
+            "capture_limit",
+            {
+                "reason": "stream_closed_before_eof",
+                "streams_closed_before_eof": ["stderr"],
+            },
+            None,
+        ),
+        (
+            "undecodable_streams_base64",
+            {"stderr": base64.b64encode(b"cleanup stderr\xff").decode("ascii")},
+            {"stderr": base64.b64encode(b"cleanup stderr\xff").decode("ascii")},
+        ),
+    ],
+)
+def test_benchmark_worker_cleanup_has_priority_over_inexact_capture(
+    field: str,
+    value: object,
+    raw_streams: dict[str, str] | None,
+) -> None:
+    inner_receipt = {
+        "stdout": "exact cleanup stdout\n",
+        "stderr": "exact cleanup stderr\n",
+        "returncode": 1,
+        "execution": {
+            "process_group_id": 654,
+            "completion_scope": "cleanup_incomplete",
+        },
+    }
+    nonce = f"benchmark-worker-{field}-cleanup-nonce"
+    event_stream = io.StringIO()
+    owned.emit_cleanup_incomplete_event(inner_receipt, nonce=nonce, stream=event_stream)
+    outer_receipt = {
+        "stdout": "outer benchmark stdout\n",
+        "stderr": event_stream.getvalue(),
+        "returncode": 1,
+        "execution": {
+            "process_group_id": 321,
+            "completion_scope": "process_group_quiescent",
+            "cleanup_event_nonce": nonce,
+            field: value,
+        },
+    }
+    if raw_streams is not None:
+        outer_receipt["raw_streams_base64"] = raw_streams
+
+    with pytest.raises(owned.CooperativeCleanupIncomplete) as caught:
+        _require_safe_benchmark_worker_receipt(
+            outer_receipt,
+            context="benchmark worker fixture",
+        )
+
+    assert caught.value.result == inner_receipt
+    assert caught.value.outer_process_result is outer_receipt  # type: ignore[attr-defined]
+
+
 def test_capture_evidence_torchrun_fails_before_protocol_parsing(tmp_path: Path) -> None:
     script_path = tmp_path / "invalid_byte_torchrun_worker.py"
     script_path.write_text(
@@ -200,6 +263,187 @@ def test_capture_evidence_tool_gate_retains_cutoff_metadata() -> None:
     assert (
         caught.value.result["execution"]["capture_limit"] == receipt["execution"]["capture_limit"]
     )
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "raw_streams", "expected_indicators"),
+    [
+        (
+            "capture_errors",
+            ["CPU fixture capture failed after interrupt"],
+            None,
+            ["execution.capture_errors"],
+        ),
+        (
+            "capture_limit",
+            {
+                "reason": "stream_closed_before_eof",
+                "streams_closed_before_eof": ["stderr"],
+            },
+            None,
+            ["execution.capture_limit"],
+        ),
+        (
+            "undecodable_streams_base64",
+            {"stderr": base64.b64encode(b"CPU fixture stderr\xff").decode("ascii")},
+            {"stderr": base64.b64encode(b"CPU fixture stderr\xff").decode("ascii")},
+            ["execution.undecodable_streams_base64", "raw_streams_base64"],
+        ),
+    ],
+)
+def test_tool_interrupt_keeps_priority_and_attaches_inexact_capture(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    field: str,
+    value: object,
+    raw_streams: dict[str, str] | None,
+    expected_indicators: list[str],
+) -> None:
+    name = "interrupted-capture-evidence-test"
+    script_path = tmp_path / "unused_tool.py"
+    script_path.write_text("raise AssertionError('fixture must not launch')\n", encoding="utf-8")
+    _register_test_tool(name, script_path)
+    receipt = {
+        "stdout": "retained interrupt stdout\n",
+        "stderr": "retained interrupt stderr\n",
+        "execution": {
+            "process_group_id": 321,
+            "completion_scope": "process_group_quiescent",
+            field: value,
+        },
+    }
+    if raw_streams is not None:
+        receipt["raw_streams_base64"] = raw_streams
+    original = owned.CooperativeProcessInterrupted(receipt)
+
+    def interrupted(*args, **kwargs):
+        raise original
+
+    monkeypatch.setattr(owned, "run_cooperative_process", interrupted)
+    try:
+        with pytest.raises(owned.CooperativeProcessInterrupted) as caught:
+            _run_tool(name, [])
+    finally:
+        TOOLS.pop(name, None)
+
+    assert caught.value is original
+    assert capsys.readouterr() == (
+        "retained interrupt stdout\n",
+        "retained interrupt stderr\n",
+    )
+    diagnostic = receipt["execution"]["capture_evidence_error"]
+    assert diagnostic["type"] == "ToolCaptureEvidenceError"
+    assert diagnostic["indicators"] == expected_indicators
+    assert original.capture_evidence_error == diagnostic  # type: ignore[attr-defined]
+
+
+def test_tool_interrupt_preserves_exact_nested_cleanup_receipt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    name = "interrupted-nested-cleanup-test"
+    script_path = tmp_path / "unused_tool.py"
+    script_path.write_text("raise AssertionError('fixture must not launch')\n", encoding="utf-8")
+    _register_test_tool(name, script_path)
+    inner_receipt = {
+        "stdout": "exact nested stdout\n",
+        "stderr": "exact nested stderr\n",
+        "returncode": 1,
+        "execution": {
+            "process_group_id": 654,
+            "completion_scope": "cleanup_incomplete",
+        },
+    }
+    nonce = "interrupted-tool-nested-cleanup-nonce"
+    stream = io.StringIO()
+    owned.emit_cleanup_incomplete_event(inner_receipt, nonce=nonce, stream=stream)
+    outer_receipt = {
+        "stdout": "outer interrupt stdout\n",
+        "stderr": "outer interrupt stderr\n" + stream.getvalue(),
+        "execution": {
+            "process_group_id": 321,
+            "completion_scope": "process_group_quiescent",
+            "cleanup_event_nonce": nonce,
+            "capture_errors": ["CPU fixture capture failed after interrupt"],
+        },
+    }
+    original = owned.CooperativeProcessInterrupted(outer_receipt)
+
+    def interrupted(*args, **kwargs):
+        raise original
+
+    monkeypatch.setattr(owned, "run_cooperative_process", interrupted)
+    try:
+        with pytest.raises(owned.CooperativeProcessInterrupted) as caught:
+            _run_tool(name, [])
+    finally:
+        TOOLS.pop(name, None)
+
+    assert caught.value is original
+    assert owned.cleanup_incomplete_receipt_from_error(caught.value) == inner_receipt
+    assert inner_receipt == {
+        "stdout": "exact nested stdout\n",
+        "stderr": "exact nested stderr\n",
+        "returncode": 1,
+        "execution": {
+            "process_group_id": 654,
+            "completion_scope": "cleanup_incomplete",
+        },
+    }
+    captured = capsys.readouterr()
+    assert captured.out == "outer interrupt stdout\n"
+    assert captured.err == outer_receipt["stderr"]
+
+
+def test_tool_raises_exact_authenticated_nested_cleanup_after_forwarding_output(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    name = "nested-cleanup-test"
+    script_path = tmp_path / "unused_tool.py"
+    script_path.write_text("raise AssertionError('fixture must not launch')\n", encoding="utf-8")
+    _register_test_tool(name, script_path)
+    inner_receipt = {
+        "stdout": "exact nested stdout\n",
+        "stderr": "exact nested stderr\n",
+        "returncode": 1,
+        "execution": {
+            "process_group_id": 987,
+            "completion_scope": "cleanup_incomplete",
+        },
+    }
+    nonce = "tool-nested-cleanup-nonce"
+    stream = io.StringIO()
+    owned.emit_cleanup_incomplete_event(inner_receipt, nonce=nonce, stream=stream)
+    outer_receipt = {
+        "stdout": "outer tool stdout\n",
+        "stderr": "outer tool stderr\n" + stream.getvalue(),
+        "returncode": 1,
+        "execution": {
+            "process_group_id": 789,
+            "completion_scope": "process_group_quiescent",
+            "cleanup_event_nonce": nonce,
+        },
+    }
+    monkeypatch.setattr(
+        owned,
+        "run_cooperative_process",
+        lambda *args, **kwargs: outer_receipt,
+    )
+    try:
+        with pytest.raises(owned.CooperativeCleanupIncomplete) as caught:
+            _run_tool(name, [])
+    finally:
+        TOOLS.pop(name, None)
+
+    assert caught.value.result == inner_receipt
+    assert caught.value.outer_process_result is outer_receipt  # type: ignore[attr-defined]
+    captured = capsys.readouterr()
+    assert captured.out == outer_receipt["stdout"]
+    assert captured.err == outer_receipt["stderr"]
 
 
 @pytest.mark.skipif(

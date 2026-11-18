@@ -3,7 +3,8 @@ from __future__ import annotations
 import time
 from pathlib import Path
 
-from core.jobs.job_store import JobStore
+from core.jobs.job_store import JobStore, process_failure_result_from_error
+from core.utils.cooperative_subprocess import CooperativeProcessInterrupted
 
 
 def _wait_for_job(store: JobStore, job_id: str, timeout: float = 2.0):
@@ -72,3 +73,33 @@ def test_job_store_marks_error_status_when_runner_returns_error_payload():
     assert record["status"] == "error"
     assert isinstance(record.get("result"), dict)
     assert record["result"].get("error") == "boom"
+
+
+def test_process_failure_finds_retained_streams_through_exception_links() -> None:
+    receipt = {
+        "returncode": 130,
+        "stdout": "retained stdout",
+        "stderr": "retained stderr",
+        "execution": {
+            "process_group_id": 321,
+            "completion_scope": "process_group_quiescent",
+        },
+        "cancellation": {
+            "reason": "interrupt",
+            "operator_interrupt_observed": True,
+            "interrupt_count": 1,
+        },
+    }
+
+    for link_name in ("__context__", "__cause__"):
+        original = CooperativeProcessInterrupted(receipt)
+        wrapper = RuntimeError(f"wrapper using {link_name}")
+        setattr(wrapper, link_name, original)
+
+        failed = process_failure_result_from_error(wrapper)
+
+        assert failed["stdout"] == "retained stdout"
+        assert failed["stderr"] == "retained stderr"
+        assert failed["returncode"] == 130
+        assert failed["cancellation"] == receipt["cancellation"]
+        assert failed["cancelled"] is True

@@ -7,6 +7,7 @@ import io
 import json
 import os
 from pathlib import Path
+import signal
 import subprocess
 import sys
 import threading
@@ -160,6 +161,137 @@ def test_stdio_clean_owned_cancellation_emits_response_and_exit_130(
     assert failed["stderr"] == "retained benchmark diagnostics"
     assert "aisp_cleanup_incomplete" not in streams.err
     assert not server._cleanup_barrier_path().exists()
+
+
+def test_stdio_defers_second_sigint_until_terminal_response_and_event(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    outer = {
+        "returncode": 130,
+        "stdout": "original outer stdout",
+        "stderr": "original outer stderr",
+        "execution": {
+            "process_group_id": 456,
+            "completion_scope": "process_group_quiescent",
+        },
+        "cancellation": {
+            "reason": "interrupt",
+            "operator_interrupt_observed": True,
+            "interrupt_count": 1,
+            "repeated_interrupts": 0,
+        },
+    }
+    cleanup = _receipt(True)
+    cleanup["cancellation"].update({"interrupt_count": 1, "repeated_interrupts": 0})
+    error = owned.CooperativeProcessInterrupted(outer)
+    error.cleanup_incomplete_receipt = cleanup
+    instance = server.MCPServer()
+    monkeypatch.setattr(
+        instance,
+        "handle_message",
+        lambda _message: (_ for _ in ()).throw(error),
+    )
+    original_failure = server.process_failure_result_from_error
+
+    def interrupt_after_failure_helper(exc: BaseException) -> dict:
+        failed = original_failure(exc)
+        signal.raise_signal(signal.SIGINT)
+        return failed
+
+    monkeypatch.setattr(
+        server,
+        "process_failure_result_from_error",
+        interrupt_after_failure_helper,
+    )
+    request = {
+        "jsonrpc": "2.0",
+        "id": 9,
+        "method": "tools/call",
+        "params": {"name": "run_benchmarks", "arguments": {}},
+    }
+    monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(request) + "\n"))
+    nonce = "stdio-repeated-interrupt-nonce"
+
+    assert instance.run_stdio(cleanup_event_nonce=nonce) == 130
+
+    streams = capsys.readouterr()
+    responses = [json.loads(line) for line in streams.out.splitlines()]
+    assert len(responses) == 1
+    failed = json.loads(responses[0]["result"]["content"][0]["text"])["result"]
+    assert failed["stdout"] == "original outer stdout"
+    assert failed["stderr"] == "original outer stderr"
+    assert failed["cancellation"]["interrupt_count"] == 2
+    assert failed["cancellation"]["repeated_interrupts"] == 1
+    assert failed["cleanup_incomplete"]["cancellation"]["interrupt_count"] == 2
+    emitted_cleanup = owned.parse_cleanup_incomplete_event(
+        streams.err,
+        expected_nonce=nonce,
+    )
+    assert emitted_cleanup == cleanup
+    assert emitted_cleanup["cancellation"]["interrupt_count"] == 2
+
+
+def test_stdio_late_sigint_adds_top_level_cancellation_to_cleanup_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    cleanup = _receipt(False)
+    error = owned.CooperativeCleanupIncomplete(cleanup)
+    instance = server.MCPServer()
+    monkeypatch.setattr(
+        instance,
+        "handle_message",
+        lambda _message: (_ for _ in ()).throw(error),
+    )
+    original_failure = server.process_failure_result_from_error
+
+    def interrupt_after_failure_helper(exc: BaseException) -> dict:
+        failed = original_failure(exc)
+        signal.raise_signal(signal.SIGINT)
+        return failed
+
+    monkeypatch.setattr(
+        server,
+        "process_failure_result_from_error",
+        interrupt_after_failure_helper,
+    )
+    request = {
+        "jsonrpc": "2.0",
+        "id": 10,
+        "method": "tools/call",
+        "params": {"name": "run_benchmarks", "arguments": {}},
+    }
+    monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(request) + "\n"))
+    nonce = "stdio-late-interrupt-nonce"
+
+    assert instance.run_stdio(cleanup_event_nonce=nonce) == 130
+
+    streams = capsys.readouterr()
+    responses = [json.loads(line) for line in streams.out.splitlines()]
+    assert len(responses) == 1
+    failed = json.loads(responses[0]["result"]["content"][0]["text"])["result"]
+    cancellation = failed["cancellation"]
+    assert failed["cancelled"] is True
+    assert cancellation == failed["cleanup_incomplete"]["cancellation"]
+    assert cancellation == {
+        "signal": "SIGINT",
+        "process_group_id": 123,
+        "reason": "interrupt",
+        "signal_forwarded": False,
+        "signal_not_forwarded_reason": "process_group_already_quiescent",
+        "operator_interrupt_observed": True,
+        "interrupt_count": 1,
+        "repeated_interrupts": 0,
+        "status": "cleanup_incomplete",
+    }
+    assert failed["stdout"] == "CPU fixture stdout"
+    assert failed["stderr"] == "CPU fixture stderr"
+    emitted_cleanup = owned.parse_cleanup_incomplete_event(
+        streams.err,
+        expected_nonce=nonce,
+    )
+    assert emitted_cleanup == failed["cleanup_incomplete"]
 
 
 class _InterruptingInput:
@@ -723,6 +855,143 @@ def next_request(params):
     )
     assert not probe.exists()
     assert (tmp_path / "shared-queue" / "cleanup_incomplete.json").is_file()
+
+
+def test_fresh_stdio_refuses_persisted_barrier_then_serves_read_only_request(
+    tmp_path: Path,
+) -> None:
+    queue = tmp_path / "shared-queue"
+    queue.mkdir()
+    blocking_cleanup = _receipt(True)
+    blocking_cleanup["command"] = ["previous", "benchmark"]
+    blocking_cleanup["cancelled"] = True
+    blocking_cleanup["cancellation"].update({"interrupt_count": 1, "repeated_interrupts": 0})
+    (queue / "cleanup_incomplete.json").write_text(
+        json.dumps(
+            {
+                "event": "aisp_cleanup_incomplete",
+                "receipt": blocking_cleanup,
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    probe = tmp_path / "owned-work-ran"
+    hook = """
+import os
+from pathlib import Path
+import mcp.mcp_server as server
+server._QUEUE_DIR = Path(os.environ['CPU_QUEUE'])
+@server.register_tool('cpu_owned_probe', 'CPU owned-work probe', {'type':'object','properties':{}})
+def owned_probe(params):
+    server._assert_owned_work_admission()
+    Path(os.environ['CPU_PROBE']).write_text('ran')
+    return {'value':'probe'}
+"""
+    (tmp_path / "sitecustomize.py").write_text(hook, encoding="utf-8")
+    environment = dict(
+        os.environ,
+        PYTHONPATH=str(tmp_path) + os.pathsep + str(CODE_ROOT),
+        CPU_QUEUE=str(queue),
+        CPU_PROBE=str(probe),
+    )
+    requests = "".join(
+        [
+            json.dumps(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "tools/call",
+                    "params": {"name": "cpu_owned_probe", "arguments": {}},
+                }
+            )
+            + "\n",
+            json.dumps(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 2,
+                    "method": "tools/list",
+                    "params": {},
+                }
+            )
+            + "\n",
+        ]
+    )
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "from mcp.mcp_server import main\nraise SystemExit(main())\n",
+            "--serve",
+        ],
+        cwd=CODE_ROOT,
+        env=environment,
+        input=requests,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    responses = [json.loads(line) for line in result.stdout.splitlines()]
+    assert [response["id"] for response in responses] == [1, 2]
+    refused = json.loads(responses[0]["result"]["content"][0]["text"])["result"]
+    assert refused["admission_blocked"] is True
+    assert refused["blocking_cleanup"] == blocking_cleanup
+    assert refused["success"] is False
+    for stale_field in ("command", "stdout", "stderr", "returncode", "cancelled", "cancellation"):
+        assert stale_field not in refused
+    assert responses[1]["result"]["tools"]
+    assert not probe.exists()
+    assert "aisp_cleanup_incomplete" not in result.stderr
+
+
+def test_real_broad_handlers_preserve_request_scoped_persisted_admission(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import core.cluster as cluster
+
+    blocking_cleanup = _receipt(True)
+    blocking_cleanup["cancelled"] = True
+    path = server._cleanup_barrier_path()
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        json.dumps(
+            {
+                "event": "aisp_cleanup_incomplete",
+                "receipt": blocking_cleanup,
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    def forbidden(*_args, **_kwargs):
+        raise AssertionError("Owned work ran after persisted admission was blocked")
+
+    monkeypatch.setattr(subprocess, "run", forbidden)
+    monkeypatch.setattr(cluster, "run_cluster_eval_suite", forbidden)
+    instance = server.MCPServer()
+
+    for tool_name in ("gpu_topology_matrix", "cluster_eval_suite"):
+        result = instance.call_tool(tool_name, {"include_context": False})
+        assert result.is_error is True
+        payload = json.loads(result.content[0]["text"])
+        refused = payload["result"]
+        assert refused["admission_blocked"] is True
+        assert refused["blocking_cleanup"] == blocking_cleanup
+        assert refused["success"] is False
+        assert "cancelled" not in refused
+        assert "cancellation" not in refused
+
+    read_only = instance.call_tool(
+        "job_status",
+        {"job_id": "missing-read-only-job", "include_context": False},
+    )
+    read_only_payload = json.loads(read_only.content[0]["text"])
+    assert read_only_payload["result"]["status"] == "not_found"
+    assert "admission_blocked" not in read_only_payload["result"]
 
 
 def test_background_fatal_is_terminal_and_blocks_already_queued_work(

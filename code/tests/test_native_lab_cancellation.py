@@ -186,6 +186,16 @@ while True:
     assert receipt["stderr"] == (
         "build stderr before cleanup release\nbuild stderr after cleanup release\n"
     )
+    artifact_paths = {name: Path(path) for name, path in receipt["artifact_paths"].items()}
+    assert benchmark._directory is not None
+    assert benchmark._directory.parent == tmp_path / "artifacts"
+    assert {path.parent for path in artifact_paths.values()} == {benchmark._directory}
+    assert artifact_paths["stdout"].name == "native_build.stdout.log"
+    assert artifact_paths["stderr"].name == "native_build.stderr.log"
+    assert artifact_paths["execution"].name == "native_build.execution.json"
+    assert artifact_paths["stdout"].read_text() == receipt["stdout"]
+    assert artifact_paths["stderr"].read_text() == receipt["stderr"]
+    assert json.loads(artifact_paths["execution"].read_text()) == receipt
     with pytest.raises(ProcessLookupError):
         os.killpg(observed[0], 0)
 

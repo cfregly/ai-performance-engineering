@@ -109,8 +109,10 @@ WORKFLOW EXAMPLES:
     Benchmarks:      run_benchmarks(async=true) → job_status → benchmark_triage
 """
 
+import io
 import json
 import os
+import signal
 import shlex
 import sys
 import subprocess
@@ -119,11 +121,12 @@ import threading
 import uuid
 import re
 import contextlib
+import contextvars
 from collections import defaultdict, deque
 from pathlib import Path
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Callable, Dict, List, Optional, Tuple, TypedDict
+from typing import Any, Callable, Dict, List, NoReturn, Optional, Tuple, TypedDict
 
 from typing_extensions import NotRequired
 
@@ -169,7 +172,10 @@ from core.api.redaction import redact_sensitive_data
 from core.benchmark.expectations import UPDATE_EXPECTATIONS_HELP_TEXT
 from core.harness.progress import ProgressEvent, ProgressRecorder
 from core.jobs import JobStore
-from core.jobs.job_store import process_failure_result_from_error
+from core.jobs.job_store import (
+    process_failure_result_from_error,
+    retained_process_result_from_error,
+)
 from core.profiling.profiler_config import (
     MINIMAL_METRICS,
     NCU_REPLAY_MODES,
@@ -179,6 +185,7 @@ from core.profiling.profiler_config import (
 from core.utils.cooperative_subprocess import (
     CooperativeCleanupIncomplete,
     CooperativeProcessInterrupted,
+    _record_post_cleanup_interrupts,
     cleanup_incomplete_receipt_from_error,
     consume_cleanup_event_nonce,
     emit_cleanup_incomplete_event,
@@ -546,6 +553,8 @@ def register_tool(name: str, description: str, schema: Dict[str, Any] = None):
 
             try:
                 return func(call_params)
+            except OwnedWorkAdmissionBlocked:
+                raise
             except Exception as exc:  # pragma: no cover - defensive
                 # Return normalized error with success=False for consistency
                 return {"error": str(exc), "success": False}
@@ -1695,6 +1704,40 @@ _UNVERIFIABLE_CLEANUP: Dict[Path, Dict[str, Any]] = {}
 _ADMISSION_LOCK = threading.Lock()
 
 
+class OwnedWorkAdmissionBlocked(RuntimeError):
+    """Refuse new owned work without replaying a previous request's failure."""
+
+    def __init__(self, blocking_cleanup: Dict[str, Any], barrier_path: Path, reason: str) -> None:
+        super().__init__(f"Owned work is blocked by {reason} at {barrier_path}")
+        self.result = {
+            "admission_blocked": True,
+            "blocking_cleanup": blocking_cleanup,
+            "cleanup_barrier_path": str(barrier_path),
+        }
+
+
+@dataclass
+class _OwnedWorkAdmissionScope:
+    blocked: Optional[OwnedWorkAdmissionBlocked] = None
+
+
+_OWNED_WORK_ADMISSION_SCOPE: contextvars.ContextVar[Optional[_OwnedWorkAdmissionScope]] = (
+    contextvars.ContextVar("aisp_owned_work_admission_scope", default=None)
+)
+
+
+def _raise_owned_work_admission_blocked(
+    blocking_cleanup: Dict[str, Any],
+    barrier_path: Path,
+    reason: str = "retained cleanup evidence",
+) -> NoReturn:
+    error = OwnedWorkAdmissionBlocked(blocking_cleanup, barrier_path, reason)
+    scope = _OWNED_WORK_ADMISSION_SCOPE.get()
+    if scope is not None and scope.blocked is None:
+        scope.blocked = error
+    raise error
+
+
 def _cleanup_barrier_path() -> Path:
     return _QUEUE_DIR / "cleanup_incomplete.json"
 
@@ -1737,17 +1780,25 @@ def _remember_terminal_cleanup(error: BaseException) -> None:
             ),
             {"error": str(protocol_error)},
         )
-        error.cleanup_protocol_error = str(protocol_error)
-        error.owned_work_admission = _remember_unverifiable_cleanup(captured, protocol_error)
+        setattr(error, "cleanup_protocol_error", str(protocol_error))
+        setattr(
+            error,
+            "owned_work_admission",
+            _remember_unverifiable_cleanup(captured, protocol_error),
+        )
         return
     if receipt is None:
         return
     JOB_STORE.record_incomplete_cleanup(receipt)
-    error.owned_work_admission = _persist_cleanup_barrier(
-        {
-            "event": "aisp_cleanup_incomplete",
-            "receipt": receipt,
-        }
+    setattr(
+        error,
+        "owned_work_admission",
+        _persist_cleanup_barrier(
+            {
+                "event": "aisp_cleanup_incomplete",
+                "receipt": receipt,
+            }
+        ),
     )
 
 
@@ -1757,25 +1808,25 @@ def _assert_owned_work_admission() -> None:
         raise CooperativeCleanupIncomplete(receipt)
     path = _cleanup_barrier_path()
     with _ADMISSION_LOCK:
-        if path in _UNVERIFIABLE_CLEANUP:
-            raise RuntimeError(
-                f"Owned work is blocked by unverifiable cleanup diagnostics at {path}"
-            )
+        unverifiable = _UNVERIFIABLE_CLEANUP.get(path)
+    if unverifiable is not None:
+        _raise_owned_work_admission_blocked(unverifiable, path, "unverifiable cleanup diagnostics")
     if path.is_symlink():
-        raise RuntimeError(f"Owned work is blocked by an untrusted cleanup record at {path}")
+        _raise_owned_work_admission_blocked(
+            {"error": "Cleanup barrier is a symbolic link"}, path, "an untrusted cleanup record"
+        )
     if not path.exists():
         return
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
+        if isinstance(payload, dict) and payload.get("event") == "aisp_cleanup_unverifiable":
+            _raise_owned_work_admission_blocked(payload, path, "unverifiable cleanup diagnostics")
         if not isinstance(payload, dict) or payload.get("event") != "aisp_cleanup_incomplete":
-            raise ValueError("Cleanup barrier requires an incomplete-cleanup event")
+            raise ValueError("Unrecognized cleanup barrier event")
         receipt = validate_cleanup_incomplete_receipt(payload.get("receipt"))
     except (OSError, UnicodeError, ValueError) as exc:
-        raise RuntimeError(
-            f"Owned work is blocked by an unreadable cleanup record at {path}: {exc}"
-        ) from exc
-    JOB_STORE.record_incomplete_cleanup(receipt)
-    raise CooperativeCleanupIncomplete(receipt)
+        _raise_owned_work_admission_blocked({"error": str(exc)}, path, "an unreadable cleanup record")
+    _raise_owned_work_admission_blocked(receipt, path)
 
 
 def _stderr_text(value: Any) -> str:
@@ -1803,17 +1854,17 @@ def _check_child_cleanup_result(result: Dict[str, Any]) -> Dict[str, Any]:
         try:
             receipt = _parse_child_cleanup_event(result)
         except ValueError as exc:
-            exc.owned_work_admission = _remember_unverifiable_cleanup(result, exc)
+            setattr(exc, "owned_work_admission", _remember_unverifiable_cleanup(result, exc))
             raise
     if receipt is None:
         return result
     fatal = CooperativeCleanupIncomplete(receipt)
     if operator_interrupt_from_error(fatal):
         interrupted = CooperativeProcessInterrupted(result)
-        interrupted.cleanup_incomplete_receipt = receipt
+        setattr(interrupted, "cleanup_incomplete_receipt", receipt)
         _remember_terminal_cleanup(interrupted)
         raise interrupted
-    fatal.outer_process_result = result
+    setattr(fatal, "outer_process_result", result)
     _remember_terminal_cleanup(fatal)
     raise fatal
 
@@ -2147,7 +2198,7 @@ def _monitor_overlap(
         active = _active_run_processes(records, ignore_pids)
         if active:
             overlap_event.set()
-        time.sleep(poll_seconds)
+        stop_event.wait(poll_seconds)
 
 
 def _extract_exit_code(result: Any) -> Optional[int]:
@@ -3008,6 +3059,7 @@ def tool_run_benchmarks(params: Dict[str, Any]) -> Dict[str, Any]:
             except ValueError as exc:
                 return {"error": f"timeout_seconds: {exc}", "success": False}
     timeout_seconds = timeout_param
+    test_mode = _is_test_mode()
     if (
         bool(params.get("async", False))
         and not bool(params.get("precheck_only", False))
@@ -3089,7 +3141,6 @@ def tool_run_benchmarks(params: Dict[str, Any]) -> Dict[str, Any]:
     only_cuda = bool(params.get("only_cuda", False))
     auto_analyze = bool(params.get("auto_analyze", True))
     auto_report = bool(params.get("auto_report", True))
-    test_mode = _is_test_mode()
     if test_mode:
         if "auto_analyze" not in params:
             auto_analyze = True
@@ -3658,8 +3709,6 @@ def tool_benchmark_deep_dive_compare(params: Dict[str, Any]) -> Dict[str, Any]:
             context_level,
         )
     timeout_seconds = None if timeout_param is None else int(timeout_param)
-    if _is_test_mode() and (timeout_seconds is None or timeout_seconds <= 0):
-        timeout_seconds = 600
     run_dir = _resolve_run_dir(output_dir, str(run_id))
     progress_path = _progress_path_for_run(run_dir, str(run_id))
 
@@ -3719,8 +3768,6 @@ def tool_benchmark_deep_dive_compare(params: Dict[str, Any]) -> Dict[str, Any]:
         if test_mode:
             bench_iterations = min(bench_iterations, 1)
             bench_warmup = min(bench_warmup, 1)
-            if bench_timeout is None or bench_timeout <= 0 or bench_timeout > 300:
-                bench_timeout = 300
         # Run bench with deep_dive profiling into output_dir/<timestamp>/...
         bench_params = {
             "targets": targets,
@@ -3734,7 +3781,7 @@ def tool_benchmark_deep_dive_compare(params: Dict[str, Any]) -> Dict[str, Any]:
             "apply_patches": False,
             "only_python": bool(test_mode),
         }
-        if "timeout_seconds" in params or test_mode:
+        if "timeout_seconds" in params:
             bench_params["timeout_seconds"] = bench_timeout
         effective_validity_profile = validity_profile
         if test_mode and "validity_profile" not in params:
@@ -4592,8 +4639,12 @@ def _resolve_baseline_wrapper_path(path: Path) -> Path:
                     "default": 5,
                 },
                 "deep_dive_timeout_seconds": {
-                    "type": "integer",
-                    "description": "Max runtime for deep_dive run (0/null = no timeout).",
+                    "type": ["integer", "null"],
+                    "description": (
+                        "Max runtime for the deep_dive run. Set 0 or null for no deadline in "
+                        "synchronous mode. Async mode with deep_dive=auto or always requires "
+                        "an explicit positive value."
+                    ),
                     "default": 0,
                 },
                 "update_expectations": {
@@ -4634,8 +4685,9 @@ def _resolve_baseline_wrapper_path(path: Path) -> Path:
 )
 def tool_benchmark_explore(params: Dict[str, Any]) -> Dict[str, Any]:
     include_context, context_level = extract_context_opts(params)
+    run_async = bool(params.get("async", False))
     timeout_param = params.get("timeout_seconds")
-    if bool(params.get("async", False)) and (
+    if run_async and (
         isinstance(timeout_param, bool) or not isinstance(timeout_param, int) or timeout_param <= 0
     ):
         return make_error(
@@ -4644,6 +4696,29 @@ def tool_benchmark_explore(params: Dict[str, Any]) -> Dict[str, Any]:
             include_context,
             context_level,
         )
+    deep_dive_mode = str(params.get("deep_dive") or "auto").strip().lower()
+    if run_async and deep_dive_mode != "never":
+        deep_dive_timeout = params.get("deep_dive_timeout_seconds")
+        if (
+            isinstance(deep_dive_timeout, bool)
+            or not isinstance(deep_dive_timeout, int)
+            or deep_dive_timeout <= 0
+        ):
+            return make_error(
+                f"async=true with deep_dive={deep_dive_mode} requires an explicit positive "
+                "deep_dive_timeout_seconds because the background worker may run a deep dive "
+                "and cannot receive operator cancellation",
+                include_context,
+                context_level,
+            )
+        try:
+            validate_subprocess_wait_timeout(deep_dive_timeout)
+        except ValueError as exc:
+            return make_error(
+                f"deep_dive_timeout_seconds: {exc}",
+                include_context,
+                context_level,
+            )
     path = params.get("path")
     if not path or not isinstance(path, str):
         return make_error("path is required and must be a string.", include_context, context_level)
@@ -4905,7 +4980,6 @@ def tool_benchmark_explore(params: Dict[str, Any]) -> Dict[str, Any]:
             "progress_path": str(progress_path),
         }
 
-    run_async = bool(params.get("async", False))
     if run_async:
         job_id = f"benchmark_explore-{uuid.uuid4().hex[:10]}"
         run_metadata = {
@@ -11786,6 +11860,113 @@ def tool_suggest_tools(params: Dict[str, Any]) -> Dict[str, Any]:
 # =============================================================================
 
 
+@dataclass
+class _DeferredTerminalInterrupts:
+    """Count repeated Ctrl-C signals while terminal evidence is being emitted."""
+
+    interrupt_count: int = 0
+    _applied_count: int = 0
+    _receipts: List[Dict[str, Any]] = field(default_factory=list)
+
+    @staticmethod
+    def _can_record(receipt: Dict[str, Any]) -> bool:
+        execution = receipt.get("execution")
+        if not isinstance(execution, dict):
+            return False
+        process_group_id = execution.get("process_group_id")
+        return (
+            not isinstance(process_group_id, bool)
+            and isinstance(process_group_id, int)
+            and process_group_id > 0
+        )
+
+    def track(self, receipt: Any) -> None:
+        if (
+            isinstance(receipt, dict)
+            and self._can_record(receipt)
+            and all(receipt is not existing for existing in self._receipts)
+        ):
+            self._receipts.append(receipt)
+
+    def attach(self, error: BaseException) -> None:
+        self.track(retained_process_result_from_error(error))
+        try:
+            receipt = cleanup_incomplete_receipt_from_error(error)
+        except ValueError:
+            receipt = None
+        if receipt is not None:
+            # A nested event parsed from stderr must keep one receipt across both outputs.
+            error.cleanup_incomplete_receipt = receipt
+            self.track(receipt)
+        self.apply_pending()
+
+    def observe(self) -> None:
+        self.interrupt_count += 1
+
+    def apply_pending(self) -> None:
+        pending = self.interrupt_count - self._applied_count
+        if pending <= 0 or not self._receipts:
+            return
+        self._apply(pending)
+        self._applied_count += pending
+
+    def _apply(self, count: int) -> None:
+        for receipt in self._receipts:
+            _record_post_cleanup_interrupts(receipt, count)
+
+    def encode(self, render: Callable[[int], str]) -> str:
+        """Retry encoding when Ctrl-C changes a receipt before the first write."""
+        while True:
+            observed = self.interrupt_count
+            self.apply_pending()
+            line = render(observed)
+            if self.interrupt_count == observed:
+                return line
+
+
+@contextlib.contextmanager
+def _defer_terminal_stdio_interrupts(error: BaseException):
+    """Keep repeated Ctrl-C from replacing a terminal response or event."""
+    state = _DeferredTerminalInterrupts()
+    if threading.current_thread() is not threading.main_thread():
+        state.attach(error)
+        yield state
+        return
+    previous_handler = signal.getsignal(signal.SIGINT)
+    if previous_handler == signal.SIG_IGN:
+        state.attach(error)
+        yield state
+        return
+
+    def record_interrupt(signum: int, frame: Any) -> None:
+        del signum, frame
+        state.observe()
+
+    signal.signal(signal.SIGINT, record_interrupt)
+    try:
+        state.attach(error)
+        yield state
+    finally:
+        signal.signal(signal.SIGINT, previous_handler)
+
+
+def _call_handler_with_admission_scope(name: str, arguments: Dict[str, Any]) -> Any:
+    """Preserve a request admission refusal even when a handler catches it."""
+    scope = _OwnedWorkAdmissionScope()
+    token = _OWNED_WORK_ADMISSION_SCOPE.set(scope)
+    try:
+        result = HANDLERS[name](arguments)
+    except Exception as exc:
+        if scope.blocked is not None and exc is not scope.blocked:
+            raise scope.blocked from None
+        raise
+    finally:
+        _OWNED_WORK_ADMISSION_SCOPE.reset(token)
+    if scope.blocked is not None:
+        raise scope.blocked
+    return result
+
+
 class MCPServer:
     """MCP Server for AI Systems Performance."""
 
@@ -11823,7 +12004,7 @@ class MCPServer:
             return ToolResult(content=_content_from_payload(payload), is_error=True)
 
         try:
-            raw_result = HANDLERS[name](arguments)
+            raw_result = _call_handler_with_admission_scope(name, arguments)
             result = _normalize_result(raw_result)
             duration_ms = int((time.time() - start_ts) * 1000)
             payload = _build_enriched_tool_payload(
@@ -11839,14 +12020,19 @@ class MCPServer:
             )
         except Exception as e:
             duration_ms = int((time.time() - start_ts) * 1000)
-            payload = _build_enriched_tool_payload(
-                name,
-                arguments,
-                {
+            failure = (
+                process_failure_result_from_error(e)
+                if isinstance(e, OwnedWorkAdmissionBlocked)
+                else {
                     "error": "Tool execution failed.",
                     "error_type": type(e).__name__,
                     "success": False,
-                },
+                }
+            )
+            payload = _build_enriched_tool_payload(
+                name,
+                arguments,
+                failure,
                 duration_ms=duration_ms,
                 had_exception=True,
                 server_info=server_info,
@@ -11915,10 +12101,12 @@ class MCPServer:
         sys.stderr.write(f"{message}\n")
         sys.stderr.flush()
 
-    def _emit_stdio_json(self, payload: Dict[str, Any], *, failure_context: str) -> bool:
-        """Emit a JSON-RPC payload to stdout and report transport failures visibly."""
+    def _emit_stdio_json(
+        self, payload: dict[str, Any] | Callable[[], str], *, failure_context: str
+    ) -> bool:
+        """Encode a JSON-RPC line immediately before writing it to stdout."""
         try:
-            print(json.dumps(payload), flush=True)
+            print(payload() if callable(payload) else json.dumps(payload), flush=True)
             return True
         except Exception as exc:
             self._write_stdio_warning(f"Failed to emit {failure_context}: {exc}")
@@ -12088,6 +12276,89 @@ class MCPServer:
             # Re-raise to be handled by outer error handler
             raise
 
+    def _finish_terminal_stdio_request(
+        self,
+        exc: BaseException,
+        active_message: Optional[Dict[str, Any]],
+        *,
+        cleanup_event_nonce: str | None,
+        deferred_interrupts: _DeferredTerminalInterrupts,
+    ) -> int:
+        """Emit retained terminal evidence before returning the process exit code."""
+        _remember_terminal_cleanup(exc)
+        deferred_interrupts.apply_pending()
+        try:
+            receipt = cleanup_incomplete_receipt_from_error(exc)
+        except ValueError:
+            receipt = None
+        operator_interrupted = operator_interrupt_from_error(exc)
+        if (
+            receipt is None
+            and not hasattr(exc, "owned_work_admission")
+            and not operator_interrupted
+        ):
+            raise exc
+        event_count = -1
+        event_line = ""
+
+        def encode_event(observed: int) -> str:
+            nonlocal event_count, event_line
+            if receipt is not None and event_count != observed:
+                stream = io.StringIO()
+                emit_cleanup_incomplete_event(receipt, nonce=cleanup_event_nonce, stream=stream)
+                event_line = stream.getvalue()
+                event_count = observed
+            return event_line
+
+        request = active_message if isinstance(active_message, dict) else None
+        if request is not None:
+            params = request.get("params", {})
+            arguments = params.get("arguments", {}) if isinstance(params, dict) else {}
+            tool_name = params.get("name", "") if isinstance(params, dict) else ""
+            failed = redact_sensitive_data(process_failure_result_from_error(exc), source=arguments)
+            # Redaction makes independent copies of both receipts. Apply later signals to each.
+            deferred_interrupts.track(failed)
+            nested = failed.get("cleanup_incomplete")
+            deferred_interrupts.track(nested)
+            payload = {"tool": tool_name, "status": "error", "result": failed}
+
+            def encode_response(observed: int) -> str:
+                # Both lines must reflect interrupts during either serialization.
+                encode_event(observed)
+                if observed:
+                    failed["cancelled"] = True
+                    if (
+                        "cancellation" not in failed
+                        and isinstance(nested, dict)
+                        and "cancellation" in nested
+                    ):
+                        failed["cancellation"] = nested["cancellation"]
+                return json.dumps(
+                    {
+                        "jsonrpc": "2.0",
+                        "id": request.get("id"),
+                        "result": {
+                            "content": [{"type": "text", "text": json.dumps(payload)}],
+                            "isError": True,
+                        },
+                    }
+                )
+
+            if self._emit_stdio_json(
+                lambda: deferred_interrupts.encode(encode_response),
+                failure_context="terminal cleanup response",
+            ):
+                self._complete_request(request.get("id"))
+        if receipt is not None:
+            # A signal after stdout was written can still be included on stderr.
+            sys.stderr.write(deferred_interrupts.encode(encode_event))
+            sys.stderr.flush()
+        return (
+            130
+            if operator_interrupt_from_error(exc) or deferred_interrupts.interrupt_count
+            else 1
+        )
+
     def run_stdio(self, *, cleanup_event_nonce: str | None = None):
         """Run blocking stdio and tools on the main thread for signal delivery."""
         import sys
@@ -12134,47 +12405,13 @@ class MCPServer:
                     failure_context="parse error response",
                 )
             except (CooperativeCleanupIncomplete, KeyboardInterrupt, SystemExit) as exc:
-                _remember_terminal_cleanup(exc)
-                try:
-                    receipt = cleanup_incomplete_receipt_from_error(exc)
-                except ValueError:
-                    receipt = None
-                operator_interrupted = operator_interrupt_from_error(exc)
-                if (
-                    receipt is None
-                    and not hasattr(exc, "owned_work_admission")
-                    and not operator_interrupted
-                ):
-                    raise
-                failed = process_failure_result_from_error(exc)
-                if hasattr(exc, "owned_work_admission"):
-                    failed["owned_work_admission"] = exc.owned_work_admission
-                request = active_message if isinstance(active_message, dict) else None
-                if request is None:
-                    if receipt is not None:
-                        emit_cleanup_incomplete_event(receipt, nonce=cleanup_event_nonce)
-                    return 130 if operator_interrupted else 1
-                params = request.get("params", {})
-                arguments = params.get("arguments", {}) if isinstance(params, dict) else {}
-                tool_name = params.get("name", "") if isinstance(params, dict) else ""
-                payload = {
-                    "tool": tool_name,
-                    "status": "error",
-                    "result": redact_sensitive_data(failed, source=arguments),
-                }
-                response = {
-                    "jsonrpc": "2.0",
-                    "id": request.get("id"),
-                    "result": {
-                        "content": [{"type": "text", "text": json.dumps(payload)}],
-                        "isError": True,
-                    },
-                }
-                if self._emit_stdio_json(response, failure_context="terminal cleanup response"):
-                    self._complete_request(request.get("id"))
-                if receipt is not None:
-                    emit_cleanup_incomplete_event(receipt, nonce=cleanup_event_nonce)
-                return 130 if operator_interrupted else 1
+                with _defer_terminal_stdio_interrupts(exc) as deferred_interrupts:
+                    return self._finish_terminal_stdio_request(
+                        exc,
+                        active_message,
+                        cleanup_event_nonce=cleanup_event_nonce,
+                        deferred_interrupts=deferred_interrupts,
+                    )
             except Exception as e:
                 self._write_stdio_warning(
                     f"Internal error while handling request: {type(e).__name__}"
