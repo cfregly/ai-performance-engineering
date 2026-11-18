@@ -94,6 +94,11 @@ cost and reuse rules explicit.
 
 ## NCCL Symmetric-Memory AllReduce
 
+> **Important:** This is Chapter 4's direct `cudaMalloc`-to-NCCL symmetric-memory
+> comparison. Symmetric registration can unlock specialized collective kernels,
+> but it adds collective setup, lifetime, topology, and CUDA VMM requirements.
+> Measure the fixed AllReduce before deciding whether those costs pay back.
+
 The native symmetric-memory benchmark keeps one out-of-place float32 sum
 AllReduce fixed while changing only buffer allocation and registration:
 
@@ -133,6 +138,12 @@ CUDA_VISIBLE_DEVICES=0,1 python code/ch04/run_nccl_symmetric_memory.py \
   --all-arms --ranks 2 --elements 1048576 --iterations 2 --warmup 1
 ```
 
+> **Exercise:** Run all four arms. Explain what `ncclMemAlloc`,
+> `ncclCommRegister`, and `ncclCommWindowRegister` each add. Treat registration
+> success and full-output agreement as correctness evidence, not proof that NCCL
+> selected a specialized kernel. Use the retained Nsys or NCU reports for that
+> mechanism check.
+
 If a newer NCCL is installed outside `/usr`, point the build at that prefix:
 
 ```bash
@@ -158,15 +169,17 @@ diagnostic for each arm and profiler you want to inspect. Use the same NCCL
 prefix as the timing build. The commands below capture the window arm on two GPUs.
 
 ```bash
-make -B -C code/ch04 NVTX_ENABLED=1 nccl_symmetric_memory_native
+make -B -C code/ch04 NVTX_ENABLED=1 NCCL_HOME=/path/to/nccl nccl_symmetric_memory_native
 CUDA_VISIBLE_DEVICES=0,1 python code/ch04/run_nccl_symmetric_memory.py \
   --arm window_register --ranks 2 --elements 1048576 --iterations 2 --warmup 1 --profile nsys
 CUDA_VISIBLE_DEVICES=0,1 python code/ch04/run_nccl_symmetric_memory.py \
   --arm window_register --ranks 2 --elements 1048576 --iterations 2 --warmup 1 --profile ncu
 ```
 
-The runner uses the executable on `PATH`. Nsys traces CUDA and NVTX throughout
-the process. NCU records GPU duration over each steady AllReduce NVTX range.
+Each profile uses the first `nsys` or `ncu` executable found on `PATH`. The
+native benchmark defaults to `code/ch04/nccl_symmetric_memory_native` unless
+`--binary` overrides it. Nsys traces CUDA and NVTX throughout the process. NCU
+records GPU duration over each steady AllReduce NVTX range.
 All ranks participate in TCP lockstep during range replay. The runner checks
 the installed NCU help before MPI starts and retains that help and the version
 when the coordination controls are missing. Nsight's own target injection is

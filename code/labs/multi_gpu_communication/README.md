@@ -1,12 +1,9 @@
-# Fixed workloads, several multi-GPU communication choices
+# One workload, several multi-GPU communication choices
 
 This lab uses a fixed-iteration Jacobi solver to explain NCCL groups, compute and
-communication overlap, reusable registered buffers, and graph replay. A focused
-Chapter 4 companion holds one out-of-place float32 sum AllReduce fixed while it
-compares CUDA allocation, NCCL allocation, local communicator registration, and
-collective symmetric-window registration. Compare the same numerical work before
-deciding whether a more complex path helps. Start with the
-[guided exercises](TASKS.md) or the
+communication overlap, reusable registered buffers, and graph replay. Compare
+the same numerical work before deciding whether a more complex path helps.
+Start with the [guided exercises](TASKS.md) or the
 [NCCL groups and buffer guide](../../ch04/nccl_groups.md).
 
 ## What changes in each comparison?
@@ -14,16 +11,14 @@ deciding whether a more complex path helps. Start with the
 | Comparison | Keep fixed | Change | Main cost or constraint |
 |---|---|---|---|
 | Serialized versus overlapped exchange | Backend, grid, ranks, arithmetic, iterations, allocation, graph mode | Schedule boundary, interior, and halo work | Extra streams, events, and split launches can outweigh hidden communication |
-| CUDA allocation versus NCCL allocation and registration | Rank count, out-of-place float32 sum AllReduce, element count, initialization, and full-output check | Allocator, local registration, or collective symmetric-window registration | Setup, lifetime, topology, and symmetric-offset constraints must repay their cost, and registration alone does not prove the selected kernel |
 | Ordinary versus registered NCCL buffers | Workload and schedule | Allocation and explicit registration | Registration costs setup time and resources, and benefits depend on the selected NCCL path |
 | Eager versus graph execution | Workload, schedule, registration, and rank mapping | Submit repeated steps through captured graphs | Capture and instantiation need reuse to repay setup and require valid pointer lifetimes |
 | CUDA-aware MPI, host NCCL, and stream-ordered NVSHMEM | Numerical workload and stopping policy | Communication interface and its completion rules | MPI needs producer synchronization, while NVSHMEM needs symmetric allocation and explicit remote completion |
 
-These are separate experiments. The four-arm AllReduce is a focused attribution
-example, not another Jacobi schedule. Changing scheduling, registration, and
-graph mode together does not identify which mechanism caused a timing difference.
-NCCL grouping is part of the correct P2P exchange in both scheduling variants.
-An unsafe ungrouped exchange is not a useful performance baseline.
+Changing scheduling, registration, and graph mode together does not identify
+which mechanism caused a timing difference. NCCL grouping is part of the correct
+P2P exchange in both scheduling variants. An unsafe ungrouped exchange is not a
+useful performance baseline.
 
 ## Numerical contract
 
@@ -222,101 +217,12 @@ the independent compute stream into the NCCL phase can introduce a join and
 remove overlap. The [group guide](../../ch04/nccl_groups.md) explains the exact
 submission and completion boundaries.
 
-## Exercise 4: prove the NCCL symmetric-memory path
-
-> **Exercise 4:** Complete this focused Chapter 4 example after studying overlap
-> and before capturing the Jacobi schedule. It separates four steps that are easy
-> to collapse into one "symmetric memory" label.
-
-Read the [registration and window guide](../../ch04/nccl_device_communication.md#register-a-window-then-request-the-device-resources).
-Then, from the repository root, inspect the
-[focused runner](../../ch04/run_nccl_symmetric_memory.py), build the native
-binary, and run all four attribution arms:
-
-```bash
-python code/ch04/run_nccl_symmetric_memory.py --help
-make -C code/ch04 nccl_symmetric_memory_native
-NCCL_SYMMETRIC_RESULTS=$(mktemp -d /tmp/nccl-symmetric-memory.XXXXXX)
-export NCCL_SYMMETRIC_RESULTS
-CUDA_VISIBLE_DEVICES=0,1 python code/ch04/run_nccl_symmetric_memory.py \
-  --all-arms --ranks 2 --elements 1048576 --iterations 2 --warmup 1 \
-  --json-out "$NCCL_SYMMETRIC_RESULTS/all-arms.json"
-```
-
-This small two-rank workload is a correctness smoke. It proves only the
-supported execution and full-output checks that completed. It is not a
-performance comparison.
-
-Each arm runs the same out-of-place float32 sum AllReduce and checks the complete
-output. Only allocation and registration change:
-
-| Arm | Allocation | Registration | What it isolates |
-|---|---|---|---|
-| `cuda_malloc` | `cudaMalloc` | None | Ordinary CUDA allocation control |
-| `nccl_mem_alloc` | `ncclMemAlloc` | None | NCCL allocation without registration |
-| `comm_register` | `ncclMemAlloc` | `ncclCommRegister` for both local buffers | Local user-buffer registration under each communicator |
-| `window_register` | `ncclMemAlloc` | Collective `ncclCommWindowRegister(..., NCCL_WIN_COLL_SYMMETRIC)` for both buffers | The full symmetric-window candidate path |
-
-The public harness pair keeps only the meaningful end-to-end comparison. The
-baseline fixes `cuda_malloc`, and the optimized candidate fixes
-`window_register`. The two middle arms are attribution diagnostics, not extra
-benchmark targets. From `code/`:
-
-```bash
-python -m cli.aisp bench list-targets --chapter ch04
-python -m cli.aisp bench run --targets ch04:nccl_symmetric_memory --profile none \
-  --suite-timeout 0 --execution-timeout-seconds 0
-```
-
-Both timeout values must be explicitly zero because the pair owns an MPI process
-group through the cooperative subprocess path. A finite outer deadline cannot
-clean up that separate process group safely. Ctrl-C still requests cooperative
-shutdown, waits for the owned group, and retains its captured diagnostics.
-Each native benchmark invocation defaults to 16,777,216 elements, 20 timed
-samples, and five warmup operations.
-
-This example fails closed unless its build-time headers and loaded NCCL runtime
-are at least 2.27.3 and have the same version. The build receipt pins the
-selected `libnccl.so.2` path and SHA256. The runner checks `ldd` before MPI,
-then every rank resolves every NCCL API used by the study with `dlsym` and
-verifies its canonical library path with `dladdr`. User-supplied `LD_PRELOAD`
-must be empty when the runner starts. An unprofiled rank rejects a preload added
-by launcher arguments. The profile wrapper rejects one before Nsight starts,
-then permits Nsight's own target injection while retaining the per-symbol NCCL
-binding gate. Its supported scope is one node, one distinct GPU per MPI
-rank, no GPU shared by two ranks, the same ordered visible-device set on every
-rank, pairwise peer access, and working `NCCL_WIN_COLL_SYMMETRIC` support. The
-runner uses every visible GPU by default. Extra visible GPUs are allowed only
-when the learner explicitly selects a smaller `--ranks` value. Every rank
-participates in collective window registration. An unavailable gate is not
-replaced with another arm under the same result name.
-
-Set `NCCL_HOME=/path/to/nccl` on the `make` command when the required NCCL is a
-side-by-side installation. The build receipt records the selected `-L`
-directories and exact library identity. The Python runner prepends those
-directories only to the MPI child's `LD_LIBRARY_PATH`. It does not change
-global linker or shell defaults.
-
-`ncclMemAlloc` changes the allocation contract. Allocation alone does not
-register a buffer or establish a symmetric path. `ncclCommRegister` adds local
-registration and teardown under a communicator. Symmetric-window registration
-adds a collective setup step and requires the same buffer-head offset across
-ranks when the registered buffer is used. Those resources must remain alive
-until the last operation that can access them has completed.
-
-To inspect execution, follow the [Chapter 4 per-rank capture commands](../../ch04/README.md#capture-an-allreduce-on-every-mpi-rank).
-Use `--profile nsys` for the CUDA timeline or `--profile ncu` for coordinated
-range duration when the default NCU supports TCP lockstep. Compare the rank and
-GPU mapping in each diagnostic with the separate unprofiled run.
-
-Full-output agreement proves the observed AllReduce result. A successful
-`ncclCommRegister` or `ncclCommWindowRegister` call proves only that NCCL accepted
-the registration. It does not prove that NCCL ran a specialized symmetric-memory
-kernel. That claim needs retained runtime or profiler evidence tied to the exact
-run. The candidate also has no B200 performance evidence yet. Do not describe it
-as faster until equivalent repeated B200 measurements, correctness checks, and
-profiler evidence establish both the result and its mechanism. Continue with the
-step-by-step questions in [Exercise 4](TASKS.md#4-prove-nccl-symmetric-memory-from-allocation-to-kernel-evidence).
+> **Related Chapter 4 exercise:** The
+> [NCCL symmetric-memory AllReduce](../../ch04/README.md#nccl-symmetric-memory-allreduce)
+> separates NCCL allocation, local communicator registration, and collective
+> symmetric-window registration. It is a separate AllReduce study, not a Jacobi
+> schedule. Complete it for API and profiler attribution, then return here to
+> compare Jacobi's ordinary and locally registered buffers.
 
 ## Register the Jacobi buffers locally
 

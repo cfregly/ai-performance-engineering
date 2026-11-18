@@ -42,6 +42,7 @@ namespace {
 constexpr int kMinimumNcclVersion = 22703;
 constexpr double kRelativeTolerance = 0.0;
 constexpr double kAbsoluteTolerance = 0.0;
+constexpr std::size_t kPciBusIdBufferSize = 32;
 
 struct Unsupported : std::runtime_error {
     using std::runtime_error::runtime_error;
@@ -174,6 +175,18 @@ std::string json_quote(const std::string& value) {
         }
     }
     out << '"';
+    return out.str();
+}
+
+std::string format_cuda_uuid(const cudaUUID_t& uuid) {
+    static_assert(sizeof(cudaUUID_t) == 16, "CUDA UUIDs must contain 16 bytes");
+    const auto* bytes = reinterpret_cast<const unsigned char*>(&uuid);
+    std::ostringstream out;
+    out << "GPU-" << std::hex << std::setfill('0');
+    for (std::size_t index = 0; index < sizeof(cudaUUID_t); ++index) {
+        if (index == 4 || index == 6 || index == 8 || index == 10) out << '-';
+        out << std::setw(2) << static_cast<unsigned int>(bytes[index]);
+    }
     return out.str();
 }
 
@@ -453,6 +466,9 @@ struct NativeBenchmark {
     int device = -1;
     int device_count = 0;
     int nccl_runtime_version = 0;
+    std::string cuda_visible_devices;
+    std::vector<std::string> device_uuids_by_rank;
+    std::vector<std::string> pci_bus_ids_by_rank;
     float* send_buffer = nullptr;
     float* receive_buffer = nullptr;
     void* send_registration = nullptr;
@@ -512,6 +528,7 @@ struct NativeBenchmark {
                 "Every rank must use the same CUDA_VISIBLE_DEVICES ordering for the P2P gate"
             );
         }
+        cuda_visible_devices = root_visibility;
 
         const cudaError_t count_status = cudaGetDeviceCount(&device_count);
         const int local_device_count_valid =
@@ -544,6 +561,13 @@ struct NativeBenchmark {
         require_collective_cuda_success(
             cudaGetDeviceProperties(&properties, device), "cudaGetDeviceProperties"
         );
+        std::array<char, kPciBusIdBufferSize> pci_bus_id{};
+        require_collective_cuda_success(
+            cudaDeviceGetPCIBusId(
+                pci_bus_id.data(), static_cast<int>(pci_bus_id.size()), device
+            ),
+            "cudaDeviceGetPCIBusId"
+        );
         std::vector<unsigned char> uuids(
             static_cast<std::size_t>(local_size) * sizeof(properties.uuid)
         );
@@ -551,12 +575,51 @@ struct NativeBenchmark {
             &properties.uuid, static_cast<int>(sizeof(properties.uuid)), MPI_BYTE,
             uuids.data(), static_cast<int>(sizeof(properties.uuid)), MPI_BYTE, local
         ));
+        device_uuids_by_rank.reserve(static_cast<std::size_t>(local_size));
+        for (int peer = 0; peer < local_size; ++peer) {
+            cudaUUID_t peer_uuid{};
+            std::memcpy(
+                &peer_uuid,
+                uuids.data() + static_cast<std::size_t>(peer) * sizeof(properties.uuid),
+                sizeof(peer_uuid)
+            );
+            device_uuids_by_rank.push_back(format_cuda_uuid(peer_uuid));
+        }
+
+        std::vector<char> pci_bus_ids(
+            static_cast<std::size_t>(local_size) * kPciBusIdBufferSize, '\0'
+        );
+        MPI_CHECK(MPI_Allgather(
+            pci_bus_id.data(), static_cast<int>(pci_bus_id.size()), MPI_CHAR,
+            pci_bus_ids.data(), static_cast<int>(pci_bus_id.size()), MPI_CHAR, local
+        ));
+        int local_bus_ids_valid = 1;
+        pci_bus_ids_by_rank.reserve(static_cast<std::size_t>(local_size));
+        for (int peer = 0; peer < local_size; ++peer) {
+            const char* value = pci_bus_ids.data() +
+                static_cast<std::size_t>(peer) * kPciBusIdBufferSize;
+            const std::size_t length = strnlen(value, kPciBusIdBufferSize);
+            if (length == 0 || length == kPciBusIdBufferSize) local_bus_ids_valid = 0;
+            pci_bus_ids_by_rank.emplace_back(value, length);
+        }
+        int all_bus_ids_valid = 0;
+        MPI_CHECK(MPI_Allreduce(
+            &local_bus_ids_valid, &all_bus_ids_valid, 1, MPI_INT, MPI_MIN,
+            MPI_COMM_WORLD
+        ));
+        if (!all_bus_ids_valid) {
+            MPI_CHECK(MPI_Comm_free(&local));
+            throw Unsupported("Every selected CUDA device needs a PCI bus identifier");
+        }
         const auto local_uuid = uuids.begin() + local_rank * sizeof(properties.uuid);
         int local_unique = 1;
         for (int peer = 0; peer < local_size; ++peer) {
             if (peer == local_rank) continue;
             const auto peer_uuid = uuids.begin() + peer * sizeof(properties.uuid);
             if (std::equal(peer_uuid, peer_uuid + sizeof(properties.uuid), local_uuid)) {
+                local_unique = 0;
+            }
+            if (pci_bus_ids_by_rank[peer] == pci_bus_ids_by_rank[local_rank]) {
                 local_unique = 0;
             }
         }
@@ -566,7 +629,7 @@ struct NativeBenchmark {
         ));
         if (!all_unique) {
             MPI_CHECK(MPI_Comm_free(&local));
-            throw Unsupported("Two local ranks selected the same physical GPU");
+            throw Unsupported("Two local ranks selected the same physical GPU UUID or PCI bus");
         }
 
         int local_p2p = 1;
@@ -993,6 +1056,8 @@ int main(int argc, char** argv) {
                  << runtime_binding.verified_ranks
                  << ",\"profiler_preload_allowed\":"
                  << (options.allow_profiler_preload ? "true" : "false")
+                 << ",\"cuda_visible_devices\":"
+                 << json_quote(benchmark.cuda_visible_devices)
                  << ",\"minimum_nccl_version_code\":" << kMinimumNcclVersion
                  << ",\"setup_ms\":" << setup_ms
                  << ",\"topology_gate_ms\":" << topology_gate_ms
@@ -1043,7 +1108,11 @@ int main(int argc, char** argv) {
             for (int peer = 0; peer < ranks; ++peer) {
                 if (peer != 0) json << ',';
                 json << "{\"rank\":" << peer
-                     << ",\"device_ordinal\":" << devices_by_rank[peer] << '}';
+                     << ",\"device_ordinal\":" << devices_by_rank[peer]
+                     << ",\"gpu_uuid\":"
+                     << json_quote(benchmark.device_uuids_by_rank[peer])
+                     << ",\"pci_bus_id\":"
+                     << json_quote(benchmark.pci_bus_ids_by_rank[peer]) << '}';
             }
             json << "]}"
                  << '\n';

@@ -44,79 +44,16 @@ Use a retained Nsight Systems report to identify actual simultaneous work.
 If overlap appears but the full step is slower, inspect resource contention
 and the cost of splitting kernels and adding events. Report that outcome.
 
-## 4. Prove NCCL symmetric memory from allocation to kernel evidence
+## 4. Separate registration from scheduling
 
-> **Exercise 4:** Separate allocation, local registration, symmetric-window
-> registration, correctness, and kernel evidence before moving to graph capture.
+Keep schedule and graph mode fixed. Compare ordinary and explicitly registered
+NCCL buffers on a supported runtime. Find both registrations and their teardown.
+Confirm that all ranks use the same mode and both send and receive allocations
+remain alive through completion.
 
-From the repository root, inspect the runner, build the native binary, and run
-all four arms:
-
-```bash
-python code/ch04/run_nccl_symmetric_memory.py --help
-make -C code/ch04 nccl_symmetric_memory_native
-NCCL_SYMMETRIC_RESULTS=$(mktemp -d /tmp/nccl-symmetric-memory.XXXXXX)
-export NCCL_SYMMETRIC_RESULTS
-CUDA_VISIBLE_DEVICES=0,1 python code/ch04/run_nccl_symmetric_memory.py \
-  --all-arms --ranks 2 --elements 1048576 --iterations 2 --warmup 1 \
-  --json-out "$NCCL_SYMMETRIC_RESULTS/all-arms.json"
-```
-
-Treat this as a small correctness smoke. It proves only the supported execution
-and full-output checks that completed. It is not a performance comparison.
-
-The arms keep one out-of-place float32 sum AllReduce fixed and verify the full
-output. Trace these four paths through allocation, use, registration teardown,
-and free:
-
-1. `cuda_malloc` uses `cudaMalloc` without registration. Treat it as the control.
-2. `nccl_mem_alloc` uses `ncclMemAlloc` without registration. This isolates the
-   allocation contract.
-3. `comm_register` adds `ncclCommRegister` for both local buffers. This is local
-   registration under each communicator.
-4. `window_register` collectively registers both `ncclMemAlloc` buffers with
-   `ncclCommWindowRegister(..., NCCL_WIN_COLL_SYMMETRIC)`.
-
-Confirm before launch that the build-time headers and loaded NCCL runtime are at
-least 2.27.3 and have the same version. Check that the receipt and `ldd` identify
-the same canonical `libnccl.so.2`. The launcher checks that file's SHA256 before
-and after MPI. Each rank resolves every NCCL API used by the study with `dlsym`,
-checks its canonical library path with `dladdr`, and records the matching runtime
-version. Keep user-supplied `LD_PRELOAD` empty at the launcher boundary. An
-unprofiled rank rejects launcher-added preloads. The profile wrapper rejects one
-before Nsight starts, then permits Nsight's own target injection while every
-NCCL API must still resolve from the receipted library. Use one node, one distinct GPU per MPI rank, no
-GPU shared by two ranks, the same ordered visible-device set on every rank,
-pairwise peer access, and working symmetric-window support. The runner uses every visible GPU by
-default. Extra visible GPUs are allowed only with an explicit smaller `--ranks`
-value. Explain why every rank must enter window registration and why later
-collective buffer offsets must be equal relative to each registered buffer head.
-Do not turn an unsupported capability into a fallback result.
-
-From `code/`, inspect and run the public pair on an allocated supported system:
-
-```bash
-python -m cli.aisp bench list-targets --chapter ch04
-python -m cli.aisp bench run --targets ch04:nccl_symmetric_memory --profile none \
-  --suite-timeout 0 --execution-timeout-seconds 0
-```
-
-Both timeout values must be explicitly zero because the benchmark owns an MPI
-process group through the cooperative subprocess path. Ctrl-C remains a
-cooperative interruption that retains captured diagnostics.
-Each native benchmark invocation defaults to 16,777,216 elements, 20 timed
-samples, and five warmup operations.
-
-Use the [Chapter 4 per-rank capture commands](../../ch04/README.md#capture-an-allreduce-on-every-mpi-rank)
-to trace `cuda_malloc` and `window_register` with `--profile nsys`. Locate the
-steady AllReduce on each rank. Record the kernel names and the native report
-hashes. For NCU, read the coordinated range capture or the retained capability
-diagnostic. Use the unprofiled run for timing.
-
-The baseline fixes `cuda_malloc`. The optimized candidate fixes
-`window_register`, so that pair changes allocation and registration together.
-Use the two middle direct-runner arms to attribute those steps. Do not expose
-them as unmatched benchmark targets.
+Report setup cost separately. Use NCCL diagnostics and profiler evidence to
+investigate the selected path. Explain why avoiding an internal copy does not
+remove network bytes or guarantee a shorter iteration.
 
 For every arm, check the complete output instead of accepting initialization or
 registration as correctness. Report allocation and registration setup separately

@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import argparse
+import os
 import shutil
 import tempfile
+from collections.abc import Mapping
 from pathlib import Path
 
 import torch
@@ -13,7 +15,10 @@ from ch04.run_nccl_symmetric_memory import (
     CHAPTER_DIR,
     NativeUnavailableError,
     NativeWorkload,
+    RunBuildCustody,
     invoke_native,
+    prepare_run_cohort,
+    validate_build_receipt,
 )
 from core.benchmark.cuda_binary_benchmark import (
     BinaryRunResult,
@@ -24,6 +29,61 @@ from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import BenchmarkConfig
 from core.utils.cooperative_process_artifacts import require_owned_uncapped_native_config
 from core.utils.cooperative_subprocess import run_cooperative_process
+
+
+def resolve_nccl_home(value: str | Path, *, directory: Path | None = None) -> Path:
+    """Resolve one explicit NCCL prefix without assuming the system prefix."""
+    candidate = Path(value).expanduser()
+    if not candidate.is_absolute():
+        candidate = (Path.cwd() if directory is None else directory) / candidate
+    resolved = candidate.resolve(strict=True)
+    if not resolved.is_dir():
+        raise ValueError(f"NCCL_HOME is not a directory: {resolved}")
+    return resolved
+
+
+def configured_nccl_home(
+    override: str | Path | None,
+    environment: Mapping[str, str],
+    *,
+    directory: Path | None = None,
+) -> Path | None:
+    """Prefer the target override, then an explicit NCCL_HOME environment value."""
+    value = override
+    if value is None:
+        value = environment.get("NCCL_HOME")
+    if value is None:
+        return None
+    if not str(value).strip():
+        raise ValueError("NCCL_HOME must not be empty")
+    return resolve_nccl_home(value, directory=directory)
+
+
+def receipt_mismatch_reason(build: dict, architecture: str, nccl_home: Path | None) -> str | None:
+    """Describe why a validated receipt cannot serve this harness setup."""
+    if build.get("architecture") != architecture:
+        return f"receipt architecture {build.get('architecture')!r} does not match {architecture!r}"
+    recorded_home = build.get("nccl_home")
+    if not isinstance(recorded_home, str) or not recorded_home:
+        return "receipt does not record NCCL_HOME"
+    try:
+        resolved_home = resolve_nccl_home(recorded_home)
+    except (OSError, ValueError) as error:
+        return f"receipt NCCL_HOME is unavailable ({error})"
+    if nccl_home is not None and resolved_home != nccl_home:
+        return f"receipt NCCL_HOME {resolved_home} does not match {nccl_home}"
+    return None
+
+
+def nccl_make_command(architecture: str, nccl_home: Path) -> list[str]:
+    """Build with an explicit prefix so Make never selects /usr implicitly."""
+    return [
+        "make",
+        f"ARCH={architecture}",
+        "NVTX_ENABLED=1",
+        f"NCCL_HOME={nccl_home}",
+        "nccl_symmetric_memory_native",
+    ]
 
 
 class NcclSymmetricMemoryBenchmark(CudaBinaryBenchmark):
@@ -58,10 +118,12 @@ class NcclSymmetricMemoryBenchmark(CudaBinaryBenchmark):
         self.native_iterations = 20
         self.native_warmup = 5
         self.requested_ranks: int | None = None
+        self.nccl_home: Path | None = None
         self.launcher = "mpirun"
         self.launcher_args: tuple[str, ...] = ()
         self.workload: NativeWorkload | None = None
         self._directory: Path | None = None
+        self._run_cohort: RunBuildCustody | None = None
         self._invocations = 0
         self._output: torch.Tensor | None = None
         self._input_parameters: torch.Tensor | None = None
@@ -102,29 +164,54 @@ class NcclSymmetricMemoryBenchmark(CudaBinaryBenchmark):
             warmup=self.native_warmup,
         )
         self.workload.validate()
-        if shutil.which("nvcc") is None and not Path("/usr/local/cuda/bin/nvcc").is_file():
+        if shutil.which(self.launcher) is None:
             raise NativeUnavailableError(
-                "SKIPPED: The native NCCL symmetric-memory pair requires nvcc"
-            )
-        if shutil.which("mpicxx") is None or shutil.which(self.launcher) is None:
-            raise NativeUnavailableError(
-                "SKIPPED: The native NCCL symmetric-memory pair requires mpicxx and an MPI launcher"
+                f"SKIPPED: The native NCCL symmetric-memory pair requires {self.launcher}"
             )
 
         architecture = detect_supported_arch()
-        command = [
-            "make",
-            f"ARCH={architecture}",
-            "NVTX_ENABLED=1",
-            "nccl_symmetric_memory_native",
-        ]
-        completed = run_cooperative_process(command, cwd=CHAPTER_DIR)
-        if completed["returncode"] != 0:
-            raise RuntimeError(
-                "Native NCCL symmetric-memory build failed\n"
-                f"{completed['stdout']}\n{completed['stderr']}"
-            )
-        self.exec_path = CHAPTER_DIR / "nccl_symmetric_memory_native"
+        selected_home = configured_nccl_home(self.nccl_home, os.environ)
+        binary = CHAPTER_DIR / "nccl_symmetric_memory_native"
+        existing_build = None
+        existing_error = None
+        try:
+            existing_build = validate_build_receipt(binary)
+        except (OSError, ValueError, RuntimeError) as error:
+            existing_error = error
+        mismatch = (
+            receipt_mismatch_reason(existing_build, architecture, selected_home)
+            if existing_build is not None
+            else None
+        )
+        if existing_build is None or mismatch is not None:
+            if selected_home is None:
+                reason = str(existing_error) if existing_error is not None else mismatch
+                raise NativeUnavailableError(
+                    "SKIPPED: Set NCCL_HOME or pass --nccl-home to build this target. "
+                    f"The existing native build cannot be reused: {reason}"
+                )
+            if shutil.which("nvcc") is None and not Path("/usr/local/cuda/bin/nvcc").is_file():
+                raise NativeUnavailableError(
+                    "SKIPPED: The native NCCL symmetric-memory pair requires nvcc"
+                )
+            if shutil.which("mpicxx") is None:
+                raise NativeUnavailableError(
+                    "SKIPPED: The native NCCL symmetric-memory pair requires mpicxx"
+                )
+            command = nccl_make_command(architecture, selected_home)
+            completed = run_cooperative_process(command, cwd=CHAPTER_DIR)
+            if completed["returncode"] != 0:
+                raise RuntimeError(
+                    "Native NCCL symmetric-memory build failed\n"
+                    f"{completed['stdout']}\n{completed['stderr']}"
+                )
+            built = validate_build_receipt(binary)
+            built_mismatch = receipt_mismatch_reason(built, architecture, selected_home)
+            if built_mismatch is not None:
+                raise RuntimeError(
+                    f"Native NCCL symmetric-memory build receipt mismatch: {built_mismatch}"
+                )
+        self.exec_path = binary
         configured_output = getattr(config, "profiling_output_dir", None)
         artifact_root = (
             Path(configured_output)
@@ -133,6 +220,10 @@ class NcclSymmetricMemoryBenchmark(CudaBinaryBenchmark):
         )
         artifact_root.mkdir(parents=True, exist_ok=True)
         self._directory = Path(tempfile.mkdtemp(prefix=self.arm + "_", dir=artifact_root))
+        self._run_cohort = prepare_run_cohort(
+            binary,
+            self._directory / "run_cohort",
+        )
         self._input_parameters = torch.tensor(
             [self.elements, ranks, self.native_iterations], dtype=torch.int64
         )
@@ -148,7 +239,12 @@ class NcclSymmetricMemoryBenchmark(CudaBinaryBenchmark):
             getattr(self, "_config", None),
             launcher_name="NCCL symmetric-memory harness execution",
         )
-        if self._directory is None or self.exec_path is None or self.workload is None:
+        if (
+            self._directory is None
+            or self.exec_path is None
+            or self.workload is None
+            or self._run_cohort is None
+        ):
             raise RuntimeError("setup() must complete before the native AllReduce runs")
         self._invocations += 1
         output_path = self._directory / f"output_{self._invocations}.f32"
@@ -159,6 +255,7 @@ class NcclSymmetricMemoryBenchmark(CudaBinaryBenchmark):
             dump_output=output_path,
             launcher=self.launcher,
             launcher_args=self.launcher_args,
+            cohort=self._run_cohort,
         )
         output = torch.frombuffer(bytearray(output_path.read_bytes()), dtype=torch.float32).clone()
         if output.numel() != self.workload.elements or not torch.isfinite(output).all():
@@ -189,7 +286,7 @@ class NcclSymmetricMemoryBenchmark(CudaBinaryBenchmark):
         return VerificationPayloadMixin.get_verify_output(self)
 
     def get_verify_inputs(self) -> dict[str, torch.Tensor]:
-        return VerificationPayloadMixin.get_verify_inputs(self)
+        return dict(VerificationPayloadMixin.get_verify_inputs(self))
 
     def get_output_tolerance(self) -> tuple[float, float]:
         return 0.0, 0.0
@@ -231,6 +328,9 @@ class NcclSymmetricMemoryBenchmark(CudaBinaryBenchmark):
                 "max_abs_error",
             )
         }
+        metrics["native.python_verification_ms"] = float(
+            self._native_result["python_verification_ms"]
+        )
         metrics.update(
             {
                 f"native.{name}_ms": float(self._native_result["statistics_ms"][name])
@@ -245,6 +345,7 @@ class NcclSymmetricMemoryBenchmark(CudaBinaryBenchmark):
         parser.add_argument("--native-iterations", type=int, default=self.native_iterations)
         parser.add_argument("--native-warmup", type=int, default=self.native_warmup)
         parser.add_argument("--ranks", type=int)
+        parser.add_argument("--nccl-home", type=Path)
         parser.add_argument("--launcher", default=self.launcher)
         parser.add_argument("--launcher-arg", action="append", default=[])
         args = parser.parse_args(argv)
@@ -260,6 +361,7 @@ class NcclSymmetricMemoryBenchmark(CudaBinaryBenchmark):
         self.native_iterations = args.native_iterations
         self.native_warmup = args.native_warmup
         self.requested_ranks = args.ranks
+        self.nccl_home = args.nccl_home
         self.launcher = args.launcher
         self.launcher_args = tuple(args.launcher_arg)
         self._workload_params = {
@@ -271,6 +373,7 @@ class NcclSymmetricMemoryBenchmark(CudaBinaryBenchmark):
 
     def teardown(self) -> None:
         self._directory = None
+        self._run_cohort = None
         self.workload = None
         self._output = None
         self._input_parameters = None

@@ -67,8 +67,7 @@ nccl_symmetric_memory_force:
 
 nccl_symmetric_memory_native: nccl_symmetric_memory_force nccl_symmetric_memory_native.cu nccl_symmetric_memory_build_receipt.py Makefile $(NCCL_SYMMETRIC_CUSTODY_DEPS) $(CUDA_NVTX_DEPS)
 	@test -n "$(MPI_COMPILE_FLAGS)" || (echo "MPI flag discovery requires Open MPI mpicxx --showme:compile or explicit MPI_COMPILE_FLAGS" >&2; false)
-	$(NVCC) $(NCCL_SYMMETRIC_NVCC_FLAGS) $(MPI_COMPILE_FLAGS) $(NCCL_FLAGS) -ccbin=$(MPICXX) nccl_symmetric_memory_native.cu -o $@ $(NCCL_LIBS) $(CUDA_NVTX_LDFLAGS)
-	$(PYTHON) nccl_symmetric_memory_build_receipt.py --binary $@ --arch $(ARCH) --nvcc $(NVCC) --mpicxx $(MPICXX) --build-option $(call sh_quote,nvcc_flags=$(NCCL_SYMMETRIC_NVCC_FLAGS)) --build-option $(call sh_quote,mpi_compile_flags=$(MPI_COMPILE_FLAGS)) --build-option $(call sh_quote,nccl_flags=$(NCCL_FLAGS)) --build-option $(call sh_quote,nccl_libs=$(NCCL_LIBS)) --build-option $(call sh_quote,nvtx_libs=$(CUDA_NVTX_LDFLAGS))
+	$(PYTHON) nccl_symmetric_memory_build_receipt.py --binary $@ --compile --arch $(ARCH) --nvcc $(NVCC) --mpicxx $(MPICXX) --nccl-home $(call sh_quote,$(NCCL_HOME)) --build-option $(call sh_quote,nvcc_flags=$(NCCL_SYMMETRIC_NVCC_FLAGS)) --build-option $(call sh_quote,mpi_compile_flags=$(MPI_COMPILE_FLAGS)) --build-option $(call sh_quote,nccl_home=$(NCCL_HOME)) --build-option $(call sh_quote,nccl_flags=$(NCCL_FLAGS)) --build-option $(call sh_quote,nccl_libs=$(NCCL_LIBS)) --build-option $(call sh_quote,nvtx_libs=$(CUDA_NVTX_LDFLAGS))
 
 nvshmem_multigpu_examples$(SUFFIX): nvshmem_multigpu_examples.cu $(CUDA_NVTX_DEPS)
 ifeq ($(HAS_NVSHMEM),yes)

@@ -4,12 +4,14 @@ import hashlib
 import json
 import os
 import shlex
+import shutil
 import subprocess
 import sys
 from pathlib import Path
 
 import pytest
 
+from ch04 import nccl_symmetric_memory_benchmark as harness_benchmark
 from ch04 import nccl_symmetric_memory_build_receipt as receipt
 from ch04 import run_nccl_symmetric_memory as runner
 
@@ -35,13 +37,21 @@ def build_for(library: Path) -> dict:
 
 def test_build_receipt_records_canonical_library_and_digest(private_library, tmp_path):
     binary = tmp_path / "native"
-    binary.write_bytes(b"fixture")
+    binary.write_bytes(b"stale fixture")
     compiler = tmp_path / "compiler"
     compiler.write_text(
         "#!/bin/sh\n"
-        'if [ "$1" = --version ]; then echo fixture; else\n'
-        "printf '%s\\n' '#define NCCL_MAJOR 2' '#define NCCL_MINOR 27' '#define NCCL_PATCH 3'\n"
-        "fi\n"
+        "set -eu\n"
+        'if [ "${1-}" = --version ]; then echo fixture; exit 0; fi\n'
+        'case " $* " in\n'
+        f"  *\" -E \"*) printf '%s\\n' '{receipt.NCCL_VERSION_PROBE_MARKER} 2 27 3'; exit 0 ;;\n"
+        "esac\n"
+        "output=\n"
+        'while [ "$#" -gt 0 ]; do\n'
+        '  if [ "$1" = -o ]; then output=$2; shift 2; else shift; fi\n'
+        "done\n"
+        'test -n "$output"\n'
+        'printf "%s" "compiled fixture" > "$output"\n'
     )
     compiler.chmod(0o755)
     build = build_for(private_library)
@@ -50,19 +60,127 @@ def test_build_receipt_records_canonical_library_and_digest(private_library, tmp
         receipt.__file__,
         "--binary",
         str(binary),
+        "--compile",
         "--arch",
         "sm100",
         "--nvcc",
         str(compiler),
         "--mpicxx",
         str(compiler),
+        "--nccl-home",
+        str(private_library.parent.parent),
     ]
-    for option in ("nvcc_flags", "mpi_compile_flags", "nccl_flags", "nvtx_libs", "nccl_libs"):
+    build["build_options"]["nccl_home"] = str(private_library.parent.parent)
+    for option in (
+        "nvcc_flags",
+        "mpi_compile_flags",
+        "nccl_home",
+        "nccl_flags",
+        "nvtx_libs",
+        "nccl_libs",
+    ):
         command += ["--build-option", f"{option}={build['build_options'].get(option, '')}"]
     subprocess.run(command, check=True)
     recorded = runner.validate_build_receipt(binary)
+    assert binary.read_bytes() == b"compiled fixture"
+    assert recorded["nccl_home"] == str(private_library.parent.parent)
+    preprocessor_prefix = recorded["nccl_header_preprocessor_command"][:-4]
+    assert recorded["compile_command"][: len(preprocessor_prefix)] == preprocessor_prefix
+    assert recorded["nccl_header_preprocessor_stderr"] == ""
     assert recorded["nccl_runtime_library_path"] == str(private_library)
     assert recorded["nccl_runtime_library_sha256"] == build["nccl_runtime_library_sha256"]
+
+
+def test_header_probe_uses_real_compile_prefix_and_surfaces_stderr(tmp_path):
+    compiler = shutil.which("c++")
+    assert compiler is not None
+    cuda_include = tmp_path / "cuda include"
+    nccl_include = tmp_path / "nccl include"
+    cuda_include.mkdir()
+    nccl_include.mkdir()
+    (cuda_include / "cuda_runtime.h").write_text("#define AISP_CUDA_STUB 1\n", encoding="utf-8")
+    (nccl_include / "nccl.h").write_text(
+        "#include <cuda_runtime.h>\n"
+        "#ifndef AISP_CUDA_STUB\n"
+        '#error "CUDA stub was not selected"\n'
+        "#endif\n"
+        "#ifndef AISP_MPI_COMPILE_FLAG\n"
+        '#error "MPI compile flags were not applied"\n'
+        "#endif\n"
+        "#define NCCL_MAJOR 2\n"
+        "#define NCCL_MINOR 27\n"
+        "#define NCCL_PATCH 3\n",
+        encoding="utf-8",
+    )
+    nvcc = tmp_path / "nvcc-cpu-stub"
+    nvcc.write_text(
+        "#!/bin/bash\n"
+        "set -eu\n"
+        f"compiler={shlex.quote(compiler)}\n"
+        "translated=()\n"
+        "while (($#)); do\n"
+        '  case "$1" in\n'
+        "    -ccbin=*) shift ;;\n"
+        "    -x)\n"
+        '      if [[ ${2-} == cu ]]; then translated+=(-x c++); else translated+=("$1" "$2"); fi\n'
+        "      shift 2 ;;\n"
+        '    *) translated+=("$1"); shift ;;\n'
+        "  esac\n"
+        "done\n"
+        'exec "$compiler" "${translated[@]}"\n',
+        encoding="utf-8",
+    )
+    nvcc.chmod(0o755)
+    options = {
+        "nvcc_flags": shlex.join(["-I", str(cuda_include), "-DAISP_NVCC_FLAG=1"]),
+        "mpi_compile_flags": "-DAISP_MPI_COMPILE_FLAG=1",
+        "nccl_flags": shlex.join(["-I", str(nccl_include)]),
+    }
+
+    code, version, command, stderr = receipt.query_nccl_header_version(
+        str(nvcc), compiler, options, directory=tmp_path
+    )
+
+    assert (code, version) == (22703, "2.27.3")
+    assert command[:-4] == receipt.compile_command_prefix(str(nvcc), compiler, options)
+    assert stderr == ""
+
+    missing_cuda_flags = {**options, "nvcc_flags": "-DAISP_NVCC_FLAG=1"}
+    with pytest.raises(RuntimeError) as error:
+        receipt.query_nccl_header_version(
+            str(nvcc), compiler, missing_cuda_flags, directory=tmp_path
+        )
+    assert "NCCL header preprocessor stderr" in str(error.value)
+    assert "cuda_runtime.h" in str(error.value) or "CUDA stub was not selected" in str(error.value)
+
+
+def test_harness_forwards_explicit_nccl_home_or_reuses_matching_receipt(tmp_path):
+    nccl_home = tmp_path / "side by side NCCL"
+    nccl_home.mkdir()
+    resolved = nccl_home.resolve()
+
+    assert harness_benchmark.configured_nccl_home(None, {}) is None
+    assert harness_benchmark.configured_nccl_home(None, {"NCCL_HOME": str(nccl_home)}) == resolved
+    assert harness_benchmark.configured_nccl_home(nccl_home, {}) == resolved
+
+    build = {"architecture": "sm_100", "nccl_home": str(resolved)}
+    assert harness_benchmark.receipt_mismatch_reason(build, "sm_100", None) is None
+    assert harness_benchmark.receipt_mismatch_reason(build, "sm_100", resolved) is None
+    assert "architecture" in harness_benchmark.receipt_mismatch_reason(build, "sm_103", resolved)
+
+    other_home = tmp_path / "other NCCL"
+    other_home.mkdir()
+    assert "does not match" in harness_benchmark.receipt_mismatch_reason(
+        build, "sm_100", other_home.resolve()
+    )
+    command = harness_benchmark.nccl_make_command("sm_100", resolved)
+    assert command == [
+        "make",
+        "ARCH=sm_100",
+        "NVTX_ENABLED=1",
+        f"NCCL_HOME={resolved}",
+        "nccl_symmetric_memory_native",
+    ]
 
 
 def test_atomic_receipt_replacement_preserves_the_previous_file(tmp_path, monkeypatch):

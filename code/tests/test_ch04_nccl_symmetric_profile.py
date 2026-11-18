@@ -15,7 +15,14 @@ from ch04 import nccl_symmetric_memory_profile as capture
 from ch04 import run_nccl_symmetric_memory as runner
 
 
-def fake_profiler(path: Path, *, help_text: str = "") -> None:
+def fake_profiler(
+    path: Path,
+    *,
+    help_text: str = "",
+    inspection_text: str = (
+        "reduce:allreduce:nccl_symmetric_memory_steady/\nncclDevKernel_AllReduce_Sum_f32"
+    ),
+) -> None:
     path.write_text(
         f"#!{sys.executable}\n"
         "import pathlib, sys\n"
@@ -24,6 +31,8 @@ def fake_profiler(path: Path, *, help_text: str = "") -> None:
         "    print('control-plane test tool')\n"
         "elif args == ['--help']:\n"
         f"    print({help_text!r})\n"
+        "elif '--import' in args or (args and args[0] == 'stats'):\n"
+        f"    print({inspection_text!r})\n"
         "else:\n"
         "    flag = '--export' if '--export' in args else '--output'\n"
         "    pathlib.Path(args[args.index(flag) + 1]).write_text('control-plane fixture')\n"
@@ -51,6 +60,7 @@ def test_mpi_profile_rank_receipts_and_freshness(tmp_path, monkeypatch, name):
         environment = os.environ | {"OMPI_COMM_WORLD_RANK": str(rank), "OMPI_COMM_WORLD_SIZE": "2"}
         subprocess.run(wrapper, env=environment, check=True)
     summary = capture.collect_profile(directory, config)
+    runner.inspect_profile_scope(summary, config)
     reports = summary["ranks"]
     assert [r["rank"] for r in reports] == [0, 1]
     assert len({r["report"]["path"] for r in reports}) == 2
@@ -61,6 +71,7 @@ def test_mpi_profile_rank_receipts_and_freshness(tmp_path, monkeypatch, name):
         assert command[0] == str(tool)
         assert command[-1] == "/bin/true"
         assert rank["report"]["path"] in command
+        assert all(rank["scope_inspection"]["matched"].values())
         for field in ("report", "stdout", "stderr", "command_file"):
             assert rank[field]["sha256"] == capture.file_sha256(Path(rank[field]["path"]))
         if name == "ncu":
@@ -117,6 +128,65 @@ def test_default_ncu_without_lockstep_skips_before_launch(tmp_path, monkeypatch)
     assert not list(directory.glob("rank-*"))
 
 
+def test_profile_inspection_rejects_nonempty_report_without_requested_work(tmp_path, monkeypatch):
+    tool = tmp_path / "ncu"
+    help_text = " ".join([*capture.NCU_FLAGS, "--communicator-tcp-num-peers", "kernel range"])
+    fake_profiler(tool, help_text=help_text, inspection_text="unrelated CUDA work")
+    monkeypatch.setenv("PATH", f"{tmp_path}{os.pathsep}{os.environ['PATH']}")
+    directory = tmp_path / "diagnostics"
+    wrapper, config = capture.prepare_profile(
+        directory,
+        "ncu",
+        2,
+        ["nvcc", "-DENABLE_NVTX_PROFILING"],
+        ["/bin/true"],
+    )
+    for rank in range(2):
+        environment = os.environ | {"OMPI_COMM_WORLD_RANK": str(rank), "OMPI_COMM_WORLD_SIZE": "2"}
+        subprocess.run(wrapper, env=environment, check=True)
+    summary = capture.collect_profile(directory, config)
+    with pytest.raises(RuntimeError, match="does not prove both the requested steady range"):
+        runner.inspect_profile_scope(summary, config)
+
+
+@pytest.mark.parametrize(
+    ("inspection_text", "missing"),
+    [
+        (capture.STEADY_RANGE, "nccl_kernel"),
+        ("ncclDevKernel_AllReduce_Sum_f32", "steady_range"),
+    ],
+)
+def test_profile_inspection_rejects_range_only_and_kernel_only_reports(
+    tmp_path, monkeypatch, inspection_text, missing
+):
+    tool = tmp_path / "ncu"
+    help_text = " ".join([*capture.NCU_FLAGS, "--communicator-tcp-num-peers", "kernel range"])
+    fake_profiler(tool, help_text=help_text, inspection_text=inspection_text)
+    monkeypatch.setenv("PATH", f"{tmp_path}{os.pathsep}{os.environ['PATH']}")
+    directory = tmp_path / "diagnostics"
+    wrapper, config = capture.prepare_profile(
+        directory,
+        "ncu",
+        2,
+        ["nvcc", "-DENABLE_NVTX_PROFILING"],
+        ["/bin/true"],
+    )
+    for rank in range(2):
+        environment = os.environ | {"OMPI_COMM_WORLD_RANK": str(rank), "OMPI_COMM_WORLD_SIZE": "2"}
+        subprocess.run(wrapper, env=environment, check=True)
+    summary = capture.collect_profile(directory, config)
+
+    with pytest.raises(RuntimeError, match=rf"Missing: {missing}"):
+        runner.inspect_profile_scope(summary, config)
+
+
+def test_profile_kernel_marker_cannot_match_the_requested_range_label() -> None:
+    assert runner._profile_scope_markers(capture.STEADY_RANGE) == {
+        "steady_range": True,
+        "nccl_kernel": False,
+    }
+
+
 @pytest.mark.parametrize(
     "rank_env",
     [
@@ -170,10 +240,24 @@ def test_runner_defaults_to_timing_and_labels_skipped_profile(tmp_path):
 @pytest.mark.parametrize("name", [None, "nsys"])
 def test_direct_invocation_places_profiler_inside_mpi(tmp_path, monkeypatch, name):
     binary = tmp_path / "native"
-    binary.touch()
+    binary.write_bytes(b"fixture native")
+    library = tmp_path / "libnccl.so.2"
+    library.write_bytes(b"fixture NCCL")
+    build = {
+        "schema": runner.BUILD_SCHEMA,
+        "source_sha256": runner.build_source_hashes(),
+        "binary_sha256": runner.file_sha256(binary),
+        "nccl_header_version_code": runner.MINIMUM_NCCL_VERSION_CODE,
+        "minimum_nccl_version_code": runner.MINIMUM_NCCL_VERSION_CODE,
+        "compile_command": ["nvcc", "-DENABLE_NVTX_PROFILING"],
+        "compiler_versions": {"nvcc": "fixture", "mpicxx": "fixture"},
+        "build_options": {"nccl_libs": "-L/fixture/lib -lnccl"},
+        "nccl_runtime_library_path": str(library),
+        "nccl_runtime_library_sha256": runner.file_sha256(library),
+    }
+    binary.with_name(binary.name + ".build.json").write_text(json.dumps(build))
     fake_profiler(tmp_path / "nsys")
     monkeypatch.setenv("PATH", f"{tmp_path}{os.pathsep}{os.environ['PATH']}")
-    monkeypatch.setattr(runner, "validate_build_receipt", lambda _: {"compile_command": ["nvcc"]})
     monkeypatch.setattr(runner, "child_runtime_environment", lambda _: (dict(os.environ), []))
     monkeypatch.setattr(runner, "verify_loader_binding", lambda *args: tmp_path / "libnccl.so.2")
     commands = []
@@ -195,13 +279,18 @@ def test_direct_invocation_places_profiler_inside_mpi(tmp_path, monkeypatch, nam
         )
     (command,) = commands
     assert command[1:3] == ["-np", "2"]
+    staged_binary = Path(
+        command[3] if name is None else json.loads(Path(command[5]).read_text())["native_argv"][0]
+    )
+    assert staged_binary != binary
+    assert staged_binary.parent == receipt.with_name(receipt.name + ".run")
     if name is None:
-        assert command[3] == str(binary)
+        assert command[3] == str(staged_binary)
         assert "--allow-profiler-preload" not in command
     else:
         assert command[3:5] == [sys.executable, str(Path(capture.__file__).resolve())]
         config = json.loads(Path(command[5]).read_text())
-        assert config["native_argv"][0] == str(binary)
+        assert config["native_argv"][0] == str(staged_binary)
         assert str(tmp_path / "result.json.nsys" / "profiled.native.json") in config["native_argv"]
         assert config["native_argv"][-1] == "--allow-profiler-preload"
     assert not receipt.exists()

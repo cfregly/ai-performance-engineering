@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import subprocess
 import sys
 from array import array
@@ -155,6 +156,7 @@ def _valid_result(workload: runner.NativeWorkload) -> dict:
         "nccl_runtime_library_path": "/opt/nccl/lib/libnccl.so.2",
         "nccl_runtime_library_verified_ranks": workload.ranks,
         "profiler_preload_allowed": False,
+        "cuda_visible_devices": ",".join(str(rank) for rank in range(workload.ranks)),
         "minimum_nccl_version_code": 22703,
         "timing_scope": "MPI_MAX CUDA event elapsed around one ncclAllReduce",
         "setup_ms": 5.0,
@@ -187,7 +189,15 @@ def _valid_result(workload: runner.NativeWorkload) -> dict:
             }
             for rank in range(workload.ranks)
         ],
-        "rank_mapping": [{"rank": rank, "device_ordinal": rank} for rank in range(workload.ranks)],
+        "rank_mapping": [
+            {
+                "rank": rank,
+                "device_ordinal": rank,
+                "gpu_uuid": f"GPU-00000000-0000-0000-0000-{rank + 1:012x}",
+                "pci_bus_id": f"0000:{rank + 1:02x}:00.0",
+            }
+            for rank in range(workload.ranks)
+        ],
     }
 
 
@@ -214,6 +224,24 @@ def test_result_validator_requires_every_rank_and_unique_gpu() -> None:
     result["rank_mapping"][1]["device_ordinal"] = 0
     with pytest.raises(RuntimeError, match="distinct GPU"):
         runner.validate_result(result, workload)
+    result = _valid_result(workload)
+    result["rank_mapping"][1]["gpu_uuid"] = result["rank_mapping"][0]["gpu_uuid"]
+    with pytest.raises(RuntimeError, match="physical GPU evidence"):
+        runner.validate_result(result, workload)
+    result = _valid_result(workload)
+    result["rank_mapping"][1]["pci_bus_id"] = result["rank_mapping"][0]["pci_bus_id"]
+    with pytest.raises(RuntimeError, match="physical GPU evidence"):
+        runner.validate_result(result, workload)
+
+
+def test_result_validator_binds_ordered_visibility_to_the_launcher() -> None:
+    workload = runner.NativeWorkload(
+        arm="cuda_malloc", ranks=2, elements=128, iterations=2, warmup=0
+    )
+    result = _valid_result(workload)
+    runner.validate_result(result, workload, expected_cuda_visibility="0,1")
+    with pytest.raises(RuntimeError, match="launcher environment"):
+        runner.validate_result(result, workload, expected_cuda_visibility="1,0")
 
 
 @pytest.mark.parametrize("arm", runner.ARMS)
@@ -357,6 +385,32 @@ def test_child_runtime_environment_uses_receipted_nccl_path_without_mutating_par
     assert runner.os.environ["LD_LIBRARY_PATH"] == "/inherited/runtime"
 
 
+def test_mechanism_environment_retains_forced_settings_without_secret_values() -> None:
+    captured = runner.mechanism_environment(
+        {
+            "CUDA_VISIBLE_DEVICES": "GPU-b,GPU-a",
+            "NCCL_ALGO": "Tree",
+            "NCCL_AUTH_TOKEN": "do-not-retain-this-token",
+            "OMPI_MCA_btl": "self,vader,tcp",
+            "UCX_TLS": "cuda_copy,cuda_ipc",
+            "AWS_SECRET_ACCESS_KEY": "outside-filter",
+        }
+    )
+    assert captured["cuda_visible_devices"] == "GPU-b,GPU-a"
+    assert captured["variables"] == {
+        "CUDA_VISIBLE_DEVICES": "GPU-b,GPU-a",
+        "NCCL_ALGO": "Tree",
+        "NCCL_AUTH_TOKEN": "<redacted>",
+        "OMPI_MCA_btl": "self,vader,tcp",
+        "UCX_TLS": "cuda_copy,cuda_ipc",
+    }
+    assert captured["redacted_variables"] == ["NCCL_AUTH_TOKEN"]
+    assert captured["nccl_environment_overrides"] == ["NCCL_ALGO", "NCCL_AUTH_TOKEN"]
+    assert captured["nccl_attribution"] == "forced_environment"
+    assert "do-not-retain-this-token" not in json.dumps(captured)
+    assert "outside-filter" not in json.dumps(captured)
+
+
 def test_native_nccl_runtime_failures_are_errors_not_capability_skips() -> None:
     source = _native_source()
     collective_check = source.split("void require_collective_nccl_success", 1)[1].split(
@@ -418,6 +472,9 @@ def test_native_topology_rejections_are_collectively_ordered() -> None:
         assert local < reduction < collective < rejection
     assert "require_collective_cuda_success(cudaSetDevice" in gate
     assert 'cudaGetDeviceProperties(&properties, device), "cudaGetDeviceProperties"' in gate
+    assert "cudaDeviceGetPCIBusId" in gate
+    assert "format_cuda_uuid" in gate
+    assert "pci_bus_ids_by_rank" in gate
     assert 'require_collective_cuda_success(p2p_status, "cudaDeviceCanAccessPeer")' in gate
 
 
