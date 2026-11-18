@@ -8,14 +8,18 @@ buffer reuse, and GPU progress. Use the
 [host-on-stream communication lab](../multi_gpu_communication/README.md) when a
 regular host-enqueued communication phase is sufficient.
 
-The Python launcher requires a POSIX Python environment with `psutil`,
-`waitid`/`WNOWAIT`, and `pthread_sigmask`. Linux Python provides these process
-controls. SIGINT must not be ignored, SIGCHLD must have its default disposition,
+The Python launcher requires a POSIX Python environment with `psutil` and
+`waitid`/`WNOWAIT`. Linux Python provides these process controls. SIGINT must not
+be ignored, SIGCHLD must have its default disposition,
 and no other component may reap the owned launcher. Unsupported signal
 dispositions are rejected before launch. Each MPI launch has its own owned
 process group. Cancellation forwards
 an interrupt and waits for cleanup, retaining both streams and an
-`.execution.json` receipt beside the result.
+`.execution.json` receipt beside the result. If a descendant escapes into another
+process group while retaining a capture pipe, the launcher drains the available
+bytes and closes its read end after the owned group becomes quiescent. The receipt
+records this limit in `execution.capture_limit`. The launcher does not signal the
+escaped process or retain its later output.
 
 The learning sequence builds on the
 [FZJ-JSC multi-GPU tutorial](https://github.com/FZJ-JSC/tutorial-multi-gpu/tree/cd34f9d40d600efd8d84e433b1a9e84ab5eff5f3).
@@ -270,10 +274,12 @@ explicitly set to zero. They disable the harness suite and execution-stage
 deadlines for the owned isolated subprocess. A finite outer worker timeout
 cannot safely clean up the native MPI launcher's separate process group, so
 both benchmark variants reject finite execution before the build starts.
-Standalone native launches remain supported. Internal compiler and profiler
-deadlines remain. Correctness, environment, and speedup gates also remain active.
-On interruption, the caller requests cleanup and waits for the owned process
-group to finish. See the
+Standalone native launches remain supported. The native build and launch have
+no time deadline. Both use owned cooperative process groups and wait for cleanup
+after Ctrl-C. They capture output while they run. Failures and interruptions
+retain that output in their diagnostics. The generic harness profiler remains
+disabled for these native MPI wrappers. Correctness, environment, and speedup
+gates remain active. See the
 [execution deadline contract](../../docs/api-reference.md#8-benchmark-domain).
 
 ## Profile the protocol that actually ran

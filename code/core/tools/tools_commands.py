@@ -12,7 +12,7 @@ import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 try:
     import typer
@@ -36,6 +36,7 @@ class ToolSpec:
     script_path: Path
     description: str
     module_name: Optional[str] = None
+    cooperative_process: bool = False
 
 
 TOOLS: Dict[str, ToolSpec] = {
@@ -65,15 +66,20 @@ TOOLS: Dict[str, ToolSpec] = {
     ),
     "multi-gpu-communication": ToolSpec(
         name="multi-gpu-communication",
-        script_path=REPO_ROOT / "labs" / "multi_gpu_communication" / "run_lab_multi_gpu_communication.py",
+        script_path=REPO_ROOT
+        / "labs"
+        / "multi_gpu_communication"
+        / "run_lab_multi_gpu_communication.py",
         module_name="labs.multi_gpu_communication.run_lab_multi_gpu_communication",
         description="Run the prebuilt fixed-work Jacobi communication lab.",
+        cooperative_process=True,
     ),
     "nvshmem-device": ToolSpec(
         name="nvshmem-device",
         script_path=REPO_ROOT / "labs" / "nvshmem_device" / "run_lab_nvshmem_device.py",
         module_name="labs.nvshmem_device.run_lab_nvshmem_device",
         description="Run device NVSHMEM halos and verified signal or atomic-counter exchanges.",
+        cooperative_process=True,
     ),
     "serving-compare": ToolSpec(
         name="serving-compare",
@@ -104,6 +110,7 @@ TOOLS: Dict[str, ToolSpec] = {
         script_path=REPO_ROOT / "labs" / "trace_replay" / "trace_replay_tool.py",
         module_name="labs.trace_replay.trace_replay_tool",
         description="Capture operator inputs and replay native benchmark pairs with retained evidence.",
+        cooperative_process=True,
     ),
     "kv-cache": ToolSpec(
         name="kv-cache",
@@ -290,9 +297,55 @@ TOOLS: Dict[str, ToolSpec] = {
 
 # Shared with the MCP surface so the diagnostic tool allowlist cannot drift.
 DIAGNOSTIC_TOOLS = (
-    "network-diagnose", "fabric-diagnose", "transport-diagnose",
-    "collective-diagnose", "serving-compare", "serving-prepare-runtime", "cross-layer-diagnose",
+    "network-diagnose",
+    "fabric-diagnose",
+    "transport-diagnose",
+    "collective-diagnose",
+    "serving-compare",
+    "serving-prepare-runtime",
+    "cross-layer-diagnose",
 )
+
+
+class ToolCaptureEvidenceError(RuntimeError):
+    """Reject replay of tool output when capture was not exact."""
+
+    def __init__(
+        self,
+        *,
+        receipt: Dict[str, Any],
+        indicators: List[str],
+    ) -> None:
+        joined = ", ".join(indicators)
+        super().__init__(
+            "Cannot replay tool output because subprocess capture was inexact: "
+            f"{joined}. The full process receipt is attached to this exception."
+        )
+        self.result = receipt
+        self.cooperative_process_result = receipt
+
+
+def _require_exact_tool_capture(receipt: Dict[str, Any]) -> None:
+    """Fail before writing replacement text or a stream closed before EOF."""
+    execution = receipt.get("execution")
+    indicators: List[str] = []
+    if isinstance(execution, dict):
+        indicators.extend(
+            f"execution.{name}"
+            for name in (
+                "capture_errors",
+                "capture_limit",
+                "undecodable_streams_base64",
+            )
+            if name in execution
+        )
+    if "raw_streams_base64" in receipt:
+        indicators.append("raw_streams_base64")
+    if indicators:
+        raise ToolCaptureEvidenceError(
+            receipt=receipt,
+            indicators=indicators,
+        )
 
 
 def _run_tool(tool: str, tool_args: Optional[List[str]]) -> int:
@@ -308,7 +361,8 @@ def _run_tool(tool: str, tool_args: Optional[List[str]]) -> int:
         argv=tool_args or [],
     )
     env = build_repo_python_env(REPO_ROOT)
-    if tool == "trace-replay":
+    help_only = any(arg in {"-h", "--help"} for arg in (tool_args or []))
+    if spec.cooperative_process and not help_only:
         from core.utils.cooperative_subprocess import (
             CooperativeProcessInterrupted,
             run_cooperative_process,
@@ -317,9 +371,11 @@ def _run_tool(tool: str, tool_args: Optional[List[str]]) -> int:
         try:
             captured = run_cooperative_process(cmd, env=env)
         except CooperativeProcessInterrupted as exc:
+            _require_exact_tool_capture(exc.result)
             sys.stdout.write(exc.result["stdout"])
             sys.stderr.write(exc.result["stderr"])
             raise
+        _require_exact_tool_capture(captured)
         sys.stdout.write(captured["stdout"])
         sys.stderr.write(captured["stderr"])
         return int(captured["returncode"])

@@ -9,7 +9,7 @@ Verify Mode Support:
     CUDA binaries can participate in verification by emitting checksums when
     built with -DVERIFY=1. The harness parses "VERIFY_CHECKSUM: <float>" from
     stdout and compares baseline vs optimized checksums.
-    
+
     Include cuda_verify.cuh in your CUDA code:
         #include "cuda_verify.cuh"
         VERIFY_CHECKSUM(buffer, size, &checksum);
@@ -38,9 +38,9 @@ from core.harness.benchmark_harness import (
     BaseBenchmark,
     BenchmarkConfig,
     _benchmark_child_preexec,
+    _require_exact_subprocess_capture,
 )
 from core.harness.cuda_capabilities import pipeline_runtime_allowed
-
 
 # Default regex for parsing VERIFY_CHECKSUM from stdout
 VERIFY_CHECKSUM_REGEX = r"VERIFY_CHECKSUM:\s*([0-9.eE+-]+)"
@@ -85,13 +85,19 @@ def _run_subprocess_capture(
             os.strerror(errno.ENOENT),
             str(args[0]),
         )
+    _require_exact_subprocess_capture(
+        result,
+        context=f"CUDA binary command {args[0]!r}",
+    )
     if result.get("timeout_hit"):
-        raise subprocess.TimeoutExpired(
+        error = subprocess.TimeoutExpired(
             list(args),
             timeout,
             output=result["stdout"],
             stderr=result["stderr"],
         )
+        setattr(error, "cooperative_process_result", result)
+        raise error
     return subprocess.CompletedProcess(
         args=list(args),
         returncode=result["returncode"],
@@ -116,12 +122,12 @@ def detect_supported_arch() -> str:
     """Infer the CUDA architecture for building binaries from the active GPU."""
     if not torch.cuda.is_available():
         raise RuntimeError("CUDA device required to benchmark CUDA binaries")
-    
+
     major, minor = torch.cuda.get_device_capability()
     architecture = SUPPORTED_CAPABILITY_ARCH.get((major, minor))
     if architecture is not None:
         return architecture
-    
+
     raise RuntimeError(
         f"Unsupported compute capability {major}.{minor}. "
         f"Supported architectures: {sorted(ARCH_SUFFIX)}"
@@ -131,6 +137,7 @@ def detect_supported_arch() -> str:
 @dataclass
 class BinaryRunResult:
     """Holds metrics parsed from a CUDA binary execution."""
+
     time_ms: Optional[float]
     raw_stdout: str
     raw_stderr: str
@@ -138,11 +145,11 @@ class BinaryRunResult:
 
 class CudaBinaryBenchmark(VerificationPayloadMixin, BaseBenchmark):
     """Benchmark wrapper that builds and runs a CUDA executable.
-    
+
     Supports two build modes:
     - Perf mode (default): No -DVERIFY flag, optimized for timing
     - Verify mode: Built with -DVERIFY=1, emits checksums for verification
-    
+
     Attributes:
         verify_checksum_regex: Regex pattern for parsing VERIFY_CHECKSUM from stdout
         _verify_checksum: Last parsed verify checksum (None if not in verify mode)
@@ -160,7 +167,7 @@ class CudaBinaryBenchmark(VerificationPayloadMixin, BaseBenchmark):
     # Opt in only when the Makefile provides <binary>_profile<arch suffix>
     # and that build marks the complete timed workload with this NVTX range.
     ncu_profile_nvtx_include: Optional[str] = None
-    
+
     def __init__(
         self,
         chapter_dir: Path,
@@ -190,18 +197,18 @@ class CudaBinaryBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.require_tma_instructions = require_tma_instructions
         self.use_reported_time = True
         self._workload_params = workload_params or {}
-        
+
         # Verify mode support
         self.verify_checksum_regex = verify_checksum_regex or VERIFY_CHECKSUM_REGEX
         self._verify_checksum_pattern = re.compile(self.verify_checksum_regex)
         self._verify_checksum: Optional[float] = None
         self._verify_exec_path: Optional[Path] = None
         self._profile_exec_path: Optional[Path] = None
-        
+
         self.arch: Optional[str] = None
         self.exec_path: Optional[Path] = None
         self._last_result: Optional[BinaryRunResult] = None
-    
+
     # ------------------------------------------------------------------ Helper API
     def _require_supported_execution_timeout(self) -> None:
         """Reject uncapped execution before stock binary build or launch work."""
@@ -220,11 +227,11 @@ class CudaBinaryBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
     def _build_binary(self, verify_mode: bool = False, *, profile_mode: bool = False) -> Path:
         """Compile the requested CUDA binary.
-        
+
         Args:
             verify_mode: If True, build with -DVERIFY=1 flag for verification
             profile_mode: Build a separate NVTX-enabled profiling executable.
-            
+
         Returns:
             Path to the built binary
         """
@@ -233,7 +240,7 @@ class CudaBinaryBenchmark(VerificationPayloadMixin, BaseBenchmark):
             raise ValueError("Verification and profiling builds must be separate")
         self.arch = detect_supported_arch()
         suffix = ARCH_SUFFIX[self.arch]
-        
+
         # Verify builds get a _verify suffix to keep them separate
         if verify_mode:
             target = f"{self.binary_name}_verify{suffix}"
@@ -241,33 +248,35 @@ class CudaBinaryBenchmark(VerificationPayloadMixin, BaseBenchmark):
             target = f"{self.binary_name}_profile{suffix}"
         else:
             target = f"{self.binary_name}{suffix}"
-        
+
         build_cmd = ["make", f"ARCH={self.arch}", target]
         if verify_mode:
             build_cmd.append("VERIFY=1")
         elif profile_mode:
             build_cmd.append("NVTX_ENABLED=1")
-        
+
         try:
             completed = _run_subprocess_capture(
                 build_cmd,
                 cwd=self.chapter_dir,
                 timeout=60,  # 60 second timeout - CUDA compilation can take time for complex kernels
             )
-        except subprocess.TimeoutExpired:
-            raise RuntimeError(f"Build timeout: {target} compilation exceeded 60 seconds")
-        
+        except subprocess.TimeoutExpired as exc:
+            error = RuntimeError(f"Build timeout: {target} compilation exceeded 60 seconds")
+            setattr(error, "cooperative_process_result", getattr(exc, "cooperative_process_result"))
+            raise error from exc
+
         if completed.returncode != 0:
             raise RuntimeError(
                 f"Failed to build {target} (arch={self.arch}).\n"
                 f"stdout:\n{completed.stdout}\n"
                 f"stderr:\n{completed.stderr}"
             )
-        
+
         path = self.chapter_dir / target
         if not path.exists():
             raise FileNotFoundError(f"Built binary not found at {path}")
-        
+
         if verify_mode:
             self._verify_exec_path = path
         elif profile_mode:
@@ -276,7 +285,7 @@ class CudaBinaryBenchmark(VerificationPayloadMixin, BaseBenchmark):
             self.exec_path = path
             if self.require_tma_instructions:
                 require_tma_instructions(self.exec_path)
-        
+
         return path
 
     def get_ncu_profile_command(self) -> tuple[list[str], str]:
@@ -290,34 +299,39 @@ class CudaBinaryBenchmark(VerificationPayloadMixin, BaseBenchmark):
             )
         executable = self._build_binary(profile_mode=True)
         return [str(executable), *map(str, self.run_args)], selection
-    
+
     def _build_binary_verify(self) -> Path:
         """Build the verify-mode binary with -DVERIFY=1.
-        
+
         Returns:
             Path to the verify binary
         """
         return self._build_binary(verify_mode=True)
-    
+
     def _run_verify(self) -> Optional[float]:
         """Run the verify binary and parse checksum from stdout.
-        
+
         Returns:
             Parsed checksum, or None if not found
         """
         self._require_supported_execution_timeout()
         if self._verify_exec_path is None:
             raise RuntimeError("Verify binary not built (call _build_binary_verify first)")
-        
+
         try:
             completed = _run_subprocess_capture(
                 [str(self._verify_exec_path), *self.run_args],
                 cwd=self.chapter_dir,
                 timeout=self.timeout_seconds,
             )
-        except subprocess.TimeoutExpired:
-            raise RuntimeError(f"Verify timeout: {self._verify_exec_path.name} exceeded {self.timeout_seconds} seconds")
-        
+        except subprocess.TimeoutExpired as exc:
+            error = RuntimeError(
+                f"Verify timeout: {self._verify_exec_path.name} exceeded "
+                f"{self.timeout_seconds} seconds"
+            )
+            setattr(error, "cooperative_process_result", getattr(exc, "cooperative_process_result"))
+            raise error from exc
+
         if completed.returncode != 0:
             skip_message = _extract_binary_skip_message(completed)
             if skip_message is not None:
@@ -327,27 +341,27 @@ class CudaBinaryBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 f"stdout:\n{completed.stdout}\n"
                 f"stderr:\n{completed.stderr}"
             )
-        
+
         # Parse checksum from stdout
         match = self._verify_checksum_pattern.search(completed.stdout)
         if match:
             self._verify_checksum = float(match.group(1))
             return self._verify_checksum
-        
+
         return None
-    
+
     def check_perf_binary_clean(self) -> tuple[bool, Optional[str]]:
         """Check that perf binary doesn't contain VERIFY symbols.
-        
+
         Uses nm to inspect the binary for VERIFY-related symbols.
         Perf binaries should NOT have any VERIFY code paths.
-        
+
         Returns:
             Tuple of (is_clean, error_message)
         """
         if self.exec_path is None:
             return False, "Perf binary not built"
-        
+
         try:
             # Use nm to list symbols
             completed = subprocess.run(
@@ -356,43 +370,47 @@ class CudaBinaryBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 text=True,
                 timeout=10,
             )
-            
+
             if completed.returncode != 0:
                 # nm might fail on some binaries, skip check
                 return True, None
-            
+
             # Check for VERIFY-related symbols
             verify_patterns = [
                 r"VERIFY",
                 r"verify_checksum",
                 r"_verify_sum",
             ]
-            
+
             for pattern in verify_patterns:
                 if re.search(pattern, completed.stdout, re.IGNORECASE):
                     return False, f"Found VERIFY symbol matching '{pattern}' in perf binary"
-            
+
             return True, None
-            
+
         except (subprocess.TimeoutExpired, FileNotFoundError):
             # If nm not available or times out, skip check
             return True, None
-    
+
     def _run_once(self) -> BinaryRunResult:
         """Execute the compiled binary and parse its runtime."""
         self._require_supported_execution_timeout()
         if self.exec_path is None:
             raise RuntimeError("Executable path not set (build step missing)")
-        
+
         try:
             completed = _run_subprocess_capture(
                 [str(self.exec_path), *self.run_args],
                 cwd=self.chapter_dir,
                 timeout=self.timeout_seconds,
             )
-        except subprocess.TimeoutExpired:
-            raise RuntimeError(f"Execution timeout: {self.exec_path.name} exceeded {self.timeout_seconds} seconds")
-        
+        except subprocess.TimeoutExpired as exc:
+            error = RuntimeError(
+                f"Execution timeout: {self.exec_path.name} exceeded {self.timeout_seconds} seconds"
+            )
+            setattr(error, "cooperative_process_result", getattr(exc, "cooperative_process_result"))
+            raise error from exc
+
         if completed.returncode != 0:
             skip_message = _extract_binary_skip_message(completed)
             if skip_message is not None:
@@ -402,16 +420,18 @@ class CudaBinaryBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 f"stdout:\n{completed.stdout}\n"
                 f"stderr:\n{completed.stderr}"
             )
-        
+
         time_ms = parse_kernel_time_ms(completed.stdout, self.time_regex)
         if time_ms is None:
             raise RuntimeError(
                 f"Could not parse execution time from output of {self.exec_path.name}.\n"
                 f"stdout:\n{completed.stdout}"
             )
-        
-        return BinaryRunResult(time_ms=time_ms, raw_stdout=completed.stdout, raw_stderr=completed.stderr)
-    
+
+        return BinaryRunResult(
+            time_ms=time_ms, raw_stdout=completed.stdout, raw_stderr=completed.stderr
+        )
+
     # ------------------------------------------------------------------ Benchmark API
     def setup(self) -> None:
         """Build the executable once before benchmarking."""
@@ -421,12 +441,12 @@ class CudaBinaryBenchmark(VerificationPayloadMixin, BaseBenchmark):
             if not supported:
                 raise RuntimeError(f"SKIPPED: CUDA Pipeline API unavailable ({reason})")
         self._build_binary(verify_mode=False)
-    
+
     def benchmark_fn(self) -> None:
         """Launch the executable and record its runtime."""
         self._require_supported_execution_timeout()
         self._last_result = self._run_once()
-    
+
     def teardown(self) -> None:
         """No runtime resources to release."""
         pass
@@ -438,7 +458,7 @@ class CudaBinaryBenchmark(VerificationPayloadMixin, BaseBenchmark):
         Verification uses checksum outputs emitted by the verify-mode binary.
         """
         return {"placeholder": torch.zeros(1, dtype=torch.float32)}
-    
+
     def get_config(self) -> BenchmarkConfig:
         """Configure harness to use CPU timers (subprocess measures wall time)."""
         return BenchmarkConfig(
@@ -455,7 +475,7 @@ class CudaBinaryBenchmark(VerificationPayloadMixin, BaseBenchmark):
             adaptive_iterations=False,
             cross_validate_timing=False,
         )
-    
+
     def validate_result(self) -> Optional[str]:
         """Ensure we captured at least one timing measurement."""
         if self._last_result is None:
@@ -463,25 +483,25 @@ class CudaBinaryBenchmark(VerificationPayloadMixin, BaseBenchmark):
         if self._last_result.time_ms is None or self._last_result.time_ms <= 0:
             return f"Invalid runtime parsed: {self._last_result.time_ms} ms"
         return None
-    
+
     def get_input_signature(self) -> dict:
         """MANDATORY: Return input signature for verification.
-        
+
         CUDA binaries have workload parameters baked in at compile time.
         Subclasses MUST either:
         1. Pass workload_params to __init__, OR
         2. Override this method to return explicit parameters
-        
+
         NO AUTO-INFERENCE. NO FALLBACKS. EVERYTHING EXPLICIT.
-        
+
         Common parameters to include:
         - N, M, K: Matrix/vector sizes
         - batch_size, seq_len: Sequence dimensions
         - hidden_dim, num_heads: Model dimensions
-        
+
         Returns:
             Dict with workload parameters (MUST be non-empty)
-            
+
         Raises:
             NotImplementedError: If workload_params not provided and method not overridden
         """
@@ -496,7 +516,7 @@ class CudaBinaryBenchmark(VerificationPayloadMixin, BaseBenchmark):
             "get_input_signature(). NO AUTO-INFERENCE. NO FALLBACKS. "
             "Return a dict with workload parameters (e.g., {'M': 4096, 'N': 4096, 'K': 4096})."
         )
-    
+
     def get_output_tolerance(self) -> tuple[float, float]:
         """Verification tolerance for checksum-based CUDA binaries.
 
@@ -523,13 +543,13 @@ class CudaBinaryBenchmark(VerificationPayloadMixin, BaseBenchmark):
         if dtype in {"fp16", "float16", "half", "bf16", "bfloat16"}:
             return (1e-3, 1e-3)
         return (1e-5, 1e-5)
-    
+
     def get_verify_output(self) -> "torch.Tensor":
         """Return checksum tensor from last verify run.
-        
+
         If verify binary hasn't been run, builds and runs it to get checksum.
         Returns a tensor containing the checksum for comparison with optimized.
-        
+
         Returns:
             Tensor containing the checksum value
         """
@@ -548,21 +568,21 @@ class CudaBinaryBenchmark(VerificationPayloadMixin, BaseBenchmark):
                     f"CUDA binary verification failed: {e}. "
                     "Ensure the binary supports -DVERIFY=1 build mode."
                 ) from e
-        
+
         if self._verify_checksum is None:
             raise RuntimeError(
                 "CUDA binary did not emit VERIFY_CHECKSUM. "
                 "Include cuda_verify.cuh and call VERIFY_PRINT_CHECKSUM()."
             )
-        
+
         return torch.tensor([self._verify_checksum], dtype=torch.float32)
-    
+
     def run_verify(self) -> Optional[float]:
         """Build verify binary and run to get checksum.
-        
+
         Convenience method that builds the verify binary (if not already built)
         and runs it to capture the checksum.
-        
+
         Returns:
             Parsed checksum, or None if not found
         """
@@ -570,12 +590,12 @@ class CudaBinaryBenchmark(VerificationPayloadMixin, BaseBenchmark):
         if self._verify_exec_path is None:
             self._build_binary_verify()
         return self._run_verify()
-    
+
     # Convenience accessors -----------------------------------------------------
     @property
     def last_time_ms(self) -> Optional[float]:
         return None if self._last_result is None else self._last_result.time_ms
-    
+
     @property
     def last_stdout(self) -> Optional[str]:
         return None if self._last_result is None else self._last_result.raw_stdout

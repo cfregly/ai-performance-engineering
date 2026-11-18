@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import base64
+import locale
 import math
 import shlex
 import signal
@@ -38,10 +40,26 @@ def _finite_interval(value: float, name: str, *, positive: bool) -> float:
     return result
 
 
+def _owned_sigint_context():
+    """Defer Ctrl-C when this process has an active Python SIGINT handler."""
+    if (
+        threading.current_thread() is threading.main_thread()
+        and signal.getsignal(signal.SIGINT) != signal.SIG_IGN
+    ):
+        return defer_sigint_during_owned_launch()
+    return nullcontext(DeferredSigintState())
+
+
 @dataclass(frozen=True)
 class _ProcessIdentity:
     pid: int
     create_time: float
+
+
+@dataclass(frozen=True)
+class _DrainResult:
+    complete: bool
+    captured: tuple[bytes | str, bytes | str]
 
 
 def _identity(process: psutil.Process) -> _ProcessIdentity | None:
@@ -103,7 +121,9 @@ class _OwnedProcesses:
             try:
                 process = _resolve(identity)
             except psutil.AccessDenied as error:
-                self.record_observation_error("resolve for descendant discovery", identity.pid, error)
+                self.record_observation_error(
+                    "resolve for descendant discovery", identity.pid, error
+                )
                 continue
             if process is None:
                 continue
@@ -186,12 +206,69 @@ def _wait_for_owned_exit(owned: _OwnedProcesses, timeout_seconds: float) -> None
 def _drain_root(
     process: psutil.Popen[Any],
     timeout_seconds: float,
-) -> tuple[str, str] | None:
+    errors: list[str],
+) -> _DrainResult:
     try:
         stdout, stderr = process.communicate(timeout=max(timeout_seconds, 0.001))
-        return stdout or "", stderr or ""
-    except subprocess.TimeoutExpired:
-        return None
+        return _DrainResult(True, (stdout or b"", stderr or b""))
+    except subprocess.TimeoutExpired as error:
+        return _DrainResult(False, (error.output or b"", error.stderr or b""))
+    except Exception as error:
+        errors.append(f"drain root pid {process.pid}: {type(error).__name__}: {error}")
+        return _DrainResult(False, (b"", b""))
+
+
+def _merge_captured_output(
+    previous: tuple[bytes | str, bytes | str],
+    current: tuple[bytes | str, bytes | str],
+) -> tuple[bytes | str, bytes | str]:
+    """Merge repeated communicate results without duplicating cumulative bytes."""
+
+    def merge_stream(left: bytes | str, right: bytes | str) -> bytes | str:
+        if not left:
+            return right
+        if not right:
+            return left
+        if type(left) is not type(right):
+            return right
+        if isinstance(left, bytes):
+            assert isinstance(right, bytes)
+            if right.startswith(left):
+                return right
+            if left.startswith(right):
+                return left
+            return left + right
+        assert isinstance(right, str)
+        if right.startswith(left):
+            return right
+        if left.startswith(right):
+            return left
+        return left + right
+
+    return (
+        merge_stream(previous[0], current[0]),
+        merge_stream(previous[1], current[1]),
+    )
+
+
+def _decode_captured_output(
+    captured: tuple[bytes | str, bytes | str],
+) -> tuple[str, str, dict[str, str]]:
+    """Decode captured bytes without losing an invalid original stream."""
+    encoding = locale.getpreferredencoding(False) or "utf-8"
+    decoded: dict[str, str] = {}
+    raw_streams: dict[str, str] = {}
+    for name, value in zip(("stdout", "stderr"), captured, strict=True):
+        if isinstance(value, bytes):
+            try:
+                text = value.decode(encoding)
+            except UnicodeDecodeError:
+                text = value.decode(encoding, errors="replace")
+                raw_streams[name] = base64.b64encode(value).decode("ascii")
+        else:
+            text = value
+        decoded[name] = text.replace("\r\n", "\n").replace("\r", "\n")
+    return decoded["stdout"], decoded["stderr"], raw_streams
 
 
 def run_owned_process(
@@ -221,9 +298,7 @@ def run_owned_process(
     command = [str(value) for value in argv]
     owner_token = uuid.uuid4().hex
     child_env, cleanup_event_nonce = prepare_cleanup_event_env(env)
-    inherited_owner_tokens = [
-        token for token in child_env.get(_OWNER_ENV, "").split(",") if token
-    ]
+    inherited_owner_tokens = [token for token in child_env.get(_OWNER_ENV, "").split(",") if token]
     child_env[_OWNER_ENV] = ",".join([*inherited_owner_tokens, owner_token])
     started_monotonic = time.monotonic()
     process: psutil.Popen[Any] | None = None
@@ -231,11 +306,7 @@ def run_owned_process(
     stop_tracking = threading.Event()
     tracker: threading.Thread | None = None
     launch: DeferredSigintState | None = None
-    launch_context = (
-        defer_sigint_during_owned_launch()
-        if threading.current_thread() is threading.main_thread()
-        else nullcontext(DeferredSigintState())
-    )
+    launch_context = _owned_sigint_context()
 
     def _cleanup_result_once(
         *,
@@ -243,37 +314,44 @@ def run_owned_process(
         timeout_hit: bool,
         operator_interrupt: bool = False,
         pending_error: BaseException | None = None,
-        captured_output: tuple[str, str] | None = None,
+        captured_output: tuple[bytes | str, bytes | str] | None = None,
     ) -> dict[str, Any]:
         assert process is not None
         cleanup_errors: list[str] = []
         owned.discover_descendants()
         owned.discover_owner_token()
         sigint_sent = _signal_live(owned, "sigint", cleanup_errors)
-        drained = captured_output
-        if drained is None:
-            drained = _drain_root(process, interrupt_grace_seconds)
-        _wait_for_owned_exit(owned, interrupt_grace_seconds if drained is not None else 0.0)
+        drained = captured_output or (b"", b"")
+        drain_complete = captured_output is not None
+        if not drain_complete:
+            attempt = _drain_root(process, interrupt_grace_seconds, cleanup_errors)
+            drained = _merge_captured_output(drained, attempt.captured)
+            drain_complete = attempt.complete
+        _wait_for_owned_exit(owned, interrupt_grace_seconds if drain_complete else 0.0)
 
         owned.discover_descendants()
         owned.discover_owner_token()
         terminate_sent = _signal_live(owned, "terminate", cleanup_errors)
-        if drained is None:
-            drained = _drain_root(process, terminate_grace_seconds)
+        if not drain_complete:
+            attempt = _drain_root(process, terminate_grace_seconds, cleanup_errors)
+            drained = _merge_captured_output(drained, attempt.captured)
+            drain_complete = attempt.complete
         _wait_for_owned_exit(owned, terminate_grace_seconds)
 
         owned.discover_descendants()
         owned.discover_owner_token()
         kill_sent = _signal_live(owned, "kill", cleanup_errors)
-        if drained is None:
-            drained = _drain_root(process, 1.0)
+        if not drain_complete:
+            attempt = _drain_root(process, 1.0, cleanup_errors)
+            drained = _merge_captured_output(drained, attempt.captured)
+            drain_complete = attempt.complete
         _wait_for_owned_exit(owned, 1.0)
         owned.discover_descendants()
         owned.discover_owner_token()
         survivors = sorted(item.pid for item in owned.live())
         cleanup_errors = sorted({*cleanup_errors, *owned.observation_errors()})
-        stdout, stderr = drained or ("", "")
-        incomplete = bool(survivors or cleanup_errors or drained is None)
+        stdout, stderr, raw_streams = _decode_captured_output(drained)
+        incomplete = bool(survivors or cleanup_errors or not drain_complete)
         result: dict[str, Any] = {
             "command": shlex.join(command),
             "returncode": 124 if timeout_hit else (130 if operator_interrupt else process.poll()),
@@ -289,7 +367,9 @@ def run_owned_process(
                 "start_new_session": True,
                 "cleanup_event_nonce": cleanup_event_nonce,
                 "live_process_group_members": None if cleanup_errors else survivors,
-                "completion_scope": "cleanup_incomplete" if incomplete else "process_tree_quiescent",
+                "completion_scope": "cleanup_incomplete"
+                if incomplete
+                else "process_tree_quiescent",
             },
             "termination": {
                 "reason": reason,
@@ -315,6 +395,17 @@ def run_owned_process(
                 "type": type(pending_error).__name__,
                 "message": str(pending_error),
             }
+        if raw_streams:
+            result["execution"]["undecodable_streams_base64"] = raw_streams
+            result["raw_streams_base64"] = raw_streams
+        if not drain_complete:
+            result["execution"]["capture_limit"] = {
+                "reason": "root_capture_incomplete_after_cleanup",
+                "bytes_retained": {
+                    "stdout": len(drained[0]),
+                    "stderr": len(drained[1]),
+                },
+            }
         return result
 
     def cleanup_result(
@@ -323,13 +414,9 @@ def run_owned_process(
         timeout_hit: bool,
         operator_interrupt: bool = False,
         pending_error: BaseException | None = None,
-        captured_output: tuple[str, str] | None = None,
+        captured_output: tuple[bytes | str, bytes | str] | None = None,
     ) -> dict[str, Any]:
-        cleanup_context = (
-            defer_sigint_during_owned_launch()
-            if threading.current_thread() is threading.main_thread()
-            else nullcontext(DeferredSigintState())
-        )
+        cleanup_context = _owned_sigint_context()
         result: dict[str, Any] | None = None
         deferred_interrupts = DeferredSigintState()
         commit_interrupts = 0
@@ -375,7 +462,7 @@ def run_owned_process(
                 stdin=subprocess.PIPE if input is not None or input_factory is not None else None,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
-                text=True,
+                text=False,
                 start_new_session=True,
                 preexec_fn=preexec_fn,
             )
@@ -404,11 +491,11 @@ def run_owned_process(
             operator_interrupt=interrupted_during_launch,
             pending_error=error,
         )
-        error.cooperative_process_result = result
+        setattr(error, "cooperative_process_result", result)  # noqa: B010
         if result.get("cancelled"):
             interrupted = CooperativeProcessInterrupted(result)
             if result["execution"]["completion_scope"] == "cleanup_incomplete":
-                interrupted.cleanup_incomplete_receipt = result
+                setattr(interrupted, "cleanup_incomplete_receipt", result)  # noqa: B010
             raise interrupted from error
         if result["execution"]["completion_scope"] == "cleanup_incomplete":
             raise CooperativeCleanupIncomplete(result) from error
@@ -425,11 +512,11 @@ def run_owned_process(
             operator_interrupt=interrupted_during_launch,
             pending_error=error,
         )
-        error.cooperative_process_result = result
+        setattr(error, "cooperative_process_result", result)  # noqa: B010
         if result.get("cancelled"):
             interrupted = CooperativeProcessInterrupted(result)
             if result["execution"]["completion_scope"] == "cleanup_incomplete":
-                interrupted.cleanup_incomplete_receipt = result
+                setattr(interrupted, "cleanup_incomplete_receipt", result)  # noqa: B010
             raise interrupted from error
         if result["execution"]["completion_scope"] == "cleanup_incomplete":
             raise CooperativeCleanupIncomplete(result) from error
@@ -447,7 +534,12 @@ def run_owned_process(
         if launch_interrupted:
             raise KeyboardInterrupt
         process_input = input_factory(process) if input_factory is not None else input
-        stdout, stderr = process.communicate(input=process_input, timeout=timeout_seconds)
+        encoded_input = (
+            process_input.encode(locale.getpreferredencoding(False) or "utf-8")
+            if isinstance(process_input, str)
+            else process_input
+        )
+        stdout, stderr = process.communicate(input=encoded_input, timeout=timeout_seconds)
         owned.discover_descendants()
         owned.discover_owner_token()
         residual = [item for item in owned.live() if item.pid != process.pid]
@@ -455,23 +547,26 @@ def run_owned_process(
             result = cleanup_result(
                 reason="leader_exit",
                 timeout_hit=False,
-                captured_output=(stdout or "", stderr or ""),
+                captured_output=(stdout or b"", stderr or b""),
             )
             if result.get("cancelled"):
                 interrupted = CooperativeProcessInterrupted(result)
                 if result["execution"]["completion_scope"] == "cleanup_incomplete":
-                    interrupted.cleanup_incomplete_receipt = result
+                    setattr(interrupted, "cleanup_incomplete_receipt", result)  # noqa: B010
                 raise interrupted
             if result["execution"]["completion_scope"] == "cleanup_incomplete":
                 raise CooperativeCleanupIncomplete(result)
             result["returncode"] = process.returncode
             result.pop("process_returncode", None)
             return result
-        return {
+        decoded_stdout, decoded_stderr, raw_streams = _decode_captured_output(
+            (stdout or b"", stderr or b"")
+        )
+        result = {
             "command": shlex.join(command),
             "returncode": process.returncode,
-            "stdout": stdout or "",
-            "stderr": stderr or "",
+            "stdout": decoded_stdout,
+            "stderr": decoded_stderr,
             "timeout_seconds": timeout_seconds,
             "timeout_hit": False,
             "duration_seconds": round(time.monotonic() - started_monotonic, 2),
@@ -484,12 +579,16 @@ def run_owned_process(
                 "completion_scope": "process_tree_quiescent",
             },
         }
+        if raw_streams:
+            result["execution"]["undecodable_streams_base64"] = raw_streams
+            result["raw_streams_base64"] = raw_streams
+        return result
     except subprocess.TimeoutExpired as error:
         result = cleanup_result(reason="timeout", timeout_hit=True)
         if result.get("cancelled"):
             interrupted = CooperativeProcessInterrupted(result)
             if result["execution"]["completion_scope"] == "cleanup_incomplete":
-                interrupted.cleanup_incomplete_receipt = result
+                setattr(interrupted, "cleanup_incomplete_receipt", result)  # noqa: B010
             raise interrupted from error
         if result["execution"]["completion_scope"] == "cleanup_incomplete":
             raise CooperativeCleanupIncomplete(result) from error
@@ -503,7 +602,7 @@ def run_owned_process(
         )
         interrupted = CooperativeProcessInterrupted(result)
         if result["execution"]["completion_scope"] == "cleanup_incomplete":
-            interrupted.cleanup_incomplete_receipt = result
+            setattr(interrupted, "cleanup_incomplete_receipt", result)  # noqa: B010
         raise interrupted from error
     except (CooperativeCleanupIncomplete, CooperativeProcessInterrupted):
         raise
@@ -513,11 +612,11 @@ def run_owned_process(
             timeout_hit=False,
             pending_error=error,
         )
-        error.cooperative_process_result = result
+        setattr(error, "cooperative_process_result", result)  # noqa: B010
         if result.get("cancelled"):
             interrupted = CooperativeProcessInterrupted(result)
             if result["execution"]["completion_scope"] == "cleanup_incomplete":
-                interrupted.cleanup_incomplete_receipt = result
+                setattr(interrupted, "cleanup_incomplete_receipt", result)  # noqa: B010
             raise interrupted from error
         if result["execution"]["completion_scope"] == "cleanup_incomplete":
             raise CooperativeCleanupIncomplete(result) from error

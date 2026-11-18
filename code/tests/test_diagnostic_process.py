@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import errno
 import json
 import math
@@ -15,7 +16,10 @@ import pytest
 
 import core.diagnostics.process as diagnostic
 from core.diagnostics.process import run_owned_process
-from core.utils.cooperative_subprocess import CooperativeProcessInterrupted
+from core.utils.cooperative_subprocess import (
+    CooperativeCleanupIncomplete,
+    CooperativeProcessInterrupted,
+)
 
 
 def _is_live(pid: int) -> bool:
@@ -107,6 +111,121 @@ def test_launch_enoent_retains_machine_readable_error_fields(tmp_path: Path) -> 
     assert result["error_type"] == "FileNotFoundError"
     assert result["errno"] == errno.ENOENT
     assert result["error"] == result["stderr"]
+
+
+def test_finite_owned_launch_allows_inherited_ignored_sigint() -> None:
+    previous_handler = signal.signal(signal.SIGINT, signal.SIG_IGN)
+    try:
+        result = run_owned_process(
+            [sys.executable, "-c", "print('finite launch completed')"],
+            timeout_seconds=5,
+        )
+    finally:
+        signal.signal(signal.SIGINT, previous_handler)
+
+    assert result["returncode"] == 0
+    assert result["stdout"] == "finite launch completed\n"
+    assert result["execution"]["completion_scope"] == "process_tree_quiescent"
+
+
+def test_finite_owned_launch_retains_invalid_output_bytes() -> None:
+    result = run_owned_process(
+        [
+            sys.executable,
+            "-c",
+            "import os\nos.write(1, b'finite\\xffstdout')\nos.write(2, b'finite\\xfestderr')\n",
+        ],
+        timeout_seconds=5,
+    )
+
+    assert result["returncode"] == 0
+    assert result["stdout"] == "finite\ufffdstdout"
+    assert result["stderr"] == "finite\ufffdstderr"
+    raw = result["execution"]["undecodable_streams_base64"]
+    assert base64.b64decode(raw["stdout"]) == b"finite\xffstdout"
+    assert base64.b64decode(raw["stderr"]) == b"finite\xfestderr"
+    assert result["raw_streams_base64"] == raw
+
+
+def test_finite_output_decoder_uses_python_310_compatible_locale_api(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(diagnostic.locale, "getpreferredencoding", lambda _setlocale: "ascii")
+
+    stdout, stderr, raw = diagnostic._decode_captured_output((b"ok\xff", b"error"))
+
+    assert stdout == "ok�"
+    assert stderr == "error"
+    assert base64.b64decode(raw["stdout"]) == b"ok\xff"
+
+
+def test_finite_owned_launch_encodes_text_input_for_binary_capture() -> None:
+    payload = "finite input with unicode \u03bb\n"
+    result = run_owned_process(
+        [sys.executable, "-c", "import sys\nsys.stdout.write(sys.stdin.read())\n"],
+        timeout_seconds=5,
+        input=payload,
+    )
+
+    assert result["returncode"] == 0
+    assert result["stdout"] == payload
+    assert result["stderr"] == ""
+
+
+def test_finite_timeout_cleanup_retains_invalid_output_and_verifies_exit() -> None:
+    result = run_owned_process(
+        [
+            sys.executable,
+            "-c",
+            "import os, time\nos.write(1, b'before-timeout\\xff')\nos.write(2, b'before-timeout\\xfe')\ntime.sleep(30)\n",
+        ],
+        timeout_seconds=2,
+        interrupt_grace_seconds=1,
+    )
+
+    assert result["timeout_hit"] is True
+    assert result["returncode"] == 124
+    assert result["execution"]["completion_scope"] == "process_tree_quiescent"
+    assert result["termination"]["survivors"] == []
+    raw = result["execution"]["undecodable_streams_base64"]
+    assert b"before-timeout\xff" in base64.b64decode(raw["stdout"])
+    assert b"before-timeout\xfe" in base64.b64decode(raw["stderr"])
+
+
+def test_incomplete_finite_drain_retains_partial_invalid_output(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    real_drain = diagnostic._drain_root
+
+    def retain_but_mark_incomplete(process, timeout_seconds, errors):
+        attempt = real_drain(process, timeout_seconds, errors)
+        return diagnostic._DrainResult(False, attempt.captured)
+
+    monkeypatch.setattr(diagnostic, "_drain_root", retain_but_mark_incomplete)
+    with pytest.raises(CooperativeCleanupIncomplete) as caught:
+        run_owned_process(
+            [
+                sys.executable,
+                "-c",
+                "import os, time\nos.write(1, b'partial\\xff')\nos.write(2, b'error\\xfe')\ntime.sleep(30)\n",
+            ],
+            timeout_seconds=2,
+            interrupt_grace_seconds=1,
+        )
+
+    result = caught.value.result
+    assert result["stdout"] == "partial�"
+    assert result["stderr"].startswith("error�")
+    assert result["execution"]["completion_scope"] == "cleanup_incomplete"
+    raw = result["execution"]["undecodable_streams_base64"]
+    raw_stdout = base64.b64decode(raw["stdout"])
+    raw_stderr = base64.b64decode(raw["stderr"])
+    assert result["execution"]["capture_limit"]["bytes_retained"] == {
+        "stdout": len(raw_stdout),
+        "stderr": len(raw_stderr),
+    }
+    assert raw_stdout == b"partial\xff"
+    assert raw_stderr.startswith(b"error\xfe")
 
 
 def test_deferred_sigint_takes_priority_over_launch_failure(

@@ -54,14 +54,18 @@ Makefile discovers Open MPI compile flags with `mpicxx --showme:compile` because
 `nvcc` preprocesses CUDA before invoking the host compiler wrapper. For another
 MPI implementation, supply its include flags through `MPI_COMPILE_FLAGS`.
 
-The Python launcher requires a POSIX Python environment with `psutil`,
-`waitid`/`WNOWAIT`, and `pthread_sigmask`. Linux Python provides the required
-process controls. SIGINT must not be ignored, SIGCHLD must have its default
-disposition, and no other component may reap the owned launcher. Unsupported
+The Python launcher requires a POSIX Python environment with `psutil` and
+`waitid`/`WNOWAIT`. Linux Python provides the required process controls. SIGINT
+must not be ignored, SIGCHLD must have its default disposition, and no other
+component may reap the owned launcher. Unsupported
 signal dispositions are rejected before launch. The launcher retains stdout,
 stderr, and an `.execution.json` receipt beside the result, including after
 interruption. Each MPI launch runs in its own owned process group. The Python
-caller waits for that group to become quiescent before returning.
+caller waits for that group to become quiescent before returning. If a descendant
+escapes into another process group while retaining a capture pipe, the launcher
+drains the available bytes and closes its read end once the owned group is
+quiescent. The receipt records this limit in `execution.capture_limit`. The
+launcher does not signal the escaped process or retain its later output.
 
 From this directory:
 
@@ -170,9 +174,11 @@ disable the harness suite and execution-stage deadlines for the owned isolated
 subprocess. A finite outer worker timeout cannot safely clean up the native MPI
 launcher's separate process group, so both benchmark variants reject finite
 execution before the build starts. Standalone native launches remain supported.
-Internal compiler and profiler deadlines remain. Environment, numerical, and
-speedup gates also remain active. On interruption, the caller requests cleanup
-and waits for the owned process group to finish.
+The native build and launch have no time deadline. Both use owned cooperative
+process groups and wait for cleanup after Ctrl-C. They capture output while they
+run. Failures and interruptions retain that output in their diagnostics. The
+generic harness profiler remains disabled for these native MPI wrappers.
+Environment, numerical, and speedup gates remain active.
 See the [execution deadline contract](../../docs/api-reference.md#8-benchmark-domain).
 
 The `256 × 257` default is a deliberate correctness-smoke exception to the

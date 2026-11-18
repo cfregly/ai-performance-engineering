@@ -7,7 +7,6 @@ from dataclasses import replace
 import os
 from pathlib import Path
 import shutil
-import subprocess
 import tempfile
 
 import torch
@@ -15,6 +14,7 @@ import torch
 from core.benchmark.cuda_binary_benchmark import BinaryRunResult, CudaBinaryBenchmark, detect_supported_arch
 from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import BenchmarkConfig
+from core.utils.cooperative_subprocess import run_cooperative_process
 from core.utils.cooperative_process_artifacts import require_owned_uncapped_native_config
 from labs.multi_gpu_communication.native_common import require_unprofiled_native_config
 from labs.nvshmem_device.run_lab_nvshmem_device import (
@@ -48,6 +48,9 @@ class NvshmemDeviceBenchmark(CudaBinaryBenchmark):
         self._native_result: dict | None = None
         self.register_workload_metadata(requests_per_iteration=1.0)
 
+    def _build_architecture(self) -> str:
+        return detect_supported_arch()
+
     def setup(self) -> None:
         config = getattr(self, "_config", None)
         require_owned_uncapped_native_config(config, launcher_name="NVSHMEM device harness execution")
@@ -58,10 +61,15 @@ class NvshmemDeviceBenchmark(CudaBinaryBenchmark):
         for tool in ("nvcc", "mpicxx", "mpirun"):
             if shutil.which(tool) is None:
                 raise NativeUnavailable(f"SKIPPED: Device NVSHMEM requires {tool}")
-        command = ["make", f"ARCH={detect_supported_arch()}", "NVTX_ENABLED=1", "nvshmem_device_native"]
-        built = subprocess.run(command, cwd=LAB_DIR, capture_output=True, text=True, check=False)
-        if built.returncode:
-            raise RuntimeError(f"Device NVSHMEM build failed\n{built.stdout}\n{built.stderr}")
+        command = [
+            "make", f"ARCH={self._build_architecture()}", "NVTX_ENABLED=1",
+            "nvshmem_device_native",
+        ]
+        built = run_cooperative_process(command, cwd=LAB_DIR)
+        if built["returncode"]:
+            raise RuntimeError(
+                f"Device NVSHMEM build failed\n{built['stdout']}\n{built['stderr']}"
+            )
         self.exec_path = LAB_DIR / "nvshmem_device_native"
         configured = getattr(config, "profiling_output_dir", None)
         artifact_root = Path(configured) if configured else LAB_DIR.parents[1] / "artifacts" / "nvshmem_device"

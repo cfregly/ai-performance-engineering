@@ -19,7 +19,7 @@ from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager, nullcontext
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, TextIO
+from typing import Any, TextIO, cast
 
 import psutil
 
@@ -50,13 +50,14 @@ class _OwnershipHandoffState:
 
 
 @contextmanager
-def defer_sigint_during_owned_launch() -> Iterator[DeferredSigintState]:
-    """Defer Ctrl-C until the caller has stored the new child's identity."""
+def _count_sigint_during_owned_state_change() -> Iterator[DeferredSigintState]:
+    """Count Ctrl-C without interrupting an owned-process state commit."""
     if threading.current_thread() is not threading.main_thread():
-        raise RuntimeError("Owned process launch with Ctrl-C handling requires the main thread")
+        yield DeferredSigintState()
+        return
     previous_handler = signal.getsignal(signal.SIGINT)
     if previous_handler == signal.SIG_IGN:
-        raise RuntimeError("Owned process launch requires SIGINT not to be ignored")
+        raise RuntimeError("Owned process state changes require SIGINT not to be ignored")
     state = DeferredSigintState()
 
     def record_interrupt(signum: int, frame: Any) -> None:
@@ -68,6 +69,13 @@ def defer_sigint_during_owned_launch() -> Iterator[DeferredSigintState]:
         yield state
     finally:
         signal.signal(signal.SIGINT, previous_handler)
+
+
+@contextmanager
+def defer_sigint_during_owned_launch() -> Iterator[DeferredSigintState]:
+    """Defer Ctrl-C until the caller has stored the new child's identity."""
+    with _count_sigint_during_owned_state_change() as state:
+        yield state
 
 
 def prepare_cleanup_event_env(
@@ -124,8 +132,7 @@ def _exception_message(error: BaseException) -> tuple[str, int]:
         return f"<KeyboardInterrupt while rendering {type(error).__name__}>", 1
     except BaseException as rendering_error:
         return (
-            f"<{type(rendering_error).__name__} while rendering "
-            f"{type(error).__name__}>",
+            f"<{type(rendering_error).__name__} while rendering {type(error).__name__}>",
             0,
         )
 
@@ -135,7 +142,7 @@ def _attach_process_result(
     result: dict[str, Any],
 ) -> tuple[bool, int]:
     try:
-        setattr(error, "cooperative_process_result", result)
+        setattr(error, "cooperative_process_result", result)  # noqa: B010
     except BaseException as attachment_error:
         message, rendering_interrupts = _exception_message(attachment_error)
         attachment_interrupts = (
@@ -320,7 +327,10 @@ def operator_interrupt_from_error(error: BaseException) -> bool:
         for name in ("cleanup_incomplete_receipt", "result", "cooperative_process_result"):
             receipt = attributes.get(name)
             cancellation = receipt.get("cancellation") if isinstance(receipt, dict) else None
-            if isinstance(cancellation, dict) and cancellation.get("operator_interrupt_observed") is True:
+            if (
+                isinstance(cancellation, dict)
+                and cancellation.get("operator_interrupt_observed") is True
+            ):
                 return True
         for previous in (
             _exception_link(current, "__context__"),
@@ -356,9 +366,15 @@ def run_cooperative_process(
 ) -> dict[str, Any]:
     """Capture output without a deadline and forward one SIGINT on cancellation."""
     if os.name != "posix":
-        raise RuntimeError("SKIPPED: cooperative subprocess execution requires POSIX process groups")
+        raise RuntimeError(
+            "SKIPPED: cooperative subprocess execution requires POSIX process groups"
+        )
     require_cooperative_process_support()
-    if isinstance(command, (str, bytes)) or not command or any(not isinstance(value, str) for value in command):
+    if (
+        isinstance(command, (str, bytes))
+        or not command
+        or any(not isinstance(value, str) for value in command)
+    ):
         raise ValueError("command must be a nonempty argument vector of strings")
     if input is not None and input_factory is not None:
         raise ValueError("input and input_factory are mutually exclusive")
@@ -415,9 +431,7 @@ def run_cooperative_process(
                     error,
                     result,
                 )
-                interrupt_count = attachment_interrupts + int(
-                    isinstance(error, KeyboardInterrupt)
-                )
+                interrupt_count = attachment_interrupts + int(isinstance(error, KeyboardInterrupt))
                 _record_post_cleanup_interrupts(result, interrupt_count)
                 if attachment_interrupts:
                     raise CooperativeProcessInterrupted(result) from error
@@ -449,7 +463,9 @@ def run_cooperative_process(
                     _ownership_handoff_state=ownership_handoff,
                 )
             communicate_cooperatively(
-                process, process_group_id=process.pid, started_at=started,
+                process,
+                process_group_id=process.pid,
+                started_at=started,
                 abort_error=error,
                 cleanup_event_nonce=cleanup_event_nonce,
                 _ownership_handoff_state=ownership_handoff,
@@ -461,12 +477,12 @@ def require_cooperative_process_support() -> None:
     """Reject unsupported ownership semantics before launching a worker."""
     if not all(hasattr(os, name) for name in ("waitid", "P_PID", "WEXITED", "WNOWAIT", "WNOHANG")):
         raise RuntimeError("SKIPPED: owned subprocess cleanup requires waitid with WNOWAIT")
-    if not hasattr(signal, "pthread_sigmask"):
-        raise RuntimeError("SKIPPED: owned subprocess cleanup requires pthread_sigmask")
     if signal.getsignal(signal.SIGINT) == signal.SIG_IGN:
         raise RuntimeError("SKIPPED: cooperative cancellation requires SIGINT not to be ignored")
     if signal.getsignal(signal.SIGCHLD) != signal.SIG_DFL:
-        raise RuntimeError("SKIPPED: owned subprocess cleanup requires the default SIGCHLD disposition and a sole child reaper")
+        raise RuntimeError(
+            "SKIPPED: owned subprocess cleanup requires the default SIGCHLD disposition and a sole child reaper"
+        )
 
 
 def communicate_cooperatively(
@@ -490,10 +506,15 @@ def communicate_cooperatively(
     ownership contract.
     """
     if os.name != "posix":
-        raise RuntimeError("SKIPPED: cooperative subprocess execution requires POSIX process groups")
+        raise RuntimeError(
+            "SKIPPED: cooperative subprocess execution requires POSIX process groups"
+        )
     require_cooperative_process_support()
+    waitid: Any = getattr(os, "waitid")
     if isinstance(process_group_id, bool) or process_group_id != process.pid:
-        raise ValueError("Cooperative execution requires the child's explicitly owned process group")
+        raise ValueError(
+            "Cooperative execution requires the child's explicitly owned process group"
+        )
     ownership_error: Exception | None = None
     try:
         observed_group = os.getpgid(process.pid)
@@ -506,9 +527,14 @@ def communicate_cooperatively(
         if observed_group != process_group_id:
             raise ValueError("Cooperative execution requires a process group owned by this child")
     started = time.perf_counter() if started_at is None else started_at
-    argv = process.args
-    if isinstance(argv, (str, bytes)):
+    raw_argv = process.args
+    if (
+        isinstance(raw_argv, (str, bytes))
+        or not isinstance(raw_argv, Sequence)
+        or any(not isinstance(value, str) for value in raw_argv)
+    ):
         raise ValueError("Cooperative execution requires an argument vector")
+    argv = [value for value in raw_argv if isinstance(value, str)]
     cancellation: dict[str, Any] | None = None
     pending_error = abort_error
     completion_cleanup: dict[str, Any] | None = None
@@ -523,52 +549,64 @@ def communicate_cooperatively(
     lifecycle_observation_failed = False
     ownership_lost = False
     leader_exited = already_reaped
+    leader_status: Any | None = None
     abort_cleanup = False
+    capture_limit: dict[str, Any] | None = None
 
-    def request_cancellation(*, interrupted: bool = False) -> None:
+    def request_cancellation(*, interrupts: int = 0) -> None:
         nonlocal cancellation, ownership_lost, operator_interrupts, signal_attempted
         forwarding_error = None
+        pending_interrupts = interrupts
         while True:
-            # Commit the signal and its receipt before delivering another SIGINT.
-            previous_mask = signal.pthread_sigmask(signal.SIG_BLOCK, {signal.SIGINT})
+            deferred = DeferredSigintState()
             try:
-                if interrupted:
-                    operator_interrupts += 1
-                    interrupted = False
-                if cancellation is None:
-                    cancellation = {
-                        "signal": "SIGINT", "process_group_id": process.pid,
-                        "status": "waiting_for_cleanup", "repeated_interrupts": 0,
-                        "reason": "coordinator_error" if pending_error is not None else "interrupt",
-                        "signal_forwarded": False,
-                    }
-                cancellation["operator_interrupt_observed"] = operator_interrupts > 0
-                cancellation["interrupt_count"] = operator_interrupts
-                cancellation["repeated_interrupts"] = max(operator_interrupts - 1, 0)
-                if not signal_attempted and forwarding_error is None:
-                    signal_attempted = True
-                    if ownership_lost:
-                        raise RuntimeError("Cannot signal after losing the owned leader identity")
-                    if already_reaped or process.returncode is not None:
-                        if not group_quiescent and _live_process_group_members(process_group_id):
-                            ownership_lost = True
-                            raise RuntimeError("Cannot signal a reaped leader's live process group safely")
-                        cancellation["signal_not_forwarded_reason"] = "leader_reaped"
-                    else:
-                        try:
-                            os.killpg(process.pid, signal.SIGINT)
-                            cancellation["signal_forwarded"] = True
-                        except ProcessLookupError:
-                            pass
+                with _count_sigint_during_owned_state_change() as deferred:
+                    operator_interrupts += pending_interrupts
+                    pending_interrupts = 0
+                    if cancellation is None:
+                        cancellation = {
+                            "signal": "SIGINT",
+                            "process_group_id": process.pid,
+                            "status": "waiting_for_cleanup",
+                            "repeated_interrupts": 0,
+                            "reason": "coordinator_error"
+                            if pending_error is not None
+                            else "interrupt",
+                            "signal_forwarded": False,
+                        }
+                    cancellation["operator_interrupt_observed"] = operator_interrupts > 0
+                    cancellation["interrupt_count"] = operator_interrupts
+                    cancellation["repeated_interrupts"] = max(operator_interrupts - 1, 0)
+                    if not signal_attempted and forwarding_error is None:
+                        signal_attempted = True
+                        if ownership_lost:
+                            raise RuntimeError(
+                                "Cannot signal after losing the owned leader identity"
+                            )
+                        if already_reaped or process.returncode is not None:
+                            if not group_quiescent and _live_process_group_members(
+                                process_group_id
+                            ):
+                                ownership_lost = True
+                                raise RuntimeError(
+                                    "Cannot signal a reaped leader's live process group safely"
+                                )
+                            cancellation["signal_not_forwarded_reason"] = "leader_reaped"
+                        else:
+                            try:
+                                os.killpg(process.pid, signal.SIGINT)
+                                cancellation["signal_forwarded"] = True
+                            except ProcessLookupError:
+                                pass
+            except KeyboardInterrupt:
+                pending_interrupts += 1
+                continue
             except Exception as error:
                 forwarding_error = error
-                cancellation["signal_error"] = f"{type(error).__name__}: {error}"
-            finally:
-                try:
-                    signal.pthread_sigmask(signal.SIG_SETMASK, previous_mask)
-                except KeyboardInterrupt:
-                    interrupted = True
-            if interrupted:
+                if cancellation is not None:
+                    cancellation["signal_error"] = f"{type(error).__name__}: {error}"
+            pending_interrupts += deferred.interrupt_count
+            if pending_interrupts:
                 continue
             if forwarding_error is not None:
                 raise forwarding_error
@@ -582,6 +620,60 @@ def communicate_cooperatively(
         if pending_error is None:
             pending_error = error
 
+    def final_nonblocking_capture(
+        streams: Sequence[tuple[str, TextIO]],
+        *,
+        reason: str,
+    ) -> None:
+        """Retain currently available bytes, then close pipes outside ownership."""
+        nonlocal capture_limit
+        streams_without_eof: list[str] = []
+        first_error: Exception | None = None
+        for name, stream in streams:
+            if stream.closed:
+                continue
+            if name not in captured_bytes:
+                try:
+                    stream.close()
+                except Exception as error:
+                    if first_error is None:
+                        first_error = error
+                continue
+            reached_eof = False
+            try:
+                os.set_blocking(stream.fileno(), False)
+                while True:
+                    try:
+                        chunk = os.read(stream.fileno(), 65536)
+                    except BlockingIOError:
+                        break
+                    if not chunk:
+                        reached_eof = True
+                        break
+                    captured_bytes[name].extend(chunk)
+            except Exception as error:
+                if first_error is None:
+                    first_error = error
+            finally:
+                try:
+                    stream.close()
+                except Exception as error:
+                    if first_error is None:
+                        first_error = error
+            if not reached_eof:
+                streams_without_eof.append(name)
+        if streams_without_eof:
+            capture_limit = {
+                "reason": reason,
+                "strategy": "final_nonblocking_drain_then_close",
+                "streams_closed_before_eof": sorted(set(streams_without_eof)),
+                "bytes_retained": {
+                    name: len(captured_bytes[name]) for name in sorted(set(streams_without_eof))
+                },
+            }
+        if first_error is not None:
+            raise first_error
+
     def group_members() -> list[int]:
         nonlocal group_observation_failed
         try:
@@ -594,7 +686,7 @@ def communicate_cooperatively(
         nonlocal group_quiescent
         while True:
             try:
-                if not group_members():
+                if group_quiescent or not group_members():
                     group_quiescent = True
                     # Reap last so the leader reserves this group's identity.
                     reap_leader()
@@ -602,36 +694,51 @@ def communicate_cooperatively(
                 # POSIX groups have no portable wait handle for non-child members.
                 time.sleep(0.05)
             except KeyboardInterrupt:
-                request_cancellation(interrupted=True)
+                request_cancellation(interrupts=1)
 
     def reap_leader() -> None:
-        nonlocal already_reaped, ownership_lost, lifecycle_observation_failed
+        nonlocal already_reaped, leader_status, ownership_lost, lifecycle_observation_failed
         if already_reaped:
             return
-        previous_mask = signal.pthread_sigmask(signal.SIG_BLOCK, {signal.SIGINT})
-        reaping_error = None
-        try:
-            status = os.waitid(os.P_PID, process.pid, os.WEXITED)
-            if status.si_code == os.CLD_EXITED:
-                process.returncode = status.si_status
-            elif status.si_code in (os.CLD_KILLED, os.CLD_DUMPED):
-                process.returncode = -status.si_status
-            else:
-                raise RuntimeError(f"Unexpected owned leader wait status: {status}")
-        except ChildProcessError as error:
-            ownership_lost = True
-            lifecycle_observation_failed = True
-            reaping_error = RuntimeError("The owned leader was reaped by another caller before its status was retained")
-            reaping_error.__cause__ = error
-        except BaseException as error:
-            lifecycle_observation_failed = True
-            reaping_error = error
-        finally:
-            already_reaped = process.returncode is not None
+        reaping_error: BaseException | None = None
+        pending_interrupts = 0
+        while not already_reaped and reaping_error is None:
+            deferred = DeferredSigintState()
             try:
-                signal.pthread_sigmask(signal.SIG_SETMASK, previous_mask)
+                with _count_sigint_during_owned_state_change() as deferred:
+                    if leader_status is None:
+                        leader_status = waitid(
+                            os.P_PID,
+                            process.pid,
+                            os.WEXITED | os.WNOWAIT,
+                        )
+                    if leader_status.si_code == os.CLD_EXITED:
+                        process.returncode = leader_status.si_status
+                    elif leader_status.si_code in (os.CLD_KILLED, os.CLD_DUMPED):
+                        process.returncode = -leader_status.si_status
+                    else:
+                        raise RuntimeError(f"Unexpected owned leader wait status: {leader_status}")
+                    try:
+                        waitid(os.P_PID, process.pid, os.WEXITED)
+                    except ChildProcessError as error:
+                        process.returncode = None
+                        ownership_lost = True
+                        lifecycle_observation_failed = True
+                        reaping_error = RuntimeError(
+                            "The owned leader was reaped by another caller before its status was retained"
+                        )
+                        reaping_error.__cause__ = error
+                    else:
+                        already_reaped = True
             except KeyboardInterrupt:
-                request_cancellation(interrupted=True)
+                pending_interrupts += 1
+            except BaseException as error:
+                lifecycle_observation_failed = True
+                reaping_error = error
+            pending_interrupts += deferred.interrupt_count
+            if pending_interrupts:
+                request_cancellation(interrupts=pending_interrupts)
+                pending_interrupts = 0
         if reaping_error is not None:
             raise reaping_error
 
@@ -641,9 +748,10 @@ def communicate_cooperatively(
             raise ownership_error
         if cancellation_requested or pending_error is not None:
             request_cancellation()
-        input_bytes = (input or "").encode(
-            process.stdin.encoding if process.stdin is not None else "utf-8"
+        input_encoding: Any = (
+            getattr(process.stdin, "encoding", "utf-8") if process.stdin is not None else "utf-8"
         )
+        input_bytes = (input or "").encode(input_encoding)
         input_offset = 0
         # Raw I/O observes leader exit even when descendants retain capture pipes.
         # This selector interval observes lifecycle events. It is not a deadline.
@@ -659,14 +767,18 @@ def communicate_cooperatively(
                     continue
                 os.set_blocking(stream.fileno(), False)
                 selector.register(
-                    stream, selectors.EVENT_WRITE if name == "stdin" else selectors.EVENT_READ, name,
+                    stream,
+                    selectors.EVENT_WRITE if name == "stdin" else selectors.EVENT_READ,
+                    name,
                 )
             while True:
                 try:
                     if not leader_exited:
                         try:
-                            status = os.waitid(
-                                os.P_PID, process.pid, os.WEXITED | os.WNOWAIT | os.WNOHANG,
+                            status = waitid(
+                                os.P_PID,
+                                process.pid,
+                                os.WEXITED | os.WNOWAIT | os.WNOHANG,
                             )
                         except ChildProcessError as error:
                             ownership_lost = True
@@ -676,48 +788,70 @@ def communicate_cooperatively(
                         except Exception:
                             lifecycle_observation_failed = True
                             raise
-                        leader_exited = status is not None
-                    if leader_exited and cancellation is None and completion_cleanup is None:
+                        if status is not None:
+                            leader_status = status
+                            leader_exited = True
+                    if leader_exited:
                         members = group_members()
-                        if members:
+                        if cancellation is None and members and completion_cleanup is None:
                             if already_reaped:
                                 ownership_lost = True
-                                raise RuntimeError("Cannot clean a reaped leader's live process group safely")
+                                raise RuntimeError(
+                                    "Cannot clean a reaped leader's live process group safely"
+                                )
                             os.killpg(process_group_id, signal.SIGKILL)
                             completion_cleanup = {
-                                "reason": "leader_exited", "signal": "SIGKILL",
+                                "reason": "leader_exited",
+                                "signal": "SIGKILL",
                                 "process_ids": members,
                             }
+                        if not members:
+                            group_quiescent = True
+                            final_streams: list[tuple[str, TextIO]] = []
+                            for key in list(selector.get_map().values()):
+                                selected_stream = cast(TextIO, key.fileobj)
+                                stream_name = cast(str, key.data)
+                                selector.unregister(selected_stream)
+                                final_streams.append((stream_name, selected_stream))
+                            final_nonblocking_capture(
+                                final_streams,
+                                reason="owned_process_group_quiescent_before_capture_eof",
+                            )
+                            break
                     if leader_exited and not selector.get_map():
                         break
                     for key, _ in selector.select(0.05):
-                        stream, name = key.fileobj, key.data
+                        selected_stream = cast(TextIO, key.fileobj)
+                        stream_name = cast(str, key.data)
                         try:
-                            if name == "stdin":
-                                input_offset += os.write(stream.fileno(), input_bytes[input_offset:input_offset + 4096])
+                            if stream_name == "stdin":
+                                input_offset += os.write(
+                                    selected_stream.fileno(),
+                                    input_bytes[input_offset : input_offset + 4096],
+                                )
                                 if input_offset == len(input_bytes):
-                                    selector.unregister(stream)
-                                    stream.close()
+                                    selector.unregister(selected_stream)
+                                    selected_stream.close()
                             else:
-                                chunk = os.read(stream.fileno(), 65536)
+                                chunk = os.read(selected_stream.fileno(), 65536)
                                 if chunk:
-                                    captured_bytes[name].extend(chunk)
+                                    captured_bytes[stream_name].extend(chunk)
                                 else:
-                                    selector.unregister(stream)
-                                    stream.close()
+                                    selector.unregister(selected_stream)
+                                    selected_stream.close()
                         except BlockingIOError:
                             continue
                         except BrokenPipeError:
                             # Early stdin closure must not discard child diagnostics.
-                            selector.unregister(stream)
-                            stream.close()
+                            selector.unregister(selected_stream)
+                            selected_stream.close()
                 except KeyboardInterrupt:
-                    request_cancellation(interrupted=True)
+                    request_cancellation(interrupts=1)
         wait_for_quiescence()
     except BaseException as error:
         if isinstance(error, KeyboardInterrupt):
             try:
-                request_cancellation(interrupted=True)
+                request_cancellation(interrupts=1)
             except Exception as cleanup_error:
                 retain_error(cleanup_error)
                 cleanup_incomplete = True
@@ -732,7 +866,9 @@ def communicate_cooperatively(
                     if ownership_lost:
                         raise RuntimeError("Cannot signal after losing the owned leader identity")
                     if cancellation is not None and "signal_error" in cancellation:
-                        raise RuntimeError("Cannot complete cooperative cleanup after SIGINT forwarding failed")
+                        raise RuntimeError(
+                            "Cannot complete cooperative cleanup after SIGINT forwarding failed"
+                        )
                     request_cancellation()
                 except BaseException as cleanup_error:
                     if isinstance(cleanup_error, KeyboardInterrupt):
@@ -746,45 +882,39 @@ def communicate_cooperatively(
                         retain_error(cleanup_error)
                     finally:
                         process.stdin = None
-                if not cleanup_incomplete:
-                    remaining = {}
+                remaining: dict[int, tuple[str, TextIO]] = {}
+                for name in ("stdout", "stderr"):
+                    stream = getattr(process, name)
+                    if stream is None or stream.closed:
+                        continue
                     try:
-                        for name in ("stdout", "stderr"):
-                            stream = getattr(process, name)
-                            if stream is not None and not stream.closed:
-                                remaining[stream.fileno()] = (name, stream)
+                        descriptor = stream.fileno()
+                        remaining[descriptor] = (name, stream)
+                        try:
+                            os.set_blocking(stream.fileno(), False)
+                        except Exception as cleanup_error:
+                            retain_error(cleanup_error)
+                            cleanup_incomplete = True
                     except Exception as cleanup_error:
                         retain_error(cleanup_error)
                         cleanup_incomplete = True
-                    while remaining:
                         try:
-                            readable, _, _ = select.select(list(remaining), [], [])
-                            for descriptor in readable:
-                                name, stream = remaining[descriptor]
-                                chunk = os.read(descriptor, 65536)
-                                if chunk:
-                                    captured_bytes[name].extend(chunk)
-                                else:
-                                    del remaining[descriptor]
-                                    stream.close()
-                        except KeyboardInterrupt:
-                            try:
-                                request_cancellation(interrupted=True)
-                            except Exception as cleanup_error:
-                                retain_error(cleanup_error)
-                                cleanup_incomplete = True
-                                break
-                        except Exception as cleanup_error:
-                            retain_error(cleanup_error)
-                            cleanup_incomplete = True
-                            break
-                    if not cleanup_incomplete and not group_observation_failed:
-                        try:
-                            wait_for_quiescence()
-                        except Exception as cleanup_error:
-                            retain_error(cleanup_error)
-                            cleanup_incomplete = True
-                    elif group_observation_failed:
+                            stream.close()
+                        except Exception as close_error:
+                            retain_error(close_error)
+
+                if cleanup_incomplete or group_observation_failed:
+                    reason = (
+                        "owned_process_group_observation_failed_before_capture_eof"
+                        if group_observation_failed
+                        else "owned_process_cleanup_incomplete_before_capture_eof"
+                    )
+                    try:
+                        final_nonblocking_capture(list(remaining.values()), reason=reason)
+                    except Exception as cleanup_error:
+                        retain_error(cleanup_error)
+                        cleanup_incomplete = True
+                    if group_observation_failed:
                         cleanup_incomplete = True
                         # A previously observed exit can still be reaped safely. Do not
                         # retry a failed group query or claim its descendants are gone.
@@ -793,11 +923,67 @@ def communicate_cooperatively(
                                 reap_leader()
                             except Exception as cleanup_error:
                                 retain_error(cleanup_error)
+                else:
+                    while True:
+                        try:
+                            if not group_members():
+                                group_quiescent = True
+                                final_nonblocking_capture(
+                                    list(remaining.values()),
+                                    reason="owned_process_group_quiescent_before_capture_eof",
+                                )
+                                remaining.clear()
+                                wait_for_quiescence()
+                                break
+                            if remaining:
+                                readable, _, _ = select.select(
+                                    list(remaining),
+                                    [],
+                                    [],
+                                    0.05,
+                                )
+                                for descriptor in readable:
+                                    name, stream = remaining[descriptor]
+                                    chunk = os.read(descriptor, 65536)
+                                    if chunk:
+                                        captured_bytes[name].extend(chunk)
+                                    else:
+                                        del remaining[descriptor]
+                                        stream.close()
+                            else:
+                                time.sleep(0.05)
+                        except KeyboardInterrupt:
+                            try:
+                                request_cancellation(interrupts=1)
+                            except Exception as cleanup_error:
+                                retain_error(cleanup_error)
+                                cleanup_incomplete = True
+                                break
+                        except Exception as cleanup_error:
+                            retain_error(cleanup_error)
+                            cleanup_incomplete = True
+                            try:
+                                final_nonblocking_capture(
+                                    list(remaining.values()),
+                                    reason=(
+                                        "owned_process_group_observation_failed_before_capture_eof"
+                                        if group_observation_failed
+                                        else "owned_process_abort_capture_failed_before_eof"
+                                    ),
+                                )
+                            except Exception as capture_error:
+                                retain_error(capture_error)
+                            if group_observation_failed and leader_exited:
+                                try:
+                                    reap_leader()
+                                except Exception as reap_error:
+                                    retain_error(reap_error)
+                            break
                 cleanup_incomplete = cleanup_incomplete or lifecycle_observation_failed
                 break
             except KeyboardInterrupt:
                 try:
-                    request_cancellation(interrupted=True)
+                    request_cancellation(interrupts=1)
                 except Exception as cleanup_error:
                     retain_error(cleanup_error)
                     cleanup_incomplete = True
@@ -828,26 +1014,35 @@ def communicate_cooperatively(
         if operator_interrupts and cancellation is None:
             # An ownership failure can prevent forwarding the requested signal.
             cancellation = {
-                "signal": "SIGINT", "process_group_id": process.pid,
-                "reason": "interrupt", "signal_forwarded": False,
+                "signal": "SIGINT",
+                "process_group_id": process.pid,
+                "reason": "interrupt",
+                "signal_forwarded": False,
             }
         if cancellation is not None:
-            cancellation["status"] = "cleanup_incomplete" if cleanup_incomplete else "cleanup_completed"
+            cancellation["status"] = (
+                "cleanup_incomplete" if cleanup_incomplete else "cleanup_completed"
+            )
             cancellation["operator_interrupt_observed"] = bool(operator_interrupts)
             cancellation["interrupt_count"] = operator_interrupts
             cancellation["repeated_interrupts"] = max(operator_interrupts - 1, 0)
-        result = {
+        result: dict[str, Any] = {
             "command": shlex.join(argv),
             "returncode": process.returncode,
-            "stdout": captured["stdout"] or "", "stderr": captured["stderr"] or "",
+            "stdout": captured["stdout"] or "",
+            "stderr": captured["stderr"] or "",
             "duration_seconds": time.perf_counter() - started,
-            "timeout_seconds": None, "timeout_hit": False,
+            "timeout_seconds": None,
+            "timeout_hit": False,
             "cancelled": cancellation is not None,
             "execution": {
-                "process_id": process.pid, "process_group_id": process.pid,
+                "process_id": process.pid,
+                "process_group_id": process.pid,
                 "start_new_session": True,
                 "live_process_group_members": None if cleanup_incomplete else [],
-                "completion_scope": "cleanup_incomplete" if cleanup_incomplete else "process_group_quiescent",
+                "completion_scope": "cleanup_incomplete"
+                if cleanup_incomplete
+                else "process_group_quiescent",
             },
         }
         if cleanup_event_nonce is not None:
@@ -856,6 +1051,8 @@ def communicate_cooperatively(
             result["execution"]["completion_cleanup"] = completion_cleanup
         if capture_errors:
             result["execution"]["capture_errors"] = capture_errors
+        if capture_limit is not None:
+            result["execution"]["capture_limit"] = capture_limit
         if abort_cleanup:
             result["execution"]["abort_cleanup"] = "raw_pipe_drain"
         if undecodable_streams:
@@ -897,7 +1094,7 @@ def communicate_cooperatively(
             raise
         except KeyboardInterrupt:
             try:
-                request_cancellation(interrupted=True)
+                request_cancellation(interrupts=1)
             except Exception as cleanup_error:
                 retain_error(cleanup_error)
                 cleanup_incomplete = True

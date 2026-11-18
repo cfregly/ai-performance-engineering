@@ -7,7 +7,6 @@ from dataclasses import replace
 import os
 from pathlib import Path
 import shutil
-import subprocess
 import tempfile
 
 import torch
@@ -15,6 +14,7 @@ import torch
 from core.benchmark.cuda_binary_benchmark import BinaryRunResult, CudaBinaryBenchmark, detect_supported_arch
 from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import BenchmarkConfig
+from core.utils.cooperative_subprocess import run_cooperative_process
 from core.utils.cooperative_process_artifacts import require_owned_uncapped_native_config
 from labs.multi_gpu_communication.native_common import (
     LAB_DIR, NativeUnavailable, NativeWorkload, invoke_native, require_unprofiled_native_config,
@@ -44,6 +44,9 @@ class NativeJacobiBenchmark(CudaBinaryBenchmark):
         self._input_parameters: torch.Tensor | None = None
         self.register_workload_metadata(requests_per_iteration=1.0)
 
+    def _build_architecture(self) -> str:
+        return detect_supported_arch()
+
     def setup(self) -> None:
         config = getattr(self, "_config", None)
         require_owned_uncapped_native_config(config, launcher_name="Native Jacobi harness execution")
@@ -55,12 +58,14 @@ class NativeJacobiBenchmark(CudaBinaryBenchmark):
             raise NativeUnavailable("SKIPPED: The native communication lab requires mpicxx and mpirun")
         if self.workload.backend == "nvshmem" and not os.environ.get("NVSHMEM_HOME"):
             raise NativeUnavailable("SKIPPED: Set NVSHMEM_HOME for the explicit native NVSHMEM build")
-        architecture = detect_supported_arch()
+        architecture = self._build_architecture()
         command = ["make", f"ARCH={architecture}", "NVTX_ENABLED=1", "WITH_NCCL=1",
                    f"WITH_NVSHMEM={int(self.workload.backend == 'nvshmem')}", "jacobi_native"]
-        completed = subprocess.run(command, cwd=LAB_DIR, capture_output=True, text=True, check=False)
-        if completed.returncode != 0:
-            raise RuntimeError(f"Native build failed\n{completed.stdout}\n{completed.stderr}")
+        completed = run_cooperative_process(command, cwd=LAB_DIR)
+        if completed["returncode"] != 0:
+            raise RuntimeError(
+                f"Native build failed\n{completed['stdout']}\n{completed['stderr']}"
+            )
         self.exec_path = LAB_DIR / "jacobi_native"
         configured_output = getattr(config, "profiling_output_dir", None)
         artifact_root = Path(configured_output) if configured_output else LAB_DIR.parents[1] / "artifacts" / "multi_gpu_communication"

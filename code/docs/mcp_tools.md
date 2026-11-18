@@ -25,8 +25,7 @@ One-shot (recommended): `benchmark_deep_dive_compare`
 ```json
 {
   "targets": ["ch10:atomic_reduction"],
-  "output_dir": "artifacts/runs",
-  "async": true
+  "output_dir": "artifacts/runs"
 }
 ```
 
@@ -45,6 +44,45 @@ It also runs post-benchmark triage and generates an HTML report unless you set
   "targets": ["ch10:atomic_reduction"]
 }
 ```
+
+### Benchmark timeout layers
+
+Benchmark tools keep three deadline layers separate:
+
+| Field | What it limits | Omitted or `null` | `0` | Positive integer |
+|-------|----------------|-------------------|-----|------------------|
+| `timeout_seconds` | The bench CLI process launched by MCP | No outer deadline in synchronous mode | No outer deadline in synchronous mode | Exact outer deadline in seconds |
+| `suite_timeout` | The complete suite inside the bench CLI | Retain the CLI suite default | No suite deadline | Exact suite deadline in seconds |
+| `execution_timeout_seconds` | Setup, warmup, measurement and legacy execution stages | Retain merged stage defaults | No stage deadline on supported owned-subprocess paths | Exact stage deadline in seconds |
+
+Removing the outer MCP deadline does not remove suite, execution-stage, profiler,
+compiler or benchmark-declared executable deadlines. For synchronous
+`run_benchmarks`, omit `timeout_seconds`, set it to `0`, or set it to `null` to
+run without the outer deadline.
+
+Every asynchronous benchmark job requires an explicit positive
+`timeout_seconds`. Its queued worker runs in a thread that cannot receive
+operator cancellation. Choose a value that covers the intended work. An omitted,
+zero or `null` value is rejected when `async=true`.
+
+The benchmark workflow schemas expose this outer field as follows:
+
+| Tool | `timeout_seconds` schema default | How the field is used |
+|------|----------------------------------|-----------------------|
+| `run_benchmarks` | `null` | Bounds its bench CLI process |
+| `benchmark_variants` | `null` | Forwards to `run_benchmarks` |
+| `optimize` | `null` | Forwards through `benchmark_variants` to `run_benchmarks` |
+| `benchmark_deep_dive_compare` | `0` | Bounds the nested deep-dive benchmark run, not later in-process analysis |
+| `benchmark_explore` | `0` | Bounds the minimal benchmark run. `deep_dive_timeout_seconds` separately bounds the optional deep-dive run |
+| `benchmark_llm_patch_loop` | `0` | Applies separately to the patch run and each comparison run, not as one cumulative loop deadline |
+
+`run_benchmarks` is the schema that also exposes `suite_timeout` and
+`execution_timeout_seconds`. Omit either field or use `null` to retain its
+internal default. Set `suite_timeout=0` to remove the suite deadline. Set
+`execution_timeout_seconds=0` only for an execution path that supports an owned
+subprocess. That uncapped-stage mode also requires `suite_timeout=0`, an explicit
+`timeout_seconds=0` or `timeout_seconds=null`, synchronous execution and a
+disabled stale timing watchdog. Profiler and correctness gates remain active.
 
 ### Benchmark validity profile (shared with CLI)
 

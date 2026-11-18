@@ -56,7 +56,9 @@ def _python_process(source: str, *, stdin: bool = False) -> Iterator[subprocess.
 
 @contextmanager
 def _controlled_process(
-    source: str, *, start_new_session: bool = True,
+    source: str,
+    *,
+    start_new_session: bool = True,
 ) -> Iterator[tuple[subprocess.Popen[str], socket.socket]]:
     connection, child_connection = socket.socketpair()
     process = None
@@ -91,6 +93,114 @@ control.close()
 """
 
 
+_ESCAPED_CAPTURE_HOLDER = """
+import os
+import signal
+import socket
+import sys
+
+control = socket.socket(fileno=int(sys.argv[1]))
+mode = sys.argv[2]
+holder = os.fork()
+if holder == 0:
+    os.setsid()
+    interrupts = 0
+    def holder_interrupted(signum, frame):
+        global interrupts
+        interrupts += 1
+    signal.signal(signal.SIGINT, holder_interrupted)
+    control.sendall(
+        ("holder ready " + str(os.getpid()) + " " + str(os.getpgrp()) + "\\n").encode()
+    )
+    control.recv(1024)
+    control.sendall(("holder released " + str(interrupts) + "\\n").encode())
+    control.close()
+    os._exit(0)
+
+if mode == "normal":
+    control.close()
+    print("leader stdout", flush=True)
+    print("leader stderr", file=sys.stderr, flush=True)
+    raise SystemExit(0)
+
+def leader_interrupted(signum, frame):
+    print("leader cleanup stdout", flush=True)
+    print("leader cleanup stderr", file=sys.stderr, flush=True)
+    control.sendall(b"leader interrupted\\n")
+    control.close()
+    raise SystemExit(0)
+
+signal.signal(signal.SIGINT, leader_interrupted)
+control.sendall(b"leader handler ready\\n")
+if sys.stdin.readline() == "begin\\n":
+    control.sendall(b"leader input ready\\n")
+signal.pause()
+"""
+
+
+@contextmanager
+def _escaped_capture_holder_process(
+    mode: str,
+) -> Iterator[tuple[subprocess.Popen[str], socket.socket]]:
+    connection, child_connection = socket.socketpair()
+    process = None
+    try:
+        process = subprocess.Popen(
+            [
+                sys.executable,
+                "-u",
+                "-c",
+                _ESCAPED_CAPTURE_HOLDER,
+                str(child_connection.fileno()),
+                mode,
+            ],
+            pass_fds=(child_connection.fileno(),),
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            start_new_session=True,
+        )
+        child_connection.close()
+        yield process, connection
+    finally:
+        _release(connection)
+        if process is not None and process.returncode is None:
+            process.communicate()
+        connection.close()
+        child_connection.close()
+
+
+def _read_escaped_holder_ready(
+    messages,
+    *,
+    expect_leader: bool,
+) -> int:
+    holder = None
+    leader_ready = not expect_leader
+    while holder is None or not leader_ready:
+        message = messages.readline().decode().strip().split()
+        if message[:2] == ["holder", "ready"]:
+            holder = int(message[2])
+            assert int(message[3]) == holder
+        elif message == ["leader", "handler", "ready"]:
+            leader_ready = True
+        else:
+            raise AssertionError(f"Unexpected escaped-holder event: {message}")
+    return holder
+
+
+def _release_escaped_holder(
+    connection: socket.socket,
+    messages,
+    holder: int,
+) -> None:
+    holder_process = psutil.Process(holder)
+    _release(connection)
+    assert messages.readline() == b"holder released 0\n"
+    holder_process.wait()
+
+
 @pytest.mark.parametrize("ignored_signal", ["SIGINT", "SIGCHLD"])
 def test_ignored_signal_is_rejected_before_child_launch(tmp_path, ignored_signal: str) -> None:
     marker = tmp_path / "unexpected-child.txt"
@@ -111,7 +221,9 @@ else:
 """
     completed = subprocess.run(
         [sys.executable, "-c", probe, ignored_signal, str(marker)],
-        capture_output=True, text=True, check=False,
+        capture_output=True,
+        text=True,
+        check=False,
     )
     assert completed.returncode == 0, completed.stdout + completed.stderr
     result = json.loads(completed.stdout)
@@ -458,8 +570,139 @@ print(child, flush=True)
         assert result["returncode"] == 0
         assert result["cancelled"] is False
         cleanup = result["execution"]["completion_cleanup"]
-        assert cleanup == {"reason": "leader_exited", "signal": "SIGKILL", "process_ids": [descendant]}
+        assert cleanup == {
+            "reason": "leader_exited",
+            "signal": "SIGKILL",
+            "process_ids": [descendant],
+        }
         assert cooperative_subprocess._live_process_group_members(process.pid) == []
+
+
+def test_normal_exit_stops_capture_at_an_escaped_pipe_holder() -> None:
+    with _escaped_capture_holder_process("normal") as (process, connection):
+        with connection.makefile("rb") as messages:
+            holder = _read_escaped_holder_ready(messages, expect_leader=False)
+            result = communicate_cooperatively(process, process_group_id=process.pid)
+
+            assert result["stdout"] == "leader stdout\n"
+            assert result["stderr"] == "leader stderr\n"
+            assert result["returncode"] == 0
+            assert result["execution"]["completion_scope"] == "process_group_quiescent"
+            assert os.getpgid(holder) == holder
+            assert psutil.Process(holder).is_running()
+            assert result["execution"]["capture_limit"] == {
+                "reason": "owned_process_group_quiescent_before_capture_eof",
+                "strategy": "final_nonblocking_drain_then_close",
+                "streams_closed_before_eof": ["stderr", "stdout"],
+                "bytes_retained": {
+                    "stderr": len(b"leader stderr\n"),
+                    "stdout": len(b"leader stdout\n"),
+                },
+            }
+            _release_escaped_holder(connection, messages, holder)
+
+
+def test_cancellation_stops_capture_at_an_escaped_pipe_holder() -> None:
+    with _escaped_capture_holder_process("cancellation") as (process, connection):
+        with connection.makefile("rb") as messages:
+            holder = _read_escaped_holder_ready(messages, expect_leader=True)
+            controller_errors: list[BaseException] = []
+
+            def interrupt_after_input() -> None:
+                try:
+                    assert messages.readline() == b"leader input ready\n"
+                    os.kill(os.getpid(), signal.SIGINT)
+                    assert messages.readline() == b"leader interrupted\n"
+                except BaseException as error:
+                    controller_errors.append(error)
+
+            controller = threading.Thread(target=interrupt_after_input)
+            controller.start()
+            try:
+                with pytest.raises(CooperativeProcessInterrupted) as interrupted:
+                    communicate_cooperatively(
+                        process,
+                        process_group_id=process.pid,
+                        input="begin\n",
+                    )
+            finally:
+                controller.join()
+
+            assert not controller_errors
+            result = interrupted.value.result
+            assert result["stdout"] == "leader cleanup stdout\n"
+            assert result["stderr"] == "leader cleanup stderr\n"
+            assert result["returncode"] == 0
+            assert result["cancellation"]["signal_forwarded"] is True
+            assert result["cancellation"]["status"] == "cleanup_completed"
+            assert result["execution"]["completion_scope"] == "process_group_quiescent"
+            assert result["execution"]["capture_limit"]["streams_closed_before_eof"] == [
+                "stderr",
+                "stdout",
+            ]
+            assert os.getpgid(holder) == holder
+            _release_escaped_holder(connection, messages, holder)
+
+
+def test_coordinator_abort_does_not_wait_for_an_escaped_pipe_holder() -> None:
+    original = RuntimeError("coordinator abort with escaped capture holder")
+    with _escaped_capture_holder_process("cancellation") as (process, connection):
+        with connection.makefile("rb") as messages:
+            holder = _read_escaped_holder_ready(messages, expect_leader=True)
+            with pytest.raises(RuntimeError) as failure:
+                communicate_cooperatively(
+                    process,
+                    process_group_id=process.pid,
+                    abort_error=original,
+                )
+
+            assert failure.value is original
+            assert messages.readline() == b"leader interrupted\n"
+            result = original.cooperative_process_result
+            assert result["stdout"] == "leader cleanup stdout\n"
+            assert result["stderr"] == "leader cleanup stderr\n"
+            assert result["execution"]["completion_scope"] == "process_group_quiescent"
+            assert result["execution"]["capture_limit"]["streams_closed_before_eof"] == [
+                "stderr",
+                "stdout",
+            ]
+            assert os.getpgid(holder) == holder
+            _release_escaped_holder(connection, messages, holder)
+
+
+def test_group_observation_failure_does_not_wait_for_an_escaped_pipe_holder(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    original = psutil.AccessDenied(msg="escaped holder group observation failed")
+    with _escaped_capture_holder_process("normal") as (process, connection):
+        with connection.makefile("rb") as messages:
+            holder = _read_escaped_holder_ready(messages, expect_leader=False)
+
+            def fail_group_observation(process_group_id: int) -> list[int]:
+                raise original
+
+            monkeypatch.setattr(
+                cooperative_subprocess,
+                "_live_process_group_members",
+                fail_group_observation,
+            )
+            with pytest.raises(CooperativeCleanupIncomplete) as failure:
+                communicate_cooperatively(process, process_group_id=process.pid)
+
+            assert failure.value.__cause__ is original
+            result = failure.value.result
+            assert result["stdout"] == "leader stdout\n"
+            assert result["stderr"] == "leader stderr\n"
+            assert result["execution"]["completion_scope"] == "cleanup_incomplete"
+            assert result["execution"]["capture_limit"]["reason"] == (
+                "owned_process_group_observation_failed_before_capture_eof"
+            )
+            assert result["execution"]["capture_limit"]["streams_closed_before_eof"] == [
+                "stderr",
+                "stdout",
+            ]
+            assert os.getpgid(holder) == holder
+            _release_escaped_holder(connection, messages, holder)
 
 
 def test_invalid_text_preserves_raw_capture_without_blocking_cleanup() -> None:
@@ -468,7 +711,10 @@ def test_invalid_text_preserves_raw_capture_without_blocking_cleanup() -> None:
     with _python_process("import os\nos.write(1, b'valid\\xffbytes')\n") as process:
         result = communicate_cooperatively(process, process_group_id=process.pid)
     assert result["stdout"] == "valid\ufffdbytes"
-    assert base64.b64decode(result["execution"]["undecodable_streams_base64"]["stdout"]) == b"valid\xffbytes"
+    assert (
+        base64.b64decode(result["execution"]["undecodable_streams_base64"]["stdout"])
+        == b"valid\xffbytes"
+    )
 
 
 _INTERRUPT_AND_RELEASE = """
@@ -575,8 +821,14 @@ def _descendant_process() -> Iterator[tuple[subprocess.Popen[str], socket.socket
     process = None
     try:
         process = subprocess.Popen(
-            [sys.executable, "-u", "-c", _DESCENDANT_AFTER_LEADER,
-             str(child_connection.fileno()), str(release_read)],
+            [
+                sys.executable,
+                "-u",
+                "-c",
+                _DESCENDANT_AFTER_LEADER,
+                str(child_connection.fileno()),
+                str(release_read),
+            ],
             pass_fds=(child_connection.fileno(), release_read),
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
@@ -620,7 +872,8 @@ def test_cancellation_waits_for_descendant_that_closed_capture_pipes(
             members = real_group_query(process_group_id)
             leader_exited = (
                 process.returncode is not None
-                or os.waitid(os.P_PID, process.pid, os.WEXITED | os.WNOWAIT | os.WNOHANG) is not None
+                or os.waitid(os.P_PID, process.pid, os.WEXITED | os.WNOWAIT | os.WNOHANG)
+                is not None
             )
             if process_group_id == process.pid and leader_exited:
                 observed_after_leader_exit.append(tuple(members))
@@ -637,7 +890,9 @@ def test_cancellation_waits_for_descendant_that_closed_capture_pipes(
             return members
 
         # Observe the actual kernel-backed query without changing its result.
-        monkeypatch.setattr(cooperative_subprocess, "_live_process_group_members", observe_real_group_query)
+        monkeypatch.setattr(
+            cooperative_subprocess, "_live_process_group_members", observe_real_group_query
+        )
 
         def release_after_group_observation() -> None:
             try:
@@ -726,7 +981,9 @@ def test_pending_cancellation_forwards_once_and_waits_for_group_cleanup() -> Non
             try:
                 with pytest.raises(CooperativeProcessInterrupted) as interrupted:
                     communicate_cooperatively(
-                        process, process_group_id=process.pid, cancellation_requested=True,
+                        process,
+                        process_group_id=process.pid,
+                        cancellation_requested=True,
                     )
             finally:
                 _release(connection)
@@ -750,11 +1007,15 @@ def test_coordinator_exception_retains_identity_output_and_cleanup() -> None:
         original = TimeoutError("coordinator operation failed")
         with connection.makefile("rb") as messages:
             assert messages.readline() == b"handler ready\n"
-            controller = threading.Thread(target=lambda: (messages.readline(), _release(connection)))
+            controller = threading.Thread(
+                target=lambda: (messages.readline(), _release(connection))
+            )
             controller.start()
             try:
                 with pytest.raises(TimeoutError) as failure:
-                    communicate_cooperatively(process, process_group_id=process.pid, abort_error=original)
+                    communicate_cooperatively(
+                        process, process_group_id=process.pid, abort_error=original
+                    )
             finally:
                 _release(connection)
                 controller.join()
@@ -769,19 +1030,24 @@ def test_coordinator_exception_retains_identity_output_and_cleanup() -> None:
 
 @pytest.mark.parametrize("failure_stage", ["constructor", "registration", "input_encoding"])
 def test_setup_failure_aborts_once_and_retains_child_diagnostics(
-    monkeypatch: pytest.MonkeyPatch, failure_stage: str,
+    monkeypatch: pytest.MonkeyPatch,
+    failure_stage: str,
 ) -> None:
     original = OSError("selector setup failed")
     setup_failures: list[str] = []
     real_selector = cooperative_subprocess.selectors.DefaultSelector
 
     if failure_stage == "constructor":
+
         def failing_constructor():
             setup_failures.append("constructor")
             raise original
 
-        monkeypatch.setattr(cooperative_subprocess.selectors, "DefaultSelector", failing_constructor)
+        monkeypatch.setattr(
+            cooperative_subprocess.selectors, "DefaultSelector", failing_constructor
+        )
     elif failure_stage == "registration":
+
         class FailingRegistration(real_selector):
             def register(self, fileobj, events, data=None):
                 if data == "stderr":
@@ -789,7 +1055,9 @@ def test_setup_failure_aborts_once_and_retains_child_diagnostics(
                     raise original
                 return super().register(fileobj, events, data)
 
-        monkeypatch.setattr(cooperative_subprocess.selectors, "DefaultSelector", FailingRegistration)
+        monkeypatch.setattr(
+            cooperative_subprocess.selectors, "DefaultSelector", FailingRegistration
+        )
 
     with _controlled_process(_PENDING_CANCEL_AND_RELEASE) as (process, connection):
         with connection.makefile("rb") as messages:
@@ -807,10 +1075,13 @@ def test_setup_failure_aborts_once_and_retains_child_diagnostics(
             controller = threading.Thread(target=release_after_abort)
             controller.start()
             try:
-                expected_error = UnicodeEncodeError if failure_stage == "input_encoding" else OSError
+                expected_error = (
+                    UnicodeEncodeError if failure_stage == "input_encoding" else OSError
+                )
                 with pytest.raises(expected_error) as failure:
                     communicate_cooperatively(
-                        process, process_group_id=process.pid,
+                        process,
+                        process_group_id=process.pid,
                         input="\ud800" if failure_stage == "input_encoding" else None,
                     )
             finally:
@@ -892,7 +1163,9 @@ def test_persistent_selector_failure_keeps_captured_prefix_without_retrying(
     with _controlled_process(source) as (process, connection):
         with connection.makefile("rb") as messages:
             assert messages.readline() == b"handler ready\n"
-            controller = threading.Thread(target=lambda: (messages.readline(), _release(connection)))
+            controller = threading.Thread(
+                target=lambda: (messages.readline(), _release(connection))
+            )
             controller.start()
             try:
                 with pytest.raises(OSError) as failure:
@@ -920,13 +1193,16 @@ def test_failed_final_group_observation_reports_incomplete_cleanup_without_retry
     failed_queries: list[int] = []
     source = "import sys\nprint('finished stdout')\nprint('finished stderr', file=sys.stderr)\n"
     with _python_process(source) as process:
+
         def fail_after_pipe_eof(process_group_id: int) -> list[int]:
             if process.stdout.closed and process.stderr.closed:
                 failed_queries.append(process_group_id)
                 raise original
             return real_group_query(process_group_id)
 
-        monkeypatch.setattr(cooperative_subprocess, "_live_process_group_members", fail_after_pipe_eof)
+        monkeypatch.setattr(
+            cooperative_subprocess, "_live_process_group_members", fail_after_pipe_eof
+        )
         with pytest.raises(CooperativeCleanupIncomplete) as failure:
             communicate_cooperatively(process, process_group_id=process.pid)
         assert failure.value.__cause__ is original
@@ -943,10 +1219,13 @@ def test_failed_final_group_observation_reports_incomplete_cleanup_without_retry
         nonce = "cpu-cleanup-event-nonce"
         cooperative_subprocess.emit_cleanup_incomplete_event(result, nonce=nonce, stream=event)
         assert len(event.getvalue().splitlines()) == 1
-        assert cooperative_subprocess.parse_cleanup_incomplete_event(
-            "noise\n" + event.getvalue() + "trailer\n",
-            expected_nonce=nonce,
-        ) == result
+        assert (
+            cooperative_subprocess.parse_cleanup_incomplete_event(
+                "noise\n" + event.getvalue() + "trailer\n",
+                expected_nonce=nonce,
+            )
+            == result
+        )
         wrapper = RuntimeError("boundary wrapper")
         wrapper.__cause__ = failure.value
         failure.value.__context__ = wrapper
@@ -967,7 +1246,9 @@ def test_persistent_waitid_failure_preserves_error_and_does_not_retry(
         with connection.makefile("rb") as messages:
             assert messages.readline() == b"handler ready\n"
             monkeypatch.setattr(cooperative_subprocess.os, "waitid", failing_waitid)
-            controller = threading.Thread(target=lambda: (messages.readline(), _release(connection)))
+            controller = threading.Thread(
+                target=lambda: (messages.readline(), _release(connection))
+            )
             controller.start()
             try:
                 with pytest.raises(CooperativeCleanupIncomplete) as failure:
@@ -976,7 +1257,10 @@ def test_persistent_waitid_failure_preserves_error_and_does_not_retry(
                 _release(connection)
                 controller.join()
         assert failure.value.__cause__ is original
-        assert calls == [os.WEXITED | os.WNOWAIT | os.WNOHANG, os.WEXITED]
+        assert calls == [
+            os.WEXITED | os.WNOWAIT | os.WNOHANG,
+            os.WEXITED | os.WNOWAIT,
+        ]
         result = failure.value.cooperative_process_result
         assert result["stdout"] == "pending cancel signal 1\npending cancel cleanup 1\n"
         assert result["stderr"] == "pending cancel stderr\n"
@@ -988,7 +1272,8 @@ def test_persistent_waitid_failure_preserves_error_and_does_not_retry(
 
 @pytest.mark.parametrize("failed_operation", ["getpgid", "killpg"])
 def test_requested_interrupt_preserves_ownership_or_signal_error_without_retrying(
-    monkeypatch: pytest.MonkeyPatch, failed_operation: str,
+    monkeypatch: pytest.MonkeyPatch,
+    failed_operation: str,
 ) -> None:
     original = PermissionError("owned process operation denied")
     calls: list[None] = []
@@ -1003,14 +1288,17 @@ def test_requested_interrupt_preserves_ownership_or_signal_error_without_retryin
             monkeypatch.setattr(cooperative_subprocess.os, failed_operation, denied_operation)
             with pytest.raises(CooperativeProcessInterrupted) as failure:
                 communicate_cooperatively(
-                    process, process_group_id=process.pid, cancellation_requested=True,
+                    process,
+                    process_group_id=process.pid,
+                    cancellation_requested=True,
                 )
         assert failure.value.__cause__ is original
         assert len(calls) == 1
         result = failure.value.result
         assert result["cancellation"]["operator_interrupt_observed"] is True
         assert result["execution"]["coordinator_error"] == {
-            "type": "PermissionError", "message": str(original),
+            "type": "PermissionError",
+            "message": str(original),
         }
         assert result["execution"]["completion_scope"] == "cleanup_incomplete"
         assert result["execution"]["live_process_group_members"] is None
@@ -1051,7 +1339,9 @@ def test_operator_interrupt_takes_priority_during_coordinator_abort() -> None:
             controller.start()
             try:
                 with pytest.raises(CooperativeProcessInterrupted) as failure:
-                    communicate_cooperatively(process, process_group_id=process.pid, abort_error=original)
+                    communicate_cooperatively(
+                        process, process_group_id=process.pid, abort_error=original
+                    )
             finally:
                 _release(connection)
                 controller.join()
@@ -1067,12 +1357,15 @@ def test_operator_interrupt_takes_priority_during_coordinator_abort() -> None:
         assert result["cancellation"]["interrupt_count"] == 1
         assert result["cancellation"]["repeated_interrupts"] == 0
         assert result["execution"]["coordinator_error"] == {
-            "type": "RuntimeError", "message": str(original),
+            "type": "RuntimeError",
+            "message": str(original),
         }
         assert result["execution"]["completion_scope"] == "process_group_quiescent"
 
 
-def test_real_interrupt_survives_failed_cleanup_observation(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_real_interrupt_survives_failed_cleanup_observation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     original = psutil.AccessDenied(msg="cleanup observation failed after interrupt")
     real_group_query = cooperative_subprocess._live_process_group_members
     with _controlled_process(_INTERRUPT_AND_RELEASE) as (process, connection):
@@ -1083,8 +1376,11 @@ def test_real_interrupt_survives_failed_cleanup_observation(monkeypatch: pytest.
                 raise original
             return real_group_query(process_group_id)
 
-        monkeypatch.setattr(cooperative_subprocess, "_live_process_group_members", fail_after_capture_closed)
+        monkeypatch.setattr(
+            cooperative_subprocess, "_live_process_group_members", fail_after_capture_closed
+        )
         with connection.makefile("rb") as messages:
+
             def interrupt_then_release() -> None:
                 try:
                     assert messages.readline() == b"ready\n"
@@ -1099,7 +1395,9 @@ def test_real_interrupt_survives_failed_cleanup_observation(monkeypatch: pytest.
             controller.start()
             try:
                 with pytest.raises(CooperativeProcessInterrupted) as failure:
-                    communicate_cooperatively(process, process_group_id=process.pid, input="begin\n")
+                    communicate_cooperatively(
+                        process, process_group_id=process.pid, input="begin\n"
+                    )
             finally:
                 _release(connection)
                 controller.join()
@@ -1118,7 +1416,7 @@ def test_interrupt_during_signal_forwarding_does_not_drop_or_repeat_signal(
 ) -> None:
     real_killpg = os.killpg
     forwarded: list[int] = []
-    original_mask = signal.pthread_sigmask(signal.SIG_BLOCK, set())
+    previous_handler = signal.getsignal(signal.SIGINT)
 
     def interrupt_before_forward(process_group_id, signum):
         forwarded.append(signum)
@@ -1129,18 +1427,22 @@ def test_interrupt_during_signal_forwarding_does_not_drop_or_repeat_signal(
         with connection.makefile("rb") as messages:
             assert messages.readline() == b"handler ready\n"
             monkeypatch.setattr(cooperative_subprocess.os, "killpg", interrupt_before_forward)
-            controller = threading.Thread(target=lambda: (messages.readline(), _release(connection)))
+            controller = threading.Thread(
+                target=lambda: (messages.readline(), _release(connection))
+            )
             controller.start()
             try:
                 with pytest.raises(CooperativeProcessInterrupted) as failure:
                     communicate_cooperatively(
-                        process, process_group_id=process.pid, cancellation_requested=True,
+                        process,
+                        process_group_id=process.pid,
+                        cancellation_requested=True,
                     )
             finally:
                 _release(connection)
                 controller.join()
         assert forwarded == [signal.SIGINT]
-        assert signal.pthread_sigmask(signal.SIG_BLOCK, set()) == original_mask
+        assert signal.getsignal(signal.SIGINT) is previous_handler
         result = failure.value.result
         assert result["stdout"] == "pending cancel signal 1\npending cancel cleanup 1\n"
         assert result["cancellation"]["signal_forwarded"] is True
@@ -1150,7 +1452,8 @@ def test_interrupt_during_signal_forwarding_does_not_drop_or_repeat_signal(
 
 @pytest.mark.parametrize("interrupt_stage", ["reap", "receipt"])
 def test_interrupt_after_reap_keeps_output_without_signalling_released_identity(
-    monkeypatch: pytest.MonkeyPatch, interrupt_stage: str,
+    monkeypatch: pytest.MonkeyPatch,
+    interrupt_stage: str,
 ) -> None:
     forwarded: list[int] = []
     source = "import sys\nprint('retained stdout')\nprint('retained stderr', file=sys.stderr)\n"
@@ -1172,11 +1475,15 @@ def test_interrupt_after_reap_keeps_output_without_signalling_released_identity(
                 os.kill(os.getpid(), signal.SIGINT)
             return real_join(argv)
 
-        monkeypatch.setattr(cooperative_subprocess.os, "killpg", lambda group, signum: forwarded.append(signum))
+        monkeypatch.setattr(
+            cooperative_subprocess.os, "killpg", lambda group, signum: forwarded.append(signum)
+        )
         if interrupt_stage == "reap":
             monkeypatch.setattr(cooperative_subprocess.os, "waitid", interrupt_after_wait)
         else:
-            monkeypatch.setattr(cooperative_subprocess.shlex, "join", interrupt_while_building_receipt)
+            monkeypatch.setattr(
+                cooperative_subprocess.shlex, "join", interrupt_while_building_receipt
+            )
         with pytest.raises(CooperativeProcessInterrupted) as failure:
             communicate_cooperatively(process, process_group_id=process.pid)
         result = failure.value.result
@@ -1188,6 +1495,48 @@ def test_interrupt_after_reap_keeps_output_without_signalling_released_identity(
         assert result["cancellation"]["signal_forwarded"] is False
         assert result["cancellation"]["signal_not_forwarded_reason"] == "leader_reaped"
         assert result["cancellation"]["interrupt_count"] == 1
+
+
+def test_repeated_interrupts_during_reap_are_counted_with_a_background_thread(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    forwarded: list[int] = []
+    background_stop = threading.Event()
+    background = threading.Thread(target=background_stop.wait)
+    background.start()
+    try:
+        with _python_process("print('completed before repeated reap interrupts')\n") as process:
+            real_waitid = os.waitid
+
+            def interrupt_after_wait(idtype, pid, options):
+                status = real_waitid(idtype, pid, options)
+                if options == os.WEXITED:
+                    for _ in range(2):
+                        os.kill(os.getpid(), signal.SIGINT)
+                        for _ in range(1000):
+                            pass
+                return status
+
+            monkeypatch.setattr(cooperative_subprocess.os, "waitid", interrupt_after_wait)
+            monkeypatch.setattr(
+                cooperative_subprocess.os,
+                "killpg",
+                lambda group, signum: forwarded.append(signum),
+            )
+            with pytest.raises(CooperativeProcessInterrupted) as failure:
+                communicate_cooperatively(process, process_group_id=process.pid)
+
+            result = failure.value.result
+            assert forwarded == []
+            assert result["stdout"] == "completed before repeated reap interrupts\n"
+            assert result["returncode"] == 0
+            assert result["execution"]["completion_scope"] == "process_group_quiescent"
+            assert result["cancellation"]["interrupt_count"] == 2
+            assert result["cancellation"]["repeated_interrupts"] == 1
+            assert result["cancellation"]["signal_not_forwarded_reason"] == "leader_reaped"
+    finally:
+        background_stop.set()
+        background.join()
 
 
 def test_repeated_interrupts_while_committing_result_are_all_retained(
@@ -1230,13 +1579,16 @@ def test_repeated_interrupts_while_committing_result_are_all_retained(
         assert result["cancellation"]["signal_not_forwarded_reason"] == "leader_reaped"
 
 
-def test_lost_final_reap_preserves_output_without_reporting_success(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_lost_final_reap_preserves_output_without_reporting_success(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     real_waitid = os.waitid
     original = ChildProcessError(errno.ECHILD, "Final status stolen by another reaper")
     final_statuses = []
     forwarded = []
     source = "import sys\nprint('finished stdout')\nprint('finished stderr', file=sys.stderr)\nsys.exit(7)\n"
     with _python_process(source) as process:
+
         def lose_final_status(idtype, pid, options):
             status = real_waitid(idtype, pid, options)
             if options == os.WEXITED:
@@ -1245,7 +1597,9 @@ def test_lost_final_reap_preserves_output_without_reporting_success(monkeypatch:
             return status
 
         monkeypatch.setattr(cooperative_subprocess.os, "waitid", lose_final_status)
-        monkeypatch.setattr(cooperative_subprocess.os, "killpg", lambda group, signum: forwarded.append(signum))
+        monkeypatch.setattr(
+            cooperative_subprocess.os, "killpg", lambda group, signum: forwarded.append(signum)
+        )
         try:
             with pytest.raises(CooperativeCleanupIncomplete) as failure:
                 communicate_cooperatively(process, process_group_id=process.pid)
@@ -1266,7 +1620,10 @@ def test_lost_final_reap_preserves_output_without_reporting_success(monkeypatch:
                 process.returncode = final_statuses[0].si_status
 
 
-@pytest.mark.parametrize("receipt", [None, {"execution": {"completion_scope": "cleanup_incomplete", "process_group_id": True}}])
+@pytest.mark.parametrize(
+    "receipt",
+    [None, {"execution": {"completion_scope": "cleanup_incomplete", "process_group_id": True}}],
+)
 def test_malformed_terminal_event_is_not_ignored(receipt) -> None:
     nonce = "cpu-cleanup-event-nonce"
     payload = json.dumps({"event": "aisp_cleanup_incomplete", "nonce": nonce, "receipt": receipt})
@@ -1292,18 +1649,27 @@ def test_terminal_event_requires_the_matching_launch_nonce() -> None:
     cooperative_subprocess.emit_cleanup_incomplete_event(receipt, nonce=nonce, stream=stream)
     payload = stream.getvalue()
 
-    assert cooperative_subprocess.parse_cleanup_incomplete_event(
-        payload,
-        expected_nonce="wrong-cpu-cleanup-event-nonce",
-    ) is None
-    assert cooperative_subprocess.parse_cleanup_incomplete_event(
-        json.dumps({"event": "aisp_cleanup_incomplete", "receipt": receipt}),
-        expected_nonce=nonce,
-    ) is None
-    assert cooperative_subprocess.parse_cleanup_incomplete_event(
-        payload,
-        expected_nonce=nonce,
-    ) == receipt
+    assert (
+        cooperative_subprocess.parse_cleanup_incomplete_event(
+            payload,
+            expected_nonce="wrong-cpu-cleanup-event-nonce",
+        )
+        is None
+    )
+    assert (
+        cooperative_subprocess.parse_cleanup_incomplete_event(
+            json.dumps({"event": "aisp_cleanup_incomplete", "receipt": receipt}),
+            expected_nonce=nonce,
+        )
+        is None
+    )
+    assert (
+        cooperative_subprocess.parse_cleanup_incomplete_event(
+            payload,
+            expected_nonce=nonce,
+        )
+        == receipt
+    )
 
 
 def test_cleanup_event_nonce_is_removed_before_application_code(

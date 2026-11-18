@@ -353,32 +353,58 @@ engine.benchmark.speed_test()                   # Quick GEMM/attention test
 does not execute a benchmark. Use the CLI, MCP `run_benchmarks`, or the Python
 `core.harness.run_benchmarks.test_chapter()` executor for actual execution.
 
-**Execution deadlines:** the CLI `--execution-timeout-seconds`, MCP
-`execution_timeout_seconds`, and Python `test_chapter()` / `BenchmarkConfig`
-argument accept an omitted value, zero, or a positive integer. Omit the override
-to retain existing deadlines and timeout multipliers. A positive integer sets
-the exact setup, warmup, measurement and legacy execution deadlines in seconds,
-including after benchmark config merging and isolated-child reconstruction.
-It is not multiplied again. These values do not give every phase a fresh,
-independent budget. The enclosing worker still uses the measurement limit and
-the existing runtime-provenance allowance. Finite values beyond the platform's
-supported wait range are rejected before launching a worker. The override does
-not replace internal compiler or executable deadlines declared by a benchmark.
-Zero selects uncapped execution
-through an owned Python subprocess. Direct thread and torchrun execution reject that request
-because they do not provide the same owned-process cancellation path.
-Select this override at the calling interface. A benchmark's `get_config()`
-cannot enable uncapped execution, and a raw zero measurement or legacy deadline
-requires the caller's explicit `execution_timeout_seconds=0`.
+**Benchmark deadlines:** MCP benchmark calls have three separate deadline layers.
 
-The suite deadline is separate. An uncapped CLI run requires
-`--suite-timeout 0`. MCP also requires `suite_timeout` to be explicitly set to
-`0` and `timeout_seconds` to be explicitly set to `0` or `null`. A finite enclosing deadline is rejected before work
-starts because it could abandon the uncapped worker. Omitted values retain the
-existing defaults.
-MCP background jobs reject uncapped execution because they have no cancellation
-endpoint. Use the synchronous MCP call or CLI. The opt-in stale timing watchdog
-also rejects uncapped execution because it can terminate work independently.
+| Field | Scope | Omitted or `null` | `0` | Positive integer |
+|-------|-------|-------------------|-----|------------------|
+| MCP `timeout_seconds` | The bench CLI process launched by the MCP tool | No outer deadline for a synchronous call | No outer deadline for a synchronous call | Exact outer deadline in seconds |
+| MCP `suite_timeout` / CLI `--suite-timeout` | The complete benchmark suite inside the CLI process | Retain the CLI suite default | No suite deadline | Exact suite deadline in seconds |
+| MCP `execution_timeout_seconds` / CLI `--execution-timeout-seconds` / Python `BenchmarkConfig` | Setup, warmup, measurement and legacy execution stages | Retain the merged stage defaults and timeout multipliers | No stage deadline when the execution path supports an owned subprocess | Exact stage deadline in seconds |
+
+For synchronous `run_benchmarks`, omitting `timeout_seconds`, setting it to `0`,
+or setting it to `null` removes only the outer MCP deadline. Suite, execution-stage,
+profiler, compiler and benchmark-declared executable deadlines still apply. A
+positive `timeout_seconds` limits the MCP-owned bench CLI process. It does not
+replace the suite or execution-stage settings.
+
+An asynchronous benchmark job must provide an explicit positive
+`timeout_seconds`. The queued worker runs in a thread that cannot receive
+operator cancellation. This rule also applies to `benchmark_variants`,
+`optimize`, `benchmark_deep_dive_compare`, `benchmark_explore` and
+`benchmark_llm_patch_loop`. Synchronous calls to these tools accept an omitted,
+zero or `null` outer timeout. `benchmark_variants` and `optimize` forward the
+field to `run_benchmarks`. `benchmark_deep_dive_compare` applies it to its
+benchmark run. `benchmark_explore` applies `timeout_seconds` to the minimal run
+and `deep_dive_timeout_seconds` to its optional deep-dive run.
+`benchmark_llm_patch_loop` applies the value separately to the patch run and
+each comparison run. These workflow fields are not cumulative deadlines for
+later in-process analysis.
+
+For execution stages, a positive `execution_timeout_seconds` sets the exact
+setup, warmup, measurement and legacy execution deadlines after benchmark config
+merging and isolated-child reconstruction. It is not multiplied again. These
+values do not give every phase a fresh, independent budget. The enclosing worker
+still uses the measurement limit and the existing runtime-provenance allowance.
+Finite values beyond the platform's supported wait range are rejected before
+launching a worker. The override does not replace internal compiler or executable
+deadlines declared by a benchmark.
+
+Setting `execution_timeout_seconds=0` selects uncapped execution through an owned
+Python subprocess. Direct thread and torchrun execution reject that request
+because they do not provide the same owned-process cancellation path. Select this
+override at the calling interface. A benchmark's `get_config()` cannot enable
+uncapped execution. A raw zero measurement or legacy deadline requires the
+caller's explicit `execution_timeout_seconds=0`.
+
+Uncapped execution stages also require `suite_timeout=0` and an explicit
+`timeout_seconds=0` or `timeout_seconds=null`. An omitted outer timeout is
+normally equivalent for a synchronous call, but this combination requires the
+field to be present so the no-deadline choice is explicit. A finite enclosing
+deadline is rejected before work starts because it could abandon the uncapped
+worker. MCP background jobs reject uncapped execution because they have no
+cancellation endpoint. Use the synchronous MCP call or CLI. The opt-in stale
+timing watchdog also rejects uncapped execution because it can terminate work
+independently.
 On interruption, the owned process group receives SIGINT and the caller waits
 for its cleanup, retaining output. This adds no forced termination deadline.
 An unresponsive child can keep the caller waiting. Profiler deadlines and
@@ -389,21 +415,26 @@ worker completes outside cancellation or coordinator-abort cleanup, helpers left
 in its dedicated group receive SIGKILL before its process identity is released.
 Cancellation and abort cleanup wait cooperatively. This does not limit execution
 time. Cooperative cleanup requires POSIX process groups, `waitid` with `WNOWAIT`,
-`pthread_sigmask`, and the repository's `psutil` dependency. SIGINT must not be
-ignored, SIGCHLD must use its default disposition, and the caller must be the
-sole reaper for the worker. Unsupported signal dispositions are rejected before
-launch. The receipt's cleanup scope covers only members of the worker's process
-group. A child launcher remains responsible for waiting for and cleaning up peers
-that start another session or process group. If the coordinator cannot establish
-cleanup, the sweep stops with the original error and retained worker diagnostics.
-It does not start the next benchmark. Stock `CudaBinaryBenchmark`
-implementations reject an explicit `execution_timeout_seconds=0` because their
-build and executable paths have independent deadlines and process ownership.
+and the repository's `psutil` dependency. SIGINT must not be ignored, SIGCHLD
+must use its default disposition, and the caller must be the sole reaper for the
+worker. Unsupported signal dispositions are rejected before launch. The receipt's
+cleanup scope covers only members of the worker's process group. A child launcher
+remains responsible for waiting for and cleaning up peers that start another
+session or process group. If an out-of-group descendant keeps a capture pipe open
+after the owned group becomes quiescent, the coordinator drains currently
+available bytes and closes its read end. The receipt records this boundary in
+`execution.capture_limit`, including the affected streams and retained byte
+counts. Later output from that out-of-group process is outside the receipt. If the
+coordinator cannot establish cleanup, the sweep stops with the original error and
+retained worker diagnostics. It does not start the next benchmark. Stock
+`CudaBinaryBenchmark` implementations reject an explicit
+`execution_timeout_seconds=0` because their build and executable paths have
+independent deadlines and process ownership.
 Both communication labs support uncapped execution through owned launchers.
 Their harness commands require `execution_timeout_seconds=0` because a finite
 outer worker timeout cannot safely clean up the MPI launcher's separate process
-group. Their standalone native launchers remain available. Profiler and
-verification policies remain independent.
+group. Their standalone native launchers remain available. Their build and launch
+paths do not add a deadline. Profiler and verification policies remain independent.
 
 **Runner notes:**
 - CUDA benchmarks execute via Python wrappers (`CudaBinaryBenchmark`). Direct `.cu` runs are not supported.

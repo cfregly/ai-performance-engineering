@@ -2,22 +2,28 @@
 
 from __future__ import annotations
 
-import json
 import io
+import json
 import os
 import re
 import subprocess
 from pathlib import Path
 from typing import Any
 
-import pytest
 import psutil
+import pytest
 
-import mcp.mcp_server as server
 import core.utils.cooperative_subprocess as cooperative
+import mcp.mcp_server as server
 from core.jobs import JobStore
-from core.utils.cooperative_subprocess import CooperativeCleanupIncomplete, CooperativeProcessInterrupted
-from core.utils.execution_timeouts import MAX_EXECUTION_TIMEOUT_SECONDS
+from core.utils.cooperative_subprocess import (
+    CooperativeCleanupIncomplete,
+    CooperativeProcessInterrupted,
+)
+from core.utils.execution_timeouts import (
+    MAX_EXECUTION_TIMEOUT_SECONDS,
+    MAX_SUBPROCESS_WAIT_SECONDS,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -53,7 +59,34 @@ def test_timeout_schema_exposes_nullable_overrides() -> None:
         assert properties[name]["minimum"] == 0
         assert properties[name]["default"] is None
     assert properties["timeout_seconds"]["type"] == ["integer", "null"]
-    assert properties["timeout_seconds"]["default"] == 900
+    assert properties["timeout_seconds"]["default"] is None
+
+
+@pytest.mark.parametrize("tool_name", ["benchmark_variants", "optimize"])
+def test_benchmark_alias_schemas_do_not_inject_an_outer_deadline(tool_name: str) -> None:
+    timeout = server.TOOLS[tool_name].input_schema["properties"]["timeout_seconds"]
+    assert timeout["type"] == ["integer", "null"]
+    assert timeout["default"] is None
+
+
+@pytest.mark.parametrize("tool_name", ["benchmark_variants", "optimize"])
+def test_benchmark_aliases_preserve_an_omitted_outer_deadline(
+    monkeypatch: pytest.MonkeyPatch,
+    tool_name: str,
+) -> None:
+    captured: dict[str, Any] = {}
+
+    def capture(params: dict[str, Any]) -> dict[str, Any]:
+        captured.update(params)
+        return {"success": True}
+
+    monkeypatch.setattr(server, "tool_run_benchmarks", capture)
+    if tool_name == "optimize":
+        server.tool_optimize({"target": "ch01:example"})
+    else:
+        server.tool_benchmark_variants({"targets": ["ch01:example"]})
+
+    assert "timeout_seconds" not in captured
 
 
 @pytest.mark.parametrize("value", [0, 19, None])
@@ -99,7 +132,9 @@ def test_suite_deadline_above_execution_poll_limit_keeps_queue_handoff(
 ) -> None:
     captured: dict[str, Any] = {}
 
-    def capture_queue(name: str, runner: Any, params: dict[str, Any], **kwargs: Any) -> dict[str, Any]:
+    def capture_queue(
+        name: str, runner: Any, params: dict[str, Any], **kwargs: Any
+    ) -> dict[str, Any]:
         captured.update(params)
         return {"job_id": "suite-boundary-handoff", "status": "queued"}
 
@@ -108,11 +143,17 @@ def test_suite_deadline_above_execution_poll_limit_keeps_queue_handoff(
 
     monkeypatch.setattr(server, "_queue_job", capture_queue)
     monkeypatch.setattr(server, "_cuda_precheck", forbidden)
-    result = server.tool_run_benchmarks({
-        "targets": ["ch01:example"], "execution_timeout_seconds": 19,
-        "suite_timeout": MAX_EXECUTION_TIMEOUT_SECONDS + 1,
-        "async": True, "run_id": "suite_boundary_handoff", "include_context": False,
-    })
+    result = server.tool_run_benchmarks(
+        {
+            "targets": ["ch01:example"],
+            "execution_timeout_seconds": 19,
+            "suite_timeout": MAX_EXECUTION_TIMEOUT_SECONDS + 1,
+            "async": True,
+            "timeout_seconds": 19,
+            "run_id": "suite_boundary_handoff",
+            "include_context": False,
+        }
+    )
     assert result["status"] == "queued"
     assert captured["execution_timeout_seconds"] == 19
     assert captured["suite_timeout"] == MAX_EXECUTION_TIMEOUT_SECONDS + 1
@@ -126,50 +167,104 @@ def test_execution_platform_limit_retains_its_diagnostic_before_queue(
 
     monkeypatch.setattr(server, "_queue_job", forbidden)
     monkeypatch.setattr(server, "_cuda_precheck", forbidden)
-    result = server.tool_run_benchmarks({
-        "execution_timeout_seconds": MAX_EXECUTION_TIMEOUT_SECONDS + 1,
-        "async": True,
-    })
+    result = server.tool_run_benchmarks(
+        {
+            "execution_timeout_seconds": MAX_EXECUTION_TIMEOUT_SECONDS + 1,
+            "async": True,
+        }
+    )
     assert result["success"] is False
     assert str(MAX_EXECUTION_TIMEOUT_SECONDS) in result["error"]
     assert "supported finite wait" in result["error"]
     assert "runtime-provenance allowance" in result["error"]
 
 
+@pytest.mark.parametrize("value", [-1, True, False, 1.5, "19"])
+def test_invalid_outer_timeout_fails_before_cuda_or_queue(
+    monkeypatch: pytest.MonkeyPatch,
+    value: Any,
+) -> None:
+    def forbidden(*args: Any, **kwargs: Any) -> None:
+        raise AssertionError("Invalid outer timeout must fail before GPU or queue work")
+
+    monkeypatch.setattr(server, "_cuda_precheck", forbidden)
+    monkeypatch.setattr(server, "_queue_job", forbidden)
+    result = server.tool_run_benchmarks({"timeout_seconds": value, "async": True})
+    assert result == {
+        "error": "timeout_seconds must be a nonnegative integer or null",
+        "success": False,
+    }
+
+
+def test_outer_timeout_platform_limit_rejects_before_cuda_or_queue(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def forbidden(*args: Any, **kwargs: Any) -> None:
+        raise AssertionError("Unsupported outer wait must fail before GPU or queue work")
+
+    monkeypatch.setattr(server, "_cuda_precheck", forbidden)
+    monkeypatch.setattr(server, "_queue_job", forbidden)
+    result = server.tool_run_benchmarks(
+        {"timeout_seconds": int(MAX_SUBPROCESS_WAIT_SECONDS) + 1, "async": True}
+    )
+    assert result["success"] is False
+    assert "timeout_seconds" in result["error"]
+    assert "supported wait" in result["error"]
+
+
 @pytest.mark.parametrize("suite_options", [{}, {"suite_timeout": None}, {"suite_timeout": 19}])
 def test_uncapped_execution_rejects_inherited_or_finite_suite_before_cuda_or_queue(
-    monkeypatch: pytest.MonkeyPatch, suite_options: dict[str, Any],
+    monkeypatch: pytest.MonkeyPatch,
+    suite_options: dict[str, Any],
 ) -> None:
     def forbidden(*args: Any, **kwargs: Any) -> None:
         raise AssertionError("Unsafe deadlines must fail before GPU or queue work")
 
     monkeypatch.setattr(server, "_cuda_precheck", forbidden)
     monkeypatch.setattr(server, "_queue_job", forbidden)
-    result = server.tool_run_benchmarks({
-        "execution_timeout_seconds": 0, "timeout_seconds": 0, "async": True,
-        **suite_options,
-    })
+    result = server.tool_run_benchmarks(
+        {
+            "execution_timeout_seconds": 0,
+            "timeout_seconds": 0,
+            "async": True,
+            **suite_options,
+        }
+    )
     assert result["success"] is False
     assert "requires suite_timeout=0" in result["error"]
 
 
-@pytest.mark.parametrize("outer_options", [
-    {}, {"timeout_seconds": 19}, {"timeout_seconds": 600}, {"timeout_seconds": 900},
-    {"timeout_seconds": -1}, {"timeout_seconds": False}, {"timeout_seconds": True},
-    {"timeout_seconds": 0.0}, {"timeout_seconds": "0"},
-])
+@pytest.mark.parametrize(
+    "outer_options",
+    [
+        {},
+        {"timeout_seconds": 19},
+        {"timeout_seconds": 600},
+        {"timeout_seconds": 900},
+        {"timeout_seconds": -1},
+        {"timeout_seconds": False},
+        {"timeout_seconds": True},
+        {"timeout_seconds": 0.0},
+        {"timeout_seconds": "0"},
+    ],
+)
 def test_uncapped_execution_requires_explicit_uncapped_outer_before_cuda_or_queue(
-    monkeypatch: pytest.MonkeyPatch, outer_options: dict[str, Any],
+    monkeypatch: pytest.MonkeyPatch,
+    outer_options: dict[str, Any],
 ) -> None:
     def forbidden(*args: Any, **kwargs: Any) -> None:
         raise AssertionError("Unsafe deadlines must fail before GPU or queue work")
 
     monkeypatch.setattr(server, "_cuda_precheck", forbidden)
     monkeypatch.setattr(server, "_queue_job", forbidden)
-    result = server.tool_run_benchmarks({
-        "execution_timeout_seconds": 0, "suite_timeout": 0, "async": True,
-        **outer_options,
-    })
+    result = server.tool_run_benchmarks(
+        {
+            "execution_timeout_seconds": 0,
+            "suite_timeout": 0,
+            "async": True,
+            **outer_options,
+        }
+    )
     assert result["success"] is False
     assert "explicit timeout_seconds=0 or null" in result["error"]
 
@@ -177,7 +272,9 @@ def test_uncapped_execution_requires_explicit_uncapped_outer_before_cuda_or_queu
 @pytest.mark.parametrize("run_async", [False, True])
 @pytest.mark.parametrize("watchdog", ["1", "true", "yes", "on", " TRUE "])
 def test_uncapped_timing_watchdog_rejects_before_cuda_or_queue(
-    monkeypatch: pytest.MonkeyPatch, run_async: bool, watchdog: str,
+    monkeypatch: pytest.MonkeyPatch,
+    run_async: bool,
+    watchdog: str,
 ) -> None:
     def forbidden(*args: Any, **kwargs: Any) -> None:
         raise AssertionError("Incompatible watchdog must fail before GPU or queue work")
@@ -185,17 +282,22 @@ def test_uncapped_timing_watchdog_rejects_before_cuda_or_queue(
     monkeypatch.setenv("AISP_STALE_WATCH_TIMING", watchdog)
     monkeypatch.setattr(server, "_cuda_precheck", forbidden)
     monkeypatch.setattr(server, "_queue_job", forbidden)
-    result = server.tool_run_benchmarks({
-        "execution_timeout_seconds": 0, "suite_timeout": 0, "timeout_seconds": 0,
-        "async": run_async,
-    })
+    result = server.tool_run_benchmarks(
+        {
+            "execution_timeout_seconds": 0,
+            "suite_timeout": 0,
+            "timeout_seconds": 0,
+            "async": run_async,
+        }
+    )
     assert result["success"] is False
     assert "incompatible with AISP_STALE_WATCH_TIMING" in result["error"]
 
 
 @pytest.mark.parametrize("outer_timeout", [0, None])
 def test_async_uncapped_execution_rejects_before_cuda_or_queue(
-    monkeypatch: pytest.MonkeyPatch, outer_timeout: int | None,
+    monkeypatch: pytest.MonkeyPatch,
+    outer_timeout: int | None,
 ) -> None:
     def forbidden(*args: Any, **kwargs: Any) -> None:
         raise AssertionError("Uncancellable async execution must fail before GPU or queue work")
@@ -203,38 +305,111 @@ def test_async_uncapped_execution_rejects_before_cuda_or_queue(
     monkeypatch.setenv("AISP_STALE_WATCH_TIMING", "0")
     monkeypatch.setattr(server, "_cuda_precheck", forbidden)
     monkeypatch.setattr(server, "_queue_job", forbidden)
-    result = server.tool_run_benchmarks({
-        "execution_timeout_seconds": 0, "suite_timeout": 0,
-        "timeout_seconds": outer_timeout, "async": True,
-    })
+    result = server.tool_run_benchmarks(
+        {
+            "execution_timeout_seconds": 0,
+            "suite_timeout": 0,
+            "timeout_seconds": outer_timeout,
+            "async": True,
+        }
+    )
     assert result["success"] is False
     assert "requires async=false" in result["error"]
 
 
 @pytest.mark.parametrize("selected", [None, 19])
 def test_inherited_or_finite_execution_keeps_async_queue_handoff(
-    monkeypatch: pytest.MonkeyPatch, selected: int | None,
+    monkeypatch: pytest.MonkeyPatch,
+    selected: int | None,
 ) -> None:
     captured: dict[str, Any] = {}
 
-    def capture_queue(name: str, runner: Any, params: dict[str, Any], **kwargs: Any) -> dict[str, Any]:
+    def capture_queue(
+        name: str, runner: Any, params: dict[str, Any], **kwargs: Any
+    ) -> dict[str, Any]:
         captured.update({"name": name, "runner": runner, "params": params})
         return {"job_id": "captured-queue-handoff", "status": "queued"}
 
     monkeypatch.setattr(server, "_queue_job", capture_queue)
-    result = server.tool_run_benchmarks({
-        "targets": ["ch01:example"], "execution_timeout_seconds": selected,
-        "async": True, "run_id": "finite_queue_handoff", "include_context": False,
-    })
+    result = server.tool_run_benchmarks(
+        {
+            "targets": ["ch01:example"],
+            "execution_timeout_seconds": selected,
+            "async": True,
+            "timeout_seconds": 19,
+            "run_id": "finite_queue_handoff",
+            "include_context": False,
+        }
+    )
     assert result["status"] == "queued"
     assert captured["name"] == "run_benchmarks"
     assert captured["params"]["execution_timeout_seconds"] == selected
     assert callable(captured["runner"])
 
 
+@pytest.mark.parametrize("outer_options", [{}, {"timeout_seconds": None}, {"timeout_seconds": 0}])
+def test_async_requires_a_positive_outer_timeout_before_cuda_or_queue(
+    monkeypatch: pytest.MonkeyPatch,
+    outer_options: dict[str, Any],
+) -> None:
+    def forbidden(*args: Any, **kwargs: Any) -> None:
+        raise AssertionError("Uncancellable async execution must fail before GPU or queue work")
+
+    monkeypatch.setattr(server, "_cuda_precheck", forbidden)
+    monkeypatch.setattr(server, "_queue_job", forbidden)
+    result = server.tool_run_benchmarks(
+        {
+            "targets": ["ch01:example"],
+            "async": True,
+            **outer_options,
+        }
+    )
+    assert result == {
+        "error": (
+            "async=true requires an explicit positive timeout_seconds because "
+            "a background worker cannot receive operator cancellation"
+        ),
+        "success": False,
+    }
+
+
+@pytest.mark.parametrize("timeout_options", [{}, {"timeout_seconds": None}, {"timeout_seconds": 0}])
+@pytest.mark.parametrize(
+    ("tool_name", "required_params"),
+    [
+        ("benchmark_variants", {"targets": ["ch01:example"]}),
+        ("optimize", {"target": "ch01:example"}),
+        ("benchmark_deep_dive_compare", {"targets": ["ch01:example"]}),
+        ("benchmark_explore", {"path": "ch01/baseline_example.py"}),
+        ("benchmark_llm_patch_loop", {"targets": ["ch01:example"]}),
+    ],
+)
+def test_async_benchmark_workflows_require_a_positive_outer_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+    tool_name: str,
+    required_params: dict[str, Any],
+    timeout_options: dict[str, Any],
+) -> None:
+    def forbidden(*args: Any, **kwargs: Any) -> None:
+        raise AssertionError("Invalid async work must fail before queueing")
+
+    monkeypatch.setattr(server, "_queue_job", forbidden)
+    result = getattr(server, f"tool_{tool_name}")(
+        {
+            **required_params,
+            **timeout_options,
+            "async": True,
+            "include_context": False,
+        }
+    )
+    assert result["success"] is False
+    assert "requires an explicit positive timeout_seconds" in result["error"]
+
+
 @pytest.mark.parametrize("selected", [None, 19])
 def test_inherited_or_finite_deadline_keeps_timing_watchdog_available(
-    monkeypatch: pytest.MonkeyPatch, selected: int | None,
+    monkeypatch: pytest.MonkeyPatch,
+    selected: int | None,
 ) -> None:
     monkeypatch.setenv("AISP_STALE_WATCH_TIMING", "1")
     result = _precheck(execution_timeout_seconds=selected)
@@ -245,11 +420,15 @@ def test_inherited_or_finite_deadline_keeps_timing_watchdog_available(
 @pytest.mark.parametrize("test_mode", [False, True])
 @pytest.mark.parametrize("outer_timeout", [0, None])
 def test_uncapped_execution_plan_has_no_enclosing_deadline(
-    monkeypatch: pytest.MonkeyPatch, test_mode: bool, outer_timeout: int | None,
+    monkeypatch: pytest.MonkeyPatch,
+    test_mode: bool,
+    outer_timeout: int | None,
 ) -> None:
     monkeypatch.setattr(server, "_is_test_mode", lambda: test_mode)
     result = _precheck(
-        execution_timeout_seconds=0, suite_timeout=0, timeout_seconds=outer_timeout,
+        execution_timeout_seconds=0,
+        suite_timeout=0,
+        timeout_seconds=outer_timeout,
     )
     assert result["precheck_only"] is True
     assert result["timeout_seconds"] is None
@@ -266,18 +445,22 @@ def test_explicit_uncapped_outer_timeout_survives_test_mode(
     assert result["timeout_seconds"] is None
 
 
-@pytest.mark.parametrize("test_mode,expected", [(False, None), (True, 600)])
-def test_omitted_outer_timeout_preserves_existing_mode_default(
-    monkeypatch: pytest.MonkeyPatch, test_mode: bool, expected: int | None
+@pytest.mark.parametrize("test_mode", [False, True])
+def test_omitted_outer_timeout_uses_the_schema_default(
+    monkeypatch: pytest.MonkeyPatch, test_mode: bool
 ) -> None:
     monkeypatch.setattr(server, "_is_test_mode", lambda: test_mode)
-    assert _precheck()["timeout_seconds"] == expected
+    assert _precheck()["timeout_seconds"] is None
 
 
 def test_positive_outer_timeout_is_retained() -> None:
     assert _precheck(timeout_seconds=23)["timeout_seconds"] == 23
 
 
+@pytest.mark.skipif(
+    not all(hasattr(os, name) for name in ("waitid", "P_PID", "WEXITED", "WNOWAIT", "WNOHANG")),
+    reason="POSIX waitid with WNOWAIT is required",
+)
 def test_uncapped_bench_cli_runs_real_help_with_owned_process_receipt() -> None:
     result = server._run_bench_cli(["run", "--help"], timeout=None, uncapped=True)
     assert result["returncode"] == 0, result
@@ -289,9 +472,15 @@ def test_uncapped_bench_cli_runs_real_help_with_owned_process_receipt() -> None:
     assert result["execution"]["process_group_id"] > 0
 
 
+@pytest.mark.skipif(
+    not all(hasattr(os, name) for name in ("waitid", "P_PID", "WEXITED", "WNOWAIT", "WNOHANG")),
+    reason="POSIX waitid with WNOWAIT is required",
+)
 def test_uncapped_bench_cli_preserves_a_real_cli_argument_failure() -> None:
     result = server._run_bench_cli(
-        ["run", "--execution-timeout-seconds", "not-an-integer"], timeout=None, uncapped=True,
+        ["run", "--execution-timeout-seconds", "not-an-integer"],
+        timeout=None,
+        uncapped=True,
     )
     assert result["returncode"] != 0
     assert result["error"]
@@ -373,8 +562,11 @@ def test_uncapped_bench_cli_retains_ordinary_helper_error_receipt(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     receipt = {
-        "returncode": 0, "stdout": "retained stdout", "stderr": "retained stderr",
-        "timeout_seconds": None, "timeout_hit": False,
+        "returncode": 0,
+        "stdout": "retained stdout",
+        "stderr": "retained stderr",
+        "timeout_seconds": None,
+        "timeout_hit": False,
         "execution": {"process_group_id": 123, "completion_scope": "process_group_quiescent"},
     }
     original = PermissionError("group observation denied")
@@ -399,13 +591,20 @@ def test_uncapped_bench_cli_retains_ordinary_helper_error_receipt(
 
 @pytest.mark.parametrize("legacy_exception", [False, True])
 def test_incomplete_helper_cleanup_blocks_the_next_owned_launch(
-    monkeypatch: pytest.MonkeyPatch, legacy_exception: bool,
+    monkeypatch: pytest.MonkeyPatch,
+    legacy_exception: bool,
 ) -> None:
     receipt = {
-        "returncode": 0, "stdout": "retained stdout", "stderr": "retained stderr",
+        "returncode": 0,
+        "stdout": "retained stdout",
+        "stderr": "retained stderr",
         "execution": {"process_group_id": 123, "completion_scope": "cleanup_incomplete"},
     }
-    original = PermissionError("unverified group") if legacy_exception else CooperativeCleanupIncomplete(receipt)
+    original = (
+        PermissionError("unverified group")
+        if legacy_exception
+        else CooperativeCleanupIncomplete(receipt)
+    )
     original.cooperative_process_result = receipt
 
     def failed(*args: Any, **kwargs: Any) -> None:
@@ -474,7 +673,8 @@ def test_uncapped_bench_cli_propagates_helper_error_without_receipt(
 
 @pytest.mark.skipif(not hasattr(os, "waitid"), reason="owned subprocess support requires waitid")
 def test_real_bench_cli_retains_output_after_failed_final_group_observation(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     (tmp_path / "sitecustomize.py").write_text(
         "import sys\nprint('real CLI startup stderr', file=sys.stderr, flush=True)\n",
@@ -512,11 +712,19 @@ def test_real_bench_cli_retains_output_after_failed_final_group_observation(
     assert result["timeout_hit"] is False
 
 
-@pytest.mark.parametrize("tool_name", [
-    "benchmark_explore", "benchmark_llm_patch_loop", "benchmark_deep_dive_compare",
-])
+@pytest.mark.parametrize(
+    "tool_name",
+    [
+        "benchmark_explore",
+        "benchmark_llm_patch_loop",
+        "benchmark_deep_dive_compare",
+    ],
+)
 @pytest.mark.parametrize("test_mode", [False, True])
-@pytest.mark.parametrize("timeout_options", [{}, {"timeout_seconds": None}, {"timeout_seconds": 0}, {"timeout_seconds": 17}])
+@pytest.mark.parametrize(
+    "timeout_options",
+    [{}, {"timeout_seconds": None}, {"timeout_seconds": 0}, {"timeout_seconds": 17}],
+)
 def test_composite_timeout_forwarding_preserves_absence_and_existing_test_defaults(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -536,8 +744,10 @@ def test_composite_timeout_forwarding_preserves_absence_and_existing_test_defaul
     monkeypatch.setattr(server, "_is_test_mode", lambda: test_mode)
     monkeypatch.setattr(server, "tool_run_benchmarks", capture)
     params = {
-        "targets": ["ch01:example"], "include_context": False,
-        "run_id": "timeout_forwarding", "output_dir": str(tmp_path / "runs"),
+        "targets": ["ch01:example"],
+        "include_context": False,
+        "run_id": "timeout_forwarding",
+        "output_dir": str(tmp_path / "runs"),
         **timeout_options,
     }
     if tool_name == "benchmark_explore":
