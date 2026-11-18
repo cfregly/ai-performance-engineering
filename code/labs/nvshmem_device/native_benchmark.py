@@ -15,6 +15,7 @@ import torch
 from core.benchmark.cuda_binary_benchmark import BinaryRunResult, CudaBinaryBenchmark, detect_supported_arch
 from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import BenchmarkConfig
+from core.utils.cooperative_process_artifacts import require_owned_uncapped_native_config
 from labs.multi_gpu_communication.native_common import require_unprofiled_native_config
 from labs.nvshmem_device.run_lab_nvshmem_device import (
     LAB_DIR, NativeUnavailable, NativeWorkload, invoke_native,
@@ -25,6 +26,7 @@ class NvshmemDeviceBenchmark(CudaBinaryBenchmark):
     """Use completed native epoch timing and capture every received element."""
 
     multi_gpu_required = True
+    supports_uncapped_execution = True
 
     def __init__(self, *, persistent: bool) -> None:
         super().__init__(
@@ -47,8 +49,9 @@ class NvshmemDeviceBenchmark(CudaBinaryBenchmark):
         self.register_workload_metadata(requests_per_iteration=1.0)
 
     def setup(self) -> None:
-        self.workload.validate()
         config = getattr(self, "_config", None)
+        require_owned_uncapped_native_config(config, launcher_name="NVSHMEM device harness execution")
+        self.workload.validate()
         require_unprofiled_native_config(config)
         if not os.environ.get("NVSHMEM_HOME"):
             raise NativeUnavailable("SKIPPED: Set NVSHMEM_HOME for the device NVSHMEM build")
@@ -69,6 +72,9 @@ class NvshmemDeviceBenchmark(CudaBinaryBenchmark):
         )
 
     def _run_once(self) -> BinaryRunResult:
+        require_owned_uncapped_native_config(
+            getattr(self, "_config", None), launcher_name="NVSHMEM device harness execution"
+        )
         if self._directory is None or self.exec_path is None:
             raise RuntimeError("setup() must complete before native execution")
         self._invocations += 1

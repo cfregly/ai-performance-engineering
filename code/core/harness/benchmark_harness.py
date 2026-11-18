@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import copy
+import errno
 import gc
 import json
 import importlib
@@ -53,15 +54,25 @@ import torch
 
 from core.utils.compile_utils import enable_tf32
 from core.utils.execution_timeouts import (
+    RUNTIME_PROVENANCE_TIMEOUT_SECONDS,
     execution_deadline_seconds,
     validate_execution_timeout_mode,
     validate_execution_timeout_seconds,
+    validate_subprocess_wait_timeout,
+    validate_thread_wait_timeout,
 )
 from core.utils.cooperative_subprocess import (
+    CooperativeCleanupIncomplete,
     CooperativeProcessInterrupted,
-    communicate_cooperatively,
+    cleanup_incomplete_receipt_from_error,
+    operator_interrupt_from_error,
+    parse_cleanup_incomplete_event,
+    process_receipt_from_error,
     require_cooperative_process_support,
+    run_cooperative_process,
+    validate_cleanup_incomplete_receipt,
 )
+from core.diagnostics.process import run_owned_process
 from core.benchmark.evaluation_provenance import (
     EvaluationFailure,
     EvaluationProvenance,
@@ -301,14 +312,14 @@ def _terminate_process_group(
 
 
 def _benchmark_child_preexec() -> None:
-    """Start benchmark workers in a fresh session without inherited suite alarms.
+    """Clear inherited suite alarms before benchmark worker startup.
 
     The top-level bench CLI installs a suite-wide SIGALRM timeout. Benchmark
     workers launched via subprocess/torchrun must clear that inherited timer or
     a long-running parent suite can kill a later child immediately with the
-    parent's timeout message.
+    parent's timeout message. Callers create the new session with
+    ``start_new_session=True`` so launch ownership stays explicit in the parent.
     """
-    os.setsid()
     sigalrm = getattr(signal, "SIGALRM", None)
     if sigalrm is None:
         return
@@ -857,7 +868,7 @@ _configure_quick_wins()
 
 _VERIFY_OUTPUT_MAX_BYTES = 64 * 1024 * 1024
 """Maximum verify_output payload size (bytes) before spilling to file."""
-_RUNTIME_PROVENANCE_TIMEOUT_SECONDS = 15.0
+_RUNTIME_PROVENANCE_TIMEOUT_SECONDS = RUNTIME_PROVENANCE_TIMEOUT_SECONDS
 
 
 def _extract_skip_reason_from_messages(messages: Sequence[str]) -> Optional[str]:
@@ -2432,6 +2443,46 @@ def _maybe_write_subprocess_stream(
             logger.warning("Failed to persist subprocess %s for %s: %s", stream, benchmark_name, exc)
 
 
+def _authenticated_nested_cleanup_receipt_or_raise(
+    result: Dict[str, Any],
+) -> Optional[Dict[str, Any]]:
+    """Fail closed when an authenticated cleanup event is malformed."""
+    execution = result.get("execution")
+    if isinstance(execution, dict) and execution.get("completion_scope") == "cleanup_incomplete":
+        return validate_cleanup_incomplete_receipt(result)
+    nonce = execution.get("cleanup_event_nonce") if isinstance(execution, dict) else None
+    if not isinstance(nonce, str) or not nonce:
+        return None
+    try:
+        return parse_cleanup_incomplete_event(
+            str(result.get("stderr", "")),
+            expected_nonce=nonce,
+        )
+    except ValueError as protocol_error:
+        receipt = dict(result)
+        receipt["stdout"] = str(result.get("stdout", ""))
+        receipt["stderr"] = str(result.get("stderr", ""))
+        receipt_execution = dict(execution)
+        receipt_execution["outer_completion_scope"] = execution.get(
+            "completion_scope"
+        )
+        receipt_execution["completion_scope"] = "cleanup_incomplete"
+        receipt_execution["live_process_group_members"] = None
+        receipt_execution["cleanup_protocol_scope"] = (
+            "authenticated_nested_event"
+        )
+        receipt_execution["cleanup_protocol_error"] = str(protocol_error)
+        receipt["execution"] = receipt_execution
+        receipt["outer_execution"] = dict(execution)
+        receipt["cleanup_protocol_error"] = str(protocol_error)
+        fatal = CooperativeCleanupIncomplete(
+            validate_cleanup_incomplete_receipt(receipt)
+        )
+        fatal.outer_process_result = result
+        fatal.cleanup_protocol_error = str(protocol_error)
+        raise fatal from protocol_error
+
+
 class BenchmarkHarness:
     """Production-grade benchmarking harness with profiling support."""
     
@@ -3040,6 +3091,7 @@ class BenchmarkHarness:
             )
         if not isinstance(timeout_limit, (int, float)) or timeout_limit <= 0:
             raise ValueError(f"Invalid torchrun measurement timeout: {timeout_limit!r}")
+        validate_subprocess_wait_timeout(timeout_limit)
         timeout_limit = float(timeout_limit)
 
         try:
@@ -3049,19 +3101,35 @@ class BenchmarkHarness:
                 env["AISP_TORCHRUN_RESULT_LAUNCH_WALL_NS"] = str(launch_wall_ns)
                 env["AISP_TORCHRUN_RESULT_LAUNCH_MONOTONIC_NS"] = str(launch_monotonic_ns)
             start = time.perf_counter()
-            process = subprocess.Popen(
+            completed = run_owned_process(
                 full_cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
+                timeout_seconds=timeout_limit,
                 preexec_fn=_benchmark_child_preexec,
                 env=env,
             )
-            child_pgid = process.pid  # _benchmark_child_preexec() starts a fresh session.
-            try:
-                stdout, stderr = process.communicate(timeout=timeout_limit)
-            except subprocess.TimeoutExpired:
-                _terminate_process_group(process, child_pgid, grace_seconds=2.0)
+            if completed.get("errno") == errno.ENOENT:
+                raise RuntimeError(
+                    "SKIPPED: torchrun launcher executable not found: "
+                    f"{full_cmd[0]}"
+                )
+            stdout, stderr = completed["stdout"], completed["stderr"]
+            returncode = completed["returncode"]
+            torchrun_benchmark_name = (
+                f"torchrun_{spec.name or benchmark.__class__.__name__}"
+            )
+            _maybe_write_subprocess_stream(
+                stdout,
+                torchrun_benchmark_name,
+                config,
+                stream="stdout",
+            )
+            _maybe_write_subprocess_stream(
+                stderr,
+                torchrun_benchmark_name,
+                config,
+                stream="stderr",
+            )
+            if completed.get("timeout_hit"):
                 elapsed = time.perf_counter() - start
                 return self._create_timeout_result(
                     stage="measurement",
@@ -3074,19 +3142,14 @@ class BenchmarkHarness:
             elapsed = time.perf_counter() - start
             finish_monotonic_ns = time.monotonic_ns()
             finish_wall_ns = time.time_ns()
-            _maybe_write_subprocess_stream(
-                stdout, f"torchrun_{spec.name or benchmark.__class__.__name__}", config, stream="stdout"
-            )
-            if process.returncode != 0:
+            if returncode != 0:
                 stdout_lines = stdout.splitlines() if stdout else []
                 stderr_lines = [line.strip() for line in (stderr or "").splitlines() if line.strip()]
                 skip_reason = _extract_skip_reason_from_messages([*stdout_lines, *stderr_lines])
                 if skip_reason:
                     errors.append(f"SKIPPED: {skip_reason}")
                 else:
-                    errors.append(f"torchrun exited with code {process.returncode}")
-                if stderr:
-                    _maybe_write_subprocess_stderr(stderr, f"torchrun_{spec.name or benchmark.__class__.__name__}", config)
+                    errors.append(f"torchrun exited with code {returncode}")
                 if stderr_lines and not skip_reason:
                     # Prefer showing the root-cause message (e.g., seed mutation) instead of only the
                     # torchrun elastic summary tail.
@@ -3136,12 +3199,17 @@ class BenchmarkHarness:
                         launch_monotonic_ns=launch_monotonic_ns,
                         finish_wall_ns=finish_wall_ns,
                         finish_monotonic_ns=finish_monotonic_ns,
-                        returncode=int(process.returncode),
+                        returncode=int(returncode),
                         stdout=stdout,
                         stderr=stderr,
                     )
-        except FileNotFoundError:
-            raise RuntimeError("SKIPPED: torchrun not found in PATH.")
+        except FileNotFoundError as exc:
+            if exc.filename != str(full_cmd[0]):
+                raise
+            raise RuntimeError(
+                "SKIPPED: torchrun launcher executable not found: "
+                f"{full_cmd[0]}"
+            ) from exc
 
         stdout_lines = stdout.splitlines() if stdout else []
         filtered_lines = _filter_logs(stdout_lines, dedupe=spec.parse_rank0_only)
@@ -3867,6 +3935,8 @@ class BenchmarkHarness:
         times_ms: List[float] = []
         child_timing: Optional[TimingStats] = None
         child_failure_result: Optional[PydanticBenchmarkResult] = None
+        terminal_cleanup_receipt: Optional[Dict[str, Any]] = None
+        terminal_cleanup_interrupted = False
         inference_timing_data: Optional[Dict[str, List[float]]] = None
         seed_metadata = copy.deepcopy(getattr(self, "_seed_info", None))
         child_custom_metrics: Optional[Dict[str, float]] = None
@@ -3981,6 +4051,11 @@ class BenchmarkHarness:
         measurement_timeout = _measurement_execution_deadline(config)
         if measurement_timeout is None:
             require_cooperative_process_support()
+        else:
+            validate_subprocess_wait_timeout(
+                measurement_timeout,
+                additional_seconds=_RUNTIME_PROVENANCE_TIMEOUT_SECONDS,
+            )
 
         try:
             fd, verify_output_path = tempfile.mkstemp(prefix="aisp_verify_output_", suffix=".pt")
@@ -3990,36 +4065,71 @@ class BenchmarkHarness:
         input_data["verify_output_path"] = verify_output_path
         input_data["verify_output_max_bytes"] = _VERIFY_OUTPUT_MAX_BYTES
         start_time = time.time()
-        process: Optional[subprocess.Popen[str]] = None
-        child_pgid: Optional[int] = None
+        worker_pid: Optional[int] = None
         stdout, stderr = "", ""
 
-        def retain_aborted_worker(error: BaseException) -> None:
-            if process is None or measurement_timeout is not None:
-                return
-            receipt = getattr(error, "cooperative_process_result", None)
-            if receipt is None:
-                try:
-                    communicate_cooperatively(
-                        process, process_group_id=child_pgid or process.pid,
-                        abort_error=error,
-                    )
-                except BaseException as cleanup_error:
-                    receipt = getattr(cleanup_error, "cooperative_process_result", None)
-                    if cleanup_error is not error:
-                        error.add_note(f"Worker cleanup also failed: {cleanup_error}")
-            if receipt is not None:
-                _maybe_write_subprocess_stream(receipt["stdout"], benchmark_name, config, stream="stdout")
-                _maybe_write_subprocess_stream(receipt["stderr"], benchmark_name, config, stream="stderr")
-                execution = receipt.get("execution", {})
-                if execution.get("completion_scope") == "cleanup_incomplete":
-                    errors.append(
-                        f"Owned worker cleanup is incomplete for process group {process.pid}: "
-                        f"{execution.get('capture_errors', [])}"
-                    )
+        def retain_worker_receipt(error: BaseException, receipt: Dict[str, Any]) -> None:
+            _maybe_write_subprocess_stream(receipt["stdout"], benchmark_name, config, stream="stdout")
+            _maybe_write_subprocess_stream(receipt["stderr"], benchmark_name, config, stream="stderr")
+            try:
+                nested = _authenticated_nested_cleanup_receipt_or_raise(receipt)
+            except CooperativeCleanupIncomplete as protocol_fatal:
+                if isinstance(error, KeyboardInterrupt):
+                    error.cleanup_incomplete_receipt = protocol_fatal.result
+                    error.cleanup_protocol_error = protocol_fatal.cleanup_protocol_error
+                    error.outer_process_result = protocol_fatal.outer_process_result
+                    return
+                raise
+            if nested is not None:
+                error.cleanup_incomplete_receipt = nested
+
+        def retain_attached_worker_receipt(error: BaseException) -> None:
+            receipt = process_receipt_from_error(error)
+            if isinstance(receipt, dict):
+                retain_worker_receipt(error, receipt)
+
+        def measurement_timeout_result(elapsed_time: float) -> BenchmarkResult:
+            assert measurement_timeout is not None
+            logger.error("=" * 80)
+            logger.error("TIMEOUT: Benchmark execution exceeded timeout limit")
+            logger.error("=" * 80)
+            logger.error(f"   Benchmark: {benchmark_name}")
+            logger.error("   Stage: measurement (benchmark iterations)")
+            logger.error(f"   Timeout limit: {measurement_timeout} seconds")
+            logger.error(f"   Elapsed time: {elapsed_time:.2f} seconds")
+            logger.error(f"   Config: iterations={config.iterations}, warmup={config.warmup}")
+            logger.error("   Status: Benchmark subprocess did not complete within timeout period")
+            logger.error("")
+            logger.error("   Possible causes:")
+            logger.error("   - Benchmark is too slow for current timeout")
+            logger.error("   - Benchmark is hanging or deadlocked")
+            logger.error("   - GPU is under heavy load from other processes")
+            logger.error("")
+            logger.error("   Suggested actions:")
+            logger.error(
+                f"   - Increase timeout: config.measurement_timeout_seconds = {measurement_timeout * 2}"
+            )
+            logger.error("   - Use timeout multiplier: config.timeout_multiplier = 2.0")
+            logger.error("   - Check for GPU resource contention")
+            logger.error("   - Review benchmark code for potential deadlocks")
+            logger.error("")
+            logger.error("   Action: Owned worker cleanup completed before returning")
+            logger.error("=" * 80)
+            errors.append(
+                f"TIMEOUT: Benchmark measurement stage exceeded timeout of {measurement_timeout} seconds "
+                f"(ran for {elapsed_time:.2f}s). Consider increasing "
+                "measurement_timeout_seconds or using timeout_multiplier."
+            )
+            return self._create_timeout_result(
+                stage="measurement",
+                duration=elapsed_time,
+                limit=measurement_timeout,
+                errors=errors,
+                benchmark_name=benchmark_name,
+                config=config,
+            )
         
         try:
-            import signal
             repo_root = Path(__file__).resolve().parents[2]
             env = build_repo_python_env(repo_root, base_env=os.environ.copy())
             owner_run_id = os.environ.get("AISP_BENCHMARK_OWNER_RUN_ID", str(os.getpid()))
@@ -4030,94 +4140,90 @@ class BenchmarkHarness:
                 env["CUDA_VISIBLE_DEVICES"] = self._select_single_gpu_visible()
                 if self.device.type == "cuda":
                     input_data["device"] = "cuda:0"
-            process = subprocess.Popen(
-                [
-                    sys.executable,
-                    "-m",
-                    "core.harness.isolated_runner",
-                    "--aisp-owner-run-id",
-                    owner_run_id,
-                    "--aisp-owner-pid",
-                    owner_pid,
-                ],
-                stdin=subprocess.PIPE,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                env=env,
-                preexec_fn=_benchmark_child_preexec,
-            )
-            child_pgid = process.pid  # _benchmark_child_preexec() starts a fresh session.
-            if measurement_timeout is None:
-                input_data["process_execution_owner"] = {
-                    "coordinator_pid": os.getpid(),
-                    "worker_pid": process.pid,
-                    "process_group_id": child_pgid,
-                }
-            execution_process_ids = {0: process.pid}
-            if LOGGER_AVAILABLE:
-                logger.info(
-                    "SUBPROCESS DISPATCH: coordinator_pid=%s worker_pid=%s owner_run_id=%s owner_pid=%s",
-                    os.getpid(),
-                    process.pid,
-                    owner_run_id,
-                    owner_pid,
-                )
-            
-            # Send input JSON and wait for result
-            input_json = json.dumps(input_data)
-            subprocess_failed = False
-            try:
-                if measurement_timeout is None:
-                    completed = communicate_cooperatively(
-                        process,
-                        process_group_id=child_pgid,
-                        input=input_json,
-                    )
-                    stdout, stderr = completed["stdout"], completed["stderr"]
-                else:
-                    stdout, stderr = process.communicate(
-                        input=input_json,
-                        timeout=measurement_timeout + _RUNTIME_PROVENANCE_TIMEOUT_SECONDS,
-                    )
-            except BrokenPipeError as exc:
-                subprocess_failed = True
-                errors.append(f"Subprocess stdin closed early: {exc}")
-                try:
-                    if process.stdin:
-                        process.stdin.close()
-                except Exception as close_exc:
-                    errors.append(f"Failed to close subprocess stdin after broken pipe: {close_exc}")
-                try:
-                    if measurement_timeout is None:
-                        process.stdin = None
-                        completed = communicate_cooperatively(
-                            process, process_group_id=child_pgid or process.pid,
-                        )
-                        stdout, stderr = completed["stdout"], completed["stderr"]
-                    else:
-                        stdout, stderr = process.communicate(timeout=5)
-                except Exception as follow_exc:
-                    errors.append(f"Failed to read subprocess output after broken pipe: {follow_exc}")
-                    stdout = stdout or ""
-                    stderr = stderr or ""
-                if stderr:
-                    _maybe_write_subprocess_stderr(stderr, benchmark_name, config)
-                if measurement_timeout is not None:
-                    _cleanup_process_group(child_pgid)
-            else:
-                if measurement_timeout is not None:
-                    _cleanup_process_group(child_pgid)
+            worker_command = [
+                sys.executable,
+                "-m",
+                "core.harness.isolated_runner",
+                "--aisp-owner-run-id",
+                owner_run_id,
+                "--aisp-owner-pid",
+                owner_pid,
+            ]
 
+            def prepare_worker_input(spawned: subprocess.Popen[str]) -> str:
+                nonlocal worker_pid, execution_process_ids
+                worker_pid = spawned.pid
+                if measurement_timeout is None:
+                    input_data["process_execution_owner"] = {
+                        "coordinator_pid": os.getpid(),
+                        "worker_pid": spawned.pid,
+                        "process_group_id": spawned.pid,
+                    }
+                execution_process_ids = {0: spawned.pid}
+                if LOGGER_AVAILABLE:
+                    logger.info(
+                        "SUBPROCESS DISPATCH: coordinator_pid=%s worker_pid=%s owner_run_id=%s owner_pid=%s",
+                        os.getpid(),
+                        spawned.pid,
+                        owner_run_id,
+                        owner_pid,
+                    )
+                return json.dumps(input_data)
+
+            if measurement_timeout is None:
+                completed = run_cooperative_process(
+                    worker_command,
+                    env=env,
+                    input_factory=prepare_worker_input,
+                    preexec_fn=_benchmark_child_preexec,
+                )
+            else:
+                completed = run_owned_process(
+                    worker_command,
+                    timeout_seconds=measurement_timeout + _RUNTIME_PROVENANCE_TIMEOUT_SECONDS,
+                    env=env,
+                    input_factory=prepare_worker_input,
+                    preexec_fn=_benchmark_child_preexec,
+                )
+            execution = completed.get("execution")
+            if isinstance(execution, dict):
+                retained_pid = execution.get("process_id")
+                if isinstance(retained_pid, int) and not isinstance(retained_pid, bool):
+                    worker_pid = retained_pid
+            stdout, stderr = completed["stdout"], completed["stderr"]
+            worker_returncode = completed.get("returncode")
             _maybe_write_subprocess_stream(stdout, benchmark_name, config, stream="stdout")
-            if subprocess_failed or process.returncode != 0:
-                error_msg = f"Subprocess exited with code {process.returncode}"
+            if stderr:
+                _maybe_write_subprocess_stderr(stderr, benchmark_name, config)
+            terminal_cleanup_receipt = _authenticated_nested_cleanup_receipt_or_raise(
+                completed
+            )
+            if terminal_cleanup_receipt is not None:
+                cancellation = terminal_cleanup_receipt.get("cancellation", {})
+                if cancellation.get("operator_interrupt_observed"):
+                    terminal_error = CooperativeProcessInterrupted(
+                        terminal_cleanup_receipt
+                    )
+                else:
+                    terminal_error = CooperativeCleanupIncomplete(
+                        terminal_cleanup_receipt
+                    )
+                terminal_error.outer_process_result = completed
+                raise terminal_error
+            if completed.get("timeout_hit"):
+                timeout_result = measurement_timeout_result(time.time() - start_time)
+                timeout_result.execution_process_ids = dict(execution_process_ids)
+                return timeout_result
+            if worker_returncode != 0:
+                error_msg = f"Subprocess exited with code {worker_returncode}"
                 errors.append(error_msg)
                 if stderr:
                     stderr_preview = stderr[:500] if len(stderr) > 500 else stderr
                     errors.append(f"Stderr: {stderr_preview}")
                     if LOGGER_AVAILABLE:
-                        logger.error(f"Benchmark '{benchmark_name}' subprocess failed with return code {process.returncode}")
+                        logger.error(
+                            f"Benchmark '{benchmark_name}' subprocess failed with return code {worker_returncode}"
+                        )
                         logger.error(f"Stderr preview: {stderr_preview}")
                     _maybe_write_subprocess_stderr(stderr, benchmark_name, config)
                 times_ms = cast(List[float], [])
@@ -4145,6 +4251,9 @@ class BenchmarkHarness:
                     # truncation when strings contain braces/escapes.
                     decoder = json.JSONDecoder()
                     result_dict, json_end = decoder.raw_decode(stdout)
+                    if "cleanup_incomplete" in result_dict:
+                        terminal_cleanup_receipt = validate_cleanup_incomplete_receipt(result_dict["cleanup_incomplete"])
+                        terminal_cleanup_interrupted = result_dict.get("operator_interrupted") is True
                     suffix = stdout[json_end:].strip()
                     if suffix and LOGGER_AVAILABLE:
                         logger.debug(f"Stripped non-JSON suffix from subprocess output: {suffix[:200]}")
@@ -4165,7 +4274,7 @@ class BenchmarkHarness:
                         child_evaluation = benchmark_result.evaluation.model_copy(deep=True)
                     if benchmark_result is not None and benchmark_result.runtime_provenance is not None:
                         child_runtime_provenance = benchmark_result.runtime_provenance.model_copy(deep=True)
-                        if child_runtime_provenance.process_id != process.pid:
+                        if worker_pid is None or child_runtime_provenance.process_id != worker_pid:
                             raise ValueError("Runtime provenance PID does not match the launched benchmark worker")
                     if benchmark_result is not None:
                         child_device = benchmark_result.device
@@ -4320,85 +4429,28 @@ class BenchmarkHarness:
                     child_timing = None
         
         except CooperativeProcessInterrupted as exc:
-            _maybe_write_subprocess_stream(exc.result["stdout"], benchmark_name, config, stream="stdout")
-            _maybe_write_subprocess_stream(exc.result["stderr"], benchmark_name, config, stream="stderr")
-            raise
-        except KeyboardInterrupt:
-            if process is not None:
-                if measurement_timeout is None:
-                    try:
-                        communicate_cooperatively(
-                            process, process_group_id=child_pgid or process.pid,
-                            cancellation_requested=True,
-                        )
-                    except CooperativeProcessInterrupted as exc:
-                        _maybe_write_subprocess_stream(exc.result["stdout"], benchmark_name, config, stream="stdout")
-                        _maybe_write_subprocess_stream(exc.result["stderr"], benchmark_name, config, stream="stderr")
-                        raise
-                    raise
-                _terminate_process_group(process, child_pgid, grace_seconds=2.0)
-                try:
-                    stdout, stderr = process.communicate()
-                    _maybe_write_subprocess_stream(stdout, benchmark_name, config, stream="stdout")
-                    _maybe_write_subprocess_stderr(stderr, benchmark_name, config)
-                except (subprocess.SubprocessError, OSError, ValueError) as exc:
-                    _emit_harness_warning(
-                        f"Cancelled benchmark worker {process.pid} could not retain trailing output",
-                        exc=exc,
-                    )
-            raise
-        except subprocess.TimeoutExpired:
-            assert measurement_timeout is not None
-            # TIMEOUT - kill the process group
-            elapsed_time = time.time() - start_time
-            
-            logger.error("=" * 80)
-            logger.error("TIMEOUT: Benchmark execution exceeded timeout limit")
-            logger.error("=" * 80)
-            logger.error(f"   Benchmark: {benchmark_name}")
-            logger.error(f"   Stage: measurement (benchmark iterations)")
-            logger.error(f"   Timeout limit: {measurement_timeout} seconds")
-            logger.error(f"   Elapsed time: {elapsed_time:.2f} seconds")
-            logger.error(f"   Config: iterations={config.iterations}, warmup={config.warmup}")
-            logger.error(f"   Status: Benchmark subprocess did not complete within timeout period")
-            logger.error("")
-            logger.error("   Possible causes:")
-            logger.error("   - Benchmark is too slow for current timeout")
-            logger.error("   - Benchmark is hanging or deadlocked")
-            logger.error("   - GPU is under heavy load from other processes")
-            logger.error("")
-            logger.error("   Suggested actions:")
-            logger.error(f"   - Increase timeout: config.measurement_timeout_seconds = {measurement_timeout * 2}")
-            logger.error(f"   - Use timeout multiplier: config.timeout_multiplier = 2.0")
-            logger.error("   - Check for GPU resource contention")
-            logger.error("   - Review benchmark code for potential deadlocks")
-            logger.error("")
-            logger.error("   Action: Terminating subprocess to free GPU resources")
-            logger.error("=" * 80)
-            
-            _terminate_process_group(process, child_pgid, grace_seconds=2.0)
-            
-            timeout_error_msg = (
-                f"TIMEOUT: Benchmark measurement stage exceeded timeout of {measurement_timeout} seconds "
-                f"(ran for {elapsed_time:.2f}s). "
-                f"Consider increasing measurement_timeout_seconds or using timeout_multiplier."
+            retain_worker_receipt(
+                exc,
+                getattr(exc, "outer_process_result", exc.result),
             )
-            errors.append(timeout_error_msg)
-            times_ms = cast(List[float], [])
-            
-            # Create a result with timeout information even though we failed
-            if not times_ms:
-                return self._create_timeout_result(
-                    stage="measurement",
-                    duration=elapsed_time,
-                    limit=measurement_timeout,
-                    errors=errors,
-                    benchmark_name=benchmark_name,
-                    config=config,
-                )
+            raise
+        except CooperativeCleanupIncomplete as exc:
+            retain_worker_receipt(
+                exc,
+                getattr(exc, "outer_process_result", exc.result),
+            )
+            raise
+        except KeyboardInterrupt as error:
+            retain_attached_worker_receipt(error)
+            raise
         
         except Exception as e:
-            retain_aborted_worker(e)
+            retain_attached_worker_receipt(e)
+            nested_receipt = cleanup_incomplete_receipt_from_error(e)
+            if nested_receipt is not None:
+                if operator_interrupt_from_error(e):
+                    raise CooperativeProcessInterrupted(nested_receipt) from e
+                raise CooperativeCleanupIncomplete(nested_receipt) from e
             error_msg = f"Subprocess execution failed: {str(e)}"
             errors.append(error_msg)
             if LOGGER_AVAILABLE:
@@ -4407,7 +4459,7 @@ class BenchmarkHarness:
             times_ms = cast(List[float], [])
             child_timing = None
         except BaseException as error:
-            retain_aborted_worker(error)
+            retain_attached_worker_receipt(error)
             raise
         finally:
             try:
@@ -4418,6 +4470,14 @@ class BenchmarkHarness:
                     exc=exc,
                 )
         
+        if terminal_cleanup_receipt is not None:
+            cancellation = terminal_cleanup_receipt.get("cancellation", {})
+            original = terminal_cleanup_receipt.get("execution", {}).get("coordinator_error")
+            cause = RuntimeError(f"{original.get('type')}: {original.get('message')}") if isinstance(original, dict) else None
+            if terminal_cleanup_interrupted or cancellation.get("operator_interrupt_observed"):
+                raise CooperativeProcessInterrupted(terminal_cleanup_receipt) from cause
+            raise CooperativeCleanupIncomplete(terminal_cleanup_receipt) from cause
+
         # Don't raise if we already returned a timeout result
         if not times_ms and child_timing is None and 'timeout_result' not in locals():
             # Build comprehensive error message with context
@@ -5247,6 +5307,8 @@ class BenchmarkHarness:
         # Uncapped work runs on its owned worker's main thread so SIGINT
         # unwinds the active call through teardown before any later stage starts.
         measurement_timeout = _measurement_execution_deadline(config)
+        if measurement_timeout is not None:
+            validate_thread_wait_timeout(measurement_timeout)
         thread_start_time = time.time()
         future = None
         timeout_result: Optional[PydanticBenchmarkResult] = None

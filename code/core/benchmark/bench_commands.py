@@ -388,6 +388,17 @@ def _validate_execution_suite_timeout(
         )
 
 
+def _validate_execution_watchdog(execution_timeout_seconds: Optional[int]) -> None:
+    """Reject a timing watchdog that can forcibly stop uncapped execution."""
+    if execution_timeout_seconds == 0 and os.environ.get(
+        "AISP_STALE_WATCH_TIMING", "0"
+    ).strip().lower() in {"1", "true", "yes", "on"}:
+        raise ValueError(
+            "execution_timeout_seconds=0 is incompatible with AISP_STALE_WATCH_TIMING. "
+            "Unset AISP_STALE_WATCH_TIMING to keep timing execution uncapped."
+        )
+
+
 def _read_progress_payload_for_heartbeat(
     progress_path: Path,
 ) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
@@ -852,6 +863,7 @@ def _execute_benchmarks(
         execution_timeout_seconds, execution_mode="subprocess", launch_via=launch_via,
     )
     _validate_execution_suite_timeout(execution_timeout_seconds, suite_timeout)
+    _validate_execution_watchdog(execution_timeout_seconds)
     validity_profile = _validate_validity_profile(validity_profile)
     portable_mode = validity_profile == "portable"
     allow_virtualization = portable_mode
@@ -1757,7 +1769,7 @@ if TYPER_AVAILABLE:
             None,
             "--execution-timeout-seconds",
             min=0,
-            help="Override setup, warmup and measurement deadlines with exact seconds. Omit to inherit defaults. Use 0 for uncapped owned subprocess execution, which requires --suite-timeout 0. Profiler deadlines are unchanged.",
+            help="Override setup, warmup and measurement deadlines with exact seconds. Omit to inherit defaults. Use 0 for uncapped owned subprocess execution, which requires --suite-timeout 0 and AISP_STALE_WATCH_TIMING disabled. Profiler deadlines are unchanged.",
         ),
         validity_profile: str = Option(
             "strict",
@@ -2034,6 +2046,7 @@ if TYPER_AVAILABLE:
                 execution_timeout_seconds, execution_mode="subprocess", launch_via=launch_via,
             )
             _validate_execution_suite_timeout(execution_timeout_seconds, effective_timeout)
+            _validate_execution_watchdog(execution_timeout_seconds)
         except ValueError as exc:
             raise typer.BadParameter(str(exc)) from exc
         # Set verification enforcement phase
@@ -4891,22 +4904,36 @@ if TYPER_AVAILABLE:
             typer.echo(f"\n📊 Coverage: {coverage:.1f}%")
 
 
-def main():
+def main() -> int:
     """Entry point for CLI."""
     if not TYPER_AVAILABLE:
         print("ERROR: typer is required for CLI. Install with: pip install typer")
-        sys.exit(1)
+        return 1
 
     if app is None:
         print("ERROR: CLI not available")
-        sys.exit(1)
+        return 1
 
-    app()
+    from core.utils.cooperative_subprocess import (
+        cleanup_incomplete_receipt_from_error,
+        consume_cleanup_event_nonce,
+        emit_cleanup_incomplete_event,
+        operator_interrupt_from_error,
+    )
+    cleanup_event_nonce = consume_cleanup_event_nonce()
+
+    try:
+        app()
+    except BaseException as exc:
+        receipt = cleanup_incomplete_receipt_from_error(exc)
+        if receipt is not None:
+            emit_cleanup_incomplete_event(receipt, nonce=cleanup_event_nonce)
+            return 130 if operator_interrupt_from_error(exc) else 1
+        if isinstance(exc, SystemExit):
+            return int(exc.code or 0)
+        raise
+    return 0
 
 
 if __name__ == "__main__":
-    main()
-
-
-if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

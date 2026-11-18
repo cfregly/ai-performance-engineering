@@ -8,6 +8,15 @@ buffer reuse, and GPU progress. Use the
 [host-on-stream communication lab](../multi_gpu_communication/README.md) when a
 regular host-enqueued communication phase is sufficient.
 
+The Python launcher requires a POSIX Python environment with `psutil`,
+`waitid`/`WNOWAIT`, and `pthread_sigmask`. Linux Python provides these process
+controls. SIGINT must not be ignored, SIGCHLD must have its default disposition,
+and no other component may reap the owned launcher. Unsupported signal
+dispositions are rejected before launch. Each MPI launch has its own owned
+process group. Cancellation forwards
+an interrupt and waits for cleanup, retaining both streams and an
+`.execution.json` receipt beside the result.
+
 The learning sequence builds on the
 [FZJ-JSC multi-GPU tutorial](https://github.com/FZJ-JSC/tutorial-multi-gpu/tree/cd34f9d40d600efd8d84e433b1a9e84ab5eff5f3).
 The [integration review](../../../docs/reviews/2026-11-15-distributed-gpu-tutorial.md)
@@ -256,11 +265,15 @@ Use the native profiling recipe below for communication kernels. The wrappers
 reject the generic harness profiler path because MPI execution and live peer
 state require explicit collection control. B200 validation exercised both real
 wrapper lifecycles and compared their complete outputs. It did not execute the
-full `bench run` pipeline. The command above now explicitly selects uncapped
-suite and execution waits through the owned isolated subprocess. Omit those
-two flags to retain the defaults. Correctness, environment and speedup gates
-remain active. Profiler deadlines are unchanged. An interrupt requests cleanup
-and waits for the owned process group to finish. See the
+full `bench run` pipeline. This command requires both timeout flags to be
+explicitly set to zero. They disable the harness suite and execution-stage
+deadlines for the owned isolated subprocess. A finite outer worker timeout
+cannot safely clean up the native MPI launcher's separate process group, so
+both benchmark variants reject finite execution before the build starts.
+Standalone native launches remain supported. Internal compiler and profiler
+deadlines remain. Correctness, environment, and speedup gates also remain active.
+On interruption, the caller requests cleanup and waits for the owned process
+group to finish. See the
 [execution deadline contract](../../docs/api-reference.md#8-benchmark-domain).
 
 ## Profile the protocol that actually ran

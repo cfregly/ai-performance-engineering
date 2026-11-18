@@ -15,6 +15,7 @@ import torch
 from core.benchmark.cuda_binary_benchmark import BinaryRunResult, CudaBinaryBenchmark, detect_supported_arch
 from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import BenchmarkConfig
+from core.utils.cooperative_process_artifacts import require_owned_uncapped_native_config
 from labs.multi_gpu_communication.native_common import (
     LAB_DIR, NativeUnavailable, NativeWorkload, invoke_native, require_unprofiled_native_config,
 )
@@ -24,6 +25,7 @@ class NativeJacobiBenchmark(CudaBinaryBenchmark):
     """Use maximum-rank native timing and retain every element of the timed output."""
 
     multi_gpu_required = True
+    supports_uncapped_execution = True
 
     def __init__(self, *, overlapped: bool) -> None:
         super().__init__(
@@ -43,8 +45,9 @@ class NativeJacobiBenchmark(CudaBinaryBenchmark):
         self.register_workload_metadata(requests_per_iteration=1.0)
 
     def setup(self) -> None:
-        self.workload.validate()
         config = getattr(self, "_config", None)
+        require_owned_uncapped_native_config(config, launcher_name="Native Jacobi harness execution")
+        self.workload.validate()
         require_unprofiled_native_config(config)
         if shutil.which("nvcc") is None and not Path("/usr/local/cuda/bin/nvcc").is_file():
             raise NativeUnavailable("SKIPPED: The native communication lab requires nvcc")
@@ -69,6 +72,9 @@ class NativeJacobiBenchmark(CudaBinaryBenchmark):
         )
 
     def _run_once(self) -> BinaryRunResult:
+        require_owned_uncapped_native_config(
+            getattr(self, "_config", None), launcher_name="Native Jacobi harness execution"
+        )
         if self._directory is None or self.exec_path is None:
             raise RuntimeError("setup() must complete before running native Jacobi")
         self._invocations += 1

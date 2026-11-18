@@ -18,10 +18,10 @@ Verify Mode Support:
 
 from __future__ import annotations
 
+import errno
 import os
 import re
 import subprocess
-import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional, Sequence
@@ -33,11 +33,11 @@ from core.benchmark.timing_parser import parse_kernel_time_ms
 from core.benchmark.tma_checks import require_tma_instructions
 from core.benchmark.verification import simple_signature
 from core.benchmark.verification_mixin import VerificationPayloadMixin
+from core.diagnostics.process import run_owned_process
 from core.harness.benchmark_harness import (
     BaseBenchmark,
     BenchmarkConfig,
     _benchmark_child_preexec,
-    _terminate_process_group,
 )
 from core.harness.cuda_capabilities import pipeline_runtime_allowed
 
@@ -64,11 +64,7 @@ def _run_subprocess_capture(
     cwd: Path,
     timeout: int,
 ) -> subprocess.CompletedProcess[str]:
-    """Run a subprocess while capturing stdout/stderr without pipe breakage.
-
-    Use temporary files instead of PIPE to avoid BrokenPipe when the parent
-    stdout is detached (e.g., queue runner sessions).
-    """
+    """Run a subprocess under the shared finite process-tree owner."""
     env = os.environ.copy()
     owner_run_id = str(os.environ.get("AISP_BENCHMARK_OWNER_RUN_ID", "")).strip()
     owner_pid = str(os.environ.get("AISP_BENCHMARK_OWNER_PID", "")).strip()
@@ -76,39 +72,32 @@ def _run_subprocess_capture(
         env.setdefault("AISP_BENCHMARK_OWNER_RUN_ID", owner_run_id)
     if owner_pid:
         env.setdefault("AISP_BENCHMARK_OWNER_PID", owner_pid)
-    with tempfile.TemporaryFile() as stdout_file, tempfile.TemporaryFile() as stderr_file:
-        process = subprocess.Popen(
+    result = run_owned_process(
+        list(args),
+        cwd=cwd,
+        env=env,
+        timeout_seconds=timeout,
+        preexec_fn=_benchmark_child_preexec,
+    )
+    if result.get("errno") == errno.ENOENT:
+        raise FileNotFoundError(
+            errno.ENOENT,
+            os.strerror(errno.ENOENT),
+            str(args[0]),
+        )
+    if result.get("timeout_hit"):
+        raise subprocess.TimeoutExpired(
             list(args),
-            cwd=cwd,
-            stdout=stdout_file,
-            stderr=stderr_file,
-            env=env,
-            preexec_fn=_benchmark_child_preexec,
+            timeout,
+            output=result["stdout"],
+            stderr=result["stderr"],
         )
-        try:
-            returncode = process.wait(timeout=timeout)
-        except subprocess.TimeoutExpired as exc:
-            _terminate_process_group(process, process.pid, grace_seconds=2.0)
-            stdout_file.seek(0)
-            stderr_file.seek(0)
-            stdout = stdout_file.read().decode("utf-8", errors="replace")
-            stderr = stderr_file.read().decode("utf-8", errors="replace")
-            raise subprocess.TimeoutExpired(
-                list(args),
-                timeout,
-                output=stdout,
-                stderr=stderr,
-            ) from exc
-        stdout_file.seek(0)
-        stderr_file.seek(0)
-        stdout = stdout_file.read().decode("utf-8", errors="replace")
-        stderr = stderr_file.read().decode("utf-8", errors="replace")
-        return subprocess.CompletedProcess(
-            args=list(args),
-            returncode=returncode,
-            stdout=stdout,
-            stderr=stderr,
-        )
+    return subprocess.CompletedProcess(
+        args=list(args),
+        returncode=result["returncode"],
+        stdout=result["stdout"],
+        stderr=result["stderr"],
+    )
 
 
 def _extract_binary_skip_message(completed: subprocess.CompletedProcess[str]) -> Optional[str]:
@@ -165,6 +154,9 @@ class CudaBinaryBenchmark(VerificationPayloadMixin, BaseBenchmark):
     parameter_signature_only: bool = True
     _is_deterministic: bool = True
     allowed_benchmark_fn_antipatterns = ("io",)
+    # Subclasses may opt in only when every child process they launch has explicit cleanup ownership.
+    # Independent compiler, executable, and profiler deadlines may remain.
+    supports_uncapped_execution: bool = False
     # Opt in only when the Makefile provides <binary>_profile<arch suffix>
     # and that build marks the complete timed workload with this NVTX range.
     ncu_profile_nvtx_include: Optional[str] = None
@@ -211,6 +203,21 @@ class CudaBinaryBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._last_result: Optional[BinaryRunResult] = None
     
     # ------------------------------------------------------------------ Helper API
+    def _require_supported_execution_timeout(self) -> None:
+        """Reject uncapped execution before stock binary build or launch work."""
+        config = getattr(self, "_config", None)
+        if (
+            config is not None
+            and config.execution_timeout_seconds == 0
+            and self.supports_uncapped_execution is not True
+        ):
+            raise RuntimeError(
+                f"SKIPPED: {type(self).__name__} does not support execution_timeout_seconds=0. "
+                "The stock CUDA binary wrapper uses finite build and command deadlines "
+                "and launches separate process groups. Use a finite execution timeout "
+                "or a subclass with cooperative child ownership."
+            )
+
     def _build_binary(self, verify_mode: bool = False, *, profile_mode: bool = False) -> Path:
         """Compile the requested CUDA binary.
         
@@ -221,6 +228,7 @@ class CudaBinaryBenchmark(VerificationPayloadMixin, BaseBenchmark):
         Returns:
             Path to the built binary
         """
+        self._require_supported_execution_timeout()
         if verify_mode and profile_mode:
             raise ValueError("Verification and profiling builds must be separate")
         self.arch = detect_supported_arch()
@@ -297,6 +305,7 @@ class CudaBinaryBenchmark(VerificationPayloadMixin, BaseBenchmark):
         Returns:
             Parsed checksum, or None if not found
         """
+        self._require_supported_execution_timeout()
         if self._verify_exec_path is None:
             raise RuntimeError("Verify binary not built (call _build_binary_verify first)")
         
@@ -371,6 +380,7 @@ class CudaBinaryBenchmark(VerificationPayloadMixin, BaseBenchmark):
     
     def _run_once(self) -> BinaryRunResult:
         """Execute the compiled binary and parse its runtime."""
+        self._require_supported_execution_timeout()
         if self.exec_path is None:
             raise RuntimeError("Executable path not set (build step missing)")
         
@@ -405,6 +415,7 @@ class CudaBinaryBenchmark(VerificationPayloadMixin, BaseBenchmark):
     # ------------------------------------------------------------------ Benchmark API
     def setup(self) -> None:
         """Build the executable once before benchmarking."""
+        self._require_supported_execution_timeout()
         if self.requires_pipeline_api:
             supported, reason = pipeline_runtime_allowed()
             if not supported:
@@ -413,6 +424,7 @@ class CudaBinaryBenchmark(VerificationPayloadMixin, BaseBenchmark):
     
     def benchmark_fn(self) -> None:
         """Launch the executable and record its runtime."""
+        self._require_supported_execution_timeout()
         self._last_result = self._run_once()
     
     def teardown(self) -> None:
@@ -554,6 +566,7 @@ class CudaBinaryBenchmark(VerificationPayloadMixin, BaseBenchmark):
         Returns:
             Parsed checksum, or None if not found
         """
+        self._require_supported_execution_timeout()
         if self._verify_exec_path is None:
             self._build_binary_verify()
         return self._run_verify()

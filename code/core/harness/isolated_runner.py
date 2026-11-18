@@ -44,6 +44,16 @@ from core.harness.triton_cache_utils import (
     get_triton_runtime_env_overrides,
     reset_triton_runtime_cache,
 )
+from core.utils.execution_timeouts import (
+    validate_execution_timeout_seconds,
+    validate_thread_wait_timeout,
+)
+from core.utils.cooperative_subprocess import (
+    CooperativeCleanupIncomplete,
+    cleanup_incomplete_receipt_from_error,
+    consume_cleanup_event_nonce,
+    emit_cleanup_incomplete_event,
+)
 
 
 def _emit_runner_warning(message: str, **details: Any) -> None:
@@ -254,7 +264,11 @@ def _validate_process_execution_owner(receipt: Any) -> bool:
     return True
 
 
-def run_benchmark(input_data: Dict[str, Any]) -> Dict[str, Any]:
+def run_benchmark(
+    input_data: Dict[str, Any],
+    *,
+    cleanup_event_nonce: str | None = None,
+) -> Dict[str, Any]:
     """Run benchmark and return results in harness-expected format."""
     import importlib.util
     from core.harness.verify_output_codec import serialize_verify_tensor
@@ -291,7 +305,7 @@ def run_benchmark(input_data: Dict[str, Any]) -> Dict[str, Any]:
             owned_process_execution = _validate_process_execution_owner(
                 input_data.get("process_execution_owner")
             )
-            requested_timeout = config_dict.get("execution_timeout_seconds")
+            requested_timeout = validate_execution_timeout_seconds(config_dict.get("execution_timeout_seconds"))
             measurement_timeout = config_dict.get("measurement_timeout_seconds")
             if measurement_timeout is None:
                 measurement_timeout = config_dict.get("timeout_seconds")
@@ -299,6 +313,8 @@ def run_benchmark(input_data: Dict[str, Any]) -> Dict[str, Any]:
                 raise ValueError("Uncapped isolated execution requires a matching process ownership receipt")
             if measurement_timeout == 0 and requested_timeout != 0:
                 raise ValueError("A zero measurement timeout requires explicit execution_timeout_seconds=0")
+            if measurement_timeout is not None and measurement_timeout != 0:
+                validate_thread_wait_timeout(measurement_timeout)
             # Reset CUDA state BEFORE loading the module
             reset_cuda_state(device_str)
 
@@ -523,6 +539,15 @@ def run_benchmark(input_data: Dict[str, Any]) -> Dict[str, Any]:
             }
             return result_payload
 
+        except (CooperativeCleanupIncomplete, KeyboardInterrupt) as e:
+            receipt = cleanup_incomplete_receipt_from_error(e)
+            if receipt is None:
+                raise
+            response = _make_error_response([str(e), traceback.format_exc()])
+            response["cleanup_incomplete"] = receipt
+            response["operator_interrupted"] = isinstance(e, KeyboardInterrupt)
+            emit_cleanup_incomplete_event(receipt, nonce=cleanup_event_nonce)
+            return response
         except Exception as e:
             tb = traceback.format_exc()
             errors.append(f"Benchmark execution failed: {e}")
@@ -645,6 +670,7 @@ def _make_success_response(
 
 def main() -> None:
     """Main entry point - read JSON from stdin, run benchmark, write JSON to stdout."""
+    cleanup_event_nonce = consume_cleanup_event_nonce()
     try:
         _apply_owner_markers_from_argv(sys.argv[1:])
         # Read input JSON from stdin
@@ -652,7 +678,7 @@ def main() -> None:
         input_data = json.loads(input_json)
         
         # Run benchmark
-        result = run_benchmark(input_data)
+        result = run_benchmark(input_data, cleanup_event_nonce=cleanup_event_nonce)
         
         # Write result JSON to stdout
         print(json.dumps(result))

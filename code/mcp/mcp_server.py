@@ -109,7 +109,6 @@ WORKFLOW EXAMPLES:
     Benchmarks:      run_benchmarks(async=true) → job_status → benchmark_triage
 """
 
-import asyncio
 import json
 import os
 import shlex
@@ -168,13 +167,24 @@ from core.api.redaction import redact_sensitive_data
 from core.benchmark.expectations import UPDATE_EXPECTATIONS_HELP_TEXT
 from core.harness.progress import ProgressEvent, ProgressRecorder
 from core.jobs import JobStore
+from core.jobs.job_store import process_failure_result_from_error
 from core.profiling.profiler_config import (
     MINIMAL_METRICS,
     NCU_REPLAY_MODES,
     validate_ncu_app_range_capture,
     validate_ncu_replay_mode,
 )
-from core.utils.cooperative_subprocess import run_cooperative_process
+from core.utils.cooperative_subprocess import (
+    CooperativeCleanupIncomplete,
+    CooperativeProcessInterrupted,
+    cleanup_incomplete_receipt_from_error,
+    consume_cleanup_event_nonce,
+    emit_cleanup_incomplete_event,
+    operator_interrupt_from_error,
+    parse_cleanup_incomplete_event,
+    run_cooperative_process,
+    validate_cleanup_incomplete_receipt,
+)
 from core.utils.dotenv import load_repo_dotenv
 from core.utils.execution_timeouts import validate_execution_timeout_seconds
 
@@ -681,40 +691,31 @@ _BENCH_CLI_TIMEOUT = 900  # generous default; keeps CLI invocations from hanging
 
 def _run_cli(args: List[str], timeout: Optional[int] = _BENCH_CLI_TIMEOUT) -> Dict[str, Any]:
     """Invoke aisp CLI directly (without bench prefix) and return stdout/stderr/exit code."""
+    _assert_owned_work_admission()
+    from core.diagnostics.process import run_owned_process
+
     cmd = [sys.executable, "-m", "cli.aisp", *args]
     env = _subprocess_env()
-    started_at = time.time()
     try:
-        proc = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=None if timeout is None or timeout <= 0 else timeout,
-            env=env,
-            cwd=str(CODE_ROOT),
-        )
-        result = {
-            "command": " ".join(cmd),
-            "returncode": proc.returncode,
-            "stdout": proc.stdout,
-            "stderr": proc.stderr,
-            "timeout_seconds": timeout if timeout and timeout > 0 else None,
-            "timeout_hit": False,
-            "duration_seconds": round(time.time() - started_at, 2),
-        }
+        if timeout is None or timeout <= 0:
+            result = run_cooperative_process(cmd, env=env, cwd=CODE_ROOT)
+        else:
+            result = run_owned_process(
+                cmd,
+                timeout_seconds=timeout,
+                env=env,
+                cwd=CODE_ROOT,
+            )
+        _check_child_cleanup_result(result)
+        if result["returncode"] != 0 and not result.get("error"):
+            result["error"] = result["stderr"] or result["stdout"] or f"CLI failed with code {result['returncode']}"
         return result
-    except subprocess.TimeoutExpired as te:
-        return {
-            "command": " ".join(cmd),
-            "returncode": -1,
-            "stdout": te.stdout.decode() if te.stdout else "",
-            "stderr": te.stderr.decode() if te.stderr else "",
-            "timeout_seconds": timeout,
-            "timeout_hit": True,
-            "duration_seconds": round(time.time() - started_at, 2),
-            "error": f"Timed out after {timeout}s",
-        }
+    except (CooperativeCleanupIncomplete, CooperativeProcessInterrupted) as exc:
+        _remember_terminal_cleanup(exc)
+        raise
     except Exception as exc:
+        if hasattr(exc, "owned_work_admission"):
+            raise
         return {
             "command": " ".join(cmd),
             "returncode": -1,
@@ -722,7 +723,6 @@ def _run_cli(args: List[str], timeout: Optional[int] = _BENCH_CLI_TIMEOUT) -> Di
             "stderr": str(exc),
             "timeout_seconds": timeout if timeout and timeout > 0 else None,
             "timeout_hit": False,
-            "duration_seconds": round(time.time() - started_at, 2),
             "error": str(exc),
         }
 
@@ -755,6 +755,7 @@ def _run_diagnostic_tools_cli(
     timeout_seconds: int = 300,
 ) -> Dict[str, Any]:
     """Run a diagnostic CLI and clean up its retained local descendants on timeout."""
+    _assert_owned_work_admission()
     from core.diagnostics.process import run_owned_process
 
     args: List[str] = ["tools", tool]
@@ -768,6 +769,7 @@ def _run_diagnostic_tools_cli(
         env=_subprocess_env(),
         cwd=CODE_ROOT,
     )
+    _check_child_cleanup_result(result)
     returncode = int(result.get("returncode", 0) or 0)
     if returncode != 0 and not result.get("error"):
         result["error"] = (
@@ -782,12 +784,15 @@ def _run_bench_cli(
     args: List[str], timeout: Optional[int] = _BENCH_CLI_TIMEOUT, *, uncapped: bool = False
 ) -> Dict[str, Any]:
     """Invoke bench CLI and return stdout/stderr/exit code."""
+    _assert_owned_work_admission()
+    from core.diagnostics.process import run_owned_process
+
     cmd = [sys.executable, "-m", "core.benchmark.bench_commands", *args]
     env = _subprocess_env()
-    started_at = time.time()
     try:
-        if uncapped:
+        if uncapped or timeout is None or timeout <= 0:
             result = run_cooperative_process(cmd, env=env, cwd=CODE_ROOT)
+            _check_child_cleanup_result(result)
             if result["returncode"] != 0 and not result.get("error"):
                 result["error"] = (
                     result.get("stderr")
@@ -795,38 +800,39 @@ def _run_bench_cli(
                     or f"bench CLI failed with code {result['returncode']}"
                 )
             return result
-        proc = subprocess.run(
+        result = run_owned_process(
             cmd,
-            capture_output=True,
-            text=True,
-            timeout=None if timeout is None or timeout <= 0 else timeout,
+            timeout_seconds=timeout,
             env=env,
-            cwd=str(CODE_ROOT),
+            cwd=CODE_ROOT,
         )
-        result = {
-            "command": " ".join(cmd),
-            "returncode": proc.returncode,
-            "stdout": proc.stdout,
-            "stderr": proc.stderr,
-            "timeout_seconds": timeout if timeout and timeout > 0 else None,
-            "timeout_hit": False,
-            "duration_seconds": round(time.time() - started_at, 2),
-        }
-        if proc.returncode != 0 and not result.get("error"):
+        _check_child_cleanup_result(result)
+        if result["returncode"] != 0 and not result.get("error"):
             result["error"] = (
-                proc.stderr or proc.stdout or f"bench CLI failed with code {proc.returncode}"
+                result["stderr"]
+                or result["stdout"]
+                or f"bench CLI failed with code {result['returncode']}"
             )
         return result
-    except subprocess.TimeoutExpired as exc:
-        return {
-            "command": " ".join(cmd),
-            "error": f"bench CLI timed out after {timeout}s",
-            "stdout": exc.stdout or "",
-            "stderr": exc.stderr or "",
-            "timeout_seconds": timeout,
-            "timeout_hit": True,
-            "duration_seconds": round(time.time() - started_at, 2),
-        }
+    except (CooperativeCleanupIncomplete, CooperativeProcessInterrupted) as exc:
+        _remember_terminal_cleanup(exc)
+        raise
+    except Exception as exc:
+        incomplete = cleanup_incomplete_receipt_from_error(exc)
+        if incomplete is not None:
+            fatal = CooperativeCleanupIncomplete(incomplete)
+            _remember_terminal_cleanup(fatal)
+            raise fatal from exc
+        receipt = getattr(exc, "cooperative_process_result", None)
+        if uncapped and isinstance(receipt, dict):
+            result = dict(receipt)
+            result.update({
+                "error": str(exc) or type(exc).__name__,
+                "error_type": type(exc).__name__,
+                "success": False,
+            })
+            return result
+        raise
 
 
 _BENCH_RESULTS_MARKER = "JSON results saved to:"
@@ -1642,9 +1648,19 @@ def _queue_job(
     job_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Run a task in the background and return a ticket for polling."""
+    _assert_owned_work_admission()
+
+    def guarded_runner() -> Any:
+        _assert_owned_work_admission()
+        try:
+            return runner()
+        except (CooperativeCleanupIncomplete, CooperativeProcessInterrupted) as exc:
+            _remember_terminal_cleanup(exc)
+            raise
+
     return JOB_STORE.queue_job(
         tool_name,
-        runner,
+        guarded_runner,
         arguments=_sanitize_arguments(arguments),
         run_metadata=run_metadata,
         job_id=job_id,
@@ -1664,6 +1680,124 @@ _QUEUE_WARN_LOCK = threading.Lock()
 _QUEUE_MAX_OVERLAP_RETRIES_ENV = "AISP_MCP_QUEUE_MAX_OVERLAP_RETRIES"
 _QUEUE_IDLE_TIMEOUT_ENV = "AISP_MCP_QUEUE_IDLE_TIMEOUT_SEC"
 _QUEUE_RUNNER_LOCK_TIMEOUT_ENV = "AISP_MCP_QUEUE_RUNNER_LOCK_TIMEOUT_SEC"
+_UNVERIFIABLE_CLEANUP: Dict[Path, Dict[str, Any]] = {}
+_ADMISSION_LOCK = threading.Lock()
+
+
+def _cleanup_barrier_path() -> Path:
+    return _QUEUE_DIR / "cleanup_incomplete.json"
+
+
+def _persist_cleanup_barrier(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Retain a shared admission barrier without overwriting an earlier failure."""
+    path = _cleanup_barrier_path()
+    record: Dict[str, Any] = {"path": str(path), "stored_current_receipt": False}
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("x", encoding="utf-8") as stream:
+            stream.write(json.dumps(payload, default=str) + "\n")
+            stream.flush()
+            os.fsync(stream.fileno())
+        record["stored_current_receipt"] = True
+    except FileExistsError:
+        record["existing_record_preserved"] = True
+    except OSError as exc:
+        record["error"] = f"{type(exc).__name__}: {exc}"
+        print(f"Failed to retain owned-work admission barrier at {path}: {exc}", file=sys.stderr)
+    return record
+
+
+def _remember_unverifiable_cleanup(result: Dict[str, Any], error: ValueError) -> Dict[str, Any]:
+    payload = {"event": "aisp_cleanup_unverifiable", "error": str(error), "child_result": result}
+    with _ADMISSION_LOCK:
+        _UNVERIFIABLE_CLEANUP[_cleanup_barrier_path()] = payload
+    return _persist_cleanup_barrier(payload)
+
+
+def _remember_terminal_cleanup(error: BaseException) -> None:
+    try:
+        receipt = cleanup_incomplete_receipt_from_error(error)
+    except ValueError as protocol_error:
+        captured = next(
+            (
+                value
+                for name in ("result", "cooperative_process_result", "outer_process_result")
+                if isinstance((value := getattr(error, name, None)), dict)
+            ),
+            {"error": str(protocol_error)},
+        )
+        error.cleanup_protocol_error = str(protocol_error)
+        error.owned_work_admission = _remember_unverifiable_cleanup(captured, protocol_error)
+        return
+    if receipt is None:
+        return
+    JOB_STORE.record_incomplete_cleanup(receipt)
+    error.owned_work_admission = _persist_cleanup_barrier({
+        "event": "aisp_cleanup_incomplete", "receipt": receipt,
+    })
+
+
+def _assert_owned_work_admission() -> None:
+    receipt = JOB_STORE.incomplete_cleanup_receipt()
+    if receipt is not None:
+        raise CooperativeCleanupIncomplete(receipt)
+    path = _cleanup_barrier_path()
+    with _ADMISSION_LOCK:
+        if path in _UNVERIFIABLE_CLEANUP:
+            raise RuntimeError(f"Owned work is blocked by unverifiable cleanup diagnostics at {path}")
+    if path.is_symlink():
+        raise RuntimeError(f"Owned work is blocked by an untrusted cleanup record at {path}")
+    if not path.exists():
+        return
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(payload, dict) or payload.get("event") != "aisp_cleanup_incomplete":
+            raise ValueError("Cleanup barrier requires an incomplete-cleanup event")
+        receipt = validate_cleanup_incomplete_receipt(payload.get("receipt"))
+    except (OSError, UnicodeError, ValueError) as exc:
+        raise RuntimeError(f"Owned work is blocked by an unreadable cleanup record at {path}: {exc}") from exc
+    JOB_STORE.record_incomplete_cleanup(receipt)
+    raise CooperativeCleanupIncomplete(receipt)
+
+
+def _stderr_text(value: Any) -> str:
+    return value.decode("utf-8", errors="replace") if isinstance(value, bytes) else str(value or "")
+
+
+def _parse_child_cleanup_event(result: Dict[str, Any]) -> Dict[str, Any] | None:
+    execution = result.get("execution")
+    nonce = execution.get("cleanup_event_nonce") if isinstance(execution, dict) else None
+    if not isinstance(nonce, str) or not nonce:
+        return None
+    return parse_cleanup_incomplete_event(
+        _stderr_text(result.get("stderr", "")),
+        expected_nonce=nonce,
+    )
+
+
+def _check_child_cleanup_result(result: Dict[str, Any]) -> Dict[str, Any]:
+    execution = result.get("execution")
+    if isinstance(execution, dict) and execution.get("completion_scope") == "cleanup_incomplete":
+        receipt = validate_cleanup_incomplete_receipt(result)
+    elif result.get("returncode") in (0, None):
+        receipt = None
+    else:
+        try:
+            receipt = _parse_child_cleanup_event(result)
+        except ValueError as exc:
+            exc.owned_work_admission = _remember_unverifiable_cleanup(result, exc)
+            raise
+    if receipt is None:
+        return result
+    fatal = CooperativeCleanupIncomplete(receipt)
+    if operator_interrupt_from_error(fatal):
+        interrupted = CooperativeProcessInterrupted(result)
+        interrupted.cleanup_incomplete_receipt = receipt
+        _remember_terminal_cleanup(interrupted)
+        raise interrupted
+    fatal.outer_process_result = result
+    _remember_terminal_cleanup(fatal)
+    raise fatal
 _QUEUE_ARTIFACT_WARNED_KEYS: set[str] = set()
 
 
@@ -2000,7 +2134,8 @@ def _extract_exit_code(result: Any) -> Optional[int]:
     if isinstance(result, dict):
         if "returncode" in result:
             try:
-                return int(result.get("returncode"))
+                code = int(result.get("returncode"))
+                return 1 if code == 0 and _looks_like_error(result) else code
             except (TypeError, ValueError):
                 return None
         if "success" in result:
@@ -2051,6 +2186,7 @@ def _run_with_queue(
         JOB_STORE.update_job(job_id, status="queued", note="Waiting for MCP queue runner.")
     with _QUEUE_LOCK:
         with _queue_runner_lock(queue_id, tool_name, queue_label):
+            _assert_owned_work_admission()
             if job_id:
                 JOB_STORE.update_job(job_id, status="running", note="Running via MCP queue runner.")
             retries = 0
@@ -2103,10 +2239,12 @@ def _run_with_queue(
                 )
                 monitor.start()
                 try:
+                    _assert_owned_work_admission()
                     result = runner()
-                except Exception as exc:
+                except BaseException as exc:
                     stop_event.set()
                     monitor.join()
+                    _remember_terminal_cleanup(exc)
                     _log_queue_event(
                         f"RUN_END id={queue_id} tool={tool_name} label={queue_label} exit_code=1 error={exc}"
                     )
@@ -2640,7 +2778,7 @@ def tool_clock_lock_check(params: Dict[str, Any]) -> Dict[str, Any]:
                 },
                 "async": {
                     "type": "boolean",
-                    "description": "Run in background and return job_id; poll with job_status",
+                    "description": "Run in background and return job_id. Poll with job_status. Unsupported when execution_timeout_seconds=0.",
                     "default": False,
                 },
                 "timeout_seconds": {
@@ -2658,7 +2796,9 @@ def tool_clock_lock_check(params: Dict[str, Any]) -> Dict[str, Any]:
                         "Override each benchmark execution stage timeout in seconds. "
                         "Omit or use null to retain stage defaults. "
                         "Set 0 for owned subprocess execution without stage timeouts. "
-                        "This requires suite_timeout=0 and an explicit timeout_seconds=0 or null."
+                        "This requires suite_timeout to be explicitly set to 0, "
+                        "timeout_seconds to be explicitly set to 0 or null, "
+                        "async=false, and AISP_STALE_WATCH_TIMING disabled."
                     ),
                     "default": None,
                 },
@@ -2774,14 +2914,15 @@ def tool_clock_lock_check(params: Dict[str, Any]) -> Dict[str, Any]:
     },
 )
 def tool_run_benchmarks(params: Dict[str, Any]) -> Dict[str, Any]:
-    timeout_overrides = {}
-    for name in ("execution_timeout_seconds", "suite_timeout"):
-        try:
-            timeout_overrides[name] = validate_execution_timeout_seconds(params.get(name))
-        except ValueError:
-            return {"error": f"{name} must be a nonnegative integer or null", "success": False}
-    execution_timeout_seconds = timeout_overrides["execution_timeout_seconds"]
-    suite_timeout = timeout_overrides["suite_timeout"]
+    try:
+        execution_timeout_seconds = validate_execution_timeout_seconds(params.get("execution_timeout_seconds"))
+    except ValueError as exc:
+        return {"error": str(exc).replace("or None", "or null"), "success": False}
+    suite_timeout = params.get("suite_timeout")
+    if suite_timeout is not None and (
+        isinstance(suite_timeout, bool) or not isinstance(suite_timeout, int) or suite_timeout < 0
+    ):
+        return {"error": "suite_timeout must be a nonnegative integer or null", "success": False}
     if execution_timeout_seconds == 0:
         if suite_timeout != 0:
             return {
@@ -2796,6 +2937,24 @@ def tool_run_benchmarks(params: Dict[str, Any]) -> Dict[str, Any]:
                 "error": (
                     "execution_timeout_seconds=0 requires an explicit "
                     "timeout_seconds=0 or null for owned cancellation cleanup"
+                ),
+                "success": False,
+            }
+        if os.environ.get("AISP_STALE_WATCH_TIMING", "0").strip().lower() in {
+            "1", "true", "yes", "on",
+        }:
+            return {
+                "error": (
+                    "execution_timeout_seconds=0 is incompatible with AISP_STALE_WATCH_TIMING. "
+                    "Unset AISP_STALE_WATCH_TIMING to keep timing execution uncapped."
+                ),
+                "success": False,
+            }
+        if bool(params.get("async", False)):
+            return {
+                "error": (
+                    "execution_timeout_seconds=0 requires async=false so the main thread "
+                    "can forward cancellation and wait for owned cleanup"
                 ),
                 "success": False,
             }
@@ -3136,7 +3295,7 @@ def tool_run_benchmarks(params: Dict[str, Any]) -> Dict[str, Any]:
 def _benchmark_next_steps(result: Dict[str, Any]) -> List[Dict[str, Any]]:
     """Generate actionable next steps after benchmark completion."""
     steps = []
-    returncode = result.get("returncode", 0)
+    returncode = _extract_exit_code(result)
 
     if returncode == 0:
         # Success path
@@ -10936,16 +11095,22 @@ from core.tools.tools_commands import DIAGNOSTIC_TOOLS
     },
 )
 def tool_tools_trace_replay(params: Dict[str, Any]) -> Dict[str, Any]:
-    from core.utils.cooperative_subprocess import CooperativeProcessInterrupted, run_cooperative_process
-
     include_context, context_level = extract_context_opts(params)
     args = params.get("args", ["--help"])
     if not isinstance(args, list) or not all(isinstance(value, str) for value in args):
         return make_error("args must be a list of strings", include_context, context_level)
     command = [sys.executable, "-m", "cli.aisp", "tools", "trace-replay", "--", *args]
+    _assert_owned_work_admission()
     try:
         result = run_cooperative_process(command, env=_subprocess_env(), cwd=CODE_ROOT)
+        _check_child_cleanup_result(result)
+    except CooperativeCleanupIncomplete as exc:
+        _remember_terminal_cleanup(exc)
+        raise
     except CooperativeProcessInterrupted as exc:
+        _remember_terminal_cleanup(exc)
+        if cleanup_incomplete_receipt_from_error(exc) is not None or hasattr(exc, "owned_work_admission"):
+            raise
         result = exc.result
         result["success"] = False
         result["error"] = "Cancelled after the owned CLI completed cleanup"
@@ -11558,7 +11723,7 @@ class MCPServer:
             self._write_stdio_warning(f"Failed to emit {failure_context}: {exc}")
             return False
 
-    async def handle_message(self, message: Any) -> Optional[Dict[str, Any]]:
+    def handle_message(self, message: Any) -> Optional[Dict[str, Any]]:
         """Handle an MCP message. Returns None for notifications (messages without an id)."""
         if not isinstance(message, dict):
             return {
@@ -11722,8 +11887,8 @@ class MCPServer:
             # Re-raise to be handled by outer error handler
             raise
 
-    async def run_stdio(self):
-        """Run MCP server over stdio."""
+    def run_stdio(self, *, cleanup_event_nonce: str | None = None):
+        """Run blocking stdio and tools on the main thread for signal delivery."""
         import sys
 
         print(f"AISP MCP Server v{self.version} - {len(TOOLS)} tools available", file=sys.stderr)
@@ -11741,7 +11906,7 @@ class MCPServer:
 
                 message = json.loads(line)
 
-                response = await self.handle_message(message)
+                response = self.handle_message(message)
                 if response is not None:
                     response_id = response.get("id")
                     if (
@@ -11763,6 +11928,34 @@ class MCPServer:
                     },
                     failure_context="parse error response",
                 )
+            except (CooperativeCleanupIncomplete, KeyboardInterrupt, SystemExit) as exc:
+                _remember_terminal_cleanup(exc)
+                try:
+                    receipt = cleanup_incomplete_receipt_from_error(exc)
+                except ValueError:
+                    receipt = None
+                if receipt is None and not hasattr(exc, "owned_work_admission"):
+                    raise
+                failed = process_failure_result_from_error(exc)
+                if hasattr(exc, "owned_work_admission"):
+                    failed["owned_work_admission"] = exc.owned_work_admission
+                request = message if isinstance(message, dict) else {}
+                params = request.get("params", {})
+                arguments = params.get("arguments", {}) if isinstance(params, dict) else {}
+                tool_name = params.get("name", "") if isinstance(params, dict) else ""
+                payload = {
+                    "tool": tool_name, "status": "error",
+                    "result": redact_sensitive_data(failed, source=arguments),
+                }
+                response = {
+                    "jsonrpc": "2.0", "id": request.get("id"),
+                    "result": {"content": [{"type": "text", "text": json.dumps(payload)}], "isError": True},
+                }
+                if self._emit_stdio_json(response, failure_context="terminal cleanup response"):
+                    self._complete_request(request.get("id"))
+                if receipt is not None:
+                    emit_cleanup_incomplete_event(receipt, nonce=cleanup_event_nonce)
+                return 130 if operator_interrupt_from_error(exc) else 1
             except Exception as e:
                 self._write_stdio_warning(
                     f"Internal error while handling request: {type(e).__name__}"
@@ -11798,6 +11991,7 @@ def main():
     """Main entry point."""
     import argparse
 
+    cleanup_event_nonce = consume_cleanup_event_nonce()
     parser = argparse.ArgumentParser(description="AISP MCP Server")
     parser.add_argument("--list", action="store_true", help="List available tools")
     parser.add_argument("--test", type=str, help="Test a specific tool")
@@ -11824,12 +12018,11 @@ def main():
 
     if args.serve:
         server = MCPServer()
-        asyncio.run(server.run_stdio())
-        return
+        return server.run_stdio(cleanup_event_nonce=cleanup_event_nonce)
 
     # Default: show help
     parser.print_help()
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

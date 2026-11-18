@@ -54,6 +54,15 @@ Makefile discovers Open MPI compile flags with `mpicxx --showme:compile` because
 `nvcc` preprocesses CUDA before invoking the host compiler wrapper. For another
 MPI implementation, supply its include flags through `MPI_COMPILE_FLAGS`.
 
+The Python launcher requires a POSIX Python environment with `psutil`,
+`waitid`/`WNOWAIT`, and `pthread_sigmask`. Linux Python provides the required
+process controls. SIGINT must not be ignored, SIGCHLD must have its default
+disposition, and no other component may reap the owned launcher. Unsupported
+signal dispositions are rejected before launch. The launcher retains stdout,
+stderr, and an `.execution.json` receipt beside the result, including after
+interruption. Each MPI launch runs in its own owned process group. The Python
+caller waits for that group to become quiescent before returning.
+
 From this directory:
 
 ```bash
@@ -156,11 +165,14 @@ above has not been executed for this lab. Harness overrides use `--steps` and
 `--native-warmup`, while the native executable uses `--iterations` and `--warmup`.
 Two ranks are the default because this is the validated topology.
 
-The two explicit timeout flags select uncapped suite and execution waits for
-these commands. Omit them to retain the harness defaults. The execution override
-survives benchmark config merging and applies to the owned isolated subprocess.
-It does not relax environment, numerical or speedup gates, or profiler deadlines.
-An interrupt requests cleanup and waits for the owned process group to finish.
+These commands require both timeout flags to be explicitly set to zero. They
+disable the harness suite and execution-stage deadlines for the owned isolated
+subprocess. A finite outer worker timeout cannot safely clean up the native MPI
+launcher's separate process group, so both benchmark variants reject finite
+execution before the build starts. Standalone native launches remain supported.
+Internal compiler and profiler deadlines remain. Environment, numerical, and
+speedup gates also remain active. On interruption, the caller requests cleanup
+and waits for the owned process group to finish.
 See the [execution deadline contract](../../docs/api-reference.md#8-benchmark-domain).
 
 The `256 × 257` default is a deliberate correctness-smoke exception to the

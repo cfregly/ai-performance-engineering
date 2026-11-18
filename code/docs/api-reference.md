@@ -361,27 +361,49 @@ the exact setup, warmup, measurement and legacy execution deadlines in seconds,
 including after benchmark config merging and isolated-child reconstruction.
 It is not multiplied again. These values do not give every phase a fresh,
 independent budget. The enclosing worker still uses the measurement limit and
-the existing runtime-provenance allowance. Zero selects uncapped execution
+the existing runtime-provenance allowance. Finite values beyond the platform's
+supported wait range are rejected before launching a worker. The override does
+not replace internal compiler or executable deadlines declared by a benchmark.
+Zero selects uncapped execution
 through an owned Python subprocess. Direct thread and torchrun execution reject that request
 because they do not provide the same owned-process cancellation path.
+Select this override at the calling interface. A benchmark's `get_config()`
+cannot enable uncapped execution, and a raw zero measurement or legacy deadline
+requires the caller's explicit `execution_timeout_seconds=0`.
 
 The suite deadline is separate. An uncapped CLI run requires
-`--suite-timeout 0`. MCP also requires `suite_timeout=0` and an explicit outer
-`timeout_seconds=0` or null. A finite enclosing deadline is rejected before work
+`--suite-timeout 0`. MCP also requires `suite_timeout` to be explicitly set to
+`0` and `timeout_seconds` to be explicitly set to `0` or `null`. A finite enclosing deadline is rejected before work
 starts because it could abandon the uncapped worker. Omitted values retain the
 existing defaults.
+MCP background jobs reject uncapped execution because they have no cancellation
+endpoint. Use the synchronous MCP call or CLI. The opt-in stale timing watchdog
+also rejects uncapped execution because it can terminate work independently.
 On interruption, the owned process group receives SIGINT and the caller waits
 for its cleanup, retaining output. This adds no forced termination deadline.
 An unresponsive child can keep the caller waiting. Profiler deadlines and
 correctness, environment and performance acceptance gates remain unchanged.
 The verified isolated worker runs uncapped work on its main thread so an
 interrupt unwinds through teardown without starting later iterations. When a
-worker exits, any helpers left in its dedicated group receive SIGKILL as lifecycle
-cleanup before its process identity is released. This does not limit execution
+worker completes outside cancellation or coordinator-abort cleanup, helpers left
+in its dedicated group receive SIGKILL before its process identity is released.
+Cancellation and abort cleanup wait cooperatively. This does not limit execution
 time. Cooperative cleanup requires POSIX process groups, `waitid` with `WNOWAIT`,
-and the repository's `psutil` dependency. Its completion receipt covers live
-members of that group. A launcher must still join peers that start a different
-session or process group.
+`pthread_sigmask`, and the repository's `psutil` dependency. SIGINT must not be
+ignored, SIGCHLD must use its default disposition, and the caller must be the
+sole reaper for the worker. Unsupported signal dispositions are rejected before
+launch. The receipt's cleanup scope covers only members of the worker's process
+group. A child launcher remains responsible for waiting for and cleaning up peers
+that start another session or process group. If the coordinator cannot establish
+cleanup, the sweep stops with the original error and retained worker diagnostics.
+It does not start the next benchmark. Stock `CudaBinaryBenchmark`
+implementations reject an explicit `execution_timeout_seconds=0` because their
+build and executable paths have independent deadlines and process ownership.
+Both communication labs support uncapped execution through owned launchers.
+Their harness commands require `execution_timeout_seconds=0` because a finite
+outer worker timeout cannot safely clean up the MPI launcher's separate process
+group. Their standalone native launchers remain available. Profiler and
+verification policies remain independent.
 
 **Runner notes:**
 - CUDA benchmarks execute via Python wrappers (`CudaBinaryBenchmark`). Direct `.cu` runs are not supported.

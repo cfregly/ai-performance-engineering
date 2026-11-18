@@ -18,6 +18,7 @@ from typing import Iterator
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
+from core.utils.cooperative_process_artifacts import run_recorded_cooperative_process
 
 LAB_DIR = Path(__file__).resolve().parent
 SCHEMA = "nvshmem_device.v1"
@@ -231,9 +232,13 @@ def invoke_native(workload: NativeWorkload, *, binary: Path, json_out: Path, dum
     native_json = json_out.with_name(json_out.name + ".native.json")
     stdout_path = json_out.with_name(json_out.name + ".stdout.log")
     stderr_path = json_out.with_name(json_out.name + ".stderr.log")
-    outputs = (json_out, dump_output, native_json, stdout_path, stderr_path)
+    execution_path = json_out.with_name(json_out.name + ".execution.json")
+    outputs = (json_out, dump_output, native_json, stdout_path, stderr_path, execution_path)
     if len(set(outputs)) != len(outputs):
-        raise ValueError("JSON, raw result, logs, and complete-output artifacts must use different paths")
+        raise ValueError(
+            "Final JSON, native JSON, full output, stream logs, and execution receipt "
+            "must use different paths"
+        )
     for path in outputs:
         if path.exists() or path.is_symlink():
             raise FileExistsError(f"Refusing to reuse an existing artifact: {path}")
@@ -247,17 +252,13 @@ def invoke_native(workload: NativeWorkload, *, binary: Path, json_out: Path, dum
         path.parent.mkdir(parents=True, exist_ok=True)
     command = [executable, *launcher_args, "-np", str(workload.ranks), str(binary), *arguments,
                "--json-out", str(native_json), "--dump-output", str(dump_output)]
-    completed = subprocess.run(command, capture_output=True, text=True, check=False)
-    with stdout_path.open("x") as stream:
-        stream.write(completed.stdout)
-    with stderr_path.open("x") as stream:
-        stream.write(completed.stderr)
-    if completed.returncode != 0:
-        diagnostic = next((line[line.index("SKIPPED:"):] for line in (completed.stdout + "\n" + completed.stderr).splitlines()
+    completed = run_recorded_cooperative_process(command, output_prefix=json_out)
+    if completed["returncode"] != 0:
+        diagnostic = next((line[line.index("SKIPPED:"):] for line in (completed["stdout"] + "\n" + completed["stderr"]).splitlines()
                            if "SKIPPED:" in line), None)
         if diagnostic is not None:
             raise NativeUnavailable(diagnostic)
-        raise RuntimeError(f"Native MPI run failed with exit {completed.returncode}. See {stdout_path} and {stderr_path}")
+        raise RuntimeError(f"Native MPI run failed with exit {completed['returncode']}. See {stdout_path} and {stderr_path}")
     if source_hashes() != snapshot or sha256(binary) != binary_hash:
         raise RuntimeError("Native source or binary changed during execution")
     if not native_json.is_file():
@@ -270,7 +271,8 @@ def invoke_native(workload: NativeWorkload, *, binary: Path, json_out: Path, dum
                    "runner_sha256": sha256(Path(__file__)), "command": command,
                    "native_result_path": str(native_json), "output_path": str(dump_output),
                    "stdout_path": str(stdout_path), "stderr_path": str(stderr_path),
-                   "process_exit_code": completed.returncode})
+                   "process_exit_code": completed["returncode"],
+                   "execution_path": completed["artifact_paths"]["execution"]})
     with json_out.open("x") as stream:
         json.dump(result, stream, indent=2)
         stream.write("\n")
