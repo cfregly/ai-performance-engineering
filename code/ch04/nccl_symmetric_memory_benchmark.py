@@ -35,7 +35,11 @@ class NcclSymmetricMemoryBenchmark(CudaBinaryBenchmark):
     def __init__(self, *, arm: str) -> None:
         if arm not in {"cuda_malloc", "window_register"}:
             raise ValueError("The public harness pair supports cuda_malloc and window_register")
-        name = "Symmetric window NCCL AllReduce" if arm == "window_register" else "cudaMalloc NCCL AllReduce"
+        name = (
+            "Symmetric window NCCL AllReduce"
+            if arm == "window_register"
+            else "cudaMalloc NCCL AllReduce"
+        )
         super().__init__(
             chapter_dir=CHAPTER_DIR,
             binary_name="nccl_symmetric_memory_native",
@@ -73,7 +77,7 @@ class NcclSymmetricMemoryBenchmark(CudaBinaryBenchmark):
         ):
             raise NativeUnavailableError(
                 "SKIPPED: The generic harness profiler cannot launch this native MPI child. "
-                "Use --profile none and a separate per-rank native profiler capture"
+                "Use --profile none here. Run ch04/run_nccl_symmetric_memory.py with --profile nsys or --profile ncu for per-rank captures."
             )
 
     def setup(self) -> None:
@@ -174,7 +178,7 @@ class NcclSymmetricMemoryBenchmark(CudaBinaryBenchmark):
             batch_size=1,
             parameter_count=0,
             precision_flags={"fp16": False, "bf16": False, "fp8": False, "tf32": False},
-            output_tolerance=(1.0e-5, 1.0e-5),
+            output_tolerance=(0.0, 0.0),
             signature_overrides={
                 "world_size": self.workload.ranks,
                 "collective_type": "out_of_place_sum_allreduce",
@@ -188,7 +192,7 @@ class NcclSymmetricMemoryBenchmark(CudaBinaryBenchmark):
         return VerificationPayloadMixin.get_verify_inputs(self)
 
     def get_output_tolerance(self) -> tuple[float, float]:
-        return 1.0e-5, 1.0e-5
+        return 0.0, 0.0
 
     def get_ncu_profile_command(self) -> tuple[list[str], str]:
         raise NativeUnavailableError(

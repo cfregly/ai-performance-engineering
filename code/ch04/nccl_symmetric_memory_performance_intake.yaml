@@ -22,7 +22,9 @@ workload:
     - one distinct GPU per MPI rank
     - one shared-memory node
     - directed peer access between every selected GPU pair
-    - NCCL headers and runtime version 2.27.3 or newer
+    - NCCL headers and runtime version 2.27.3 or newer with an exact version match
+    - build receipt ldd and every MPI rank resolve every used NCCL API from the same canonical libnccl.so.2
+    - user-supplied LD_PRELOAD is empty at the launcher and pre-profiler rank boundaries
     - full output verification on every rank
 
 current_baseline:

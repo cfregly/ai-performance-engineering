@@ -104,8 +104,21 @@ AllReduce fixed while changing only buffer allocation and registration:
 | `comm_register` | `ncclMemAlloc` plus `ncclCommRegister` | Isolates ordinary communicator registration. |
 | `window_register` | `ncclMemAlloc` plus collective `ncclCommWindowRegister(..., NCCL_WIN_COLL_SYMMETRIC)` | Candidate used by the harness optimized path. |
 
-The build and runtime both require NCCL 2.27.3 or newer. The runner also
-requires one distinct GPU per MPI rank, a single shared-memory node, and
+Native results record how many ranks returned non-null send and receive
+registration handles. Unregistered arms report zero. Registered arms must report
+every rank for both buffers.
+
+The build and runtime both require NCCL 2.27.3 or newer. The runtime version
+must exactly match the build headers. The build receipt records the selected
+`libnccl.so.2` path and SHA256. Before MPI starts, the runner checks `ldd`
+against that exact file. Every MPI rank resolves each NCCL API used by the study
+with `dlsym`, checks its canonical library path with `dladdr`, and reports the
+runtime version. User-supplied `LD_PRELOAD` must be empty when the runner starts.
+An unprofiled rank rejects a preload added by launcher arguments. The per-rank
+profile wrapper also rejects one before it starts Nsight. Nsight may then inject
+its own tooling library into the target. The runner marks only that target as
+profiled, and every NCCL API still has to resolve from the receipted library.
+The runner also requires one distinct GPU per MPI rank, a single shared-memory node, and
 directed CUDA peer access between every selected GPU pair. It does not fall
 back when any gate is unavailable. Every rank checks every output element.
 Setup, warmup, output checking, artifact writing, and cleanup stay outside the
@@ -126,16 +139,47 @@ If a newer NCCL is installed outside `/usr`, point the build at that prefix:
 make -C code/ch04 NCCL_HOME=/path/to/nccl nccl_symmetric_memory_native
 ```
 
-The build receipt records the effective NCCL library search directories. The
-runner prepends those directories only in the MPI child's `LD_LIBRARY_PATH`.
-It does not change the parent shell or the host's default linker configuration.
+The runner prepends the receipted NCCL directories only in the MPI child's
+`LD_LIBRARY_PATH`. It does not change the parent shell or the host's default
+linker configuration. It reserves the result path before creating process
+artifacts, so a duplicate invocation cannot replace the active owner's result.
 
-The smoke proves only that the selected host ran all four arms and passed the
+A passing smoke proves only that the selected host ran all four arms and passed the
 complete-output checks. The direct runner defaults to 16,777,216 elements, 20
 timed samples, five warmups, and all visible GPUs. It retains raw `MPI_MAX`
 samples, summary statistics, build provenance, process logs, and complete
 float32 output files under `code/artifacts/nccl_symmetric_memory/` unless
 `--json-out` selects another location.
+
+### Capture an AllReduce on every MPI rank
+
+From the repository root on the allocated node, build with NVTX and run a fresh
+diagnostic for each arm and profiler you want to inspect. Use the same NCCL
+prefix as the timing build. The commands below capture the window arm on two GPUs.
+
+```bash
+make -B -C code/ch04 NVTX_ENABLED=1 nccl_symmetric_memory_native
+CUDA_VISIBLE_DEVICES=0,1 python code/ch04/run_nccl_symmetric_memory.py \
+  --arm window_register --ranks 2 --elements 1048576 --iterations 2 --warmup 1 --profile nsys
+CUDA_VISIBLE_DEVICES=0,1 python code/ch04/run_nccl_symmetric_memory.py \
+  --arm window_register --ranks 2 --elements 1048576 --iterations 2 --warmup 1 --profile ncu
+```
+
+The runner uses the executable on `PATH`. Nsys traces CUDA and NVTX throughout
+the process. NCU records GPU duration over each steady AllReduce NVTX range.
+All ranks participate in TCP lockstep during range replay. The runner checks
+the installed NCU help before MPI starts and retains that help and the version
+when the coordination controls are missing. Nsight's own target injection is
+allowed only after the launcher and rank wrapper have rejected a user-supplied
+preload. The native binding check still requires every NCCL API used by the
+study to resolve from the receipted library. Inspect the rank logs for the
+loaded-library diagnostic. NVIDIA documents the NCU controls in
+the [Nsight Compute MPI profiling guide](https://docs.nvidia.com/nsight-compute/NsightComputeCli/#multi-process-support).
+
+Each profile summary identifies the command, GPU mapping, full-output check,
+and one nonempty native report with its SHA256 and logs per rank. Open the
+reports in Nsight to inspect which kernels actually ran. Collect performance
+samples in a separate invocation with profiling omitted.
 
 Run the comparable control and candidate through the harness from `code/`:
 

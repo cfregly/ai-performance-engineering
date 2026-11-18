@@ -33,12 +33,12 @@ workload:
   elements_per_rank: 16777216
   bytes_per_buffer_per_rank: 67108864
   inputs:
-    formula: rank_plus_one_plus_element_index_modulo_1024
+    formula: one_plus_low_8_bits_of_splitmix64_rank_keyed_element_index
     mutation_during_timing: false
   correctness:
     scope: every_element_on_every_rank
-    rtol: 0.00001
-    atol: 0.00001
+    rtol: 0.0
+    atol: 0.0
     retained_output: complete_rank_zero_float32_buffer
 
 execution:
@@ -51,7 +51,9 @@ execution:
     shared_CUDA_visibility_order: required
   runtime_versions:
     nccl_headers: ">=2.27.3"
-    nccl_runtime: ">=2.27.3"
+    nccl_runtime: ">=2.27.3 and exactly equal to the build header version"
+    nccl_library_identity: exact_build_receipt_ldd_and_per_rank_dladdr_match_for_every_used_nccl_api
+    user_ld_preload_at_launcher_and_pre_profiler_rank: empty
     cuda: recorded_by_build_environment
     mpi: recorded_by_build_environment
   unsupported_policy: hard_skip_without_fallback_timing

@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import hashlib
 import json
+import os
 import shlex
 import subprocess
+import tempfile
 from pathlib import Path
 
 BUILD_SCHEMA = "nccl_symmetric_memory.build.v1"
@@ -15,11 +18,101 @@ SOURCE_FILES = (
     "nccl_symmetric_memory_native.cu",
     "Makefile",
     "nccl_symmetric_memory_build_receipt.py",
+    "../core/common/cuda_arch.mk",
+    "../core/common/nvtx_utils.cuh",
+    "../core/common/nvtx_label_utils.cuh",
 )
 
 
 def file_sha256(path: Path) -> str:
-    return hashlib.sha256(path.read_bytes()).hexdigest()
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for block in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def write_json_atomically(path: Path, content: dict) -> None:
+    """Replace a generated receipt only after its complete contents are durable."""
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=path.name + ".", suffix=".tmp", dir=path.parent
+    )
+    temporary = Path(temporary_name)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
+            json.dump(content, stream, indent=2)
+            stream.write("\n")
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, path)
+    except BaseException:
+        with contextlib.suppress(FileNotFoundError):
+            temporary.unlink()
+        raise
+
+
+class RuntimeBindingError(RuntimeError):
+    """The study cannot establish the identity of the loaded NCCL library."""
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(f"NCCL runtime binding: {reason}")
+
+
+def nccl_library_directories(linker_flags: str, build_directory: Path) -> list[str]:
+    """Resolve -L options and their installed GNU multiarch library directories."""
+    try:
+        tokens = iter(shlex.split(linker_flags))
+    except ValueError as error:
+        raise RuntimeBindingError(f"invalid NCCL linker options ({error})") from error
+    directories = []
+    for token in tokens:
+        if token == "-L":
+            directory = next(tokens, "")
+            if not directory or directory.startswith("-"):
+                raise RuntimeBindingError("missing directory after -L")
+        elif token.startswith("-L"):
+            directory = token[2:]
+        else:
+            continue
+        explicit = (build_directory / directory).resolve()
+        candidates = [explicit]
+        try:
+            candidates.extend(
+                sorted(
+                    (
+                        candidate.resolve()
+                        for candidate in explicit.glob("*-linux-gnu*")
+                        if candidate.is_dir()
+                    ),
+                    key=str,
+                )
+            )
+        except OSError as error:
+            raise RuntimeBindingError(
+                f"could not inspect NCCL library directory {explicit} ({error})"
+            ) from error
+        for candidate in candidates:
+            path = str(candidate)
+            if path not in directories:
+                directories.append(path)
+    if not directories:
+        raise RuntimeBindingError("the build receipt has no NCCL -L directory")
+    return directories
+
+
+def expected_nccl_library(directories: list[str]) -> Path:
+    libraries = set()
+    for directory in directories:
+        soname = Path(directory) / "libnccl.so.2"
+        if soname.is_symlink() or soname.exists():
+            if not soname.is_file():
+                raise RuntimeBindingError(f"{soname} does not resolve to a regular file")
+            libraries.add(soname.resolve(strict=True))
+    if len(libraries) != 1:
+        raise RuntimeBindingError(
+            f"expected exactly one libnccl.so.2 in {directories}, found {sorted(map(str, libraries))}"
+        )
+    return libraries.pop()
 
 
 def parse_nccl_version_macros(preprocessor_output: str) -> tuple[int, str]:
@@ -120,25 +213,26 @@ def main() -> int:
         text=True,
         check=True,
     ).stdout.strip()
+    library = expected_nccl_library(nccl_library_directories(options["nccl_libs"], directory))
     receipt = {
         "schema": BUILD_SCHEMA,
         "source_commit": source_commit,
-        "source_sha256": {
-            name: file_sha256(directory / name) for name in SOURCE_FILES
-        },
+        "source_sha256": {name: file_sha256(directory / name) for name in SOURCE_FILES},
         "binary_sha256": file_sha256(args.binary),
         "architecture": args.arch,
         "minimum_nccl_version": "2.27.3",
         "minimum_nccl_version_code": MINIMUM_NCCL_VERSION_CODE,
         "nccl_header_version": header_version,
         "nccl_header_version_code": header_code,
+        "nccl_runtime_library_path": str(library),
+        "nccl_runtime_library_sha256": file_sha256(library),
         "compiler_versions": compiler_versions,
         "build_options": options,
         "nccl_header_preprocessor_command": preprocessor_command,
         "compile_command": compile_command,
     }
     target = args.binary.with_name(args.binary.name + ".build.json")
-    target.write_text(json.dumps(receipt, indent=2) + "\n", encoding="utf-8")
+    write_json_atomically(target, receipt)
     return 0
 
 

@@ -78,9 +78,16 @@ and free:
    `ncclCommWindowRegister(..., NCCL_WIN_COLL_SYMMETRIC)`.
 
 Confirm before launch that the build-time headers and loaded NCCL runtime are at
-least 2.27.3. Use one node, one distinct GPU per MPI rank, no GPU shared by two
-ranks, the same ordered visible-device set on every rank, pairwise peer access,
-and working symmetric-window support. The runner uses every visible GPU by
+least 2.27.3 and have the same version. Check that the receipt and `ldd` identify
+the same canonical `libnccl.so.2`. The launcher checks that file's SHA256 before
+and after MPI. Each rank resolves every NCCL API used by the study with `dlsym`,
+checks its canonical library path with `dladdr`, and records the matching runtime
+version. Keep user-supplied `LD_PRELOAD` empty at the launcher boundary. An
+unprofiled rank rejects launcher-added preloads. The profile wrapper rejects one
+before Nsight starts, then permits Nsight's own target injection while every
+NCCL API must still resolve from the receipted library. Use one node, one distinct GPU per MPI rank, no
+GPU shared by two ranks, the same ordered visible-device set on every rank,
+pairwise peer access, and working symmetric-window support. The runner uses every visible GPU by
 default. Extra visible GPUs are allowed only with an explicit smaller `--ranks`
 value. Explain why every rank must enter window registration and why later
 collective buffer offsets must be equal relative to each registered buffer head.
@@ -99,6 +106,12 @@ process group through the cooperative subprocess path. Ctrl-C remains a
 cooperative interruption that retains captured diagnostics.
 Each native benchmark invocation defaults to 16,777,216 elements, 20 timed
 samples, and five warmup operations.
+
+Use the [Chapter 4 per-rank capture commands](../../ch04/README.md#capture-an-allreduce-on-every-mpi-rank)
+to trace `cuda_malloc` and `window_register` with `--profile nsys`. Locate the
+steady AllReduce on each rank. Record the kernel names and the native report
+hashes. For NCU, read the coordinated range capture or the retained capability
+diagnostic. Use the unprofiled run for timing.
 
 The baseline fixes `cuda_malloc`. The optimized candidate fixes
 `window_register`, so that pair changes allocation and registration together.

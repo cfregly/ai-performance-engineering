@@ -276,7 +276,14 @@ Each native benchmark invocation defaults to 16,777,216 elements, 20 timed
 samples, and five warmup operations.
 
 This example fails closed unless its build-time headers and loaded NCCL runtime
-are at least 2.27.3. Its supported scope is one node, one distinct GPU per MPI
+are at least 2.27.3 and have the same version. The build receipt pins the
+selected `libnccl.so.2` path and SHA256. The runner checks `ldd` before MPI,
+then every rank resolves every NCCL API used by the study with `dlsym` and
+verifies its canonical library path with `dladdr`. User-supplied `LD_PRELOAD`
+must be empty when the runner starts. An unprofiled rank rejects a preload added
+by launcher arguments. The profile wrapper rejects one before Nsight starts,
+then permits Nsight's own target injection while retaining the per-symbol NCCL
+binding gate. Its supported scope is one node, one distinct GPU per MPI
 rank, no GPU shared by two ranks, the same ordered visible-device set on every
 rank, pairwise peer access, and working `NCCL_WIN_COLL_SYMMETRIC` support. The
 runner uses every visible GPU by default. Extra visible GPUs are allowed only
@@ -286,8 +293,9 @@ replaced with another arm under the same result name.
 
 Set `NCCL_HOME=/path/to/nccl` on the `make` command when the required NCCL is a
 side-by-side installation. The build receipt records the selected `-L`
-directories, and the Python runner prepends them only to the MPI child's
-`LD_LIBRARY_PATH`. It does not change global linker or shell defaults.
+directories and exact library identity. The Python runner prepends those
+directories only to the MPI child's `LD_LIBRARY_PATH`. It does not change
+global linker or shell defaults.
 
 `ncclMemAlloc` changes the allocation contract. Allocation alone does not
 register a buffer or establish a symmetric path. `ncclCommRegister` adds local
@@ -295,6 +303,11 @@ registration and teardown under a communicator. Symmetric-window registration
 adds a collective setup step and requires the same buffer-head offset across
 ranks when the registered buffer is used. Those resources must remain alive
 until the last operation that can access them has completed.
+
+To inspect execution, follow the [Chapter 4 per-rank capture commands](../../ch04/README.md#capture-an-allreduce-on-every-mpi-rank).
+Use `--profile nsys` for the CUDA timeline or `--profile ncu` for coordinated
+range duration when the default NCU supports TCP lockstep. Compare the rank and
+GPU mapping in each diagnostic with the separate unprofiled run.
 
 Full-output agreement proves the observed AllReduce result. A successful
 `ncclCommRegister` or `ncclCommWindowRegister` call proves only that NCCL accepted

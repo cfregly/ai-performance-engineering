@@ -1,9 +1,12 @@
 // Four-arm NCCL allocation and registration study with complete output checks.
-#include "../../core/common/nvtx_utils.cuh"
+#include "../core/common/nvtx_utils.cuh"
 
 #include <cuda_runtime.h>
+#include <dlfcn.h>
+#include <fcntl.h>
 #include <mpi.h>
 #include <nccl.h>
+#include <unistd.h>
 
 #ifndef NCCL_VERSION_CODE
 #error This benchmark requires NCCL headers that define NCCL_VERSION_CODE
@@ -17,14 +20,16 @@
 
 #include <algorithm>
 #include <array>
+#include <cerrno>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
-#include <fstream>
+#include <cstring>
 #include <iomanip>
 #include <iostream>
 #include <limits>
+#include <memory>
 #include <numeric>
 #include <sstream>
 #include <stdexcept>
@@ -35,8 +40,8 @@
 namespace {
 
 constexpr int kMinimumNcclVersion = 22703;
-constexpr double kRelativeTolerance = 1.0e-5;
-constexpr double kAbsoluteTolerance = 1.0e-5;
+constexpr double kRelativeTolerance = 0.0;
+constexpr double kAbsoluteTolerance = 0.0;
 
 struct Unsupported : std::runtime_error {
     using std::runtime_error::runtime_error;
@@ -98,8 +103,10 @@ struct Options {
     std::size_t elements = 16U * 1024U * 1024U;
     int iterations = 20;
     int warmup = 5;
+    bool allow_profiler_preload = false;
     std::string json_out;
     std::string dump_output;
+    std::string expected_nccl_library;
 };
 
 int parse_nonnegative_int(const std::string& text, const std::string& name) {
@@ -125,6 +132,13 @@ Options parse_options(int argc, char** argv) {
     Options result;
     for (int index = 1; index < argc; ++index) {
         const std::string key = argv[index];
+        if (key == "--allow-profiler-preload") {
+            if (result.allow_profiler_preload) {
+                throw std::invalid_argument("--allow-profiler-preload may appear only once");
+            }
+            result.allow_profiler_preload = true;
+            continue;
+        }
         if (index + 1 == argc) throw std::invalid_argument("Missing value for " + key);
         const std::string value = argv[++index];
         if (key == "--arm") result.arm = parse_arm(value);
@@ -133,11 +147,17 @@ Options parse_options(int argc, char** argv) {
         else if (key == "--warmup") result.warmup = parse_nonnegative_int(value, "warmup");
         else if (key == "--json-out") result.json_out = value;
         else if (key == "--dump-output") result.dump_output = value;
+        else if (key == "--expected-nccl-library") result.expected_nccl_library = value;
         else throw std::invalid_argument("Unknown option " + key);
     }
     if (result.iterations < 1) throw std::invalid_argument("iterations must be at least one");
     if (result.json_out.empty()) throw std::invalid_argument("--json-out is required");
     if (result.dump_output.empty()) throw std::invalid_argument("--dump-output is required");
+    if (result.expected_nccl_library.empty()) {
+        throw std::invalid_argument(
+            "NCCL runtime binding: --expected-nccl-library is required"
+        );
+    }
     return result;
 }
 
@@ -169,9 +189,9 @@ void require_collective_nccl_success(ncclResult_t status, const std::string& ope
     MPI_CHECK(MPI_Allreduce(&local_success, &all_success, 1, MPI_INT, MPI_MIN, MPI_COMM_WORLD));
     if (!all_success) {
         const std::string local_reason = status == ncclSuccess
-            ? "unavailable on at least one rank"
+            ? "failed on at least one rank"
             : ncclGetErrorString(status);
-        throw Unsupported(operation + " is unavailable: " + local_reason);
+        throw std::runtime_error(operation + " failed: " + local_reason);
     }
 }
 
@@ -184,6 +204,187 @@ void require_collective_cuda_success(cudaError_t status, const std::string& oper
             ? "failed on at least one rank"
             : cudaGetErrorString(status);
         throw std::runtime_error(operation + " failed: " + local_reason);
+    }
+}
+
+int require_collective_handle(
+    const void* handle, int ranks, const std::string& operation
+) {
+    const int local_handle = handle == nullptr ? 0 : 1;
+    int handle_count = 0;
+    MPI_CHECK(MPI_Allreduce(
+        &local_handle, &handle_count, 1, MPI_INT, MPI_SUM, MPI_COMM_WORLD
+    ));
+    if (handle_count != ranks) {
+        throw std::runtime_error(
+            operation + " returned no registration handle on at least one rank"
+        );
+    }
+    return handle_count;
+}
+
+struct NcclRuntimeBinding {
+    std::string canonical_path;
+    int verified_ranks = 0;
+    int runtime_version = 0;
+};
+
+NcclRuntimeBinding verify_nccl_runtime_binding(
+    const std::string& expected_path, bool allow_profiler_preload, int rank, int ranks
+) {
+    try {
+        int root_length = rank == 0 ? static_cast<int>(expected_path.size()) : 0;
+        MPI_CHECK(MPI_Bcast(&root_length, 1, MPI_INT, 0, MPI_COMM_WORLD));
+        if (root_length < 1) {
+            throw std::runtime_error("rank zero supplied an empty expected library path");
+        }
+        std::string root_expected(static_cast<std::size_t>(root_length), '\0');
+        if (rank == 0) root_expected = expected_path;
+        MPI_CHECK(MPI_Bcast(root_expected.data(), root_length, MPI_CHAR, 0, MPI_COMM_WORLD));
+
+        std::string local_error;
+        std::string canonical_loaded_path;
+        decltype(&ncclGetVersion) resolved_get_version = nullptr;
+        try {
+            const char* preload = std::getenv("LD_PRELOAD");
+            if (
+                preload != nullptr && preload[0] != '\0' &&
+                !allow_profiler_preload
+            ) {
+                throw std::runtime_error(
+                    "LD_PRELOAD is allowed only in a runner-owned profiler target"
+                );
+            }
+            if (expected_path != root_expected) {
+                throw std::runtime_error(
+                    "every rank must receive the same --expected-nccl-library path"
+                );
+            }
+            if (expected_path.empty() || expected_path.front() != '/') {
+                throw std::runtime_error(
+                    "--expected-nccl-library must be an absolute canonical path"
+                );
+            }
+
+            const auto canonicalize = [](const std::string& path) {
+                errno = 0;
+                std::unique_ptr<char, decltype(&std::free)> resolved(
+                    ::realpath(path.c_str(), nullptr), &std::free
+                );
+                if (resolved == nullptr) {
+                    throw std::runtime_error(
+                        "realpath(" + path + ") failed: " + std::strerror(errno)
+                    );
+                }
+                return std::string(resolved.get());
+            };
+
+            const std::string canonical_expected_path = canonicalize(expected_path);
+            if (canonical_expected_path != expected_path) {
+                throw std::runtime_error(
+                    "--expected-nccl-library must equal its absolute realpath"
+                );
+            }
+
+            constexpr std::array<const char*, 12> required_symbols{
+                "ncclGetVersion",
+                "ncclGetErrorString",
+                "ncclGetUniqueId",
+                "ncclCommInitRank",
+                "ncclMemAlloc",
+                "ncclMemFree",
+                "ncclCommRegister",
+                "ncclCommDeregister",
+                "ncclCommWindowRegister",
+                "ncclCommWindowDeregister",
+                "ncclAllReduce",
+                "ncclCommDestroy",
+            };
+            for (const char* symbol_name : required_symbols) {
+                ::dlerror();
+                void* resolved_symbol = ::dlsym(RTLD_DEFAULT, symbol_name);
+                const char* lookup_error = ::dlerror();
+                if (lookup_error != nullptr || resolved_symbol == nullptr) {
+                    throw std::runtime_error(
+                        "dlsym could not resolve " + std::string(symbol_name) + ": " +
+                        std::string(lookup_error == nullptr ? "symbol not found" : lookup_error)
+                    );
+                }
+
+                Dl_info symbol_info{};
+                if (
+                    ::dladdr(resolved_symbol, &symbol_info) == 0 ||
+                    symbol_info.dli_fname == nullptr || symbol_info.dli_fname[0] == '\0'
+                ) {
+                    throw std::runtime_error(
+                        "dladdr could not identify resolved " + std::string(symbol_name)
+                    );
+                }
+                const std::string symbol_path = canonicalize(symbol_info.dli_fname);
+                if (symbol_path != expected_path) {
+                    throw std::runtime_error(
+                        "resolved NCCL symbol " + std::string(symbol_name) + " from " +
+                        symbol_path + ", expected " + expected_path
+                    );
+                }
+                if (canonical_loaded_path.empty()) canonical_loaded_path = symbol_path;
+                if (std::strcmp(symbol_name, "ncclGetVersion") == 0) {
+                    resolved_get_version = reinterpret_cast<decltype(resolved_get_version)>(
+                        resolved_symbol
+                    );
+                }
+            }
+        } catch (const std::exception& error) {
+            local_error = error.what();
+        }
+
+        int local_runtime_version = -1;
+        if (resolved_get_version != nullptr) {
+            const ncclResult_t version_status = resolved_get_version(&local_runtime_version);
+            if (version_status != ncclSuccess && local_error.empty()) {
+                local_error = std::string("ncclGetVersion failed: ") +
+                    ncclGetErrorString(version_status);
+            }
+        }
+        int minimum_runtime_version = 0;
+        int maximum_runtime_version = 0;
+        MPI_CHECK(MPI_Allreduce(
+            &local_runtime_version, &minimum_runtime_version, 1, MPI_INT, MPI_MIN,
+            MPI_COMM_WORLD
+        ));
+        MPI_CHECK(MPI_Allreduce(
+            &local_runtime_version, &maximum_runtime_version, 1, MPI_INT, MPI_MAX,
+            MPI_COMM_WORLD
+        ));
+        if (minimum_runtime_version != maximum_runtime_version && local_error.empty()) {
+            local_error =
+                "ranks loaded heterogeneous NCCL runtime versions " +
+                std::to_string(minimum_runtime_version) + " and " +
+                std::to_string(maximum_runtime_version);
+        } else if (
+            minimum_runtime_version != NCCL_VERSION_CODE && local_error.empty()
+        ) {
+            local_error =
+                "NCCL runtime version " + std::to_string(minimum_runtime_version) +
+                " does not match header version " + std::to_string(NCCL_VERSION_CODE);
+        }
+
+        const int local_verified = local_error.empty() ? 1 : 0;
+        int verified_ranks = 0;
+        MPI_CHECK(MPI_Allreduce(
+            &local_verified, &verified_ranks, 1, MPI_INT, MPI_SUM, MPI_COMM_WORLD
+        ));
+        if (verified_ranks != ranks) {
+            if (local_error.empty()) {
+                local_error = "runtime library verification failed on at least one rank";
+            }
+            throw std::runtime_error(local_error);
+        }
+        return NcclRuntimeBinding{
+            canonical_loaded_path, verified_ranks, local_runtime_version
+        };
+    } catch (const std::exception& error) {
+        throw std::runtime_error("NCCL runtime binding: " + std::string(error.what()));
     }
 }
 
@@ -221,16 +422,26 @@ Statistics summarize(const std::vector<double>& samples) {
     return result;
 }
 
+std::uint32_t rank_index_pattern(int rank, std::size_t index) {
+    const std::uint64_t rank_key =
+        0x9e3779b97f4a7c15ULL * static_cast<std::uint64_t>(rank + 1);
+    std::uint64_t mixed = static_cast<std::uint64_t>(index) + rank_key;
+    mixed = (mixed ^ (mixed >> 30U)) * 0xbf58476d1ce4e5b9ULL;
+    mixed = (mixed ^ (mixed >> 27U)) * 0x94d049bb133111ebULL;
+    mixed ^= mixed >> 31U;
+    return 1U + static_cast<std::uint32_t>(mixed & 0xffU);
+}
+
 float input_value(int rank, std::size_t index) {
-    return static_cast<float>(rank + 1 + static_cast<int>(index % 1024U));
+    return static_cast<float>(rank_index_pattern(rank, index));
 }
 
 float expected_value(int ranks, std::size_t index) {
-    const std::uint64_t rank_sum =
-        static_cast<std::uint64_t>(ranks) * static_cast<std::uint64_t>(ranks + 1) / 2U;
-    const std::uint64_t index_sum =
-        static_cast<std::uint64_t>(ranks) * static_cast<std::uint64_t>(index % 1024U);
-    return static_cast<float>(rank_sum + index_sum);
+    std::uint64_t sum = 0;
+    for (int rank = 0; rank < ranks; ++rank) {
+        sum += rank_index_pattern(rank, index);
+    }
+    return static_cast<float>(sum);
 }
 
 struct NativeBenchmark {
@@ -257,13 +468,15 @@ struct NativeBenchmark {
     double allocation_ms = 0.0;
     double registration_ms = 0.0;
     double initialization_ms = 0.0;
+    int send_registration_handle_verified_ranks = 0;
+    int receive_registration_handle_verified_ranks = 0;
 
-    NativeBenchmark(Options config, int world_rank, int world_size)
-        : options(std::move(config)), rank(world_rank), ranks(world_size) {}
+    NativeBenchmark(Options config, int world_rank, int world_size, int runtime_version)
+        : options(std::move(config)), rank(world_rank), ranks(world_size),
+          nccl_runtime_version(runtime_version) {}
 
-    ~NativeBenchmark() {
-        cleanup_noexcept();
-    }
+    // Failure unwinding must reach MPI_Abort without collective NCCL teardown.
+    ~NativeBenchmark() = default;
 
     void require_single_node_unique_p2p_mapping() {
         const double started = MPI_Wtime();
@@ -287,16 +500,29 @@ struct NativeBenchmark {
         std::string root_visibility(static_cast<std::size_t>(root_length), '\0');
         if (rank == 0) root_visibility = visibility;
         MPI_CHECK(MPI_Bcast(root_visibility.data(), root_length, MPI_CHAR, 0, MPI_COMM_WORLD));
-        if (visibility != root_visibility) {
-            MPI_Comm_free(&local);
+        const int local_visibility_match = visibility == root_visibility ? 1 : 0;
+        int all_visibility_match = 0;
+        MPI_CHECK(MPI_Allreduce(
+            &local_visibility_match, &all_visibility_match, 1, MPI_INT, MPI_MIN,
+            MPI_COMM_WORLD
+        ));
+        if (!all_visibility_match) {
+            MPI_CHECK(MPI_Comm_free(&local));
             throw Unsupported(
                 "Every rank must use the same CUDA_VISIBLE_DEVICES ordering for the P2P gate"
             );
         }
 
         const cudaError_t count_status = cudaGetDeviceCount(&device_count);
-        if (count_status != cudaSuccess || device_count < local_size) {
-            MPI_Comm_free(&local);
+        const int local_device_count_valid =
+            count_status == cudaSuccess && device_count >= local_size ? 1 : 0;
+        int all_device_counts_valid = 0;
+        MPI_CHECK(MPI_Allreduce(
+            &local_device_count_valid, &all_device_counts_valid, 1, MPI_INT, MPI_MIN,
+            MPI_COMM_WORLD
+        ));
+        if (!all_device_counts_valid) {
+            MPI_CHECK(MPI_Comm_free(&local));
             throw Unsupported("Every local rank needs a distinct visible CUDA device");
         }
         int minimum_device_count = 0;
@@ -308,14 +534,16 @@ struct NativeBenchmark {
             &device_count, &maximum_device_count, 1, MPI_INT, MPI_MAX, MPI_COMM_WORLD
         ));
         if (minimum_device_count != maximum_device_count) {
-            MPI_Comm_free(&local);
+            MPI_CHECK(MPI_Comm_free(&local));
             throw Unsupported("Every rank must see the same CUDA device set");
         }
 
         device = local_rank;
-        CUDA_CHECK(cudaSetDevice(device));
+        require_collective_cuda_success(cudaSetDevice(device), "cudaSetDevice");
         cudaDeviceProp properties{};
-        CUDA_CHECK(cudaGetDeviceProperties(&properties, device));
+        require_collective_cuda_success(
+            cudaGetDeviceProperties(&properties, device), "cudaGetDeviceProperties"
+        );
         std::vector<unsigned char> uuids(
             static_cast<std::size_t>(local_size) * sizeof(properties.uuid)
         );
@@ -324,22 +552,33 @@ struct NativeBenchmark {
             uuids.data(), static_cast<int>(sizeof(properties.uuid)), MPI_BYTE, local
         ));
         const auto local_uuid = uuids.begin() + local_rank * sizeof(properties.uuid);
+        int local_unique = 1;
         for (int peer = 0; peer < local_size; ++peer) {
             if (peer == local_rank) continue;
             const auto peer_uuid = uuids.begin() + peer * sizeof(properties.uuid);
             if (std::equal(peer_uuid, peer_uuid + sizeof(properties.uuid), local_uuid)) {
-                MPI_Comm_free(&local);
-                throw Unsupported("Two local ranks selected the same physical GPU");
+                local_unique = 0;
             }
+        }
+        int all_unique = 0;
+        MPI_CHECK(MPI_Allreduce(
+            &local_unique, &all_unique, 1, MPI_INT, MPI_MIN, MPI_COMM_WORLD
+        ));
+        if (!all_unique) {
+            MPI_CHECK(MPI_Comm_free(&local));
+            throw Unsupported("Two local ranks selected the same physical GPU");
         }
 
         int local_p2p = 1;
+        cudaError_t p2p_status = cudaSuccess;
         for (int peer = 0; peer < local_size; ++peer) {
             if (peer == local_rank) continue;
             int can_access = 0;
-            CUDA_CHECK(cudaDeviceCanAccessPeer(&can_access, device, peer));
+            const cudaError_t status = cudaDeviceCanAccessPeer(&can_access, device, peer);
+            if (p2p_status == cudaSuccess && status != cudaSuccess) p2p_status = status;
             local_p2p = std::min(local_p2p, can_access);
         }
+        require_collective_cuda_success(p2p_status, "cudaDeviceCanAccessPeer");
         int all_p2p = 0;
         MPI_CHECK(MPI_Allreduce(&local_p2p, &all_p2p, 1, MPI_INT, MPI_MIN, MPI_COMM_WORLD));
         MPI_CHECK(MPI_Comm_free(&local));
@@ -351,21 +590,6 @@ struct NativeBenchmark {
 
     void initialize_communicator() {
         const double started = MPI_Wtime();
-        NCCL_CHECK(ncclGetVersion(&nccl_runtime_version));
-        int minimum_version = 0;
-        int maximum_version = 0;
-        MPI_CHECK(MPI_Allreduce(
-            &nccl_runtime_version, &minimum_version, 1, MPI_INT, MPI_MIN, MPI_COMM_WORLD
-        ));
-        MPI_CHECK(MPI_Allreduce(
-            &nccl_runtime_version, &maximum_version, 1, MPI_INT, MPI_MAX, MPI_COMM_WORLD
-        ));
-        if (minimum_version < kMinimumNcclVersion) {
-            throw Unsupported("NCCL runtime 2.27.3 or newer is required");
-        }
-        if (minimum_version != maximum_version) {
-            throw Unsupported("Every rank must load the same NCCL runtime version");
-        }
         ncclUniqueId identifier{};
         if (rank == 0) NCCL_CHECK(ncclGetUniqueId(&identifier));
         MPI_CHECK(MPI_Bcast(&identifier, sizeof(identifier), MPI_BYTE, 0, MPI_COMM_WORLD));
@@ -410,19 +634,39 @@ struct NativeBenchmark {
             );
             require_collective_nccl_success(send_status, "ncclCommRegister(send)");
             require_collective_nccl_success(receive_status, "ncclCommRegister(receive)");
+            send_registration_handle_verified_ranks = require_collective_handle(
+                send_registration, ranks, "ncclCommRegister(send)"
+            );
+            receive_registration_handle_verified_ranks = require_collective_handle(
+                receive_registration, ranks, "ncclCommRegister(receive)"
+            );
         } else if (options.arm == Arm::kWindowRegister) {
             const ncclResult_t send_status = ncclCommWindowRegister(
                 communicator, send_buffer, bytes, &send_window, NCCL_WIN_COLL_SYMMETRIC
             );
-            require_collective_nccl_success(
-                send_status, "ncclCommWindowRegister(send, NCCL_WIN_COLL_SYMMETRIC)"
+            if (send_status != ncclSuccess) {
+                throw std::runtime_error(
+                    "ncclCommWindowRegister(send, NCCL_WIN_COLL_SYMMETRIC) failed: " +
+                    std::string(ncclGetErrorString(send_status))
+                );
+            }
+            send_registration_handle_verified_ranks = require_collective_handle(
+                send_window, ranks,
+                "ncclCommWindowRegister(send, NCCL_WIN_COLL_SYMMETRIC)"
             );
             const ncclResult_t receive_status = ncclCommWindowRegister(
                 communicator, receive_buffer, bytes, &receive_window,
                 NCCL_WIN_COLL_SYMMETRIC
             );
-            require_collective_nccl_success(
-                receive_status, "ncclCommWindowRegister(receive, NCCL_WIN_COLL_SYMMETRIC)"
+            if (receive_status != ncclSuccess) {
+                throw std::runtime_error(
+                    "ncclCommWindowRegister(receive, NCCL_WIN_COLL_SYMMETRIC) failed: " +
+                    std::string(ncclGetErrorString(receive_status))
+                );
+            }
+            receive_registration_handle_verified_ranks = require_collective_handle(
+                receive_window, ranks,
+                "ncclCommWindowRegister(receive, NCCL_WIN_COLL_SYMMETRIC)"
             );
         }
         registration_ms = (MPI_Wtime() - registration_started) * 1000.0;
@@ -471,10 +715,18 @@ struct NativeBenchmark {
         return maximum_rank_time((MPI_Wtime() - started) * 1000.0);
     }
 
+    void poison_final_timed_destination() {
+        CUDA_CHECK(cudaMemsetAsync(
+            receive_buffer, 0xFF, options.elements * sizeof(float), stream
+        ));
+        CUDA_CHECK(cudaStreamSynchronize(stream));
+    }
+
     std::vector<double> measure() {
         std::vector<double> samples;
         samples.reserve(static_cast<std::size_t>(options.iterations));
         for (int iteration = 0; iteration < options.iterations; ++iteration) {
+            if (iteration + 1 == options.iterations) poison_final_timed_destination();
             MPI_CHECK(MPI_Barrier(MPI_COMM_WORLD));
             {
                 NVTX_RANGE("allreduce:nccl_symmetric_memory_steady");
@@ -515,104 +767,106 @@ struct NativeBenchmark {
         return result;
     }
 
-    std::string cleanup_resources() noexcept {
-        std::string first_error;
-        const auto record_cuda = [&first_error](cudaError_t status, const char* operation) {
-            if (status != cudaSuccess && first_error.empty()) {
-                first_error = std::string(operation) + ": " + cudaGetErrorString(status);
-            }
-        };
-        const auto record_nccl = [&first_error](ncclResult_t status, const char* operation) {
-            if (status != ncclSuccess && first_error.empty()) {
-                first_error = std::string(operation) + ": " + ncclGetErrorString(status);
-            }
-        };
-
-        if (stream != nullptr) record_cuda(cudaStreamSynchronize(stream), "cudaStreamSynchronize");
+    void cleanup_resources() {
+        if (stream != nullptr) CUDA_CHECK(cudaStreamSynchronize(stream));
         if (options.arm == Arm::kWindowRegister) {
             if (receive_window != nullptr) {
-                record_nccl(
-                    ncclCommWindowDeregister(communicator, receive_window),
-                    "ncclCommWindowDeregister(receive)"
-                );
+                NCCL_CHECK(ncclCommWindowDeregister(communicator, receive_window));
                 receive_window = nullptr;
             }
             if (send_window != nullptr) {
-                record_nccl(
-                    ncclCommWindowDeregister(communicator, send_window),
-                    "ncclCommWindowDeregister(send)"
-                );
+                NCCL_CHECK(ncclCommWindowDeregister(communicator, send_window));
                 send_window = nullptr;
             }
         } else if (options.arm == Arm::kCommRegister) {
             if (receive_registration != nullptr) {
-                record_nccl(
-                    ncclCommDeregister(communicator, receive_registration),
-                    "ncclCommDeregister(receive)"
-                );
+                NCCL_CHECK(ncclCommDeregister(communicator, receive_registration));
                 receive_registration = nullptr;
             }
             if (send_registration != nullptr) {
-                record_nccl(
-                    ncclCommDeregister(communicator, send_registration),
-                    "ncclCommDeregister(send)"
-                );
+                NCCL_CHECK(ncclCommDeregister(communicator, send_registration));
                 send_registration = nullptr;
             }
         }
+        if (communicator != nullptr) {
+            NCCL_CHECK(ncclCommDestroy(communicator));
+            communicator = nullptr;
+        }
         if (options.arm == Arm::kCudaMalloc) {
-            if (receive_buffer != nullptr) record_cuda(cudaFree(receive_buffer), "cudaFree(receive)");
-            if (send_buffer != nullptr) record_cuda(cudaFree(send_buffer), "cudaFree(send)");
+            if (receive_buffer != nullptr) CUDA_CHECK(cudaFree(receive_buffer));
+            if (send_buffer != nullptr) CUDA_CHECK(cudaFree(send_buffer));
         } else {
-            if (receive_buffer != nullptr) {
-                record_nccl(ncclMemFree(receive_buffer), "ncclMemFree(receive)");
-            }
-            if (send_buffer != nullptr) {
-                record_nccl(ncclMemFree(send_buffer), "ncclMemFree(send)");
-            }
+            if (receive_buffer != nullptr) NCCL_CHECK(ncclMemFree(receive_buffer));
+            if (send_buffer != nullptr) NCCL_CHECK(ncclMemFree(send_buffer));
         }
         receive_buffer = nullptr;
         send_buffer = nullptr;
-        if (communicator != nullptr) {
-            record_nccl(ncclCommDestroy(communicator), "ncclCommDestroy");
-            communicator = nullptr;
-        }
         if (sample_stop != nullptr) {
-            record_cuda(cudaEventDestroy(sample_stop), "cudaEventDestroy(stop)");
+            CUDA_CHECK(cudaEventDestroy(sample_stop));
             sample_stop = nullptr;
         }
         if (sample_start != nullptr) {
-            record_cuda(cudaEventDestroy(sample_start), "cudaEventDestroy(start)");
+            CUDA_CHECK(cudaEventDestroy(sample_start));
             sample_start = nullptr;
         }
         if (stream != nullptr) {
-            record_cuda(cudaStreamDestroy(stream), "cudaStreamDestroy");
+            CUDA_CHECK(cudaStreamDestroy(stream));
             stream = nullptr;
         }
-        return first_error;
     }
 
     void cleanup() {
         NVTX_RANGE("cleanup:nccl_symmetric_memory");
-        const std::string error = cleanup_resources();
-        if (!error.empty()) throw std::runtime_error("Native cleanup failed: " + error);
-    }
-
-    void cleanup_noexcept() noexcept {
-        const std::string error = cleanup_resources();
-        if (!error.empty()) {
-            std::cerr << "ERROR: rank " << rank << ": cleanup after failure: " << error << '\n';
-        }
+        cleanup_resources();
     }
 };
 
-void write_float_output(const std::string& path, const std::vector<float>& output) {
-    std::ofstream file(path, std::ios::binary | std::ios::out);
-    file.write(
-        reinterpret_cast<const char*>(output.data()),
-        static_cast<std::streamsize>(output.size() * sizeof(float))
+void write_exclusive_output(
+    const std::string& path, const void* data, std::size_t bytes, const std::string& label
+) {
+    const int descriptor = ::open(
+        path.c_str(), O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, 0600
     );
-    if (!file) throw std::runtime_error("Cannot write complete-output artifact " + path);
+    if (descriptor < 0) {
+        throw std::runtime_error(
+            "Cannot create " + label + " exclusively at " + path + ": " +
+            std::strerror(errno)
+        );
+    }
+
+    const auto* cursor = static_cast<const unsigned char*>(data);
+    std::size_t written = 0;
+    while (written < bytes) {
+        const ssize_t count = ::write(descriptor, cursor + written, bytes - written);
+        if (count < 0 && errno == EINTR) continue;
+        if (count <= 0) {
+            const int write_error = count == 0 ? EIO : errno;
+            ::close(descriptor);
+            throw std::runtime_error(
+                "Cannot write " + label + " at " + path + ": " +
+                std::strerror(write_error)
+            );
+        }
+        written += static_cast<std::size_t>(count);
+    }
+    if (::fsync(descriptor) != 0) {
+        const int sync_error = errno;
+        ::close(descriptor);
+        throw std::runtime_error(
+            "Cannot sync " + label + " at " + path + ": " + std::strerror(sync_error)
+        );
+    }
+    if (::close(descriptor) != 0) {
+        throw std::runtime_error(
+            "Cannot close " + label + " at " + path + ": " + std::strerror(errno)
+        );
+    }
+}
+
+void write_float_output(const std::string& path, const std::vector<float>& output) {
+    write_exclusive_output(
+        path, output.data(), output.size() * sizeof(float), "complete-output artifact"
+    );
 }
 
 }  // namespace
@@ -648,8 +902,14 @@ int main(int argc, char** argv) {
             throw std::invalid_argument("Every rank must use the same benchmark configuration");
         }
 
+        const NcclRuntimeBinding runtime_binding = verify_nccl_runtime_binding(
+            options.expected_nccl_library, options.allow_profiler_preload, rank, ranks
+        );
+
         const double setup_started = MPI_Wtime();
-        NativeBenchmark benchmark(options, rank, ranks);
+        NativeBenchmark benchmark(
+            options, rank, ranks, runtime_binding.runtime_version
+        );
         benchmark.setup();
         const double setup_ms = maximum_rank_time((MPI_Wtime() - setup_started) * 1000.0);
         const double topology_gate_ms = maximum_rank_time(benchmark.topology_gate_ms);
@@ -727,12 +987,22 @@ int main(int argc, char** argv) {
                  << ",\"warmup\":" << options.warmup
                  << ",\"nccl_header_version_code\":" << NCCL_VERSION_CODE
                  << ",\"nccl_runtime_version_code\":" << benchmark.nccl_runtime_version
+                 << ",\"nccl_runtime_library_path\":"
+                 << json_quote(runtime_binding.canonical_path)
+                 << ",\"nccl_runtime_library_verified_ranks\":"
+                 << runtime_binding.verified_ranks
+                 << ",\"profiler_preload_allowed\":"
+                 << (options.allow_profiler_preload ? "true" : "false")
                  << ",\"minimum_nccl_version_code\":" << kMinimumNcclVersion
                  << ",\"setup_ms\":" << setup_ms
                  << ",\"topology_gate_ms\":" << topology_gate_ms
                  << ",\"communicator_ms\":" << communicator_ms
                  << ",\"allocation_ms\":" << allocation_ms
                  << ",\"registration_ms\":" << registration_ms
+                 << ",\"send_registration_handle_verified_ranks\":"
+                 << benchmark.send_registration_handle_verified_ranks
+                 << ",\"receive_registration_handle_verified_ranks\":"
+                 << benchmark.receive_registration_handle_verified_ranks
                  << ",\"initialization_ms\":" << initialization_ms
                  << ",\"warmup_ms\":" << warmup_ms
                  << ",\"time_per_iteration_ms\":" << statistics.mean
@@ -777,10 +1047,11 @@ int main(int argc, char** argv) {
             }
             json << "]}"
                  << '\n';
-            std::ofstream output(options.json_out);
-            output << json.str();
-            if (!output) throw std::runtime_error("Cannot write result " + options.json_out);
-            std::cout << json.str();
+            const std::string serialized = json.str();
+            write_exclusive_output(
+                options.json_out, serialized.data(), serialized.size(), "result"
+            );
+            std::cout << serialized;
             if (all_correct) std::cout << "TIME_MS: " << statistics.mean << '\n';
         }
         MPI_CHECK(MPI_Finalize());
