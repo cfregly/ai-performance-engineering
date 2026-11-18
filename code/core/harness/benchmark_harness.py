@@ -1612,11 +1612,35 @@ def _measurement_execution_deadline(config: BenchmarkConfig) -> Optional[float]:
     if value is None:
         raise ValueError(
             "Execution requires a measurement timeout or legacy timeout_seconds. "
-            "Use zero for an explicitly uncapped owned subprocess."
+            "Set execution_timeout_seconds=0 for an explicitly uncapped owned subprocess."
         )
     if isinstance(value, bool) or not isinstance(value, (int, float)) or value < 0 or not math.isfinite(value):
         raise ValueError(f"Invalid measurement timeout: {value!r}")
     return cast(Optional[float], execution_deadline_seconds(float(value)))
+
+
+def validate_benchmark_execution_timeout(
+    config: BenchmarkConfig,
+    *,
+    actual_execution_mode: Optional[ExecutionMode] = None,
+    owned_subprocess: bool = False,
+) -> None:
+    """Require the caller to select uncapped execution explicitly."""
+    requested = validate_execution_timeout_seconds(config.execution_timeout_seconds)
+    measurement_timeout = config.measurement_timeout_seconds
+    if measurement_timeout is None:
+        measurement_timeout = config.timeout_seconds
+    validate_execution_timeout_mode(
+        0 if measurement_timeout == 0 else requested,
+        execution_mode=actual_execution_mode or config.execution_mode,
+        launch_via=config.launch_via,
+        owned_subprocess=owned_subprocess,
+    )
+    if measurement_timeout == 0 and requested != 0:
+        raise ValueError(
+            "A zero measurement timeout requires explicit execution_timeout_seconds=0. "
+            "Select uncapped execution at the caller."
+        )
 
 
 def _build_profiling_view_from_mapping(values: Dict[str, Any]) -> BenchmarkProfilingView:
@@ -2433,16 +2457,9 @@ class BenchmarkHarness:
     def _validate_execution_timeout_mode(
         self, config: BenchmarkConfig, *, actual_execution_mode: Optional[ExecutionMode] = None,
     ) -> None:
-        requested = config.execution_timeout_seconds
-        measurement_timeout = config.measurement_timeout_seconds
-        if measurement_timeout is None:
-            measurement_timeout = config.timeout_seconds
-        if measurement_timeout == 0:
-            requested = 0
-        validate_execution_timeout_mode(
-            requested,
-            execution_mode=actual_execution_mode or config.execution_mode,
-            launch_via=config.launch_via,
+        validate_benchmark_execution_timeout(
+            config,
+            actual_execution_mode=actual_execution_mode,
             owned_subprocess=self._owned_process_execution,
         )
 
@@ -3329,8 +3346,8 @@ class BenchmarkHarness:
             # Override with benchmark-specific settings
             default_bench_config = BenchmarkConfig()
             for key, value in bench_config.__dict__.items():
-                # Skip private/internal fields and None values.
-                if key.startswith("_") or value is None:
+                # Keep the caller's deadline selector, including an omitted value.
+                if key.startswith("_") or value is None or key == "execution_timeout_seconds":
                     continue
 
                 # Never allow benchmarks to re-enable subprocess mode when we're already
@@ -3377,8 +3394,8 @@ class BenchmarkHarness:
                         # Caller already chose a non-default value; keep it.
                         continue
                 setattr(config, key, value)
+        config.execution_timeout_seconds = requested_execution_timeout
         if requested_execution_timeout is not None:
-            config.execution_timeout_seconds = requested_execution_timeout
             for field_name in (
                 "setup_timeout_seconds", "warmup_timeout_seconds",
                 "measurement_timeout_seconds", "timeout_seconds",

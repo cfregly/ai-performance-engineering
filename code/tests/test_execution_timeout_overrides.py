@@ -62,6 +62,7 @@ def test_omitted_execution_timeout_preserves_defaults_and_existing_merge_behavio
     for field in EXECUTION_FIELDS + PROFILE_FIELDS:
         assert getattr(base, field) == getattr(explicit_null, field)
     assert base.execution_timeout_seconds is None
+    assert "execution_timeout_seconds" in _locked(base, provided=False)
     assert not _locked(base, provided=False).intersection(EXECUTION_FIELDS)
 
     override = BenchmarkConfig(
@@ -73,6 +74,33 @@ def test_omitted_execution_timeout_preserves_defaults_and_existing_merge_behavio
         defaults_obj=BenchmarkDefaults(), locked_fields=_locked(base, provided=False),
     )
     assert [getattr(merged, field) for field in EXECUTION_FIELDS] == [701, 702, 703, 704]
+
+
+@pytest.mark.parametrize("caller", [None, 0, 7])
+@pytest.mark.parametrize("benchmark_selector", [0, 7])
+def test_runner_always_preserves_caller_selector(caller, benchmark_selector) -> None:
+    base = BenchmarkConfig(execution_timeout_seconds=caller, timeout_multiplier=1.0)
+    override = BenchmarkConfig(timeout_multiplier=1.0)
+    override.execution_timeout_seconds = benchmark_selector
+    merged = run_benchmarks._merge_benchmark_config(
+        base_config=base, benchmark_obj=_ConfiguredBenchmark(override),
+        defaults_obj=BenchmarkDefaults(), locked_fields=set(),
+    )
+    assert merged.execution_timeout_seconds == caller
+
+
+@pytest.mark.parametrize("override", [
+    BenchmarkConfig(measurement_timeout_seconds=0, timeout_multiplier=1.0),
+    BenchmarkConfig(execution_timeout_seconds=0),
+    BenchmarkConfig(timeout_multiplier=0.0001),
+])
+def test_runner_rejects_implicit_uncapped_config(override) -> None:
+    base = BenchmarkConfig(timeout_multiplier=1.0)
+    with pytest.raises(ValueError, match="requires explicit execution_timeout_seconds=0"):
+        run_benchmarks._merge_benchmark_config(
+            base_config=base, benchmark_obj=_ConfiguredBenchmark(override),
+            defaults_obj=BenchmarkDefaults(), locked_fields=set(),
+        )
 
 
 @pytest.mark.parametrize("seconds", [0, 7, 180, 300, 1200])

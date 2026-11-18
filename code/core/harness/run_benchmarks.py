@@ -69,6 +69,7 @@ from core.harness.benchmark_harness import (
     BenchmarkConfig,
     TorchrunLaunchSpec,
     _lookup_target_extra_args,
+    validate_benchmark_execution_timeout,
 )
 from core.harness.validity_profile import (
     VALIDITY_PROFILE_CHOICES,
@@ -5214,7 +5215,7 @@ def _compute_locked_fields(
     own BenchmarkConfig, which carries deterministic=False by default, cannot
     undo --reproducible.
     """
-    locked_fields: Set[str] = set()
+    locked_fields: Set[str] = {"execution_timeout_seconds"}
     if cli_iterations_provided:
         locked_fields.add("iterations")
     if cli_warmup_provided:
@@ -5290,7 +5291,7 @@ def _merge_benchmark_config(
             value = getattr(override, field.name, None)
             if value is None:
                 continue
-            if field.name in locked_fields:
+            if field.name in locked_fields or field.name == "execution_timeout_seconds":
                 continue
 
             if field.name == "launch_via":
@@ -5367,11 +5368,7 @@ def _merge_benchmark_config(
     if merged.validity_profile == "portable":
         merged.lock_gpu_clocks = False
 
-    validate_execution_timeout_mode(
-        merged.execution_timeout_seconds,
-        execution_mode=merged.execution_mode,
-        launch_via=merged.launch_via,
-    )
+    validate_benchmark_execution_timeout(merged)
 
     return merged
 

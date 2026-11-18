@@ -47,14 +47,17 @@ class _ObservedCpuBenchmark(BaseBenchmark):
         self.setup_delay_seconds = 0.0
         self.calls = 0
         self.validated = False
+        self.config_overrides = {}
         self.input = None
         self.output = None
 
     def get_config(self) -> BenchmarkConfig:
-        return _config(
+        values = dict(
             setup_timeout_seconds=13, warmup_timeout_seconds=14,
             measurement_timeout_seconds=15, timeout_seconds=16,
         )
+        values.update(self.config_overrides)
+        return _config(**values)
 
     def setup(self) -> None:
         self.device = torch.device("cpu")
@@ -182,6 +185,55 @@ def test_direct_thread_method_rejects_zero_even_if_config_declares_subprocess(tm
     with pytest.raises(ValueError, match="owned subprocess"):
         BenchmarkHarness(config=config)._benchmark_with_threading(benchmark, config)
     assert not Path(benchmark.observation_path).exists()
+
+
+@pytest.mark.parametrize("overrides, benchmark_overrides", [
+    ({"measurement_timeout_seconds": 0}, {}),
+    ({"measurement_timeout_seconds": None, "timeout_seconds": 0}, {}),
+    ({"timeout_multiplier": 0.0001}, {}),
+    ({}, {"measurement_timeout_seconds": 0}),
+    ({}, {"execution_timeout_seconds": 0}),
+])
+def test_implicit_uncapped_execution_is_rejected_before_child_creation(tmp_path: Path, monkeypatch, overrides: dict, benchmark_overrides: dict) -> None:
+    benchmark = _ObservedCpuBenchmark()
+    benchmark.config_overrides = benchmark_overrides
+    benchmark.observation_path = str(tmp_path / "must-not-execute.json")
+    config = _config(**overrides)
+
+    def unexpected_child(*args, **kwargs):
+        raise AssertionError("Implicit uncapped execution must fail before child creation")
+
+    monkeypatch.setattr(harness_module.subprocess, "Popen", unexpected_child)
+    with pytest.raises(ValueError, match="requires explicit execution_timeout_seconds=0"):
+        BenchmarkHarness(config=config).benchmark(benchmark)
+    assert not Path(benchmark.observation_path).exists()
+
+
+@requires_owned_worker
+def test_isolated_worker_rejects_implicit_zero_before_import(tmp_path: Path, monkeypatch) -> None:
+    module = tmp_path / "must_not_import.py"
+    imported = tmp_path / "imported.txt"
+    module.write_text(
+        "from pathlib import Path\n"
+        f"Path({str(imported)!r}).write_text('Imported unexpectedly')\n"
+    )
+    benchmark = _ObservedCpuBenchmark()
+    benchmark._module_file_override = str(module)
+    benchmark._factory_name_override = "get_benchmark"
+    actual_communicate = harness_module.communicate_cooperatively
+
+    def implicit_zero(process, **kwargs):
+        payload = json.loads(kwargs["input"])
+        payload["config_dict"]["execution_timeout_seconds"] = None
+        kwargs["input"] = json.dumps(payload)
+        return actual_communicate(process, **kwargs)
+
+    monkeypatch.setattr(harness_module, "communicate_cooperatively", implicit_zero)
+    config = _config(execution_timeout_seconds=0, subprocess_stderr_dir=str(tmp_path))
+    result = BenchmarkHarness(config=config).benchmark(benchmark)
+    assert any("requires explicit execution_timeout_seconds=0" in error for error in result.errors)
+    assert not imported.exists()
+    assert result.timeout_stage is None
 
 
 @requires_owned_worker

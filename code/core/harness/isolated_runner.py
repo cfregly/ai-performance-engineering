@@ -297,6 +297,8 @@ def run_benchmark(input_data: Dict[str, Any]) -> Dict[str, Any]:
                 measurement_timeout = config_dict.get("timeout_seconds")
             if (requested_timeout == 0 or measurement_timeout == 0) and not owned_process_execution:
                 raise ValueError("Uncapped isolated execution requires a matching process ownership receipt")
+            if measurement_timeout == 0 and requested_timeout != 0:
+                raise ValueError("A zero measurement timeout requires explicit execution_timeout_seconds=0")
             # Reset CUDA state BEFORE loading the module
             reset_cuda_state(device_str)
 
