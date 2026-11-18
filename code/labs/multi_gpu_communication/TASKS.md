@@ -44,15 +44,84 @@ Use a retained Nsight Systems report to identify actual simultaneous work.
 If overlap appears but the full step is slower, inspect resource contention
 and the cost of splitting kernels and adding events. Report that outcome.
 
-## 4. Separate registration from scheduling
+## 4. Prove NCCL symmetric memory from allocation to kernel evidence
 
-Keep schedule and graph mode fixed. Compare ordinary and explicitly registered
-NCCL buffers on a supported runtime. Find both registrations and their teardown.
-Confirm that all ranks use the same mode and both send and receive allocations
-remain alive through completion.
+> **Exercise 4:** Separate allocation, local registration, symmetric-window
+> registration, correctness, and kernel evidence before moving to graph capture.
 
-Report setup cost separately. Use NCCL diagnostics and profiler evidence to
-investigate the selected path. Explain why avoiding an internal copy does not
+From the repository root, inspect the runner, build the native binary, and run
+all four arms:
+
+```bash
+python code/ch04/run_nccl_symmetric_memory.py --help
+make -C code/ch04 nccl_symmetric_memory_native
+NCCL_SYMMETRIC_RESULTS=$(mktemp -d /tmp/nccl-symmetric-memory.XXXXXX)
+export NCCL_SYMMETRIC_RESULTS
+CUDA_VISIBLE_DEVICES=0,1 python code/ch04/run_nccl_symmetric_memory.py \
+  --all-arms --ranks 2 --elements 1048576 --iterations 2 --warmup 1 \
+  --json-out "$NCCL_SYMMETRIC_RESULTS/all-arms.json"
+```
+
+Treat this as a small correctness smoke. It proves only the supported execution
+and full-output checks that completed. It is not a performance comparison.
+
+The arms keep one out-of-place float32 sum AllReduce fixed and verify the full
+output. Trace these four paths through allocation, use, registration teardown,
+and free:
+
+1. `cuda_malloc` uses `cudaMalloc` without registration. Treat it as the control.
+2. `nccl_mem_alloc` uses `ncclMemAlloc` without registration. This isolates the
+   allocation contract.
+3. `comm_register` adds `ncclCommRegister` for both local buffers. This is local
+   registration under each communicator.
+4. `window_register` collectively registers both `ncclMemAlloc` buffers with
+   `ncclCommWindowRegister(..., NCCL_WIN_COLL_SYMMETRIC)`.
+
+Confirm before launch that the build-time headers and loaded NCCL runtime are at
+least 2.27.3. Use one node, one distinct GPU per MPI rank, no GPU shared by two
+ranks, the same ordered visible-device set on every rank, pairwise peer access,
+and working symmetric-window support. The runner uses every visible GPU by
+default. Extra visible GPUs are allowed only with an explicit smaller `--ranks`
+value. Explain why every rank must enter window registration and why later
+collective buffer offsets must be equal relative to each registered buffer head.
+Do not turn an unsupported capability into a fallback result.
+
+From `code/`, inspect and run the public pair on an allocated supported system:
+
+```bash
+python -m cli.aisp bench list-targets --chapter ch04
+python -m cli.aisp bench run --targets ch04:nccl_symmetric_memory --profile none \
+  --suite-timeout 0 --execution-timeout-seconds 0
+```
+
+Both timeout values must be explicitly zero because the benchmark owns an MPI
+process group through the cooperative subprocess path. Ctrl-C remains a
+cooperative interruption that retains captured diagnostics.
+Each native benchmark invocation defaults to 16,777,216 elements, 20 timed
+samples, and five warmup operations.
+
+The baseline fixes `cuda_malloc`. The optimized candidate fixes
+`window_register`, so that pair changes allocation and registration together.
+Use the two middle direct-runner arms to attribute those steps. Do not expose
+them as unmatched benchmark targets.
+
+For every arm, check the complete output instead of accepting initialization or
+registration as correctness. Report allocation and registration setup separately
+from steady-state work. Explain the added lifetime and teardown obligations and
+when their reuse could be worth the complexity. Explain when ordinary
+`cudaMalloc` without registration is enough.
+
+Successful `ncclCommRegister` or `ncclCommWindowRegister` calls prove that NCCL
+accepted the buffers. They do not prove that a specialized symmetric-memory
+kernel executed. Retain a runtime or profiler capture tied to the exact run before
+making that mechanism claim. There is no B200 performance evidence for this pair
+yet. Do not call the candidate faster until equivalent repeated B200 measurements,
+full-output checks, and profiler evidence support the result.
+
+Finally, relate `comm_register` to the Jacobi solver's `--registered-buffers`
+option. Keep schedule and graph mode fixed. Find both ping-pong registrations and
+their teardown. Confirm that all ranks use the same mode and that the allocations
+remain alive through completion. Explain why avoiding an internal copy would not
 remove network bytes or guarantee a shorter iteration.
 
 ## 5. Capture a stable schedule

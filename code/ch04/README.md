@@ -92,6 +92,66 @@ fused device loops. Its five modes check complete outputs. Ready signals,
 consumed acknowledgments, and a checked one-CTA launch make the synchronization
 cost and reuse rules explicit.
 
+## NCCL Symmetric-Memory AllReduce
+
+The native symmetric-memory benchmark keeps one out-of-place float32 sum
+AllReduce fixed while changing only buffer allocation and registration:
+
+| Arm | Send and receive buffer path | Purpose |
+| --- | --- | --- |
+| `cuda_malloc` | `cudaMalloc` | Control used by the harness baseline. |
+| `nccl_mem_alloc` | `ncclMemAlloc` | Isolates NCCL-compatible allocation. |
+| `comm_register` | `ncclMemAlloc` plus `ncclCommRegister` | Isolates ordinary communicator registration. |
+| `window_register` | `ncclMemAlloc` plus collective `ncclCommWindowRegister(..., NCCL_WIN_COLL_SYMMETRIC)` | Candidate used by the harness optimized path. |
+
+The build and runtime both require NCCL 2.27.3 or newer. The runner also
+requires one distinct GPU per MPI rank, a single shared-memory node, and
+directed CUDA peer access between every selected GPU pair. It does not fall
+back when any gate is unavailable. Every rank checks every output element.
+Setup, warmup, output checking, artifact writing, and cleanup stay outside the
+per-collective samples. Each timed sample is the maximum CUDA-event elapsed
+time across ranks from an event pair around exactly one `ncclAllReduce`.
+
+Build the native binary, then run a small two-GPU correctness smoke:
+
+```bash
+make -C code/ch04 nccl_symmetric_memory_native
+CUDA_VISIBLE_DEVICES=0,1 python code/ch04/run_nccl_symmetric_memory.py \
+  --all-arms --ranks 2 --elements 1048576 --iterations 2 --warmup 1
+```
+
+If a newer NCCL is installed outside `/usr`, point the build at that prefix:
+
+```bash
+make -C code/ch04 NCCL_HOME=/path/to/nccl nccl_symmetric_memory_native
+```
+
+The build receipt records the effective NCCL library search directories. The
+runner prepends those directories only in the MPI child's `LD_LIBRARY_PATH`.
+It does not change the parent shell or the host's default linker configuration.
+
+The smoke proves only that the selected host ran all four arms and passed the
+complete-output checks. The direct runner defaults to 16,777,216 elements, 20
+timed samples, five warmups, and all visible GPUs. It retains raw `MPI_MAX`
+samples, summary statistics, build provenance, process logs, and complete
+float32 output files under `code/artifacts/nccl_symmetric_memory/` unless
+`--json-out` selects another location.
+
+Run the comparable control and candidate through the harness from `code/`:
+
+```bash
+python -m cli.aisp bench run --targets ch04:nccl_symmetric_memory --profile none \
+  --suite-timeout 0 --execution-timeout-seconds 0
+```
+
+This command uses the repository's owned uncapped MPI process path. It does not
+by itself provide publication-grade performance evidence. A performance claim
+still needs locked clocks, application-clock provenance, repeated interleaving,
+and profiler or counter evidence for the mechanism. See the official NCCL
+[buffer registration](https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/usage/bufferreg.html)
+and [communicator API](https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/api/comms.html)
+documentation for the window lifetime and collective registration contract.
+
 ## Directory Layout
 | Path | Description |
 | --- | --- |
@@ -109,6 +169,7 @@ cost and reuse rules explicit.
 | `ddp_worker.py`, `nvshmem_worker.py`, `disaggregated_multigpu_worker.py`, `disaggregated_multigpu_result.py` | Dedicated `torchrun` workers and fresh full-rank result transport used by the harness. Harness-discovered baseline/optimized modules stay import-only. |
 | `baseline_symmetric_memory_multigpu.py`, `optimized_symmetric_memory_multigpu.py` | Named ring pair: NCCL P2P baseline versus an explicit PyTorch `CUDA` symmetric-memory backend that replays one captured graph containing each peer publication and both fences. The optimized receive is the published local symmetric slot itself, with its final parity slot cloned only after timing for verification. Warmup and graph capture are outside steady-state timing and capture failure is fatal. The public ring helper retains its `NVSHMEM` default and NCCL fences; backend mismatch fails instead of falling back. |
 | `baseline_symmetric_memory_perf.py`, `optimized_symmetric_memory_perf.py`, `baseline_symmetric_memory_perf_multigpu.py`, `optimized_symmetric_memory_perf_multigpu.py` | Symmetric memory utilities and perf probes for KV cache and optimizer shards. |
+| `baseline_nccl_symmetric_memory.py`, `optimized_nccl_symmetric_memory.py`, `nccl_symmetric_memory_benchmark.py`, `run_nccl_symmetric_memory.py`, `nccl_symmetric_memory_native.cu` | Native NCCL 2.27.3 control versus symmetric-window AllReduce pair, with two intermediate attribution arms in the direct runner. |
 | `compare.py`, `requirements.txt`, `expectations_{hardware_key}.json`, `bandwidth_benchmark_suite_multigpu.py`, `nccl_benchmark.py` | Harness driver plus standalone NCCL/NVLink sweepers for topology bring-up. |
 
 ## Running the Benchmarks
@@ -126,6 +187,7 @@ python -m cli.aisp bench run --targets ch04 --profile minimal
 - `python compare.py --examples dataparallel_multigpu` shows the optimized pair overlapping compute and communication with lower latency.
 - `python -m cli.aisp bench run --targets ch04:disaggregated_multigpu --profile none` launches two local worker ranks, reports CUDA-event iteration timing from rank 0, and verifies both ranks' complete prefill-plus-decode outputs.
 - `python -m cli.aisp bench run --targets ch04:nixl_tier_handoff --profile minimal --single-gpu` verifies the Chapter 4 NIXL-style tier handoff analogue on the same selected-block workload.
+- `python -m cli.aisp bench run --targets ch04:nccl_symmetric_memory --profile none --suite-timeout 0 --execution-timeout-seconds 0` compares the ordinary allocation control with the symmetric-window candidate and retains complete native outputs.
 - `python -m cli.aisp bench run --targets ch04:bandwidth_benchmark_suite_multigpu --profile minimal` surfaces >=250 GB/s links on connected GPU pairs and highlights any slow hops on a host with >=2 visible GPUs.
 - NVSHMEM samples now run only on real multi-GPU symmetric-memory hosts; unsupported environments fail fast with `SKIPPED:` instead of publishing fallback timings.
 

@@ -8,6 +8,17 @@ NVSHMEM_INCLUDE = -I/usr/include/nvshmem
 NVSHMEM_LIB = -L$(NVSHMEM_HOME) -lnvshmem_host $(NVSHMEM_HOME)/libnvshmem_device.a
 HAS_NVSHMEM := $(shell test -f $(NVSHMEM_HOME)/libnvshmem_host.so && echo yes || echo no)
 
+# NCCL 2.27.3 symmetric-window benchmark. This target never builds a fallback.
+MPICXX ?= mpicxx
+sh_quote = '$(subst ','"'"',$(1))'
+MPI_COMPILE_FLAGS ?= $(shell $(call sh_quote,$(MPICXX)) --showme:compile 2>/dev/null)
+NCCL_HOME ?= /usr
+NCCL_INCLUDE ?= $(NCCL_HOME)/include
+NCCL_LIBDIR ?= $(NCCL_HOME)/lib
+NCCL_FLAGS ?= -I$(NCCL_INCLUDE)
+NCCL_LIBS ?= -L$(NCCL_LIBDIR) -L$(NCCL_LIBDIR)64 -lnccl
+NCCL_SYMMETRIC_NVCC_FLAGS ?= $(CUDA_NVCC_ARCH_FLAGS) $(CUDA_NVTX_CFLAGS) -std=c++17 -O3 -lineinfo
+
 NVCC_FLAGS = $(CUDA_NVCC_ARCH_FLAGS) -rdc=true $(CUDA_NVTX_CFLAGS)
 SUFFIX = $(TARGET_SUFFIX)
 
@@ -18,7 +29,7 @@ NVSHMEM_TARGETS += nvshmem_ibgda_microbench
 endif
 TARGETS = $(addsuffix $(SUFFIX), $(NVSHMEM_TARGETS))
 
-.PHONY: all help nvshmem compare clean install-help b200 gb10 b300 gb300 $(TARGETS)
+.PHONY: all help nvshmem nccl_symmetric_memory_native compare clean install-help b200 gb10 b300 gb300 $(TARGETS)
 
 all: help
 	@echo ""
@@ -31,6 +42,7 @@ endif
 help:
 	@echo "Available targets:"
 	@echo "  make nvshmem         - Compile NVSHMEM examples (requires NVSHMEM)"
+	@echo "  make nccl_symmetric_memory_native - Compile the NCCL 2.27.3 symmetric-window benchmark"
 	@echo "  make compare         - Build both architectures back-to-back"
 	@echo "  make clean           - Remove build outputs"
 	@echo "  make install-help    - Show NVSHMEM installation tips"
@@ -46,6 +58,11 @@ ifeq ($(HAS_NVSHMEM),yes)
 else
 	@echo "⚠ NVSHMEM not found - compiling in educational mode"
 endif
+
+nccl_symmetric_memory_native: nccl_symmetric_memory_native.cu nccl_symmetric_memory_build_receipt.py Makefile $(CUDA_NVTX_DEPS)
+	@test -n "$(MPI_COMPILE_FLAGS)" || (echo "MPI flag discovery requires Open MPI mpicxx --showme:compile or explicit MPI_COMPILE_FLAGS" >&2; false)
+	$(NVCC) $(NCCL_SYMMETRIC_NVCC_FLAGS) $(MPI_COMPILE_FLAGS) $(NCCL_FLAGS) -ccbin=$(MPICXX) nccl_symmetric_memory_native.cu -o $@ $(NCCL_LIBS) $(CUDA_NVTX_LDFLAGS)
+	$(PYTHON) nccl_symmetric_memory_build_receipt.py --binary $@ --arch $(ARCH) --nvcc $(NVCC) --mpicxx $(MPICXX) --build-option $(call sh_quote,nvcc_flags=$(NCCL_SYMMETRIC_NVCC_FLAGS)) --build-option $(call sh_quote,mpi_compile_flags=$(MPI_COMPILE_FLAGS)) --build-option $(call sh_quote,nccl_flags=$(NCCL_FLAGS)) --build-option $(call sh_quote,nccl_libs=$(NCCL_LIBS)) --build-option $(call sh_quote,nvtx_libs=$(CUDA_NVTX_LDFLAGS))
 
 nvshmem_multigpu_examples$(SUFFIX): nvshmem_multigpu_examples.cu $(CUDA_NVTX_DEPS)
 ifeq ($(HAS_NVSHMEM),yes)
@@ -145,6 +162,7 @@ gb300:
 
 clean:
 	rm -f *_sm100 *_sm103 *_sm120 *_sm121 *_sm122 *_sm123
+	rm -f nccl_symmetric_memory_native nccl_symmetric_memory_native.build.json
 	rm -f *.o
 	@echo "Cleaned Chapter 4 NVSHMEM binaries"
 
