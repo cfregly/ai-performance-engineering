@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import signal
+import sys
 import time
 
 import pytest
@@ -20,6 +21,13 @@ EXECUTION_FIELDS = (
     "setup_timeout_seconds", "warmup_timeout_seconds",
     "measurement_timeout_seconds", "timeout_seconds",
 )
+OWNED_GROUP_WAIT_SUPPORTED = os.name == "posix" and all(
+    hasattr(os, name) for name in ("waitid", "P_PID", "WEXITED", "WNOWAIT", "WNOHANG")
+)
+requires_owned_worker = pytest.mark.skipif(
+    not OWNED_GROUP_WAIT_SUPPORTED,
+    reason="owned isolated execution requires POSIX waitid with WNOWAIT",
+)
 
 
 class _ObservedCpuBenchmark(BaseBenchmark):
@@ -31,8 +39,14 @@ class _ObservedCpuBenchmark(BaseBenchmark):
         super().__init__()
         self.observation_path = ""
         self.cleanup_path = ""
+        self.progress_path = ""
         self.interrupt_kind = ""
+        self.interrupt_after_calls = 1
         self.interrupted = False
+        self.failure_stage = ""
+        self.setup_delay_seconds = 0.0
+        self.calls = 0
+        self.validated = False
         self.input = None
         self.output = None
 
@@ -51,13 +65,24 @@ class _ObservedCpuBenchmark(BaseBenchmark):
                 name: getattr(self._config, name)
                 for name in EXECUTION_FIELDS + ("execution_timeout_seconds",)
             }))
+        if self.setup_delay_seconds:
+            time.sleep(self.setup_delay_seconds)
+        if self.failure_stage == "setup":
+            raise RuntimeError("Real CPU setup failure")
+        if self.interrupt_kind == "setup":
+            os.kill(os.getpid(), signal.SIGINT)
 
     def benchmark_fn(self) -> None:
         self.output = self.input.square()
-        if self.interrupt_kind and not self.interrupted:
+        self.calls += 1
+        if self.failure_stage == "warmup":
+            raise RuntimeError("Real CPU warmup failure")
+        if self.failure_stage == "measurement" and self.calls > self._config.warmup:
+            raise TimeoutError("Real CPU measurement operation failed")
+        if self.interrupt_kind and not self.interrupted and self.calls >= self.interrupt_after_calls:
             self.interrupted = True
-            if self.interrupt_kind == "stored":
-                raise KeyboardInterrupt("Real worker Future interruption")
+            if self.interrupt_kind == "raised":
+                raise KeyboardInterrupt("Real worker interruption")
             os.kill(os.getpid(), signal.SIGINT)
             time.sleep(0.05)
 
@@ -77,12 +102,33 @@ class _ObservedCpuBenchmark(BaseBenchmark):
 
     def validate_result(self):
         torch.testing.assert_close(self.output, self.input.square(), rtol=0, atol=0)
+        self.validated = True
 
     def teardown(self) -> None:
         if self.interrupt_kind:
             time.sleep(0.05)
         if self.cleanup_path:
             Path(self.cleanup_path).write_text("CPU benchmark teardown completed\n")
+        if self.progress_path:
+            Path(self.progress_path).write_text(json.dumps({
+                "calls": self.calls, "validated": self.validated,
+            }))
+
+
+class _CoordinatorFailureCpuBenchmark(_ObservedCpuBenchmark):
+    """Keep real setup active until the coordinator cancels its owned worker."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.ready_path = ""
+
+    def setup(self) -> None:
+        super().setup()
+        # The isolated runner redirects Python prints, so exercise its native pipe.
+        os.write(1, b"Real CPU worker stdout before coordinator failure\n")
+        print("Real CPU worker stderr before coordinator failure", file=sys.stderr, flush=True)
+        Path(self.ready_path).write_text("Real CPU setup is active\n")
+        signal.pause()
 
 
 def _config(**overrides) -> BenchmarkConfig:
@@ -111,7 +157,7 @@ def test_inner_merge_retains_exact_operator_value_even_when_it_equals_a_default(
     assert Path(benchmark.cleanup_path).read_text() == "CPU benchmark teardown completed\n"
 
 
-@pytest.mark.skipif(os.name != "posix", reason="owned isolated execution requires POSIX")
+@requires_owned_worker
 def test_uncapped_real_isolated_worker_completes_cpu_work_and_preserves_zero(tmp_path: Path) -> None:
     benchmark = _ObservedCpuBenchmark()
     benchmark.observation_path = str(tmp_path / "executed-config.json")
@@ -138,9 +184,9 @@ def test_direct_thread_method_rejects_zero_even_if_config_declares_subprocess(tm
     assert not Path(benchmark.observation_path).exists()
 
 
-@pytest.mark.skipif(os.name != "posix", reason="owned isolated execution requires POSIX")
-@pytest.mark.parametrize("kind", ["main", "stored"])
-def test_owned_thread_interrupt_waits_for_real_teardown_without_result_exception_loop(tmp_path: Path, kind: str) -> None:
+@requires_owned_worker
+@pytest.mark.parametrize("kind", ["main", "raised"])
+def test_owned_worker_interrupt_completes_real_teardown(tmp_path: Path, kind: str) -> None:
     benchmark = _ObservedCpuBenchmark()
     benchmark.interrupt_kind = kind
     benchmark.cleanup_path = str(tmp_path / "cleanup.txt")
@@ -150,9 +196,75 @@ def test_owned_thread_interrupt_waits_for_real_teardown_without_result_exception
     assert Path(benchmark.cleanup_path).read_text() == "CPU benchmark teardown completed\n"
 
 
+@requires_owned_worker
+@pytest.mark.parametrize("stage, expected_calls", [("setup", 0), ("warmup", 1), ("measurement", 6)])
+def test_uncapped_interrupt_stops_before_more_work_or_validation(tmp_path: Path, stage: str, expected_calls: int) -> None:
+    benchmark = _ObservedCpuBenchmark()
+    benchmark.interrupt_kind = "setup" if stage == "setup" else "main"
+    benchmark.interrupt_after_calls = expected_calls
+    benchmark.progress_path = str(tmp_path / "progress.json")
+    benchmark.cleanup_path = str(tmp_path / "cleanup.txt")
+    config = _config(iterations=20, execution_timeout_seconds=0)
+    result = BenchmarkHarness(config=config).benchmark(benchmark)
+    assert result.errors
+    assert Path(benchmark.cleanup_path).is_file()
+    assert json.loads(Path(benchmark.progress_path).read_text()) == {
+        "calls": expected_calls, "validated": False,
+    }
+
+
 @pytest.mark.skipif(os.name != "posix", reason="owned isolated execution requires POSIX")
-def test_stored_future_timeout_error_is_not_an_uncapped_wait_deadline(tmp_path: Path) -> None:
-    module = tmp_path / "cpu_future_failure.py"
+@pytest.mark.parametrize("stage", ["setup", "warmup", "measurement"])
+@pytest.mark.parametrize("execution_timeout", [0, 30])
+def test_real_worker_failure_keeps_cause_without_timeout_fields(tmp_path: Path, stage: str, execution_timeout: int) -> None:
+    if execution_timeout == 0 and not OWNED_GROUP_WAIT_SUPPORTED:
+        pytest.skip("owned isolated execution requires POSIX waitid with WNOWAIT")
+    benchmark = _ObservedCpuBenchmark()
+    benchmark.failure_stage = stage
+    benchmark.cleanup_path = str(tmp_path / "cleanup.txt")
+    config = _config(
+        execution_timeout_seconds=execution_timeout,
+        subprocess_stderr_dir=str(tmp_path),
+    )
+    result = BenchmarkHarness(config=config).benchmark(benchmark)
+    assert any(f"Real CPU {stage}" in error for error in result.errors), result.errors
+    assert not any("Executed child device" in error for error in result.errors)
+    assert result.timeout_stage is None
+    assert result.timeout_duration_seconds is None
+    assert result.timeout_limit_seconds is None
+    assert result.timing.iterations == 0
+    assert Path(benchmark.cleanup_path).is_file()
+    record = json.loads((tmp_path / "ObservedCpuBenchmark_subprocess.stdout.log").read_text())
+    child = json.loads(record["result_json"])
+    assert child["timeout_stage"] is None
+    assert child["timeout_duration_seconds"] is None
+    assert child["timeout_limit_seconds"] is None
+
+
+@pytest.mark.skipif(os.name != "posix", reason="owned isolated execution requires POSIX")
+def test_real_setup_deadline_keeps_exact_child_timeout_receipt(tmp_path: Path) -> None:
+    benchmark = _ObservedCpuBenchmark()
+    benchmark.setup_delay_seconds = 1.1
+    benchmark.cleanup_path = str(tmp_path / "cleanup.txt")
+    config = _config(
+        setup_timeout_seconds=1, measurement_timeout_seconds=30,
+        subprocess_stderr_dir=str(tmp_path),
+    )
+    result = BenchmarkHarness(config=config).benchmark(benchmark)
+    assert result.errors
+    assert Path(benchmark.cleanup_path).is_file()
+    record = json.loads((tmp_path / "ObservedCpuBenchmark_subprocess.stdout.log").read_text())
+    child = json.loads(record["result_json"])
+    assert result.timeout_stage == child["timeout_stage"] == "setup"
+    assert result.timeout_duration_seconds == child["timeout_duration_seconds"]
+    assert result.timeout_duration_seconds > 1
+    assert result.timeout_limit_seconds == child["timeout_limit_seconds"] == 1
+    assert result.validation_message == child["validation_message"]
+
+
+@requires_owned_worker
+def test_lifecycle_timeout_error_is_not_an_uncapped_execution_deadline(tmp_path: Path) -> None:
+    module = tmp_path / "cpu_lifecycle_failure.py"
     module.write_text(
         "from contextlib import ExitStack\n"
         "from core.harness import benchmark_harness\n"
@@ -179,11 +291,12 @@ def test_stored_future_timeout_error_is_not_an_uncapped_wait_deadline(tmp_path: 
     assert "TimeoutError: CPU lifecycle close failure" in failure
     assert "AssertionError" not in failure
     assert "TypeError" not in failure
+    assert not any("Executed child device" in error for error in result.errors)
     assert json.loads(record["result_json"])["timeout_stage"] is None
     assert result.timeout_stage is None
 
 
-@pytest.mark.skipif(os.name != "posix", reason="owned isolated execution requires POSIX")
+@requires_owned_worker
 @pytest.mark.parametrize("failure", [KeyboardInterrupt, BrokenPipeError])
 def test_real_created_worker_uses_cooperative_followup_after_handoff_failure(tmp_path: Path, monkeypatch, failure) -> None:
     actual_communicate = harness_module.communicate_cooperatively
@@ -216,3 +329,79 @@ def test_real_created_worker_uses_cooperative_followup_after_handoff_failure(tmp
     assert process.returncode is not None
     with pytest.raises(ProcessLookupError):
         os.kill(process.pid, 0)
+
+
+@requires_owned_worker
+@pytest.mark.parametrize("failure, incomplete_receipt", [
+    (RuntimeError, False),
+    (TimeoutError, False),
+    pytest.param(RuntimeError, True, id="incomplete-receipt"),
+])
+def test_coordinator_failure_retains_original_cause_output_and_worker_cleanup(tmp_path: Path, monkeypatch, failure, incomplete_receipt: bool) -> None:
+    benchmark = _CoordinatorFailureCpuBenchmark()
+    benchmark.ready_path = str(tmp_path / "ready.txt")
+    benchmark.cleanup_path = str(tmp_path / "cleanup.txt")
+    benchmark.progress_path = str(tmp_path / "progress.json")
+    original_error = failure(f"Original {failure.__name__} during coordinator handoff")
+    actual_communicate = harness_module.communicate_cooperatively
+    calls = []
+
+    def failed_handoff(process, **kwargs):
+        calls.append((process, kwargs.copy()))
+        if len(calls) == 1:
+            process.stdin.write(kwargs["input"])
+            process.stdin.close()
+            while not Path(benchmark.ready_path).exists():
+                status = os.waitid(os.P_PID, process.pid, os.WEXITED | os.WNOWAIT | os.WNOHANG)
+                if status is not None:
+                    raise AssertionError("Real CPU worker exited before setup became active")
+                time.sleep(0.01)
+            raise original_error
+        try:
+            return actual_communicate(process, **kwargs)
+        except BaseException as error:
+            if incomplete_receipt:
+                # Change only the receipt to exercise the parent's diagnostic.
+                execution = error.cooperative_process_result["execution"]
+                execution["completion_scope"] = "cleanup_incomplete"
+                execution["capture_errors"] = ["Injected observation failure"]
+            raise
+
+    def unexpected_forced_cleanup(*args, **kwargs):
+        raise AssertionError("A coordinator error must preserve cooperative worker cleanup")
+
+    monkeypatch.setattr(harness_module, "communicate_cooperatively", failed_handoff)
+    monkeypatch.setattr(harness_module, "_terminate_process_group", unexpected_forced_cleanup)
+    config = _config(execution_timeout_seconds=0, subprocess_stderr_dir=str(tmp_path))
+    result = BenchmarkHarness(config=config)._benchmark_with_subprocess(benchmark, config)
+
+    assert len(calls) == 2
+    assert calls[1][1]["abort_error"] is original_error
+    assert any(str(original_error) in error for error in result.errors), result.errors
+    assert result.timeout_stage is None
+    assert result.timeout_duration_seconds is None
+    assert result.timeout_limit_seconds is None
+    receipt = original_error.cooperative_process_result
+    assert receipt["cancelled"] is True
+    assert receipt["cancellation"]["reason"] == "coordinator_error"
+    assert receipt["execution"]["live_process_group_members"] == []
+    diagnostic = next((error for error in result.errors if "cleanup is incomplete" in error), None)
+    if incomplete_receipt:
+        assert diagnostic is not None
+        assert str(calls[0][0].pid) in diagnostic
+        assert "Injected observation failure" in diagnostic
+    else:
+        assert diagnostic is None
+    assert "Real CPU worker stdout before coordinator failure" in receipt["stdout"]
+    assert "Real CPU worker stderr before coordinator failure" in receipt["stderr"]
+    for stream in ("stdout", "stderr"):
+        saved = tmp_path / f"CoordinatorFailureCpuBenchmark_subprocess.{stream}.log"
+        assert saved.read_text() == receipt[stream]
+    assert Path(benchmark.cleanup_path).read_text() == "CPU benchmark teardown completed\n"
+    assert json.loads(Path(benchmark.progress_path).read_text()) == {"calls": 0, "validated": False}
+    process = calls[0][0]
+    assert process.returncode is not None
+    with pytest.raises(ProcessLookupError):
+        os.kill(process.pid, 0)
+    with pytest.raises(ProcessLookupError):
+        os.killpg(process.pid, 0)

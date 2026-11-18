@@ -2657,7 +2657,8 @@ def tool_clock_lock_check(params: Dict[str, Any]) -> Dict[str, Any]:
                     "description": (
                         "Override each benchmark execution stage timeout in seconds. "
                         "Omit or use null to retain stage defaults. "
-                        "Set 0 for owned subprocess execution without stage timeouts."
+                        "Set 0 for owned subprocess execution without stage timeouts. "
+                        "This requires suite_timeout=0 and an explicit timeout_seconds=0 or null."
                     ),
                     "default": None,
                 },
@@ -2781,6 +2782,23 @@ def tool_run_benchmarks(params: Dict[str, Any]) -> Dict[str, Any]:
             return {"error": f"{name} must be a nonnegative integer or null", "success": False}
     execution_timeout_seconds = timeout_overrides["execution_timeout_seconds"]
     suite_timeout = timeout_overrides["suite_timeout"]
+    if execution_timeout_seconds == 0:
+        if suite_timeout != 0:
+            return {
+                "error": "execution_timeout_seconds=0 requires suite_timeout=0",
+                "success": False,
+            }
+        outer_timeout = params.get("timeout_seconds")
+        if "timeout_seconds" not in params or not (
+            outer_timeout is None or (type(outer_timeout) is int and outer_timeout == 0)
+        ):
+            return {
+                "error": (
+                    "execution_timeout_seconds=0 requires an explicit "
+                    "timeout_seconds=0 or null for owned cancellation cleanup"
+                ),
+                "success": False,
+            }
     targets = params.get("targets") or []
     for raw_target in targets:
         target_text = str(raw_target).strip()
@@ -3471,9 +3489,10 @@ def tool_benchmark_deep_dive_compare(params: Dict[str, Any]) -> Dict[str, Any]:
             # Explicitly disable LLM analysis; caller can run it separately if desired.
             "llm_analysis": False,
             "apply_patches": False,
-            "timeout_seconds": bench_timeout,
             "only_python": bool(test_mode),
         }
+        if "timeout_seconds" in params or test_mode:
+            bench_params["timeout_seconds"] = bench_timeout
         effective_validity_profile = validity_profile
         if test_mode and "validity_profile" not in params:
             effective_validity_profile = "portable"
@@ -4450,7 +4469,6 @@ def tool_benchmark_explore(params: Dict[str, Any]) -> Dict[str, Any]:
             "run_id": minimal_run_id,
             "iterations": params.get("iterations"),
             "warmup": params.get("warmup"),
-            "timeout_seconds": params.get("timeout_seconds"),
             "llm_analysis": True,
             "force_llm": True,
             "apply_patches": True,
@@ -4459,6 +4477,8 @@ def tool_benchmark_explore(params: Dict[str, Any]) -> Dict[str, Any]:
             "validity_profile": effective_validity_profile,
             "update_expectations": bool(params.get("update_expectations", True)),
         }
+        if "timeout_seconds" in params:
+            minimal_params["timeout_seconds"] = params["timeout_seconds"]
         if allow_portable_expectations_update:
             minimal_params["allow_portable_expectations_update"] = True
         minimal_result = tool_run_benchmarks(minimal_params)
@@ -4557,7 +4577,6 @@ def tool_benchmark_explore(params: Dict[str, Any]) -> Dict[str, Any]:
                 "run_id": deep_run_id,
                 "iterations": params.get("deep_dive_iterations", 1),
                 "warmup": params.get("deep_dive_warmup", 5),
-                "timeout_seconds": params.get("deep_dive_timeout_seconds"),
                 "llm_analysis": True,
                 "force_llm": True,
                 "apply_patches": True,
@@ -4566,6 +4585,8 @@ def tool_benchmark_explore(params: Dict[str, Any]) -> Dict[str, Any]:
                 "validity_profile": effective_validity_profile,
                 "update_expectations": bool(params.get("update_expectations", True)),
             }
+            if "deep_dive_timeout_seconds" in params:
+                deep_params["timeout_seconds"] = params["deep_dive_timeout_seconds"]
             if allow_portable_expectations_update:
                 deep_params["allow_portable_expectations_update"] = True
             deep_dive_result = tool_run_benchmarks(deep_params)
@@ -4863,8 +4884,9 @@ def tool_benchmark_llm_patch_loop(params: Dict[str, Any]) -> Dict[str, Any]:
             "rebenchmark_llm_patches": True,
             "llm_explain": llm_explain,
             "validity_profile": validity_profile,
-            "timeout_seconds": timeout_seconds,
         }
+        if "timeout_seconds" in params:
+            bench_params["timeout_seconds"] = timeout_seconds
         if allow_portable_expectations_update:
             bench_params["allow_portable_expectations_update"] = True
 
@@ -4912,8 +4934,9 @@ def tool_benchmark_llm_patch_loop(params: Dict[str, Any]) -> Dict[str, Any]:
                 "iterations": compare_iterations,
                 "warmup": compare_warmup,
                 "validity_profile": validity_profile,
-                "timeout_seconds": timeout_seconds,
             }
+            if "timeout_seconds" in params:
+                compare_params["timeout_seconds"] = timeout_seconds
             if allow_portable_expectations_update:
                 compare_params["allow_portable_expectations_update"] = True
             compare_result = tool_benchmark_deep_dive_compare(compare_params)

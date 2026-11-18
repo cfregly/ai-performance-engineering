@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -16,13 +17,16 @@ CODE_ROOT = Path(__file__).resolve().parents[1]
 
 
 def _cli(*args: str) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
+    result = subprocess.run(
         [sys.executable, "-m", "cli.aisp", "bench", "run", *args],
         cwd=CODE_ROOT,
         capture_output=True,
         text=True,
         check=False,
     )
+    result.stdout = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", result.stdout)
+    result.stderr = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", result.stderr)
+    return result
 
 
 @pytest.mark.parametrize("selected", [None, 0, 180, 1200])
@@ -51,6 +55,35 @@ def test_cli_rejects_uncapped_torchrun_before_execution() -> None:
     result = _cli("--execution-timeout-seconds", "0", "--launch-via", "torchrun", "--dry-run")
     assert result.returncode != 0
     assert "owned subprocess" in result.stderr
+
+
+@pytest.mark.parametrize("suite_args", [[], ["--suite-timeout", "12"], ["--timeout-seconds", "12"]])
+def test_cli_rejects_uncapped_execution_with_finite_suite_before_execution(
+    suite_args: list[str],
+) -> None:
+    result = _cli("--execution-timeout-seconds", "0", *suite_args)
+    assert result.returncode != 0
+    assert "--suite-timeout 0" in result.stderr
+    assert "Traceback" not in result.stderr
+
+
+def test_cli_suite_alias_zero_disables_the_effective_deadline() -> None:
+    result = _cli("--execution-timeout-seconds", "0", "--timeout-seconds", "0", "--dry-run")
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout)["suite_timeout"] == 0
+
+
+@pytest.mark.parametrize("suite_timeout", [None, 12, 14400])
+def test_python_executor_rejects_uncapped_execution_with_active_suite_before_setup(
+    suite_timeout: int | None,
+) -> None:
+    with pytest.raises(ValueError, match="suite_timeout=0"):
+        _execute_benchmarks(execution_timeout_seconds=0, suite_timeout=suite_timeout)
+
+
+def test_python_executor_rejects_uncapped_execution_with_default_suite_before_setup() -> None:
+    with pytest.raises(ValueError, match="suite_timeout=0"):
+        _execute_benchmarks(execution_timeout_seconds=0)
 
 
 @pytest.mark.parametrize("invalid", [-1, True, 0.5, "0"])

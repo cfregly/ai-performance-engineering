@@ -27,7 +27,7 @@ import threading
 import time
 import traceback
 import warnings
-from concurrent.futures import ThreadPoolExecutor, TimeoutError as _FuturesTimeoutError, wait as _wait_for_futures
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as _FuturesTimeoutError
 from contextlib import ExitStack, contextmanager, nullcontext
 from dataclasses import dataclass, field
 from enum import Enum
@@ -60,6 +60,7 @@ from core.utils.execution_timeouts import (
 from core.utils.cooperative_subprocess import (
     CooperativeProcessInterrupted,
     communicate_cooperatively,
+    require_cooperative_process_support,
 )
 from core.benchmark.evaluation_provenance import (
     EvaluationFailure,
@@ -2690,7 +2691,27 @@ class BenchmarkHarness:
         watchdog: Optional[Dict[str, Any]] = None,
     ) -> PydanticBenchmarkResult:
         """Helper to build a timeout result with consistent schema."""
-        timeout_timing = TimingStats(
+        result = self._create_failure_result(
+            errors=errors,
+            benchmark_name=benchmark_name,
+            config=config,
+            watchdog=watchdog,
+        )
+        result.timeout_stage = stage
+        result.timeout_duration_seconds = duration
+        result.timeout_limit_seconds = int(limit) if limit is not None else None
+        return result
+
+    def _create_failure_result(
+        self,
+        *,
+        errors: List[str],
+        benchmark_name: str,
+        config: BenchmarkConfig,
+        watchdog: Optional[Dict[str, Any]] = None,
+    ) -> PydanticBenchmarkResult:
+        """Report failed execution without claiming a deadline expired."""
+        failure_timing = TimingStats(
             mean_ms=0.0,
             median_ms=0.0,
             std_ms=0.0,
@@ -2707,11 +2728,11 @@ class BenchmarkHarness:
             schemaVersion="1.0",
         )
         result = PydanticBenchmarkResult(
-            timing=timeout_timing,
+            timing=failure_timing,
             errors=errors,
-            timeout_stage=stage,
-            timeout_duration_seconds=duration,
-            timeout_limit_seconds=int(limit) if limit is not None else None,
+            timeout_stage=None,
+            timeout_duration_seconds=None,
+            timeout_limit_seconds=None,
             inference_timing=None,
             memory=None,
             artifacts=None,
@@ -3828,7 +3849,7 @@ class BenchmarkHarness:
         proton_metrics: Dict[str, float] = {}
         times_ms: List[float] = []
         child_timing: Optional[TimingStats] = None
-        child_has_timeout = False
+        child_failure_result: Optional[PydanticBenchmarkResult] = None
         inference_timing_data: Optional[Dict[str, List[float]]] = None
         seed_metadata = copy.deepcopy(getattr(self, "_seed_info", None))
         child_custom_metrics: Optional[Dict[str, float]] = None
@@ -3941,6 +3962,8 @@ class BenchmarkHarness:
             input_data["target_override_argv"] = target_override_argv
         # Preserve None's legacy fallback and transport an explicit zero unchanged.
         measurement_timeout = _measurement_execution_deadline(config)
+        if measurement_timeout is None:
+            require_cooperative_process_support()
 
         try:
             fd, verify_output_path = tempfile.mkstemp(prefix="aisp_verify_output_", suffix=".pt")
@@ -3952,6 +3975,31 @@ class BenchmarkHarness:
         start_time = time.time()
         process: Optional[subprocess.Popen[str]] = None
         child_pgid: Optional[int] = None
+        stdout, stderr = "", ""
+
+        def retain_aborted_worker(error: BaseException) -> None:
+            if process is None or measurement_timeout is not None:
+                return
+            receipt = getattr(error, "cooperative_process_result", None)
+            if receipt is None:
+                try:
+                    communicate_cooperatively(
+                        process, process_group_id=child_pgid or process.pid,
+                        abort_error=error,
+                    )
+                except BaseException as cleanup_error:
+                    receipt = getattr(cleanup_error, "cooperative_process_result", None)
+                    if cleanup_error is not error:
+                        error.add_note(f"Worker cleanup also failed: {cleanup_error}")
+            if receipt is not None:
+                _maybe_write_subprocess_stream(receipt["stdout"], benchmark_name, config, stream="stdout")
+                _maybe_write_subprocess_stream(receipt["stderr"], benchmark_name, config, stream="stderr")
+                execution = receipt.get("execution", {})
+                if execution.get("completion_scope") == "cleanup_incomplete":
+                    errors.append(
+                        f"Owned worker cleanup is incomplete for process group {process.pid}: "
+                        f"{execution.get('capture_errors', [])}"
+                    )
         
         try:
             import signal
@@ -4090,6 +4138,12 @@ class BenchmarkHarness:
                         if result_json_str
                         else None
                     )
+                    if benchmark_result is not None and not result_success:
+                        errors.extend(
+                            benchmark_result.errors
+                            or result_dict.get("errors")
+                            or ["Subprocess execution failed"]
+                        )
                     if benchmark_result is not None and benchmark_result.evaluation is not None:
                         child_evaluation = benchmark_result.evaluation.model_copy(deep=True)
                     if benchmark_result is not None and benchmark_result.runtime_provenance is not None:
@@ -4097,9 +4151,11 @@ class BenchmarkHarness:
                         if child_runtime_provenance.process_id != process.pid:
                             raise ValueError("Runtime provenance PID does not match the launched benchmark worker")
                     if benchmark_result is not None:
-                        child_has_timeout = benchmark_result.timeout_stage is not None
                         child_device = benchmark_result.device
-                        if child_device is None or torch.device(child_device) != torch.device(input_data["device"]):
+                        if (result_success or child_device is not None) and (
+                            child_device is None
+                            or torch.device(child_device) != torch.device(input_data["device"])
+                        ):
                             raise ValueError("Executed child device does not match the dispatched benchmark device")
                     if result_success and benchmark_result is not None:
                         # Deserialize Pydantic BenchmarkResult from JSON
@@ -4228,12 +4284,9 @@ class BenchmarkHarness:
                             _maybe_write_subprocess_stderr(stderr, benchmark_name, config)
                     else:
                         if benchmark_result is not None:
-                            errors.extend(
-                                benchmark_result.errors
-                                or result_dict.get("errors", ["Subprocess execution failed"])
-                            )
+                            child_failure_result = benchmark_result.model_copy(deep=True)
                         else:
-                            errors.extend(result_dict.get("errors", ["Subprocess execution failed"]))
+                            errors.extend(result_dict.get("errors") or ["Subprocess execution failed"])
                         times_ms = cast(List[float], [])
                         child_timing = None
                         if stderr:
@@ -4328,6 +4381,7 @@ class BenchmarkHarness:
                 )
         
         except Exception as e:
+            retain_aborted_worker(e)
             error_msg = f"Subprocess execution failed: {str(e)}"
             errors.append(error_msg)
             if LOGGER_AVAILABLE:
@@ -4335,6 +4389,9 @@ class BenchmarkHarness:
                 logger.error(f"Error: {error_msg}")
             times_ms = cast(List[float], [])
             child_timing = None
+        except BaseException as error:
+            retain_aborted_worker(error)
+            raise
         finally:
             try:
                 Path(verify_output_path).unlink(missing_ok=True)
@@ -4347,9 +4404,10 @@ class BenchmarkHarness:
         # Don't raise if we already returned a timeout result
         if not times_ms and child_timing is None and 'timeout_result' not in locals():
             # Build comprehensive error message with context
+            timeout_summary = "disabled" if measurement_timeout is None else f"{measurement_timeout}s"
             config_summary = (
                 f"iterations={config.iterations}, warmup={config.warmup}, "
-                f"timeout={getattr(config, 'measurement_timeout_seconds', config.timeout_seconds)}s"
+                f"measurement timeout={timeout_summary}"
             )
             error_details = [
                 f"Benchmark: {benchmark_name}",
@@ -4378,34 +4436,19 @@ class BenchmarkHarness:
                     logger.error(f"  {detail}")
                 logger.error("=" * 80)
 
-            # Return a structured failure result instead of raising
-            stage_watchdog["measurement"] = {"status": "error", "duration": 0.0}
-            failure_stage = next(
-                (stage for stage, meta in stage_watchdog.items() if meta.get('status') in ('error', 'timeout')),
-                "measurement",
-            )
-            failure_meta = stage_watchdog.get(failure_stage, {})
-            duration = failure_meta.get("duration", 0.0) or 0.0
-            limit_lookup = {
-                "setup": config.get_effective_timeout("setup"),
-                "warmup": config.get_effective_timeout("warmup"),
-                "profiling": config.get_effective_timeout("profiling"),
-                "measurement": getattr(config, 'measurement_timeout_seconds', config.timeout_seconds),
-            }
-            limit = limit_lookup.get(failure_stage, getattr(config, 'measurement_timeout_seconds', config.timeout_seconds))
-            result = self._create_timeout_result(
-                stage=failure_stage,
-                duration=duration,
-                limit=limit,
-                errors=errors,
-                benchmark_name=benchmark_name,
-                config=config,
-                watchdog=stage_watchdog,
-            )
-            if measurement_timeout is None and not child_has_timeout:
-                result.timeout_stage = None
-                result.timeout_duration_seconds = None
-                result.timeout_limit_seconds = None
+            # Preserve the worker's actual deadline fields and failure receipt.
+            # A launch, parsing, or execution error is not itself a timeout.
+            if child_failure_result is not None:
+                result = child_failure_result
+                result.errors = errors
+            else:
+                stage_watchdog["measurement"] = {"status": "error", "duration": 0.0}
+                result = self._create_failure_result(
+                    errors=errors,
+                    benchmark_name=benchmark_name,
+                    config=config,
+                    watchdog=stage_watchdog,
+                )
             if child_evaluation is not None:
                 result.evaluation = child_evaluation.model_copy(deep=True)
             if child_runtime_provenance is not None:
@@ -5075,11 +5118,23 @@ class BenchmarkHarness:
                     provenance_start_time.append(time.monotonic())
                     provenance_started.set()
                     worker_runtime_provenance = capture_runtime_provenance()
-                    if time.monotonic() - provenance_start_time[0] > _RUNTIME_PROVENANCE_TIMEOUT_SECONDS:
-                        raise TimeoutError(
+                    provenance_duration = time.monotonic() - provenance_start_time[0]
+                    if provenance_duration > _RUNTIME_PROVENANCE_TIMEOUT_SECONDS:
+                        finish_stage('runtime_provenance', status='timeout')
+                        errors.append(
                             "Runtime provenance collection exceeded its separate "
-                            f"{_RUNTIME_PROVENANCE_TIMEOUT_SECONDS:g} second budget"
+                            f"{_RUNTIME_PROVENANCE_TIMEOUT_SECONDS:g} second deadline"
                         )
+                        timeout_result_storage[0] = self._create_timeout_result(
+                            stage="runtime_provenance",
+                            duration=provenance_duration,
+                            limit=_RUNTIME_PROVENANCE_TIMEOUT_SECONDS,
+                            errors=errors,
+                            benchmark_name=benchmark_name,
+                            config=config,
+                            watchdog=stage_watchdog,
+                        )
+                        return
                     finish_stage('runtime_provenance')
                 
                 except Exception as e:
@@ -5172,34 +5227,28 @@ class BenchmarkHarness:
                                 errors.append(f"Failed to restore entry CUDA device: {str(e)}")
                                 times_ms = cast(List[float], [])
         
-        # A verified isolated worker can wait without a measurement deadline.
+        # Uncapped work runs on its owned worker's main thread so SIGINT
+        # unwinds the active call through teardown before any later stage starts.
         measurement_timeout = _measurement_execution_deadline(config)
         thread_start_time = time.time()
-        self._ensure_thread_executor()
         future = None
         timeout_result: Optional[PydanticBenchmarkResult] = None
         try:
-            future = self._thread_executor.submit(run_benchmark_internal)
-            try:
-                future.result(timeout=measurement_timeout)
-            except _FuturesTimeoutError:
-                if measurement_timeout is None:
-                    raise
-                if not provenance_started.is_set():
-                    raise
-                remaining = _RUNTIME_PROVENANCE_TIMEOUT_SECONDS - (
-                    time.monotonic() - provenance_start_time[0]
-                )
-                future.result(timeout=max(0.0, remaining))
+            if measurement_timeout is None:
+                run_benchmark_internal()
+            else:
+                self._ensure_thread_executor()
+                future = self._thread_executor.submit(run_benchmark_internal)
+                try:
+                    future.result(timeout=measurement_timeout)
+                except _FuturesTimeoutError:
+                    if not provenance_started.is_set():
+                        raise
+                    remaining = _RUNTIME_PROVENANCE_TIMEOUT_SECONDS - (
+                        time.monotonic() - provenance_start_time[0]
+                    )
+                    future.result(timeout=max(0.0, remaining))
             elapsed_time = time.time() - thread_start_time
-        except KeyboardInterrupt:
-            if measurement_timeout is None and self._owned_process_execution and future is not None:
-                while not future.done():
-                    try:
-                        _wait_for_futures((future,))
-                    except KeyboardInterrupt:
-                        continue
-            raise
         except _FuturesTimeoutError:
             if measurement_timeout is None:
                 raise
@@ -5295,9 +5344,10 @@ class BenchmarkHarness:
         
         if not times_ms:
             # Build comprehensive error message with context
+            timeout_summary = "disabled" if measurement_timeout is None else f"{measurement_timeout}s"
             config_summary = (
                 f"iterations={config.iterations}, warmup={config.warmup}, "
-                f"timeout={getattr(config, 'measurement_timeout_seconds', config.timeout_seconds)}s"
+                f"measurement timeout={timeout_summary}"
             )
             error_details = [
                 f"Benchmark: {benchmark_name}",
@@ -5326,23 +5376,7 @@ class BenchmarkHarness:
                     logger.error(f"  {detail}")
                 logger.error("=" * 80)
             
-            failure_stage = next(
-                (stage for stage, meta in stage_watchdog.items() if meta.get('status') in ('error', 'timeout')),
-                "measurement",
-            )
-            failure_meta = stage_watchdog.get(failure_stage, {})
-            duration = failure_meta.get("duration", 0.0) or 0.0
-            limit_lookup = {
-                "setup": config.get_effective_timeout("setup"),
-                "warmup": config.get_effective_timeout("warmup"),
-                "profiling": config.get_effective_timeout("profiling"),
-                "measurement": getattr(config, 'measurement_timeout_seconds', config.timeout_seconds),
-            }
-            limit = limit_lookup.get(failure_stage, getattr(config, 'measurement_timeout_seconds', config.timeout_seconds))
-            return attach_evaluation(self._create_timeout_result(
-                stage=failure_stage,
-                duration=duration,
-                limit=limit,
+            return attach_evaluation(self._create_failure_result(
                 errors=errors,
                 benchmark_name=benchmark_name,
                 config=config,

@@ -359,20 +359,29 @@ argument accept an omitted value, zero, or a positive integer. Omit the override
 to retain existing deadlines and timeout multipliers. A positive integer sets
 the exact setup, warmup, measurement and legacy execution deadlines in seconds,
 including after benchmark config merging and isolated-child reconstruction.
-It is not multiplied again. Zero selects uncapped execution through an owned
-Python subprocess. Direct thread and torchrun execution reject that request
+It is not multiplied again. These values do not give every phase a fresh,
+independent budget. The enclosing worker still uses the measurement limit and
+the existing runtime-provenance allowance. Zero selects uncapped execution
+through an owned Python subprocess. Direct thread and torchrun execution reject that request
 because they do not provide the same owned-process cancellation path.
 
-The suite deadline is separate. For an uncapped CLI run, also pass
-`--suite-timeout 0`. For MCP, also select `suite_timeout=0` and the outer
-`timeout_seconds=0`. Explicit outer zero or null selects cooperative waiting.
+The suite deadline is separate. An uncapped CLI run requires
+`--suite-timeout 0`. MCP also requires `suite_timeout=0` and an explicit outer
+`timeout_seconds=0` or null. A finite enclosing deadline is rejected before work
+starts because it could abandon the uncapped worker. Omitted values retain the
+existing defaults.
 On interruption, the owned process group receives SIGINT and the caller waits
 for its cleanup, retaining output. This adds no forced termination deadline.
 An unresponsive child can keep the caller waiting. Profiler deadlines and
 correctness, environment and performance acceptance gates remain unchanged.
-Cooperative cleanup requires POSIX process groups and the repository's `psutil`
-dependency. Its completion receipt covers live members of that group. A launcher
-must still join peers that start a different session or process group.
+The verified isolated worker runs uncapped work on its main thread so an
+interrupt unwinds through teardown without starting later iterations. When a
+worker exits, any helpers left in its dedicated group receive SIGKILL as lifecycle
+cleanup before its process identity is released. This does not limit execution
+time. Cooperative cleanup requires POSIX process groups, `waitid` with `WNOWAIT`,
+and the repository's `psutil` dependency. Its completion receipt covers live
+members of that group. A launcher must still join peers that start a different
+session or process group.
 
 **Runner notes:**
 - CUDA benchmarks execute via Python wrappers (`CudaBinaryBenchmark`). Direct `.cu` runs are not supported.
@@ -582,9 +591,10 @@ MCP exposes the same CLI through `tools_trace_replay`:
 `args` defaults to `--help` and is forwarded as an argument vector. Paths refer
 to the MCP server filesystem. The tool adds no invocation deadline. Existing
 benchmark policies still apply. Results include the command, exit code, stdout,
-and stderr. CLI and MCP cancellation forwards SIGINT through the owned launch
-groups and waits for child cleanup without a deadline. MCP returns the retained
-output with `cancelled: true` after cleanup.
+and stderr. When the launcher receives a keyboard interrupt, it forwards SIGINT
+through the owned launch groups and waits for child cleanup without a deadline.
+The MCP handler returns retained output with `cancelled: true` after that cleanup.
+This does not add a cancellation endpoint for background MCP jobs.
 
 ## Best Practices
 

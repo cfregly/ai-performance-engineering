@@ -1,5 +1,6 @@
 """Harness-level negative tests for anti-cheat protections."""
 
+import json
 import time
 from typing import Optional
 
@@ -134,7 +135,10 @@ def test_setup_precompute_failures():
     bench = _CheatingSetupBenchmark()
     config = _make_config(iterations=1, warmup=0)
     result = _run_harness(bench, config)
-    assert result.timeout_stage == "setup"
+    assert result.timeout_stage is None
+    assert result.timeout_duration_seconds is None
+    assert result.timeout_limit_seconds is None
+    assert json.loads(result.validation_message)["setup"]["status"] == "error"
     assert any("pre-computation" in err.lower() for err in result.errors)
 
 

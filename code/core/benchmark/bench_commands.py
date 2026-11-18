@@ -377,6 +377,17 @@ def _apply_suite_timeout(seconds: Optional[int]):
     return _restore
 
 
+def _validate_execution_suite_timeout(
+    execution_timeout_seconds: Optional[int], suite_timeout: Optional[int],
+) -> None:
+    """Require an explicitly disabled suite alarm for uncapped execution."""
+    if execution_timeout_seconds == 0 and suite_timeout != 0:
+        raise ValueError(
+            "execution_timeout_seconds=0 requires suite_timeout=0 "
+            "(--suite-timeout 0) so the suite cannot abandon its owned worker."
+        )
+
+
 def _read_progress_payload_for_heartbeat(
     progress_path: Path,
 ) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
@@ -840,6 +851,7 @@ def _execute_benchmarks(
     validate_execution_timeout_mode(
         execution_timeout_seconds, execution_mode="subprocess", launch_via=launch_via,
     )
+    _validate_execution_suite_timeout(execution_timeout_seconds, suite_timeout)
     validity_profile = _validate_validity_profile(validity_profile)
     portable_mode = validity_profile == "portable"
     allow_virtualization = portable_mode
@@ -1745,7 +1757,7 @@ if TYPER_AVAILABLE:
             None,
             "--execution-timeout-seconds",
             min=0,
-            help="Override setup, warmup and measurement deadlines with exact seconds. Omit to inherit defaults. Use 0 for uncapped owned subprocess execution and --suite-timeout 0 to disable the suite deadline. Profiler deadlines are unchanged.",
+            help="Override setup, warmup and measurement deadlines with exact seconds. Omit to inherit defaults. Use 0 for uncapped owned subprocess execution, which requires --suite-timeout 0. Profiler deadlines are unchanged.",
         ),
         validity_profile: str = Option(
             "strict",
@@ -2016,10 +2028,14 @@ if TYPER_AVAILABLE:
         # Click/Typer shuffles positional args.
         combined_targets = list(dict.fromkeys(combined_targets))
         effective_timeout = timeout_seconds if timeout_seconds is not None else suite_timeout
-        execution_timeout_seconds = validate_execution_timeout_seconds(execution_timeout_seconds)
-        validate_execution_timeout_mode(
-            execution_timeout_seconds, execution_mode="subprocess", launch_via=launch_via,
-        )
+        try:
+            execution_timeout_seconds = validate_execution_timeout_seconds(execution_timeout_seconds)
+            validate_execution_timeout_mode(
+                execution_timeout_seconds, execution_mode="subprocess", launch_via=launch_via,
+            )
+            _validate_execution_suite_timeout(execution_timeout_seconds, effective_timeout)
+        except ValueError as exc:
+            raise typer.BadParameter(str(exc)) from exc
         # Set verification enforcement phase
         if verify_phase:
             os.environ["VERIFY_ENFORCEMENT_PHASE"] = verify_phase.lower()
