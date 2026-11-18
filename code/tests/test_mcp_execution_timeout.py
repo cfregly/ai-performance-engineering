@@ -707,8 +707,12 @@ def test_incomplete_helper_cleanup_blocks_the_next_owned_launch(
         raise AssertionError("A blocked MCP process must not launch another owned child")
 
     monkeypatch.setattr(server, "run_cooperative_process", forbidden)
-    with pytest.raises(CooperativeCleanupIncomplete):
+    with pytest.raises(server.OwnedWorkAdmissionBlocked) as blocked:
         server._run_bench_cli(["run", "--help"], timeout=None, uncapped=True)
+    assert blocked.value.result["admission_blocked"] is True
+    assert blocked.value.result["blocking_cleanup"] == receipt
+    assert "stdout" not in blocked.value.result
+    assert "cancelled" not in blocked.value.result
 
     monkeypatch.setattr(server, "JOB_STORE", JobStore())
     with pytest.raises(server.OwnedWorkAdmissionBlocked) as restarted:

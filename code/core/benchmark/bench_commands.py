@@ -4930,7 +4930,12 @@ def main() -> int:
             emit_cleanup_incomplete_event(receipt, nonce=cleanup_event_nonce)
             return 130 if operator_interrupt_from_error(exc) else 1
         if isinstance(exc, SystemExit):
-            return int(exc.code or 0)
+            if exc.code is None:
+                return 0
+            if isinstance(exc.code, int):
+                return exc.code
+            typer.echo(str(exc.code), err=True)
+            return 1
         raise
     return 0
 

@@ -25393,7 +25393,7 @@ def test_uncapped_coarse_cleanup_holds_when_process_table_is_unavailable(
     assert _run_completion_exit_code(total_failed=0, cleanup_incomplete=receipt) == 1
 
 
-def test_uncapped_coarse_cleanup_labels_zombie_as_not_running(tmp_path: Path) -> None:
+def test_uncapped_coarse_cleanup_does_not_hold_for_terminated_zombie(tmp_path: Path) -> None:
     proc_root = tmp_path / "proc"
     zombie_pid = 54321
     process_dir = proc_root / str(zombie_pid)
@@ -25419,13 +25419,10 @@ def test_uncapped_coarse_cleanup_labels_zombie_as_not_running(tmp_path: Path) ->
 
     receipt = _apply_coarse_exit_cleanup("run_end", state=state, proc_root=proc_root)
 
-    assert receipt is not None
-    assert receipt["survivor_count"] == 1
-    assert receipt["live_survivor_count"] == 0
-    assert receipt["zombie_survivor_count"] == 1
-    assert receipt["survivors"][0]["pid"] == zombie_pid
-    assert receipt["survivors"][0]["process_state"] == "Z"
-    assert receipt["survivors"][0]["running"] is False
+    assert receipt is None
+    assert state.receipt is None
+    assert not state.receipt_path.exists()
+    assert _run_completion_exit_code(total_failed=0, cleanup_incomplete=receipt) == 0
 
 
 @pytest.mark.parametrize("execution_timeout_seconds", (None, 30))

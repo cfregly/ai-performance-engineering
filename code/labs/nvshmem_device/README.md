@@ -279,10 +279,10 @@ cannot safely clean up the native MPI launcher's separate process group, so
 both benchmark variants reject finite execution before the build starts.
 Standalone native launches remain supported. The native build and launch have
 no time deadline. Both use owned cooperative process groups and wait for cleanup
-after Ctrl-C. They capture output while they run. Failures and interruptions
-retain that output in their diagnostics. The generic harness profiler remains
-disabled for these native MPI wrappers. Correctness, environment, and speedup
-gates remain active. See the
+after Ctrl-C. The caller retains bytes it has read from stdout and stderr.
+Output buffered by a child but never flushed is outside this guarantee. The
+generic harness profiler remains disabled for these native MPI wrappers.
+Correctness, environment, and speedup gates remain active. See the
 [execution deadline contract](../../docs/api-reference.md#8-benchmark-domain).
 
 ## Profile the protocol that actually ran

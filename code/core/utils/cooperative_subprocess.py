@@ -660,6 +660,32 @@ def communicate_cooperatively(
         if pending_error is None:
             pending_error = error
 
+    def capture_stream_chunk(name: str, stream: TextIO) -> bytes | None:
+        """Read and retain one pipe chunk before delivering a pending SIGINT."""
+        deferred = DeferredSigintState()
+        try:
+            with _count_sigint_during_owned_state_change() as deferred:
+                try:
+                    chunk = os.read(stream.fileno(), 65536)
+                except BlockingIOError:
+                    return None
+                if chunk:
+                    captured_bytes[name].extend(chunk)
+                return chunk
+        finally:
+            if deferred.observed:
+                request_cancellation(interrupts=deferred.interrupt_count)
+
+    def write_stream_chunk(stream: TextIO, payload: bytes) -> int:
+        """Commit one pipe write before delivering a pending SIGINT."""
+        deferred = DeferredSigintState()
+        try:
+            with _count_sigint_during_owned_state_change() as deferred:
+                return os.write(stream.fileno(), payload)
+        finally:
+            if deferred.observed:
+                request_cancellation(interrupts=deferred.interrupt_count)
+
     def final_nonblocking_capture(
         streams: Sequence[tuple[str, TextIO]],
         *,
@@ -683,14 +709,12 @@ def communicate_cooperatively(
             try:
                 os.set_blocking(stream.fileno(), False)
                 while True:
-                    try:
-                        chunk = os.read(stream.fileno(), 65536)
-                    except BlockingIOError:
+                    chunk = capture_stream_chunk(name, stream)
+                    if chunk is None:
                         break
                     if not chunk:
                         reached_eof = True
                         break
-                    captured_bytes[name].extend(chunk)
             except Exception as error:
                 if first_error is None:
                     first_error = error
@@ -865,18 +889,18 @@ def communicate_cooperatively(
                         stream_name = cast(str, key.data)
                         try:
                             if stream_name == "stdin":
-                                input_offset += os.write(
-                                    selected_stream.fileno(),
+                                input_offset += write_stream_chunk(
+                                    selected_stream,
                                     input_bytes[input_offset : input_offset + 4096],
                                 )
                                 if input_offset == len(input_bytes):
                                     selector.unregister(selected_stream)
                                     selected_stream.close()
                             else:
-                                chunk = os.read(selected_stream.fileno(), 65536)
-                                if chunk:
-                                    captured_bytes[stream_name].extend(chunk)
-                                else:
+                                chunk = capture_stream_chunk(stream_name, selected_stream)
+                                if chunk is None:
+                                    continue
+                                if not chunk:
                                     selector.unregister(selected_stream)
                                     selected_stream.close()
                         except BlockingIOError:
@@ -984,10 +1008,10 @@ def communicate_cooperatively(
                                 )
                                 for descriptor in readable:
                                     name, stream = remaining[descriptor]
-                                    chunk = os.read(descriptor, 65536)
-                                    if chunk:
-                                        captured_bytes[name].extend(chunk)
-                                    else:
+                                    chunk = capture_stream_chunk(name, stream)
+                                    if chunk is None:
+                                        continue
+                                    if not chunk:
                                         del remaining[descriptor]
                                         stream.close()
                             else:

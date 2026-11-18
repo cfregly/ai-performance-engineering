@@ -83,6 +83,11 @@ from core.harness.triton_cache_utils import reset_triton_runtime_cache
 from core.benchmark.defaults import BenchmarkDefaults, set_defaults, get_defaults
 from core.benchmark.informational_benchmarks import INFORMATIONAL_BENCHMARKS, is_informational_example
 from core.utils.execution_timeouts import validate_execution_timeout_mode, validate_execution_timeout_seconds
+from core.utils.cooperative_subprocess import (
+    CooperativeCleanupIncomplete,
+    CooperativeProcessInterrupted,
+    run_cooperative_process,
+)
 from core.benchmark.run_manifest import get_gpu_state
 from core.benchmark.run_manifest import reset_gpu_state, get_git_info
 from core.benchmark.runtime_comparison import (
@@ -3645,11 +3650,48 @@ def _reap_process_group_members(
 
 @dataclass
 class _ProfileSubprocessResult:
-    process: subprocess.Popen[str]
+    process: subprocess.Popen[str] | subprocess.CompletedProcess[str]
     stdout_log: Path
     stderr_log: Path
     timed_out: bool
     failure_warning: Optional[str]
+
+
+def _run_uncapped_captured_profile_subprocess(
+    *,
+    command: List[str],
+    cwd: Path,
+    env: Dict[str, str],
+    log_base: Path,
+) -> _ProfileSubprocessResult:
+    """Run one uncapped captured profiler with cooperative ownership."""
+    stdout_log = log_base.with_suffix(".stdout.log")
+    stderr_log = log_base.with_suffix(".stderr.log")
+    try:
+        receipt = run_cooperative_process(command, cwd=cwd, env=env)
+    except (CooperativeProcessInterrupted, CooperativeCleanupIncomplete) as error:
+        receipt = error.result
+        stdout_log.write_text(str(receipt.get("stdout", "")))
+        stderr_log.write_text(str(receipt.get("stderr", "")))
+        log_base.with_suffix(".command.json").write_text(json.dumps(receipt, indent=2))
+        raise
+
+    stdout_log.write_text(str(receipt.get("stdout", "")))
+    stderr_log.write_text(str(receipt.get("stderr", "")))
+    log_base.with_suffix(".command.json").write_text(json.dumps(receipt, indent=2))
+    process = subprocess.CompletedProcess(
+        args=command,
+        returncode=receipt["returncode"],
+        stdout=receipt["stdout"],
+        stderr=receipt["stderr"],
+    )
+    return _ProfileSubprocessResult(
+        process=process,
+        stdout_log=stdout_log,
+        stderr_log=stderr_log,
+        timed_out=False,
+        failure_warning=None,
+    )
 
 
 def _run_profile_subprocess(
@@ -3657,13 +3699,21 @@ def _run_profile_subprocess(
     command: List[str],
     cwd: Path,
     env: Dict[str, str],
-    timeout_seconds: float,
+    timeout_seconds: Optional[float],
     log_base: Path,
     terminate_reason: str,
     capture_output: bool,
     timeout_collect_error_message: str,
     wait_error_message: str,
 ) -> _ProfileSubprocessResult:
+    if capture_output and timeout_seconds is None and os.name == "posix":
+        return _run_uncapped_captured_profile_subprocess(
+            command=command,
+            cwd=cwd,
+            env=env,
+            log_base=log_base,
+        )
+
     stdout_log = log_base.with_suffix(".stdout.log")
     stderr_log = log_base.with_suffix(".stderr.log")
     process_group_id: Optional[int] = None
@@ -4326,9 +4376,25 @@ def _apply_coarse_exit_cleanup(
         _read_proc_process_identity(pid, proc_root=proc_root)
         for pid in descendant_pids
     ]
-    live_survivors = [survivor for survivor in survivors if survivor["running"]]
     zombie_survivors = [
         survivor for survivor in survivors if survivor["process_state"] == "Z"
+    ]
+    active_or_unverifiable_survivors = [
+        survivor for survivor in survivors if survivor["process_state"] != "Z"
+    ]
+    if not active_or_unverifiable_survivors:
+        logger.info(
+            "  Cleanup audit after %s found %d terminated descendant process table "
+            "entries and no live work.",
+            reason,
+            len(zombie_survivors),
+        )
+        return None
+
+    unverifiable_survivors = [
+        survivor
+        for survivor in active_or_unverifiable_survivors
+        if survivor["process_state"] is None
     ]
     receipt: dict[str, Any] = {
         "receipt_type": "standalone_coarse_exit_cleanup",
@@ -4342,19 +4408,24 @@ def _apply_coarse_exit_cleanup(
         "execution_timeout_seconds": state.policy.execution_timeout_seconds,
         "cleanup_policy": state.policy.mode,
         "survivor_count": len(survivors),
-        "live_survivor_count": len(live_survivors),
+        "live_survivor_count": sum(
+            1 for survivor in active_or_unverifiable_survivors if survivor["running"]
+        ),
         "zombie_survivor_count": len(zombie_survivors),
+        "unverifiable_survivor_count": len(unverifiable_survivors),
         "survivors": survivors,
     }
     _write_cleanup_incomplete_receipt_once(state.receipt_path, receipt)
     state.receipt = receipt
     logger.error(
         "  Cleanup is incomplete after %s. Explicit uncapped execution leaves "
-        "%d descendant process table entries, including %d live processes. "
+        "%d descendant process table entries, including %d live processes and "
+        "%d entries whose state could not be verified. "
         "HOLD receipt: %s",
         reason,
         len(survivors),
-        len(live_survivors),
+        receipt["live_survivor_count"],
+        len(unverifiable_survivors),
         state.receipt_path,
     )
     return receipt

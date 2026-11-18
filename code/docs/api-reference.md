@@ -409,7 +409,9 @@ cancellation endpoint. Use the synchronous MCP call or CLI. The opt-in stale
 timing watchdog also rejects uncapped execution because it can terminate work
 independently.
 On interruption, the owned process group receives SIGINT and the caller waits
-for its cleanup, retaining output. This adds no forced termination deadline.
+for its cleanup without adding a forced deadline. The caller retains bytes it
+has read from stdout and stderr. Output buffered by a child but never flushed is
+outside this guarantee.
 An unresponsive child can keep the caller waiting. Profiler deadlines and
 correctness, environment and performance acceptance gates remain unchanged.
 The verified isolated worker runs uncapped work on its main thread so an
