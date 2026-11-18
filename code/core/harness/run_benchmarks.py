@@ -3753,12 +3753,21 @@ def _run_profile_subprocess(
     )
 
 
-def _collect_descendant_pids(root_pid: int, *, proc_root: Path = Path("/proc")) -> List[int]:
+def _collect_descendant_pids(
+    root_pid: int,
+    *,
+    proc_root: Path = Path("/proc"),
+    require_observable: bool = False,
+) -> List[int]:
     """Collect descendant PIDs for the current run process."""
     parent_to_children: Dict[int, Set[int]] = {}
     try:
         proc_entries = list(proc_root.iterdir())
-    except Exception:
+    except Exception as error:
+        if require_observable:
+            raise RuntimeError(
+                f"cannot enumerate process table at {proc_root}: {error}"
+            ) from error
         return []
 
     for proc_dir in proc_entries:
@@ -3766,7 +3775,13 @@ def _collect_descendant_pids(root_pid: int, *, proc_root: Path = Path("/proc")) 
             continue
         try:
             stat_text = (proc_dir / "stat").read_text(encoding="utf-8")
-        except Exception:
+        except FileNotFoundError:
+            continue
+        except Exception as error:
+            if require_observable:
+                raise RuntimeError(
+                    f"cannot inspect process identity at {proc_dir}: {error}"
+                ) from error
             continue
         close_paren = stat_text.rfind(")")
         if close_paren < 0:
@@ -4138,6 +4153,235 @@ def _reap_run_descendants(
             len(descendants),
             reason,
         )
+
+
+@dataclass(frozen=True)
+class _CoarseExitCleanupPolicy:
+    """Select forced cleanup or audit-only handling at coarse run boundaries."""
+
+    execution_timeout_seconds: int | None
+    mode: str
+
+    @property
+    def audit_only(self) -> bool:
+        return self.mode == "audit_only"
+
+
+@dataclass
+class _CoarseExitCleanupState:
+    """Retain the first incomplete-cleanup receipt for one standalone run."""
+
+    policy: _CoarseExitCleanupPolicy
+    receipt_path: Path
+    run_id: str
+    owner_pid: int
+    receipt: dict[str, Any] | None = None
+
+
+def _select_coarse_exit_cleanup_policy(
+    execution_timeout_seconds: int | None,
+) -> _CoarseExitCleanupPolicy:
+    """Derive coarse exit behavior from the validated execution timeout."""
+    mode = "audit_only" if execution_timeout_seconds == 0 else "force_reap"
+    return _CoarseExitCleanupPolicy(
+        execution_timeout_seconds=execution_timeout_seconds,
+        mode=mode,
+    )
+
+
+def _read_proc_process_identity(
+    pid: int,
+    *,
+    proc_root: Path = Path("/proc"),
+) -> dict[str, Any]:
+    """Return process identity fields from procfs for a retained diagnostic."""
+    process_dir = proc_root / str(int(pid))
+    parent_pid: int | None = None
+    process_group_id: int | None = None
+    session_id: int | None = None
+    start_time_ticks: int | None = None
+    process_state: str | None = None
+    try:
+        stat_text = (process_dir / "stat").read_text(encoding="utf-8")
+        close_paren = stat_text.rfind(")")
+        if close_paren >= 0:
+            tail = stat_text[close_paren + 1 :].strip().split()
+            if len(tail) > 19:
+                process_state = tail[0]
+                parent_pid = int(tail[1])
+                process_group_id = int(tail[2])
+                session_id = int(tail[3])
+                start_time_ticks = int(tail[19])
+    except (OSError, ValueError):
+        pass
+
+    return {
+        "pid": int(pid),
+        "parent_pid": parent_pid,
+        "process_group_id": process_group_id,
+        "session_id": session_id,
+        "start_time_ticks": start_time_ticks,
+        "process_state": process_state,
+        "running": process_state not in {None, "Z"},
+        "command": _read_proc_cmdline(pid, proc_root=proc_root),
+        "owner_run_id": _read_proc_owner_marker(
+            pid,
+            env_key="AISP_BENCHMARK_OWNER_RUN_ID",
+            cmdline_flag="--aisp-owner-run-id",
+            proc_root=proc_root,
+        ),
+        "owner_pid": _read_proc_owner_marker(
+            pid,
+            env_key="AISP_BENCHMARK_OWNER_PID",
+            cmdline_flag="--aisp-owner-pid",
+            proc_root=proc_root,
+        ),
+    }
+
+
+def _write_cleanup_incomplete_receipt_once(
+    path: Path,
+    receipt: Mapping[str, Any],
+) -> None:
+    """Persist one receipt without replacing an earlier cleanup diagnostic."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = json.dumps(receipt, indent=2, sort_keys=True, default=_json_default) + "\n"
+    try:
+        descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    except FileExistsError:
+        return
+    with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+        handle.write(payload)
+        handle.flush()
+        os.fsync(handle.fileno())
+
+
+def _apply_coarse_exit_cleanup(
+    reason: str,
+    *,
+    state: _CoarseExitCleanupState,
+    proc_root: Path = Path("/proc"),
+    grace_seconds: float = 2.0,
+) -> dict[str, Any] | None:
+    """Apply the selected coarse cleanup policy and return any HOLD receipt."""
+    if os.getpid() != state.owner_pid:
+        return None
+
+    if state.receipt is not None:
+        logger.error(
+            "  Cleanup remains incomplete after %s. Retained diagnostic: %s",
+            state.receipt["reason"],
+            state.receipt_path,
+        )
+        return state.receipt
+
+    if not state.policy.audit_only:
+        _reap_run_descendants(
+            reason,
+            grace_seconds=grace_seconds,
+            proc_root=proc_root,
+        )
+        return None
+
+    try:
+        descendant_pids = sorted(
+            _collect_descendant_pids(
+                state.owner_pid,
+                proc_root=proc_root,
+                require_observable=True,
+            )
+        )
+    except RuntimeError as observation_error:
+        receipt = {
+            "receipt_type": "standalone_coarse_exit_cleanup",
+            "schema_version": 1,
+            "completion_scope": "cleanup_incomplete",
+            "disposition": "hold",
+            "reason": str(reason),
+            "observed_at": datetime.now().astimezone().isoformat(),
+            "run_id": state.run_id,
+            "owner_pid": state.owner_pid,
+            "execution_timeout_seconds": state.policy.execution_timeout_seconds,
+            "cleanup_policy": state.policy.mode,
+            "observation_status": "cleanup_unverifiable",
+            "observation_error": {
+                "type": type(observation_error).__name__,
+                "message": str(observation_error),
+            },
+            "survivor_count": None,
+            "survivors": [],
+        }
+        _write_cleanup_incomplete_receipt_once(state.receipt_path, receipt)
+        state.receipt = receipt
+        logger.error(
+            "  Cleanup state is unverifiable after %s. HOLD receipt: %s",
+            reason,
+            state.receipt_path,
+        )
+        return receipt
+    if not descendant_pids:
+        return None
+
+    survivors = [
+        _read_proc_process_identity(pid, proc_root=proc_root)
+        for pid in descendant_pids
+    ]
+    live_survivors = [survivor for survivor in survivors if survivor["running"]]
+    zombie_survivors = [
+        survivor for survivor in survivors if survivor["process_state"] == "Z"
+    ]
+    receipt: dict[str, Any] = {
+        "receipt_type": "standalone_coarse_exit_cleanup",
+        "schema_version": 1,
+        "completion_scope": "cleanup_incomplete",
+        "disposition": "hold",
+        "reason": str(reason),
+        "observed_at": datetime.now().astimezone().isoformat(),
+        "run_id": state.run_id,
+        "owner_pid": state.owner_pid,
+        "execution_timeout_seconds": state.policy.execution_timeout_seconds,
+        "cleanup_policy": state.policy.mode,
+        "survivor_count": len(survivors),
+        "live_survivor_count": len(live_survivors),
+        "zombie_survivor_count": len(zombie_survivors),
+        "survivors": survivors,
+    }
+    _write_cleanup_incomplete_receipt_once(state.receipt_path, receipt)
+    state.receipt = receipt
+    logger.error(
+        "  Cleanup is incomplete after %s. Explicit uncapped execution leaves "
+        "%d descendant process table entries, including %d live processes. "
+        "HOLD receipt: %s",
+        reason,
+        len(survivors),
+        len(live_survivors),
+        state.receipt_path,
+    )
+    return receipt
+
+
+def _handle_coarse_process_cleanup_at_exit(
+    state: _CoarseExitCleanupState,
+    *,
+    proc_root: Path = Path("/proc"),
+    grace_seconds: float = 2.0,
+) -> None:
+    """Run the selector-derived coarse policy during interpreter shutdown."""
+    _apply_coarse_exit_cleanup(
+        "run_exit",
+        state=state,
+        proc_root=proc_root,
+        grace_seconds=grace_seconds,
+    )
+
+
+def _run_completion_exit_code(
+    *,
+    total_failed: int,
+    cleanup_incomplete: Mapping[str, Any] | None,
+) -> int:
+    """Return nonzero when benchmarks failed or descendant cleanup is on HOLD."""
+    return 1 if int(total_failed) > 0 or cleanup_incomplete is not None else 0
 
 
 def _reap_benchmark_process_leftovers(
@@ -13313,7 +13557,19 @@ def main():
     event_run_id = build_run_id("bench-main", base_dir=default_artifacts_root(active_bench_root))
     os.environ["AISP_BENCHMARK_OWNER_RUN_ID"] = event_run_id
     os.environ["AISP_BENCHMARK_OWNER_PID"] = str(os.getpid())
-    atexit.register(_reap_run_descendants, "run_exit")
+    coarse_cleanup_state = _CoarseExitCleanupState(
+        policy=_select_coarse_exit_cleanup_policy(args.execution_timeout_seconds),
+        receipt_path=(
+            args.output.parent
+            / (
+                f"{event_run_id}__pid-{os.getpid()}__started-{time.time_ns()}"
+                "__cleanup_incomplete.json"
+            )
+        ),
+        run_id=event_run_id,
+        owner_pid=os.getpid(),
+    )
+    atexit.register(_handle_coarse_process_cleanup_at_exit, coarse_cleanup_state)
     _reap_benchmark_process_leftovers(
         "run_start",
         current_run_id=event_run_id,
@@ -13333,6 +13589,8 @@ def main():
         ncu_metric_set=args.ncu_metric_set,
         timeout_multiplier=args.timeout_multiplier,
         execution_timeout_seconds=args.execution_timeout_seconds,
+        coarse_exit_cleanup_policy=coarse_cleanup_state.policy.mode,
+        cleanup_incomplete_receipt_path=str(coarse_cleanup_state.receipt_path),
         nsys_timeout_seconds=args.nsys_timeout_seconds,
         ncu_timeout_seconds=args.ncu_timeout_seconds,
         validity_profile=args.validity_profile,
@@ -13358,7 +13616,25 @@ def main():
         chapter_dirs, chapter_filters = resolve_target_chapters(args.targets, bench_root=active_bench_root)
     except (ValueError, FileNotFoundError) as exc:
         logger.error(f"ERROR: {exc}")
-        _reap_run_descendants("target_resolution_failure")
+        cleanup_incomplete = _apply_coarse_exit_cleanup(
+            "target_resolution_failure",
+            state=coarse_cleanup_state,
+        )
+        emit_event(
+            event_logger,
+            logger,
+            "run_end",
+            target_resolution_failed=True,
+            completion_status=(
+                "cleanup_incomplete_hold" if cleanup_incomplete is not None else "failed"
+            ),
+            coarse_cleanup_hold=cleanup_incomplete,
+            cleanup_receipt_path=(
+                str(coarse_cleanup_state.receipt_path)
+                if cleanup_incomplete is not None
+                else None
+            ),
+        )
         event_logger.close()
         sys.exit(1)
     preflight_issues = _preflight_target_coverage_and_assets(
@@ -13372,14 +13648,26 @@ def main():
     if preflight_issues:
         for issue in preflight_issues:
             logger.error("PREFLIGHT FAILED: %s", issue)
+        cleanup_incomplete = _apply_coarse_exit_cleanup(
+            "preflight_failure",
+            state=coarse_cleanup_state,
+        )
         emit_event(
             event_logger,
             logger,
             "run_end",
             preflight_failed=True,
             issues=preflight_issues,
+            completion_status=(
+                "cleanup_incomplete_hold" if cleanup_incomplete is not None else "failed"
+            ),
+            coarse_cleanup_hold=cleanup_incomplete,
+            cleanup_receipt_path=(
+                str(coarse_cleanup_state.receipt_path)
+                if cleanup_incomplete is not None
+                else None
+            ),
         )
-        _reap_run_descendants("preflight_failure")
         event_logger.close()
         return 1
 
@@ -13540,28 +13828,25 @@ def main():
                     'results': all_results,
                 }, f, indent=2)
             logger.info(f"\nJSON results checkpoint saved to: {args.output}")
-    
-    # Save results
-    output_json = args.output
-    output_md = args.output.with_suffix('.md')
-    
-    if args.format in ['json', 'both']:
-        with open(output_json, 'w') as f:
-            json.dump({
-                'timestamp': datetime.now().isoformat(),
-                'results': all_results,
-            }, f, indent=2)
-        logger.info(f"\nJSON results saved to: {output_json}")
-    
-    if args.format in ['markdown', 'both']:
-        generate_markdown_report(all_results, output_md, bench_root=active_bench_root)
-        logger.info(f"Markdown report saved to: {output_md}")
-    
-    # Print summary
-    logger.info("\n" + "=" * 80)
-    logger.info("SUMMARY")
-    logger.info("=" * 80)
-    
+
+    cleanup_incomplete: dict[str, Any] | None = None
+    if coarse_cleanup_state.policy.audit_only:
+        cleanup_incomplete = _apply_coarse_exit_cleanup(
+            "run_end",
+            state=coarse_cleanup_state,
+        )
+    if cleanup_incomplete is not None:
+        emit_event(
+            event_logger,
+            logger,
+            "coarse_cleanup_hold",
+            disposition="hold",
+            reason=cleanup_incomplete["reason"],
+            survivor_count=cleanup_incomplete["survivor_count"],
+            survivors=cleanup_incomplete["survivors"],
+            receipt_path=str(coarse_cleanup_state.receipt_path),
+        )
+
     total_benchmarks = sum(r['summary']['total_benchmarks'] for r in all_results)
     total_successful = sum(r['summary']['successful'] for r in all_results)
     total_failed = sum(r['summary']['failed'] for r in all_results)
@@ -13576,6 +13861,39 @@ def main():
     total_failed_other = sum(r['summary'].get('failed_other', 0) for r in all_results)
     total_skipped_hw = sum(r['summary'].get('skipped_hardware', 0) for r in all_results)
     total_informational = sum(r['summary'].get('informational', 0) for r in all_results)
+    if cleanup_incomplete is not None:
+        completion_status = "cleanup_incomplete_hold"
+    elif total_failed > 0:
+        completion_status = "failed"
+    else:
+        completion_status = "completed"
+
+    result_payload: dict[str, Any] = {
+        'timestamp': datetime.now().isoformat(),
+        'completion_status': completion_status,
+        'results': all_results,
+    }
+    if cleanup_incomplete is not None:
+        result_payload['coarse_cleanup_hold'] = cleanup_incomplete
+        result_payload['cleanup_receipt_path'] = str(coarse_cleanup_state.receipt_path)
+    
+    # Save results
+    output_json = args.output
+    output_md = args.output.with_suffix('.md')
+    
+    if args.format in ['json', 'both']:
+        with open(output_json, 'w') as f:
+            json.dump(result_payload, f, indent=2)
+        logger.info(f"\nJSON results saved to: {output_json}")
+    
+    if args.format in ['markdown', 'both']:
+        generate_markdown_report(all_results, output_md, bench_root=active_bench_root)
+        logger.info(f"Markdown report saved to: {output_md}")
+    
+    # Print summary
+    logger.info("\n" + "=" * 80)
+    logger.info("SUMMARY")
+    logger.info("=" * 80)
     
     logger.info(f"Total benchmarks tested: {total_benchmarks}")
     logger.info(f"Succeeded: {total_successful}")
@@ -13602,6 +13920,13 @@ def main():
         total_failed_other=total_failed_other,
         total_skipped_hardware=total_skipped_hw,
         total_informational=total_informational,
+        completion_status=completion_status,
+        coarse_cleanup_hold=cleanup_incomplete,
+        cleanup_receipt_path=(
+            str(coarse_cleanup_state.receipt_path)
+            if cleanup_incomplete is not None
+            else None
+        ),
         output_json=str(output_json),
         output_markdown=str(output_md) if args.format in ["markdown", "both"] else None,
     )
@@ -13633,8 +13958,16 @@ def main():
         logger.info(f"  Best: {max(all_speedups):.2f}x")
         logger.info(f"  Worst: {min(all_speedups):.2f}x")
 
-    _reap_run_descendants("run_end")
-    return 0 if total_failed == 0 else 1
+    if not coarse_cleanup_state.policy.audit_only:
+        _apply_coarse_exit_cleanup(
+            "run_end",
+            state=coarse_cleanup_state,
+        )
+
+    return _run_completion_exit_code(
+        total_failed=total_failed,
+        cleanup_incomplete=cleanup_incomplete,
+    )
 
 
 if __name__ == '__main__':

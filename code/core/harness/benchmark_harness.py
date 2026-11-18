@@ -2719,6 +2719,24 @@ def _authenticated_nested_cleanup_receipt_or_raise(
         raise fatal from protocol_error
 
 
+def _require_safe_benchmark_worker_receipt(
+    result: Dict[str, Any],
+    *,
+    context: str,
+) -> None:
+    """Preserve terminal cleanup priority before checking capture fidelity."""
+    terminal_cleanup_receipt = _authenticated_nested_cleanup_receipt_or_raise(result)
+    if terminal_cleanup_receipt is not None:
+        cancellation = terminal_cleanup_receipt.get("cancellation", {})
+        if cancellation.get("operator_interrupt_observed"):
+            terminal_error = CooperativeProcessInterrupted(terminal_cleanup_receipt)
+        else:
+            terminal_error = CooperativeCleanupIncomplete(terminal_cleanup_receipt)
+        terminal_error.outer_process_result = result
+        raise terminal_error
+    _require_exact_subprocess_capture(result, context=context)
+
+
 class BenchmarkHarness:
     """Production-grade benchmarking harness with profiling support."""
 
@@ -4521,7 +4539,7 @@ class BenchmarkHarness:
                 retained_pid = execution.get("process_id")
                 if isinstance(retained_pid, int) and not isinstance(retained_pid, bool):
                     worker_pid = retained_pid
-            _require_exact_subprocess_capture(
+            _require_safe_benchmark_worker_receipt(
                 completed,
                 context=f"benchmark worker {benchmark_name!r}",
             )
@@ -4530,15 +4548,6 @@ class BenchmarkHarness:
             _maybe_write_subprocess_stream(stdout, benchmark_name, config, stream="stdout")
             if stderr:
                 _maybe_write_subprocess_stderr(stderr, benchmark_name, config)
-            terminal_cleanup_receipt = _authenticated_nested_cleanup_receipt_or_raise(completed)
-            if terminal_cleanup_receipt is not None:
-                cancellation = terminal_cleanup_receipt.get("cancellation", {})
-                if cancellation.get("operator_interrupt_observed"):
-                    terminal_error = CooperativeProcessInterrupted(terminal_cleanup_receipt)
-                else:
-                    terminal_error = CooperativeCleanupIncomplete(terminal_cleanup_receipt)
-                terminal_error.outer_process_result = completed
-                raise terminal_error
             if completed.get("timeout_hit"):
                 timeout_result = measurement_timeout_result(time.time() - start_time)
                 timeout_result.execution_process_ids = dict(execution_process_ids)

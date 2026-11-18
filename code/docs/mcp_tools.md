@@ -64,6 +64,9 @@ Every asynchronous benchmark job requires an explicit positive
 `timeout_seconds`. Its queued worker runs in a thread that cannot receive
 operator cancellation. Choose a value that covers the intended work. An omitted,
 zero or `null` value is rejected when `async=true`.
+For `benchmark_explore` with `deep_dive=auto` or `deep_dive=always`,
+`deep_dive_timeout_seconds` must also be an explicit positive value. The queued
+worker may run that second benchmark and cannot receive operator cancellation.
 
 The benchmark workflow schemas expose this outer field as follows:
 
@@ -73,7 +76,7 @@ The benchmark workflow schemas expose this outer field as follows:
 | `benchmark_variants` | `null` | Forwards to `run_benchmarks` |
 | `optimize` | `null` | Forwards through `benchmark_variants` to `run_benchmarks` |
 | `benchmark_deep_dive_compare` | `0` | Bounds the nested deep-dive benchmark run, not later in-process analysis |
-| `benchmark_explore` | `0` | Bounds the minimal benchmark run. `deep_dive_timeout_seconds` separately bounds the optional deep-dive run |
+| `benchmark_explore` | `0` | Bounds the minimal benchmark run. `deep_dive_timeout_seconds` separately bounds the optional deep-dive run and must be positive for an async run that may enter that stage |
 | `benchmark_llm_patch_loop` | `0` | Applies separately to the patch run and each comparison run, not as one cumulative loop deadline |
 
 `run_benchmarks` is the schema that also exposes `suite_timeout` and
@@ -111,6 +114,19 @@ All tools return a single MCP `text` content entry containing a JSON envelope wi
 - `arguments` + `arguments_details`
 - `result` + `result_preview` + `result_metadata`
 - `context_summary` + `guidance.next_steps`
+
+### Cleanup admission barrier
+
+If the server cannot prove that an owned process group finished cleanup, it
+retains `artifacts/parallel_runs/cleanup_incomplete.json` and blocks later owned
+work. A restarted server reports `admission_blocked: true` for each blocked
+request and places the earlier receipt under `blocking_cleanup`. Protocol and
+read-only requests remain available.
+
+Before clearing the barrier, retain the file and inspect its process group and
+captured streams. Verify independently that no process in the recorded group is
+still live. Move the barrier out of `artifacts/parallel_runs` only after that
+check so a later owned request cannot run on an unverified cleanup state.
 
 ## Profiling Metrics Payloads
 

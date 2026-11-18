@@ -105,6 +105,9 @@ class CooperativeProcessInterrupted(KeyboardInterrupt):
 class CooperativeCleanupIncomplete(BaseException):
     """Signal that cleanup of an owned worker could not be established."""
 
+    outer_process_result: dict[str, Any]
+    cleanup_protocol_error: str
+
     def __init__(self, result: dict[str, Any]):
         group = result["execution"]["process_group_id"]
         super().__init__(f"Cannot continue after incomplete cleanup of owned process group {group}")
@@ -248,6 +251,10 @@ def emit_cleanup_incomplete_event(
     print(json.dumps(payload), file=sys.stderr if stream is None else stream, flush=True)
 
 
+class _MalformedAuthenticatedCleanupEventError(ValueError):
+    """The launch nonce matched, but the event did not contain a valid receipt."""
+
+
 def parse_cleanup_incomplete_event(
     stderr: str,
     *,
@@ -259,14 +266,19 @@ def parse_cleanup_incomplete_event(
     for line in reversed(stderr.splitlines()):
         try:
             payload = json.loads(line)
-        except json.JSONDecodeError:
+        except (ValueError, RecursionError):
             continue
         if not isinstance(payload, dict) or payload.get("event") != "aisp_cleanup_incomplete":
             continue
         nonce = payload.get("nonce")
-        if not isinstance(nonce, str) or not hmac.compare_digest(nonce, expected_nonce):
+        if not isinstance(nonce, str) or not nonce.isascii():
             continue
-        return validate_cleanup_incomplete_receipt(payload.get("receipt"))
+        if not hmac.compare_digest(nonce, expected_nonce):
+            continue
+        try:
+            return validate_cleanup_incomplete_receipt(payload.get("receipt"))
+        except ValueError as error:
+            raise _MalformedAuthenticatedCleanupEventError(str(error)) from error
     return None
 
 
@@ -284,6 +296,34 @@ def cleanup_incomplete_receipt_from_result(result: Any) -> dict[str, Any] | None
         str(result.get("stderr", "")),
         expected_nonce=nonce,
     )
+
+
+def authenticated_cleanup_receipt_or_raise(result: dict[str, Any]) -> dict[str, Any] | None:
+    """Preserve the outer process evidence if a trusted event has an invalid receipt."""
+    try:
+        return cleanup_incomplete_receipt_from_result(result)
+    except _MalformedAuthenticatedCleanupEventError as protocol_error:
+        execution = result["execution"]
+        message = str(protocol_error)
+        receipt = {
+            **result,
+            "stdout": str(result.get("stdout", "")),
+            "stderr": str(result.get("stderr", "")),
+            "execution": {
+                **execution,
+                "outer_completion_scope": execution.get("completion_scope"),
+                "completion_scope": "cleanup_incomplete",
+                "live_process_group_members": None,
+                "cleanup_protocol_scope": "authenticated_nested_event",
+                "cleanup_protocol_error": message,
+            },
+            "outer_execution": dict(execution),
+            "cleanup_protocol_error": message,
+        }
+        fatal = CooperativeCleanupIncomplete(validate_cleanup_incomplete_receipt(receipt))
+        fatal.outer_process_result = result
+        fatal.cleanup_protocol_error = message
+        raise fatal from protocol_error
 
 
 def cleanup_incomplete_receipt_from_error(error: BaseException) -> dict[str, Any] | None:

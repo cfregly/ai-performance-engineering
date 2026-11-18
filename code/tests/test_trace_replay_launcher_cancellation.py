@@ -17,6 +17,9 @@ from pathlib import Path
 import pytest
 
 CODE_ROOT = Path(__file__).resolve().parents[1]
+OWNED_PROCESS_SUPPORTED = all(
+    hasattr(os, name) for name in ("waitid", "P_PID", "WEXITED", "WNOWAIT", "WNOHANG")
+)
 
 
 def _ready_or_exit(server, process, stdout_path, stderr_path):
@@ -48,7 +51,10 @@ def _ready_or_exit(server, process, stdout_path, stderr_path):
         os.close(read_fd)
 
 
-@pytest.mark.skipif(os.name != "posix", reason="requires POSIX process groups")
+@pytest.mark.skipif(
+    os.name != "posix" or not OWNED_PROCESS_SUPPORTED,
+    reason="requires owned POSIX subprocess cleanup with waitid and WNOWAIT",
+)
 @pytest.mark.parametrize("surface", ["cli", "mcp"])
 def test_public_replay_launchers_wait_for_owned_cleanup_and_retain_output(tmp_path, surface):
     marker = tmp_path / "cleanup-completed.txt"

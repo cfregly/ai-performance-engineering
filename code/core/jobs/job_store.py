@@ -23,14 +23,51 @@ from core.utils.cooperative_subprocess import (
 JobRecord = Dict[str, Any]
 
 
+def _exception_attributes(error: BaseException) -> Dict[str, Any]:
+    """Read stored exception fields without invoking custom properties."""
+    try:
+        values = object.__getattribute__(error, "__dict__")
+    except BaseException:
+        return {}
+    return values if isinstance(values, dict) else {}
+
+
+def _exception_link(error: BaseException, name: str) -> Optional[BaseException]:
+    """Read a built-in exception link without invoking an override."""
+    try:
+        descriptor = vars(BaseException)[name]
+        linked = descriptor.__get__(error, type(error))
+    except BaseException:
+        return None
+    return linked if isinstance(linked, BaseException) else None
+
+
+def retained_process_result_from_error(error: BaseException) -> Optional[Dict[str, Any]]:
+    """Find the original process receipt through exception context and cause links."""
+    pending = [error]
+    seen: set[int] = set()
+    while pending:
+        current = pending.pop()
+        if id(current) in seen:
+            continue
+        seen.add(id(current))
+        attributes = _exception_attributes(current)
+        for name in ("outer_process_result", "result", "cooperative_process_result"):
+            candidate = attributes.get(name)
+            if isinstance(candidate, dict):
+                return candidate
+        for previous in (
+            _exception_link(current, "__context__"),
+            _exception_link(current, "__cause__"),
+        ):
+            if previous is not None:
+                pending.append(previous)
+    return None
+
+
 def process_failure_result_from_error(error: BaseException) -> Dict[str, Any]:
     """Retain outer process output and nested cleanup state at JSON boundaries."""
-    captured = None
-    for name in ("outer_process_result", "result", "cooperative_process_result"):
-        candidate = getattr(error, name, None)
-        if isinstance(candidate, dict):
-            captured = candidate
-            break
+    captured = retained_process_result_from_error(error)
     protocol_error = None
     try:
         incomplete = cleanup_incomplete_receipt_from_error(error)

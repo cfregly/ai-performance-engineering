@@ -60,6 +60,11 @@ def test_timeout_schema_exposes_nullable_overrides() -> None:
         assert properties[name]["default"] is None
     assert properties["timeout_seconds"]["type"] == ["integer", "null"]
     assert properties["timeout_seconds"]["default"] is None
+    deep_dive_timeout = server.TOOLS["benchmark_explore"].input_schema["properties"][
+        "deep_dive_timeout_seconds"
+    ]
+    assert deep_dive_timeout["type"] == ["integer", "null"]
+    assert deep_dive_timeout["default"] == 0
 
 
 @pytest.mark.parametrize("tool_name", ["benchmark_variants", "optimize"])
@@ -406,6 +411,86 @@ def test_async_benchmark_workflows_require_a_positive_outer_timeout(
     assert "requires an explicit positive timeout_seconds" in result["error"]
 
 
+@pytest.mark.parametrize("deep_dive", ["always", "auto"])
+@pytest.mark.parametrize(
+    "deep_dive_timeout_options",
+    [{}, {"deep_dive_timeout_seconds": None}, {"deep_dive_timeout_seconds": 0}],
+)
+def test_async_explore_requires_a_positive_possible_deep_dive_timeout_before_queue(
+    monkeypatch: pytest.MonkeyPatch,
+    deep_dive: str,
+    deep_dive_timeout_options: dict[str, Any],
+) -> None:
+    def forbidden(*args: Any, **kwargs: Any) -> None:
+        raise AssertionError("Uncancellable deep-dive work must fail before queueing")
+
+    monkeypatch.setattr(server, "_queue_job", forbidden)
+    result = server.tool_benchmark_explore(
+        {
+            "path": "ch01/baseline_example.py",
+            "async": True,
+            "timeout_seconds": 19,
+            "deep_dive": deep_dive,
+            "include_context": False,
+            **deep_dive_timeout_options,
+        }
+    )
+    assert result["success"] is False
+    assert (
+        result["error"]
+        == f"async=true with deep_dive={deep_dive} requires an explicit positive "
+        "deep_dive_timeout_seconds because the background worker may run a deep dive "
+        "and cannot receive operator cancellation"
+    )
+
+
+@pytest.mark.parametrize(
+    "deep_dive_options",
+    [
+        {"deep_dive": "always", "deep_dive_timeout_seconds": 23},
+        {"deep_dive": "auto", "deep_dive_timeout_seconds": 23},
+        {"deep_dive": "never"},
+    ],
+)
+def test_async_explore_queues_only_with_bounded_possible_deep_dive(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    deep_dive_options: dict[str, Any],
+) -> None:
+    captured: dict[str, Any] = {}
+
+    def capture_queue(
+        name: str, runner: Any, params: dict[str, Any], **kwargs: Any
+    ) -> dict[str, Any]:
+        captured.update({"name": name, "runner": runner, "params": params})
+        return {"job_id": "bounded-explore", "status": "queued"}
+
+    monkeypatch.setattr(server, "_queue_job", capture_queue)
+    result = server.tool_benchmark_explore(
+        {
+            "path": "ch01/baseline_example.py",
+            "async": True,
+            "timeout_seconds": 19,
+            "run_id": "bounded_explore",
+            "artifacts_dir": str(tmp_path),
+            "include_context": False,
+            **deep_dive_options,
+        }
+    )
+    assert result["status"] == "queued"
+    assert captured["name"] == "benchmark_explore"
+    assert callable(captured["runner"])
+    assert captured["params"] == {
+        "path": "ch01/baseline_example.py",
+        "async": True,
+        "timeout_seconds": 19,
+        "run_id": "bounded_explore",
+        "artifacts_dir": str(tmp_path),
+        "include_context": False,
+        **deep_dive_options,
+    }
+
+
 @pytest.mark.parametrize("selected", [None, 19])
 def test_inherited_or_finite_deadline_keeps_timing_watchdog_available(
     monkeypatch: pytest.MonkeyPatch,
@@ -446,7 +531,7 @@ def test_explicit_uncapped_outer_timeout_survives_test_mode(
 
 
 @pytest.mark.parametrize("test_mode", [False, True])
-def test_omitted_outer_timeout_uses_the_schema_default(
+def test_omitted_outer_timeout_remains_uncapped(
     monkeypatch: pytest.MonkeyPatch, test_mode: bool
 ) -> None:
     monkeypatch.setattr(server, "_is_test_mode", lambda: test_mode)
@@ -626,8 +711,10 @@ def test_incomplete_helper_cleanup_blocks_the_next_owned_launch(
         server._run_bench_cli(["run", "--help"], timeout=None, uncapped=True)
 
     monkeypatch.setattr(server, "JOB_STORE", JobStore())
-    with pytest.raises(CooperativeCleanupIncomplete):
+    with pytest.raises(server.OwnedWorkAdmissionBlocked) as restarted:
         server._run_bench_cli(["run", "--help"], timeout=None, uncapped=True)
+    assert restarted.value.result["admission_blocked"] is True
+    assert restarted.value.result["blocking_cleanup"] == receipt
     server.JOB_STORE._executor.shutdown(wait=True)
 
 
@@ -725,7 +812,7 @@ def test_real_bench_cli_retains_output_after_failed_final_group_observation(
     "timeout_options",
     [{}, {"timeout_seconds": None}, {"timeout_seconds": 0}, {"timeout_seconds": 17}],
 )
-def test_composite_timeout_forwarding_preserves_absence_and_existing_test_defaults(
+def test_composite_timeout_forwarding_preserves_absence_including_test_mode(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     tool_name: str,
@@ -759,10 +846,7 @@ def test_composite_timeout_forwarding_preserves_absence_and_existing_test_defaul
     with pytest.raises(PlannedBenchmarkCall):
         getattr(server, f"tool_{tool_name}")(params)
 
-    if tool_name == "benchmark_deep_dive_compare" and test_mode:
-        expected = timeout_options.get("timeout_seconds")
-        assert captured["timeout_seconds"] == (expected if expected and expected > 0 else 300)
-    elif "timeout_seconds" in timeout_options:
+    if "timeout_seconds" in timeout_options:
         assert "timeout_seconds" in captured
         assert captured["timeout_seconds"] == timeout_options["timeout_seconds"]
     else:

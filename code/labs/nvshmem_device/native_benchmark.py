@@ -3,22 +3,31 @@
 from __future__ import annotations
 
 import argparse
-from dataclasses import replace
 import os
-from pathlib import Path
 import shutil
 import tempfile
+from dataclasses import replace
+from pathlib import Path
 
 import torch
 
-from core.benchmark.cuda_binary_benchmark import BinaryRunResult, CudaBinaryBenchmark, detect_supported_arch
+from core.benchmark.cuda_binary_benchmark import (
+    BinaryRunResult,
+    CudaBinaryBenchmark,
+    detect_supported_arch,
+)
 from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import BenchmarkConfig
-from core.utils.cooperative_subprocess import run_cooperative_process
-from core.utils.cooperative_process_artifacts import require_owned_uncapped_native_config
+from core.utils.cooperative_process_artifacts import (
+    require_owned_uncapped_native_config,
+    run_recorded_cooperative_process,
+)
 from labs.multi_gpu_communication.native_common import require_unprofiled_native_config
 from labs.nvshmem_device.run_lab_nvshmem_device import (
-    LAB_DIR, NativeUnavailable, NativeWorkload, invoke_native,
+    LAB_DIR,
+    NativeUnavailable,
+    NativeWorkload,
+    invoke_native,
 )
 
 
@@ -61,20 +70,34 @@ class NvshmemDeviceBenchmark(CudaBinaryBenchmark):
         for tool in ("nvcc", "mpicxx", "mpirun"):
             if shutil.which(tool) is None:
                 raise NativeUnavailable(f"SKIPPED: Device NVSHMEM requires {tool}")
+        architecture = self._build_architecture()
+        configured = getattr(config, "profiling_output_dir", None)
+        artifact_root = (
+            Path(configured)
+            if configured
+            else LAB_DIR.parents[1] / "artifacts" / "nvshmem_device"
+        )
+        artifact_root.mkdir(parents=True, exist_ok=True)
+        self._directory = Path(
+            tempfile.mkdtemp(prefix=self.workload.mode + "_", dir=artifact_root)
+        )
         command = [
-            "make", f"ARCH={self._build_architecture()}", "NVTX_ENABLED=1",
+            "make",
+            "-C",
+            str(LAB_DIR),
+            f"ARCH={architecture}",
+            "NVTX_ENABLED=1",
             "nvshmem_device_native",
         ]
-        built = run_cooperative_process(command, cwd=LAB_DIR)
+        built = run_recorded_cooperative_process(
+            command,
+            output_prefix=self._directory / "native_build",
+        )
         if built["returncode"]:
             raise RuntimeError(
                 f"Device NVSHMEM build failed\n{built['stdout']}\n{built['stderr']}"
             )
         self.exec_path = LAB_DIR / "nvshmem_device_native"
-        configured = getattr(config, "profiling_output_dir", None)
-        artifact_root = Path(configured) if configured else LAB_DIR.parents[1] / "artifacts" / "nvshmem_device"
-        artifact_root.mkdir(parents=True, exist_ok=True)
-        self._directory = Path(tempfile.mkdtemp(prefix=self.workload.mode + "_", dir=artifact_root))
         self._parameters = torch.tensor(
             [self.workload.elements, self.workload.iterations, self.workload.ranks], dtype=torch.int64,
         )

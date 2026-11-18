@@ -376,6 +376,9 @@ zero or `null` outer timeout. `benchmark_variants` and `optimize` forward the
 field to `run_benchmarks`. `benchmark_deep_dive_compare` applies it to its
 benchmark run. `benchmark_explore` applies `timeout_seconds` to the minimal run
 and `deep_dive_timeout_seconds` to its optional deep-dive run.
+An asynchronous `benchmark_explore` call with `deep_dive=auto` or
+`deep_dive=always` must provide a positive value for both fields. The queued
+worker may enter either benchmark stage and cannot receive operator cancellation.
 `benchmark_llm_patch_loop` applies the value separately to the patch run and
 each comparison run. These workflow fields are not cumulative deadlines for
 later in-process analysis.

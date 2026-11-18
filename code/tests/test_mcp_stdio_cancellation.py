@@ -170,7 +170,11 @@ def test_first_sigint_reaches_owned_fixture_through_real_stdio(
             assert process.returncode == 0, stderr_path.read_text(encoding="utf-8")
 
 
-def test_run_benchmarks_cancellation_returns_retained_stdio_result(tmp_path: Path) -> None:
+@pytest.mark.parametrize("repeat_interrupt", [False, True])
+def test_run_benchmarks_cancellation_returns_retained_stdio_result(
+    tmp_path: Path,
+    repeat_interrupt: bool,
+) -> None:
     marker = tmp_path / "benchmark-sigint-count.txt"
     fixture = tmp_path / "benchmark_stdio_cpu_fixture.py"
     fixture.write_text(
@@ -191,20 +195,28 @@ def test_run_benchmarks_cancellation_returns_retained_stdio_result(tmp_path: Pat
         encoding="utf-8",
     )
     (tmp_path / "sitecustomize.py").write_text(
-        "import os, sys\n"
+        "import os, signal, sys\n"
         "import mcp.mcp_server as server\n"
         "real_run = server.run_cooperative_process\n"
         "def run_fixture(command, **kwargs):\n"
         "    return real_run([sys.executable, os.environ['AISP_STDIO_TEST_FIXTURE']], **kwargs)\n"
         "server.run_cooperative_process = run_fixture\n"
         "server._cuda_precheck = lambda: {'ok': True}\n"
-        "server._run_with_queue = lambda name, runner, **kwargs: runner()\n",
+        "server._run_with_queue = lambda name, runner, **kwargs: runner()\n"
+        "real_failure = server.process_failure_result_from_error\n"
+        "def failure_with_optional_repeat(error):\n"
+        "    result = real_failure(error)\n"
+        "    if os.environ['AISP_STDIO_TEST_REPEAT_INTERRUPT'] == '1':\n"
+        "        os.kill(os.getpid(), signal.SIGINT)\n"
+        "    return result\n"
+        "server.process_failure_result_from_error = failure_with_optional_repeat\n",
         encoding="utf-8",
     )
     environment = dict(os.environ)
     environment["PYTHONPATH"] = str(tmp_path) + os.pathsep + str(CODE_ROOT)
     environment["AISP_STDIO_TEST_FIXTURE"] = str(fixture)
     environment["AISP_STDIO_TEST_MARKER"] = str(marker)
+    environment["AISP_STDIO_TEST_REPEAT_INTERRUPT"] = "1" if repeat_interrupt else "0"
     stderr_path = tmp_path / "benchmark-stdio-server-stderr.log"
     with tempfile.TemporaryDirectory(
         prefix="aisp-benchmark-stdio-", dir="/tmp"
@@ -270,6 +282,8 @@ def test_run_benchmarks_cancellation_returns_retained_stdio_result(tmp_path: Pat
                 assert result["cancelled"] is True
                 assert result["success"] is False
                 assert result["cancellation"]["status"] == "cleanup_completed"
+                assert result["cancellation"]["interrupt_count"] == 1 + int(repeat_interrupt)
+                assert result["cancellation"]["repeated_interrupts"] == int(repeat_interrupt)
                 assert "benchmark CPU fixture ready" in result["stdout"]
                 assert "benchmark CPU fixture cleaned" in result["stdout"]
                 assert "benchmark CPU stderr ready" in result["stderr"]
