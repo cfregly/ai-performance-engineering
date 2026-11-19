@@ -2720,6 +2720,7 @@ def tool_clock_lock_check(params: Dict[str, Any]) -> Dict[str, Any]:
     from core.engine import get_engine
 
     include_context, context_level = extract_context_opts(params)
+    _assert_owned_work_admission()
     devices_raw = params.get("devices")
     devices: Optional[List[int]] = None
     if isinstance(devices_raw, list):
@@ -2729,7 +2730,6 @@ def tool_clock_lock_check(params: Dict[str, Any]) -> Dict[str, Any]:
             devices = None
 
     try:
-        _assert_owned_work_admission()
         result = get_engine().system.clock_lock_check(
             sm_clock_mhz=params.get("sm_clock_mhz"),
             mem_clock_mhz=params.get("mem_clock_mhz"),
@@ -9925,8 +9925,8 @@ def tool_predict_scaling(params: Dict[str, Any]) -> Dict[str, Any]:
 def tool_gpu_topology_matrix(params: Dict[str, Any]) -> Dict[str, Any]:
     """Raw GPU topology matrix from nvidia-smi."""
     include_context, context_level = extract_context_opts(params)
+    _assert_owned_work_admission()
     try:
-        _assert_owned_work_admission()
         proc = subprocess.run(
             ["nvidia-smi", "topo", "-m"], capture_output=True, text=True, timeout=5
         )
@@ -10459,8 +10459,8 @@ def tool_cluster_eval_suite(params: Dict[str, Any]) -> Dict[str, Any]:
     from core.cluster import run_cluster_eval_suite
 
     include_context, context_level = extract_context_opts(params)
+    _assert_owned_work_admission()
     try:
-        _assert_owned_work_admission()
         result = run_cluster_eval_suite(
             mode=str(params.get("mode", "smoke")),
             run_id=params.get("run_id"),
@@ -10575,8 +10575,8 @@ def tool_cluster_common_eval(params: Dict[str, Any]) -> Dict[str, Any]:
     from core.cluster import run_cluster_common_eval
 
     include_context, context_level = extract_context_opts(params)
+    _assert_owned_work_admission()
     try:
-        _assert_owned_work_admission()
         result = run_cluster_common_eval(
             preset=str(params.get("preset", "core-system")),
             run_id=params.get("run_id"),
@@ -10695,8 +10695,8 @@ def tool_cluster_fabric_eval(params: Dict[str, Any]) -> Dict[str, Any]:
     from core.cluster import run_cluster_fabric_eval
 
     include_context, context_level = extract_context_opts(params)
+    _assert_owned_work_admission()
     try:
-        _assert_owned_work_admission()
         result = run_cluster_fabric_eval(
             run_id=params.get("run_id"),
             hosts=params.get("hosts") if isinstance(params.get("hosts"), list) else None,
@@ -10827,8 +10827,8 @@ def tool_cluster_build_canonical_package(params: Dict[str, Any]) -> Dict[str, An
     from core.cluster import build_canonical_package
 
     include_context, context_level = extract_context_opts(params)
+    _assert_owned_work_admission()
     try:
-        _assert_owned_work_admission()
         result = build_canonical_package(
             canonical_run_id=str(params.get("canonical_run_id") or ""),
             comparison_run_ids=params.get("comparison_run_ids")
@@ -10906,13 +10906,13 @@ def tool_cluster_promote_run(params: Dict[str, Any]) -> Dict[str, Any]:
     from core.cluster import promote_cluster_run
 
     include_context, context_level = extract_context_opts(params)
+    _assert_owned_work_admission()
     try:
         run_id = str(params.get("run_id") or "").strip()
         if not run_id:
             return make_error("run_id is required", include_context, context_level)
         rr = params.get("repo_root")
         repo_root_val = str(rr).strip() if isinstance(rr, str) and rr.strip() else None
-        _assert_owned_work_admission()
         result = promote_cluster_run(
             run_id=run_id,
             label=str(params.get("label") or "localhost"),
@@ -11000,6 +11000,7 @@ def tool_cluster_watch_promote(params: Dict[str, Any]) -> Dict[str, Any]:
     from core.cluster import watch_cluster_run_for_promotion
 
     include_context, context_level = extract_context_opts(params)
+    _assert_owned_work_admission()
     try:
         run_id = str(params.get("run_id") or "").strip()
         if not run_id:
@@ -11011,7 +11012,6 @@ def tool_cluster_watch_promote(params: Dict[str, Any]) -> Dict[str, Any]:
             return make_error("pid must be an integer", include_context, context_level)
         rr = params.get("repo_root")
         repo_root_val = str(rr).strip() if isinstance(rr, str) and rr.strip() else None
-        _assert_owned_work_admission()
         result = watch_cluster_run_for_promotion(
             run_id=run_id,
             pid=pid,
@@ -11082,9 +11082,9 @@ def tool_cluster_validate_field_report(params: Dict[str, Any]) -> Dict[str, Any]
     from core.cluster import validate_field_report_requirements
 
     include_context, context_level = extract_context_opts(params)
+    _assert_owned_work_admission()
     try:
         allow = params.get("allow_run_id") if isinstance(params.get("allow_run_id"), list) else None
-        _assert_owned_work_admission()
         result = validate_field_report_requirements(
             report=params.get("report"),
             notes=params.get("notes"),

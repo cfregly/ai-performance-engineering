@@ -70,6 +70,11 @@ def _receipt(operator: bool = False) -> dict:
     return result
 
 
+def _assert_retained_cleanup_refusal(error: server.OwnedWorkAdmissionBlocked) -> None:
+    assert error.result["admission_blocked"] is True
+    assert error.result["blocking_cleanup"] == _receipt()
+
+
 def _malformed_nested_interrupt(nonce: str) -> owned.CooperativeProcessInterrupted:
     malformed = json.dumps(
         {
@@ -495,8 +500,9 @@ def test_diagnostic_launcher_rejects_work_after_incomplete_cleanup(
 
     server._remember_terminal_cleanup(owned.CooperativeCleanupIncomplete(_receipt()))
     monkeypatch.setattr(diagnostic, "run_owned_process", forbidden)
-    with pytest.raises(owned.CooperativeCleanupIncomplete):
+    with pytest.raises(server.OwnedWorkAdmissionBlocked) as caught:
         server._run_diagnostic_tools_cli("cpu-fixture")
+    _assert_retained_cleanup_refusal(caught.value)
 
 
 def test_sync_benchmark_admission_precedes_llm_and_cuda_preflight(
@@ -507,7 +513,7 @@ def test_sync_benchmark_admission_precedes_llm_and_cuda_preflight(
 
     server._remember_terminal_cleanup(owned.CooperativeCleanupIncomplete(_receipt()))
     monkeypatch.setattr(server, "_cuda_precheck", forbidden)
-    with pytest.raises(owned.CooperativeCleanupIncomplete):
+    with pytest.raises(server.OwnedWorkAdmissionBlocked) as caught:
         server.tool_run_benchmarks(
             {
                 "targets": ["ch01:example"],
@@ -517,6 +523,7 @@ def test_sync_benchmark_admission_precedes_llm_and_cuda_preflight(
                 "auto_report": False,
             }
         )
+    _assert_retained_cleanup_refusal(caught.value)
 
 
 def test_queue_runner_admission_precedes_queue_artifact_and_lock_work(
@@ -527,8 +534,9 @@ def test_queue_runner_admission_precedes_queue_artifact_and_lock_work(
 
     server._remember_terminal_cleanup(owned.CooperativeCleanupIncomplete(_receipt()))
     monkeypatch.setattr(server, "_ensure_queue_artifacts", forbidden)
-    with pytest.raises(owned.CooperativeCleanupIncomplete):
+    with pytest.raises(server.OwnedWorkAdmissionBlocked) as caught:
         server._run_with_queue("cpu-fixture", forbidden)
+    _assert_retained_cleanup_refusal(caught.value)
 
 
 def test_sync_benchmark_explore_admission_precedes_progress_and_copy(
@@ -541,8 +549,9 @@ def test_sync_benchmark_explore_admission_precedes_progress_and_copy(
     monkeypatch.setattr(server, "ProgressRecorder", forbidden)
     monkeypatch.setattr(server, "_emit_progress_safe", forbidden)
     monkeypatch.setattr(server, "_resolve_baseline_wrapper_path", forbidden)
-    with pytest.raises(owned.CooperativeCleanupIncomplete):
+    with pytest.raises(server.OwnedWorkAdmissionBlocked) as caught:
         server.tool_benchmark_explore({"path": "ch01/example.py"})
+    _assert_retained_cleanup_refusal(caught.value)
 
 
 def test_benchmark_export_admission_precedes_output_artifacts(
@@ -556,7 +565,7 @@ def test_benchmark_export_admission_precedes_output_artifacts(
     data_file.write_text('{"benchmarks": []}', encoding="utf-8")
     server._remember_terminal_cleanup(owned.CooperativeCleanupIncomplete(_receipt()))
     monkeypatch.setattr(server, "_ensure_dir", forbidden)
-    with pytest.raises(owned.CooperativeCleanupIncomplete):
+    with pytest.raises(server.OwnedWorkAdmissionBlocked) as caught:
         server.tool_benchmark_export(
             {
                 "data_file": str(data_file),
@@ -564,6 +573,7 @@ def test_benchmark_export_admission_precedes_output_artifacts(
                 "format": "json",
             }
         )
+    _assert_retained_cleanup_refusal(caught.value)
 
 
 def test_benchmark_report_admission_precedes_output_artifacts(
@@ -577,7 +587,7 @@ def test_benchmark_report_admission_precedes_output_artifacts(
     data_file.write_text('{"benchmarks": []}', encoding="utf-8")
     server._remember_terminal_cleanup(owned.CooperativeCleanupIncomplete(_receipt()))
     monkeypatch.setattr(server, "_ensure_dir", forbidden)
-    with pytest.raises(owned.CooperativeCleanupIncomplete):
+    with pytest.raises(server.OwnedWorkAdmissionBlocked) as caught:
         server.tool_benchmark_report(
             {
                 "data_file": str(data_file),
@@ -585,6 +595,7 @@ def test_benchmark_report_admission_precedes_output_artifacts(
                 "format": "html",
             }
         )
+    _assert_retained_cleanup_refusal(caught.value)
 
 
 @pytest.mark.parametrize(
@@ -603,8 +614,9 @@ def test_binary_profile_summary_admission_precedes_profiler_import(
     report = tmp_path / f"retained{suffix}"
     report.write_bytes(b"profile")
     server._remember_terminal_cleanup(owned.CooperativeCleanupIncomplete(_receipt()))
-    with pytest.raises(owned.CooperativeCleanupIncomplete):
+    with pytest.raises(server.OwnedWorkAdmissionBlocked) as caught:
         handler({"report_path": str(report)})
+    _assert_retained_cleanup_refusal(caught.value)
 
 
 def test_profile_summary_csv_remains_available_during_cleanup_barrier(tmp_path: Path) -> None:
@@ -641,8 +653,9 @@ def test_profile_compare_admission_precedes_staging_and_import(
 
     server._remember_terminal_cleanup(owned.CooperativeCleanupIncomplete(_receipt()))
     monkeypatch.setattr(profile_insights, "assess_profile_pair_health", forbidden)
-    with pytest.raises(owned.CooperativeCleanupIncomplete):
+    with pytest.raises(server.OwnedWorkAdmissionBlocked) as caught:
         handler({"profiles_dir": str(tmp_path)})
+    _assert_retained_cleanup_refusal(caught.value)
 
 
 @pytest.mark.parametrize(
@@ -667,8 +680,9 @@ def test_profile_admission_precedes_artifact_and_cuda_preflight(
     server._remember_terminal_cleanup(owned.CooperativeCleanupIncomplete(_receipt()))
     monkeypatch.setattr(server, "_prepare_profile_run", forbidden)
     monkeypatch.setattr(server, "_cuda_precheck", forbidden)
-    with pytest.raises(owned.CooperativeCleanupIncomplete):
+    with pytest.raises(server.OwnedWorkAdmissionBlocked) as caught:
         handler({**params, **mode})
+    _assert_retained_cleanup_refusal(caught.value)
 
 
 @pytest.mark.parametrize(
@@ -725,8 +739,9 @@ def test_incomplete_cleanup_blocks_hardware_and_cluster_work_before_precheck(
         "validate_field_report_requirements",
     ):
         monkeypatch.setattr(cluster, name, forbidden)
-    with pytest.raises(owned.CooperativeCleanupIncomplete):
+    with pytest.raises(server.OwnedWorkAdmissionBlocked) as caught:
         handler(params)
+    _assert_retained_cleanup_refusal(caught.value)
 
 
 def test_incomplete_cleanup_keeps_read_only_e2e_status_available(
