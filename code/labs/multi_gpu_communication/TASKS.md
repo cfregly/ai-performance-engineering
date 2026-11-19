@@ -64,9 +64,12 @@ when their reuse could be worth the complexity. Explain when ordinary
 Successful `ncclCommRegister` or `ncclCommWindowRegister` calls prove that NCCL
 accepted the buffers. They do not prove that a specialized symmetric-memory
 kernel executed. Retain a runtime or profiler capture tied to the exact run before
-making that mechanism claim. There is no B200 performance evidence for this pair
-yet. Do not call the candidate faster until equivalent repeated B200 measurements,
-full-output checks, and profiler evidence support the result.
+making that mechanism claim. A four-pair two-B200 diagnostic passed complete
+output checks and proved that `window_register` selected an
+`ncclSymDevKernel`, but the candidate reached only 0.6114x to 0.6182x of the
+`cuda_malloc` control on that virtualized host. Treat that as a measured
+counterexample, not a universal ranking. Repeat the comparison on the target
+topology before choosing an allocation path.
 
 Finally, relate `comm_register` to the Jacobi solver's `--registered-buffers`
 option. Keep schedule and graph mode fixed. Find both ping-pong registrations and

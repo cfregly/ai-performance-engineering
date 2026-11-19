@@ -209,6 +209,29 @@ and profiler or counter evidence for the mechanism. See the official NCCL
 and [communicator API](https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/api/comms.html)
 documentation for the window lifetime and collective registration contract.
 
+### Two-B200 diagnostic result
+
+Four interleaved control and window pairs ran on two B200 GPUs with locked
+1965 MHz SM and 3996 MHz memory clocks. Each pair used NCCL 2.27.7, two ranks,
+16,777,216 float32 elements per rank, 20 timed AllReduce samples, and five
+warmups. Every arm passed the complete 16,777,216-element output check with
+zero error. The window arm returned non-null send and receive registration
+handles on both ranks.
+
+The symmetric-window candidate was not faster on this host. Candidate divided
+by control ranged from 0.6114x to 0.6182x across the four pairs, with a 0.6126x
+median. Default Nsight Systems 2025.3.2 showed the ordinary
+`ncclDevKernel_AllReduce_Sum_f32_RING_LL` kernel for `cuda_malloc` and the
+specialized `ncclSymDevKernel_AllReduce_RSxLD_AGxST_sum_f32` kernel for
+`window_register`. The capture therefore proves that the symmetric kernel ran.
+It does not distinguish a P2P subpath from NVLS.
+
+The host was virtualized, so this is a non-canonical diagnostic rather than a
+publication-grade result. It is still a useful counterexample to the claim that
+replacing `cudaMalloc` with symmetric allocation is automatically faster. The
+benefit depends on the collective, topology, message size, runtime, and whether
+the specialized path repays its setup and execution costs.
+
 ## Directory Layout
 | Path | Description |
 | --- | --- |
