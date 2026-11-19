@@ -74,7 +74,10 @@ SENSITIVE_ENVIRONMENT_NAME = re.compile(
     r"(?:^|_)(?:API_?KEY|AUTH|CREDENTIAL|COOKIE|PASS(?:WORD|WD)?|SECRET|TOKEN)(?:_|$)",
     re.IGNORECASE,
 )
-NCCL_KERNEL_NAME = re.compile(r"(?<![A-Za-z0-9_])nccl(?:dev)?kernel(?:_|\b)", re.IGNORECASE)
+NCCL_KERNEL_NAME = re.compile(
+    r"(?<![A-Za-z0-9_])nccl(?:dev|symdev)?kernel(?:_|\b)",
+    re.IGNORECASE,
+)
 
 
 class NativeUnavailableError(RuntimeError):

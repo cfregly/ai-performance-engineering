@@ -188,6 +188,20 @@ def test_profile_kernel_marker_cannot_match_the_requested_range_label() -> None:
 
 
 @pytest.mark.parametrize(
+    "kernel_name",
+    [
+        "ncclDevKernel_AllReduce_Sum_f32_RING_LL",
+        "ncclSymDevKernel_AllReduce_RSxLD_AGxST_sum_f32",
+    ],
+)
+def test_profile_kernel_marker_accepts_nccl_host_and_symmetric_kernels(kernel_name) -> None:
+    assert runner._profile_scope_markers(kernel_name) == {
+        "steady_range": False,
+        "nccl_kernel": True,
+    }
+
+
+@pytest.mark.parametrize(
     "rank_env",
     [
         {},
