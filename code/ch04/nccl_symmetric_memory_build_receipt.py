@@ -8,6 +8,7 @@ import fcntl
 import hashlib
 import json
 import os
+import re
 import shlex
 import subprocess
 import tempfile
@@ -129,6 +130,79 @@ def expected_nccl_library(directories: list[str]) -> Path:
             f"expected exactly one libnccl.so.2 in {directories}, found {sorted(map(str, libraries))}"
         )
     return libraries.pop()
+
+
+def nccl_soname_directory(directories: list[str], library: Path) -> Path:
+    """Select the first declared directory whose soname resolves to the canonical library."""
+    canonical = library.resolve(strict=True)
+    for directory in directories:
+        candidate = Path(directory).resolve() / "libnccl.so.2"
+        if (
+            (candidate.is_symlink() or candidate.exists())
+            and candidate.is_file()
+            and candidate.resolve(strict=True) == canonical
+        ):
+            return candidate.parent
+    raise RuntimeBindingError(f"no declared -L directory selects {canonical} as libnccl.so.2")
+
+
+def exact_nccl_linker_tokens(
+    linker_flags: str,
+    library: Path,
+    soname_directory: Path,
+) -> list[str]:
+    """Replace one NCCL link token with an exact-soname lookup in its selected directory."""
+    try:
+        tokens = shlex.split(linker_flags)
+    except ValueError as error:
+        raise RuntimeBindingError(f"invalid NCCL linker options ({error})") from error
+
+    canonical = library.resolve(strict=True)
+    if not canonical.is_file():
+        raise RuntimeBindingError(f"{canonical} is not a regular NCCL library")
+    selected_directory = soname_directory.resolve(strict=True)
+    selected_soname = selected_directory / "libnccl.so.2"
+    if not selected_soname.is_file() or selected_soname.resolve(strict=True) != canonical:
+        raise RuntimeBindingError(
+            f"{selected_soname} does not select the canonical NCCL library {canonical}"
+        )
+
+    def is_nccl_link_name(value: str) -> bool:
+        return value == "nccl" or re.fullmatch(r":?libnccl\.so(?:\.\d+)*", value) is not None
+
+    def is_nccl_library_path(value: str) -> bool:
+        return re.fullmatch(r"libnccl\.so(?:\.\d+)*", Path(value).name) is not None
+
+    rewritten: list[str] = []
+    matches = 0
+    index = 0
+    while index < len(tokens):
+        token = tokens[index]
+        if token == "-l":
+            if index + 1 >= len(tokens) or tokens[index + 1].startswith("-"):
+                raise RuntimeBindingError("missing library name after -l")
+            name = tokens[index + 1]
+            if is_nccl_link_name(name):
+                rewritten.extend((f"-L{selected_directory}", "-l:libnccl.so.2"))
+                matches += 1
+            else:
+                rewritten.extend((token, name))
+            index += 2
+            continue
+        linked_by_name = token.startswith("-l") and is_nccl_link_name(token[2:])
+        linked_by_path = not token.startswith("-") and is_nccl_library_path(token)
+        if linked_by_name or linked_by_path:
+            rewritten.extend((f"-L{selected_directory}", "-l:libnccl.so.2"))
+            matches += 1
+        else:
+            rewritten.append(token)
+        index += 1
+
+    if matches != 1:
+        raise RuntimeBindingError(
+            f"expected exactly one NCCL link token in nccl_libs, found {matches}"
+        )
+    return rewritten
 
 
 def parse_nccl_version_macros(preprocessor_output: str) -> tuple[int, str]:
@@ -267,10 +341,19 @@ def main() -> int:
     if option_home != nccl_home:
         raise ValueError("--nccl-home and the recorded nccl_home build option differ")
 
+    library_directories = nccl_library_directories(options["nccl_libs"], directory)
+    library = expected_nccl_library(library_directories)
+    soname_directory = nccl_soname_directory(library_directories, library)
+    library_sha256 = file_sha256(library)
+    exact_nccl_tokens = exact_nccl_linker_tokens(
+        options["nccl_libs"],
+        library,
+        soname_directory,
+    )
     compile_command = compile_command_prefix(args.nvcc, args.mpicxx, options)
     compile_command.extend(["nccl_symmetric_memory_native.cu", "-o", str(args.binary)])
-    for name in ("nccl_libs", "nvtx_libs"):
-        compile_command.extend(shlex.split(options[name]))
+    compile_command.extend(exact_nccl_tokens)
+    compile_command.extend(shlex.split(options["nvtx_libs"]))
 
     build_context = serialized_build(directory) if args.compile else contextlib.nullcontext()
     with build_context:
@@ -307,7 +390,17 @@ def main() -> int:
             text=True,
             check=True,
         ).stdout.strip()
-        library = expected_nccl_library(nccl_library_directories(options["nccl_libs"], directory))
+        final_library = expected_nccl_library(library_directories)
+        final_soname_directory = nccl_soname_directory(library_directories, final_library)
+        final_library_sha256 = file_sha256(final_library)
+        if (
+            final_library != library
+            or final_soname_directory != soname_directory
+            or final_library_sha256 != library_sha256
+        ):
+            raise RuntimeBindingError(
+                "the selected NCCL library changed during build receipt generation"
+            )
         receipt = {
             "schema": BUILD_SCHEMA,
             "source_commit": source_commit,
@@ -320,7 +413,7 @@ def main() -> int:
             "nccl_header_version": header_version,
             "nccl_header_version_code": header_code,
             "nccl_runtime_library_path": str(library),
-            "nccl_runtime_library_sha256": file_sha256(library),
+            "nccl_runtime_library_sha256": library_sha256,
             "compiler_versions": compiler_versions,
             "build_options": options,
             "nccl_header_preprocessor_command": preprocessor_command,

@@ -10,7 +10,6 @@ import sys
 from pathlib import Path
 
 import pytest
-
 from ch04 import nccl_symmetric_memory_benchmark as harness_benchmark
 from ch04 import nccl_symmetric_memory_build_receipt as receipt
 from ch04 import run_nccl_symmetric_memory as runner
@@ -47,10 +46,21 @@ def test_build_receipt_records_canonical_library_and_digest(private_library, tmp
         f"  *\" -E \"*) printf '%s\\n' '{receipt.NCCL_VERSION_PROBE_MARKER} 2 27 3'; exit 0 ;;\n"
         "esac\n"
         "output=\n"
+        "exact_nccl=0\n"
+        "selected_directory=0\n"
+        f"selected_flag={shlex.quote(f'-L{private_library.parent}')}\n"
         'while [ "$#" -gt 0 ]; do\n'
+        '  if [ "$1" = "$selected_flag" ]; then selected_directory=1; fi\n'
+        '  case "$1" in\n'
+        "    -l:libnccl.so.2) exact_nccl=1 ;;\n"
+        "    */libnccl.so|*/libnccl.so.[0-9]*)\n"
+        "      echo \"nvcc fatal: Don't know what to do with '$1'\" >&2; exit 64 ;;\n"
+        "  esac\n"
         '  if [ "$1" = -o ]; then output=$2; shift 2; else shift; fi\n'
         "done\n"
         'test -n "$output"\n'
+        'test "$exact_nccl" = 1\n'
+        'test "$selected_directory" = 1\n'
         'printf "%s" "compiled fixture" > "$output"\n'
     )
     compiler.chmod(0o755)
@@ -89,6 +99,11 @@ def test_build_receipt_records_canonical_library_and_digest(private_library, tmp
     assert recorded["nccl_header_preprocessor_stderr"] == ""
     assert recorded["nccl_runtime_library_path"] == str(private_library)
     assert recorded["nccl_runtime_library_sha256"] == build["nccl_runtime_library_sha256"]
+    assert not (private_library.parent / "libnccl.so").exists()
+    assert str(private_library) not in recorded["compile_command"]
+    assert recorded["compile_command"].count(f"-L{private_library.parent}") == 1
+    assert recorded["compile_command"].count("-l:libnccl.so.2") == 1
+    assert "-lnccl" not in recorded["compile_command"]
 
 
 def test_header_probe_uses_real_compile_prefix_and_surfaces_stderr(tmp_path):
@@ -218,6 +233,76 @@ def test_linker_dirs_discover_ubuntu_multiarch_library(private_library, tmp_path
 
     assert directories == [str(library_root), str(multiarch)]
     assert receipt.expected_nccl_library(directories) == private_library
+
+
+def test_exact_nccl_link_preserves_other_flags_without_unversioned_fallback(private_library):
+    flags = shlex.join(
+        [
+            "-Wl,--as-needed",
+            "-L",
+            str(private_library.parent),
+            "-lnccl",
+            "-ldl",
+            "-pthread",
+        ]
+    )
+
+    rewritten = receipt.exact_nccl_linker_tokens(
+        flags,
+        private_library,
+        private_library.parent,
+    )
+
+    assert rewritten == [
+        "-Wl,--as-needed",
+        "-L",
+        str(private_library.parent),
+        f"-L{private_library.parent}",
+        "-l:libnccl.so.2",
+        "-ldl",
+        "-pthread",
+    ]
+    assert not (private_library.parent / "libnccl.so").exists()
+
+
+def test_exact_nccl_link_uses_the_declared_soname_directory(private_library, tmp_path):
+    selected = tmp_path / "selected NCCL"
+    selected.mkdir()
+    (selected / "libnccl.so.2").symlink_to(private_library)
+    directories = [str(selected)]
+    library = receipt.expected_nccl_library(directories)
+    soname_directory = receipt.nccl_soname_directory(directories, library)
+
+    rewritten = receipt.exact_nccl_linker_tokens(
+        shlex.join(["-L", str(selected), "-lnccl", "-ldl"]),
+        library,
+        soname_directory,
+    )
+
+    assert soname_directory == selected
+    assert rewritten[-3:] == [f"-L{selected}", "-l:libnccl.so.2", "-ldl"]
+    assert str(private_library) not in rewritten
+
+
+@pytest.mark.parametrize(
+    "tokens",
+    [
+        ["-ldl"],
+        ["nccl", "-ldl"],
+        ["-lnccl_static", "-ldl"],
+        ["-lnccl", "-lnccl"],
+        ["-lnccl", "-l", "nccl"],
+        ["-lnccl", "<canonical-library>"],
+    ],
+)
+def test_exact_nccl_link_rejects_missing_or_ambiguous_tokens(private_library, tokens):
+    tokens = [str(private_library) if token == "<canonical-library>" else token for token in tokens]
+    with pytest.raises(receipt.RuntimeBindingError, match="exactly one NCCL link token"):
+        receipt.exact_nccl_linker_tokens(
+            shlex.join(tokens),
+            private_library,
+            private_library.parent,
+        )
 
 
 def test_missing_ambiguous_and_dangling_libraries_fail_closed(private_library, tmp_path):
