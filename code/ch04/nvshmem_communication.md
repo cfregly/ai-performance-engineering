@@ -614,6 +614,14 @@ separate.
 | [Python pipeline channel](nvshmem_pipeline_parallel_multigpu.py) | Symmetric-allocation remote copies with ready and consumed protocols | The targeted PyTorch path uses CPU/Gloo sidebands because its signal methods are stubs. It is not GPU-native NVSHMEM signaling. |
 | [Symmetric-memory ring](symmetric_memory_example.py) | Batched NCCL P2P and a captured CUDA symmetric-memory comparison | The named CUDA-backend graph path and the NVSHMEM-default helper have different completion paths. |
 
+A separate side-by-side NVSHMEM 3.8.0 diagnostic kept the machine defaults
+unchanged. All five device-lab modes passed complete-output checks on two B200s.
+Fresh default-Nsys captures for `block-signal` and `persistent-atomic` passed on
+both ranks. Default-NCU application replay for `persistent-atomic` stalled and
+produced no report, so that capture remains unsupported and incomplete. The
+host used CUDA 13.0, outside the CUDA versions listed for NVSHMEM 3.8.0. Do not
+treat these successful diagnostic runs as support qualification.
+
 The legacy IBGDA sketch records its stop event before any GPU-side quiet. Its
 later host barrier is outside that interval and does not establish the missing
 GPU completion contract. The printed GB/s counts one block's bytes instead of

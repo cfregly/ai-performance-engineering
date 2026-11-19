@@ -55,6 +55,28 @@ Report setup cost separately. Use NCCL diagnostics and profiler evidence to
 investigate the selected path. Explain why avoiding an internal copy does not
 remove network bytes or guarantee a shorter iteration.
 
+For every arm, check the complete output instead of accepting initialization or
+registration as correctness. Report allocation and registration setup separately
+from steady-state work. Explain the added lifetime and teardown obligations and
+when their reuse could be worth the complexity. Explain when ordinary
+`cudaMalloc` without registration is enough.
+
+Successful `ncclCommRegister` or `ncclCommWindowRegister` calls prove that NCCL
+accepted the buffers. They do not prove that a specialized symmetric-memory
+kernel executed. Retain a runtime or profiler capture tied to the exact run before
+making that mechanism claim. A four-pair two-B200 diagnostic passed complete
+output checks and proved that `window_register` selected an
+`ncclSymDevKernel`, but the candidate reached only 0.6114x to 0.6182x of the
+`cuda_malloc` control on that virtualized host. Treat that as a measured
+counterexample, not a universal ranking. Repeat the comparison on the target
+topology before choosing an allocation path.
+
+Finally, relate `comm_register` to the Jacobi solver's `--registered-buffers`
+option. Keep schedule and graph mode fixed. Find both ping-pong registrations and
+their teardown. Confirm that all ranks use the same mode and that the allocations
+remain alive through completion. Explain why avoiding an internal copy would not
+remove network bytes or guarantee a shorter iteration.
+
 ## 5. Capture a stable schedule
 
 Read the [graph lifecycle guide](../../ch12/cuda_graph_lifecycle.md). Identify

@@ -1,0 +1,84 @@
+objective:
+  primary_kpi: allreduce_latency_ms
+  secondary_kpis:
+    - allocation_ms
+    - registration_ms
+    - latency_stddev_ms
+
+benchmark:
+  layer: component
+  grade: realism
+  variable_under_test: nccl_buffer_allocation_and_registration_path
+
+workload:
+  type: distributed_collective
+  operation: out_of_place_allreduce_sum
+  dtype: float32
+  elements_per_rank: 16777216
+  bytes_per_buffer_per_rank: 67108864
+  rank_policy: all_visible_gpus_by_default
+  constraints:
+    - identical input values and element count across arms
+    - one distinct GPU per MPI rank
+    - one shared-memory node
+    - directed peer access between every selected GPU pair
+    - NCCL headers and runtime version 2.27.3 or newer with an exact version match
+    - build receipt ldd and every MPI rank resolve every used NCCL API from the same canonical libnccl.so.2
+    - user-supplied LD_PRELOAD is empty at the launcher and pre-profiler rank boundaries
+    - full output verification on every rank
+
+current_baseline:
+  artifact: null
+  arm: cuda_malloc
+  latency_ms: null
+  note: No target-hardware run is recorded by this source change.
+
+hot_path_model:
+  path: nccl_symmetric_memory_native.cu:ncclAllReduce
+  phase: steady_state
+  invocation_frequency: once_per_rank_per_sample
+  invocations_per_primary_unit: 1
+  estimated_costs:
+    send_bytes_per_rank: elements_times_4
+    receive_bytes_per_rank: elements_times_4
+    allocations_or_materializations: 0_in_timed_path
+    collective_launches: 1
+    stream_synchronizations: 1
+    mpi_synchronizations: excluded_from_each_timed_sample
+  operation_cost_source: pending_target_hardware_measurement
+  expected_dominant_cost: collective_device_execution_and_data_movement
+  best_case_primary_kpi_improvement_pct: null
+
+evidence:
+  baseline_artifact: ""
+  profile_artifacts: []
+  hardware_counter_artifacts: []
+  static_review_findings:
+    - Symmetric window registration can select NCCL's symmetric-memory collective path.
+    - Setup and registration cost must remain visible even though steady-state samples exclude it.
+    - Static inspection does not establish a latency improvement.
+
+candidate_optimizations:
+  - name: nccl_symmetric_window
+    category: representation_locality
+    control: cuda_malloc
+    candidate: window_register
+    added_work: ncclMemAlloc_and_collective_window_registration_during_setup
+    retained_responsibility: equal_valid_buffer_offsets_and_window_lifetime
+    use_when: repeated_collectives_can_amortize_setup_and_supported_fabric_selects_the_path
+    simpler_option: cuda_malloc_for_short_lived_or_unsupported_workloads
+
+known_issues_or_hypotheses:
+  - Performance depends on NCCL runtime, GPU fabric, topology, message size, and rank count.
+  - The two middle arms are attribution diagnostics and are not separate harness pairs.
+
+risk_guardrails:
+  correctness_tests:
+    - full_float32_output_checked_on_every_rank
+    - retained_rank_zero_output_checked_again_by_python
+    - baseline_and_candidate_verification_payloads_compared_by_the_harness
+  required_evidence_before_speedup_claim:
+    - locked_gpu_clocks_and_recorded_application_clocks
+    - repeated_interleaved_control_and_candidate_runs
+    - raw_MPI_MAX_samples_and_variance
+    - profiler_or_counter_evidence_for_the_selected_collective_mechanism

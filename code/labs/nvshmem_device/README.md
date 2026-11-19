@@ -297,6 +297,22 @@ persistent kernel is one long-lived kernel per PE. A single kernel interval
 does not expose the duration of each internal epoch or prove
 network transport progress.
 
+### Side-by-side NVSHMEM 3.8.0 diagnostic
+
+NVSHMEM 3.8.0 was installed in a task-specific prefix for a two-B200 check. The
+machine's default NVSHMEM and default Nsight executables were not changed. All
+five device modes passed their complete-output checks with the 3.8.0 headers
+and runtime. Default Nsight Systems passed fresh `block-signal` and
+`persistent-atomic` captures on both ranks with zero output error.
+
+Default Nsight Compute could not complete application-range replay for
+`persistent-atomic`. It emitted its own hang warning, made no further progress,
+and produced no report. That capture is an unsupported and incomplete outcome,
+not passing NCU evidence. The NVSHMEM 3.8.0 compatibility table lists CUDA 13.1,
+13.3, and 13.4. This host used CUDA 13.0, so the successful executions are
+diagnostic evidence rather than support qualification. See the official
+[NVSHMEM 3.8.0 release notes](https://docs.nvidia.com/nvshmem/release-notes-install-guide/release-notes/release-3800.html).
+
 Run the profiling commands under the repository's clock-lock context on both
 allocated GPUs. From the repository root, define this helper in a Python
 environment with the harness dependencies. It restores the previous clock state

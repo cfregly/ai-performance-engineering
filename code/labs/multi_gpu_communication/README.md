@@ -2,7 +2,7 @@
 
 This lab uses a fixed-iteration Jacobi solver to explain NCCL groups, compute and
 communication overlap, reusable registered buffers, and graph replay. Compare
-the same numerical work before deciding whether a more complex schedule helps.
+the same numerical work before deciding whether a more complex path helps.
 Start with the [guided exercises](TASKS.md) or the
 [NCCL groups and buffer guide](../../ch04/nccl_groups.md).
 
@@ -15,10 +15,10 @@ Start with the [guided exercises](TASKS.md) or the
 | Eager versus graph execution | Workload, schedule, registration, and rank mapping | Submit repeated steps through captured graphs | Capture and instantiation need reuse to repay setup and require valid pointer lifetimes |
 | CUDA-aware MPI, host NCCL, and stream-ordered NVSHMEM | Numerical workload and stopping policy | Communication interface and its completion rules | MPI needs producer synchronization, while NVSHMEM needs symmetric allocation and explicit remote completion |
 
-These are separate experiments. Changing scheduling, registration, and graph
-mode together does not identify which mechanism caused a timing difference.
-NCCL grouping is part of the correct P2P exchange in both scheduling variants.
-An unsafe ungrouped exchange is not a useful performance baseline.
+Changing scheduling, registration, and graph mode together does not identify
+which mechanism caused a timing difference. NCCL grouping is part of the correct
+P2P exchange in both scheduling variants. An unsafe ungrouped exchange is not a
+useful performance baseline.
 
 ## Numerical contract
 
@@ -218,7 +218,14 @@ the independent compute stream into the NCCL phase can introduce a join and
 remove overlap. The [group guide](../../ch04/nccl_groups.md) explains the exact
 submission and completion boundaries.
 
-## Test registration and capture independently
+> **Related Chapter 4 exercise:** The
+> [NCCL symmetric-memory AllReduce](../../ch04/README.md#nccl-symmetric-memory-allreduce)
+> separates NCCL allocation, local communicator registration, and collective
+> symmetric-window registration. It is a separate AllReduce study, not a Jacobi
+> schedule. Complete it for API and profiler attribution, then return here to
+> compare Jacobi's ordinary and locally registered buffers.
+
+## Register the Jacobi buffers locally
 
 For supported NCCL builds, add `--registered-buffers` to both schedule runs.
 The implementation allocates eligible buffers, registers both ping-pong
@@ -226,6 +233,12 @@ allocations, completes their last use, deregisters them, and then frees them.
 Every rank must make the same registration choice. Allocation and registration
 are separate operations. Successful registration does not prove the selected
 transport avoided internal copies.
+
+This Jacobi option uses `ncclMemAlloc` and `ncclCommRegister`. It is the local
+registration pattern represented by the `comm_register` attribution arm above,
+not collective symmetric-window registration.
+
+## Capture the Jacobi schedule
 
 For NCCL graph execution, add `--graph` to otherwise equivalent runs. Captured
 steps contain fixed pointer bindings. Replaying a two-step graph returns the
@@ -407,8 +420,11 @@ pipeline uses documented CPU/Gloo sidebands and must not be described as native
 GPU signaling.
 
 The [NCCL device guide](../../ch04/nccl_device_communication.md) adds LSA/GIN,
-symmetric windows, signal epochs, and consumed acknowledgments. Its fragments
-are educational. They do not constitute a validated GIN Jacobi implementation.
+symmetric windows, signal epochs, and consumed acknowledgments. The focused
+AllReduce above exercises allocation and host API registration. Its output check
+does not turn the guide's device fragments into a validated GIN Jacobi
+implementation or prove which NCCL kernel ran. Those fragments remain
+educational.
 The existing [CUDA symmetric-memory ring](../../ch04/symmetric_memory_example.py)
 already demonstrates captured multi-rank peer writes and both lifetime fences.
 

@@ -1,0 +1,104 @@
+run_metadata:
+  benchmark_layer: component
+  benchmark_grade: realism
+  use_case: engineering_debug
+  owner: ""
+  ticket_or_epic: ""
+
+comparison_axis:
+  variable_under_test: nccl_buffer_allocation_and_registration_path
+  control: cuda_malloc
+  candidate: window_register
+  attribution_arms:
+    - nccl_mem_alloc
+    - comm_register
+  constants_locked:
+    - out_of_place_float32_sum_allreduce
+    - input_generation
+    - element_count
+    - rank_count
+    - communicator
+    - warmup_count
+    - timed_sample_count
+    - completion_scope
+    - output_verification
+
+workload:
+  type: distributed_collective
+  name: nccl_symmetric_memory_allreduce
+  operation: allreduce
+  reduction: sum
+  placement: out_of_place
+  dtype: float32
+  elements_per_rank: 16777216
+  bytes_per_buffer_per_rank: 67108864
+  inputs:
+    formula: one_plus_low_8_bits_of_splitmix64_rank_keyed_element_index
+    mutation_during_timing: false
+  correctness:
+    scope: every_element_on_every_rank
+    rtol: 0.0
+    atol: 0.0
+    retained_output: complete_rank_zero_float32_buffer
+
+execution:
+  ranks: all_visible_gpus_by_default
+  rank_override: explicit_positive_integer_not_exceeding_visible_gpus
+  processes: one_MPI_rank_per_selected_GPU
+  topology:
+    nodes: 1
+    peer_access: required_for_every_directed_selected_GPU_pair
+    shared_CUDA_visibility_order: required
+  runtime_versions:
+    nccl_headers: ">=2.27.3"
+    nccl_runtime: ">=2.27.3 and exactly equal to the build header version"
+    nccl_library_identity: exact_build_receipt_ldd_and_per_rank_dladdr_match_for_every_used_nccl_api
+    user_ld_preload_at_launcher_and_pre_profiler_rank: empty
+    cuda: recorded_by_build_environment
+    mpi: recorded_by_build_environment
+  unsupported_policy: hard_skip_without_fallback_timing
+
+measurement_policy:
+  trials_per_native_invocation: 20
+  warmup_trials: 5
+  sample_definition: maximum_rank_CUDA_event_elapsed_around_exactly_one_ncclAllReduce
+  sample_excludes:
+    - setup
+    - warmup
+    - pre_sample_MPI_barrier
+    - post_sample_MPI_MAX_reduction
+    - verification
+    - output_write
+    - cleanup
+  report_statistics:
+    - min
+    - max
+    - mean
+    - median
+    - p95
+    - population_stddev
+  outlier_policy:
+    keep_raw_samples: true
+    automatic_discard: false
+  environment_controls:
+    gpu_clocks_locked_for_performance_claim: true
+    application_clocks_recorded_for_performance_claim: true
+    topology_gate_recorded: true
+
+metrics:
+  primary: allreduce_latency_ms
+  secondary:
+    - setup_ms
+    - allocation_ms
+    - registration_ms
+    - verification_ms
+    - cleanup_ms
+
+artifacts:
+  artifact_root: code/artifacts/nccl_symmetric_memory
+  raw_artifacts_immutable: true
+  require_build_receipt: true
+  require_source_and_binary_sha256: true
+  require_process_logs: true
+  require_complete_output: true
+  publication_status: unqualified_until_target_hardware_and_profiler_gates_pass
