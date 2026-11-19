@@ -9,22 +9,27 @@ Provides automated profiling workflows with:
 """
 
 import argparse
+import json
 import os
 import re
-import subprocess
-import json
 import signal
+import subprocess
 import tempfile
 import time
 from pathlib import Path
-from typing import Dict, List, Optional, Any, Sequence
+from typing import Any, Dict, List, Optional, Sequence
 
-from core.utils.logger import get_logger
 from core.profiling.profiler_config import (
     MINIMAL_METRICS,
     validate_ncu_app_range_capture,
     validate_ncu_replay_mode,
 )
+from core.utils.cooperative_subprocess import (
+    CooperativeCleanupIncomplete,
+    CooperativeProcessInterrupted,
+    run_cooperative_process,
+)
+from core.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
@@ -150,6 +155,70 @@ class NsightAutomation:
         if self._pending_warnings:
             self.last_run["warnings"] = list(self._pending_warnings)
             self._pending_warnings.clear()
+
+    @staticmethod
+    def _uses_cooperative_profiler_owner(timeout_seconds: Optional[float]) -> bool:
+        """Use explicit process-group ownership for an uncapped POSIX capture."""
+        return os.name == "posix" and (
+            timeout_seconds is None or timeout_seconds <= 0
+        )
+
+    def _run_cooperative_profiler(
+        self,
+        command: List[str],
+        *,
+        env: Dict[str, str],
+    ) -> subprocess.CompletedProcess[str]:
+        """Run one uncapped profiler and retain its ownership receipt."""
+        receipt = run_cooperative_process(command, env=env, cwd=self.run_cwd)
+        self.last_run["cooperative_process"] = receipt
+        return subprocess.CompletedProcess(
+            args=command,
+            returncode=receipt["returncode"],
+            stdout=receipt["stdout"],
+            stderr=receipt["stderr"],
+        )
+
+    def _retain_cooperative_profiler_cancellation(
+        self,
+        output_path: Path,
+        *,
+        tool_name: str,
+        error: CooperativeProcessInterrupted | CooperativeCleanupIncomplete,
+    ) -> None:
+        """Persist complete profiler output before propagating cancellation."""
+        receipt = error.result
+        cancellation = receipt.get("cancellation", {})
+        interrupted = isinstance(error, CooperativeProcessInterrupted)
+        cleanup_completed = cancellation.get("status") == "cleanup_completed"
+        forwarded_signal = (
+            [str(cancellation.get("signal", "SIGINT"))]
+            if cancellation.get("signal_forwarded") is True
+            else []
+        )
+        self.last_error = (
+            f"{tool_name} capture cancelled"
+            if interrupted
+            else f"{tool_name} capture cleanup incomplete"
+        )
+        self.last_run.update(
+            {
+                "status": "cancelled" if interrupted else "cleanup_incomplete",
+                "stdout": str(receipt.get("stdout", "")),
+                "stderr": str(receipt.get("stderr", "")),
+                "returncode": receipt.get("returncode"),
+                "timeout_hit": False,
+                "graceful_finalize_attempted": True,
+                "graceful_finalize_completed": cleanup_completed,
+                "finalize_signals": forwarded_signal,
+                "cooperative_process": receipt,
+            }
+        )
+        output_path.with_suffix(".stdout.log").write_text(self.last_run["stdout"])
+        output_path.with_suffix(".stderr.log").write_text(self.last_run["stderr"])
+        output_path.with_suffix(".command.json").write_text(
+            json.dumps(self.last_run, indent=2)
+        )
 
     def _available_ncu_sets(self) -> set[str]:
         """Return available Nsight Compute set identifiers (best effort)."""
@@ -470,95 +539,118 @@ class NsightAutomation:
         })
         
         try:
-            process = subprocess.Popen(
-                nsys_cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                env=self._build_env(
-                    force_lineinfo=force_lineinfo,
-                    extra_env=extra_env,
-                    sanitize_python_startup=sanitize_python_startup,
-                ),
-                cwd=str(self.run_cwd),
-                start_new_session=True,
+            profiler_env = self._build_env(
+                force_lineinfo=force_lineinfo,
+                extra_env=extra_env,
+                sanitize_python_startup=sanitize_python_startup,
             )
-            result_stdout = ""
-            result_stderr = ""
-            try:
-                result_stdout, result_stderr = process.communicate(
-                    timeout=timeout_seconds if timeout_seconds and timeout_seconds > 0 else None,
-                )
-            except KeyboardInterrupt:
-                finalize = self._finalize_timed_out_nsys(
-                    process, grace_seconds=finalize_grace_seconds,
-                )
-                self.last_error = "Nsight Systems capture cancelled"
-                self.last_run.update(
-                    {
-                        "status": "cancelled",
-                        "stdout": str(finalize.get("stdout", "")),
-                        "stderr": str(finalize.get("stderr", "")),
-                        "returncode": process.returncode,
-                        "timeout_hit": False,
-                        "graceful_finalize_attempted": True,
-                        "graceful_finalize_completed": bool(finalize.get("completed")),
-                        "finalize_signals": finalize.get("signals", []),
-                    }
-                )
-                output_path.with_suffix(".stdout.log").write_text(self.last_run["stdout"])
-                output_path.with_suffix(".stderr.log").write_text(self.last_run["stderr"])
-                output_path.with_suffix(".command.json").write_text(
-                    json.dumps(self.last_run, indent=2)
-                )
-                raise
-            except subprocess.TimeoutExpired as exc:
-                partial_stdout = str(exc.stdout or "")
-                partial_stderr = str(exc.stderr or "")
-                finalize = self._finalize_timed_out_nsys(
-                    process,
-                    grace_seconds=finalize_grace_seconds,
-                )
-                result_stdout = partial_stdout + str(finalize.get("stdout", ""))
-                result_stderr = partial_stderr + str(finalize.get("stderr", ""))
-                self.last_run.update(
-                    {
-                        "timeout_hit": True,
-                        "stdout": result_stdout,
-                        "stderr": result_stderr,
-                        "graceful_finalize_attempted": True,
-                        "graceful_finalize_completed": bool(finalize.get("completed")),
-                        "finalize_signals": finalize.get("signals", []),
-                        "defunct_launcher_detected": bool(finalize.get("defunct_launcher_detected")),
-                        "returncode": process.returncode,
-                    }
-                )
-                report_ready = False
-                if bool(finalize.get("completed")) and output_path.exists():
-                    report_ready = True
-                elif self._wait_for_output_artifact(
-                    output_path,
-                    settle_seconds=min(max(float(finalize_grace_seconds), 5.0), 30.0),
-                ):
-                    report_ready = True
-                if report_ready:
-                    logger.warning(
-                        "Nsight Systems timed out but produced a usable report during finalization."
+            if self._uses_cooperative_profiler_owner(timeout_seconds):
+                try:
+                    result = self._run_cooperative_profiler(
+                        nsys_cmd,
+                        env=profiler_env,
                     )
-                    self.last_run["output"] = str(output_path)
-                    self.last_error = None
-                    return output_path
-                self.last_error = f"Nsight Systems timed out after {timeout_seconds}s"
-                if finalize.get("defunct_launcher_detected"):
-                    self.last_error += " (defunct nsys-launcher detected during finalization)"
-                logger.error(self.last_error)
-                return None
-            result = subprocess.CompletedProcess(
-                args=nsys_cmd,
-                returncode=process.returncode,
-                stdout=result_stdout,
-                stderr=result_stderr,
-            )
+                except (CooperativeProcessInterrupted, CooperativeCleanupIncomplete) as error:
+                    self._retain_cooperative_profiler_cancellation(
+                        output_path,
+                        tool_name="Nsight Systems",
+                        error=error,
+                    )
+                    raise
+            else:
+                process = subprocess.Popen(
+                    nsys_cmd,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                    env=profiler_env,
+                    cwd=str(self.run_cwd),
+                    start_new_session=True,
+                )
+                result_stdout = ""
+                result_stderr = ""
+                try:
+                    result_stdout, result_stderr = process.communicate(
+                        timeout=(
+                            timeout_seconds
+                            if timeout_seconds and timeout_seconds > 0
+                            else None
+                        ),
+                    )
+                except KeyboardInterrupt:
+                    finalize = self._finalize_timed_out_nsys(
+                        process, grace_seconds=finalize_grace_seconds,
+                    )
+                    self.last_error = "Nsight Systems capture cancelled"
+                    self.last_run.update(
+                        {
+                            "status": "cancelled",
+                            "stdout": str(finalize.get("stdout", "")),
+                            "stderr": str(finalize.get("stderr", "")),
+                            "returncode": process.returncode,
+                            "timeout_hit": False,
+                            "graceful_finalize_attempted": True,
+                            "graceful_finalize_completed": bool(finalize.get("completed")),
+                            "finalize_signals": finalize.get("signals", []),
+                        }
+                    )
+                    output_path.with_suffix(".stdout.log").write_text(self.last_run["stdout"])
+                    output_path.with_suffix(".stderr.log").write_text(self.last_run["stderr"])
+                    output_path.with_suffix(".command.json").write_text(
+                        json.dumps(self.last_run, indent=2)
+                    )
+                    raise
+                except subprocess.TimeoutExpired as exc:
+                    partial_stdout = str(exc.stdout or "")
+                    partial_stderr = str(exc.stderr or "")
+                    finalize = self._finalize_timed_out_nsys(
+                        process,
+                        grace_seconds=finalize_grace_seconds,
+                    )
+                    result_stdout = partial_stdout + str(finalize.get("stdout", ""))
+                    result_stderr = partial_stderr + str(finalize.get("stderr", ""))
+                    self.last_run.update(
+                        {
+                            "timeout_hit": True,
+                            "stdout": result_stdout,
+                            "stderr": result_stderr,
+                            "graceful_finalize_attempted": True,
+                            "graceful_finalize_completed": bool(finalize.get("completed")),
+                            "finalize_signals": finalize.get("signals", []),
+                            "defunct_launcher_detected": bool(
+                                finalize.get("defunct_launcher_detected")
+                            ),
+                            "returncode": process.returncode,
+                        }
+                    )
+                    report_ready = False
+                    if bool(finalize.get("completed")) and output_path.exists():
+                        report_ready = True
+                    elif self._wait_for_output_artifact(
+                        output_path,
+                        settle_seconds=min(max(float(finalize_grace_seconds), 5.0), 30.0),
+                    ):
+                        report_ready = True
+                    if report_ready:
+                        logger.warning(
+                            "Nsight Systems timed out but produced a usable report during finalization."
+                        )
+                        self.last_run["output"] = str(output_path)
+                        self.last_error = None
+                        return output_path
+                    self.last_error = f"Nsight Systems timed out after {timeout_seconds}s"
+                    if finalize.get("defunct_launcher_detected"):
+                        self.last_error += (
+                            " (defunct nsys-launcher detected during finalization)"
+                        )
+                    logger.error(self.last_error)
+                    return None
+                result = subprocess.CompletedProcess(
+                    args=nsys_cmd,
+                    returncode=process.returncode,
+                    stdout=result_stdout,
+                    stderr=result_stderr,
+                )
             if result.returncode != 0:
                 raise subprocess.CalledProcessError(
                     result.returncode,
@@ -943,18 +1035,44 @@ class NsightAutomation:
         capture_started_ns = time.time_ns()
         
         try:
-            result = subprocess.run(
-                ncu_cmd,
-                capture_output=True,
-                text=True,
-                check=True,
-                timeout=timeout_seconds if timeout_seconds and timeout_seconds > 0 else None,
-                env=self._build_env(
-                    force_lineinfo=force_lineinfo,
-                    sanitize_python_startup=sanitize_python_startup,
-                ),
-                cwd=str(self.run_cwd),
+            profiler_env = self._build_env(
+                force_lineinfo=force_lineinfo,
+                sanitize_python_startup=sanitize_python_startup,
             )
+            if self._uses_cooperative_profiler_owner(timeout_seconds):
+                try:
+                    result = self._run_cooperative_profiler(
+                        ncu_cmd,
+                        env=profiler_env,
+                    )
+                except (CooperativeProcessInterrupted, CooperativeCleanupIncomplete) as error:
+                    self._retain_cooperative_profiler_cancellation(
+                        output_path,
+                        tool_name="Nsight Compute",
+                        error=error,
+                    )
+                    raise
+                if result.returncode != 0:
+                    raise subprocess.CalledProcessError(
+                        result.returncode,
+                        ncu_cmd,
+                        output=result.stdout,
+                        stderr=result.stderr,
+                    )
+            else:
+                result = subprocess.run(
+                    ncu_cmd,
+                    capture_output=True,
+                    text=True,
+                    check=True,
+                    timeout=(
+                        timeout_seconds
+                        if timeout_seconds and timeout_seconds > 0
+                        else None
+                    ),
+                    env=profiler_env,
+                    cwd=str(self.run_cwd),
+                )
             logger.info(f"Nsight Compute report saved to {output_path}")
             self.last_run.update(
                 {

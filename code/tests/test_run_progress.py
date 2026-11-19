@@ -263,6 +263,30 @@ def test_run_with_queue_records_start_and_returns_artifact_paths(
     assert "RUN_END" in log_text
 
 
+def test_overlap_monitor_stop_does_not_wait_for_poll_interval(monkeypatch) -> None:
+    stop_event = mcp_server.threading.Event()
+    overlap_event = mcp_server.threading.Event()
+
+    monkeypatch.setattr(mcp_server, "_snapshot_processes", lambda: [])
+    monkeypatch.setattr(mcp_server, "_descendant_pids", lambda *_args: set())
+
+    def stop_monitor(*_args):
+        stop_event.set()
+        return []
+
+    monkeypatch.setattr(mcp_server, "_active_run_processes", stop_monitor)
+    monkeypatch.setattr(
+        mcp_server.time,
+        "sleep",
+        lambda _seconds: (_ for _ in ()).throw(
+            AssertionError("Overlap monitor used an uninterruptible sleep")
+        ),
+    )
+
+    mcp_server._monitor_overlap(stop_event, overlap_event, poll_seconds=3600)
+    assert not overlap_event.is_set()
+
+
 def test_progress_phases_include_llm() -> None:
     phases = run_benchmarks.PROGRESS_PHASES
     for key in (

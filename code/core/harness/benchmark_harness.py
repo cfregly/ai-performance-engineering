@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import copy
+import errno
 import gc
 import json
 import importlib
@@ -52,6 +53,26 @@ import numpy as np
 import torch
 
 from core.utils.compile_utils import enable_tf32
+from core.utils.execution_timeouts import (
+    RUNTIME_PROVENANCE_TIMEOUT_SECONDS,
+    execution_deadline_seconds,
+    validate_execution_timeout_mode,
+    validate_execution_timeout_seconds,
+    validate_subprocess_wait_timeout,
+    validate_thread_wait_timeout,
+)
+from core.utils.cooperative_subprocess import (
+    CooperativeCleanupIncomplete,
+    CooperativeProcessInterrupted,
+    cleanup_incomplete_receipt_from_error,
+    operator_interrupt_from_error,
+    parse_cleanup_incomplete_event,
+    process_receipt_from_error,
+    require_cooperative_process_support,
+    run_cooperative_process,
+    validate_cleanup_incomplete_receipt,
+)
+from core.diagnostics.process import run_owned_process
 from core.benchmark.evaluation_provenance import (
     EvaluationFailure,
     EvaluationProvenance,
@@ -65,7 +86,11 @@ from core.benchmark.verification import (
     output_tolerances_to_dict,
 )
 from core.benchmark.verification_mixin import VerificationPayloadMixin
-from core.harness.backend_policy import apply_backend_policy, normalize_backend_policy, restore_backend_policy
+from core.harness.backend_policy import (
+    apply_backend_policy,
+    normalize_backend_policy,
+    restore_backend_policy,
+)
 from core.harness.device_identity_contract import (
     DeviceIdentityContract,
     build_device_identity_expectation,
@@ -110,9 +135,11 @@ try:
         run_proton_profiling,
         check_proton_available,
     )
+
     PROFILING_RUNNER_AVAILABLE = True
 except ImportError:
     PROFILING_RUNNER_AVAILABLE = False
+
     def run_nsys_profiling(
         benchmark: Any,
         benchmark_module: Any,
@@ -124,7 +151,7 @@ except ImportError:
         metrics: Optional[str] = None,
     ) -> Optional[Dict[str, Any]]:
         raise ImportError("profiling_runner not available")
-    
+
     def run_ncu_profiling(
         benchmark: Any,
         benchmark_module: Any,
@@ -136,13 +163,13 @@ except ImportError:
         metrics: Optional[str] = None,
     ) -> Optional[Dict[str, Any]]:
         raise ImportError("profiling_runner not available")
-    
+
     def check_nsys_available() -> bool:
         return False
-    
+
     def check_ncu_available() -> bool:
         return False
-    
+
     def run_proton_profiling(
         benchmark: Any,
         benchmark_module: Any,
@@ -154,13 +181,15 @@ except ImportError:
         metrics: Optional[str] = None,
     ) -> Optional[Dict[str, Any]]:
         raise ImportError("profiling_runner not available")
-    
+
     def check_proton_available() -> bool:
         return False
+
 
 # Import profiler wrapper
 try:
     from core.profiling.profiler_wrapper import create_benchmark_wrapper
+
     PROFILER_WRAPPER_AVAILABLE = True
 except ImportError:
     PROFILER_WRAPPER_AVAILABLE = False
@@ -168,6 +197,7 @@ except ImportError:
 # Import logger
 try:
     from core.utils.logger import get_logger
+
     logger = get_logger(__name__)
     LOGGER_AVAILABLE = True
 except ImportError:
@@ -182,6 +212,53 @@ _NCU_FIRST_CLASS_METRIC_PREFIXES = (
     "ncu_l2_throughput_pct",
     "ncu_occupancy_pct",
 )
+
+
+class SubprocessCaptureEvidenceError(RuntimeError):
+    """Reject text parsing when the process receipt reports inexact capture."""
+
+    def __init__(
+        self,
+        *,
+        context: str,
+        receipt: Dict[str, Any],
+        indicators: Sequence[str],
+    ) -> None:
+        joined = ", ".join(indicators)
+        super().__init__(
+            f"Cannot trust {context} output because subprocess capture was inexact: "
+            f"{joined}. The full process receipt is attached to this exception."
+        )
+        self.result = receipt
+        self.cooperative_process_result = receipt
+
+
+def _require_exact_subprocess_capture(
+    receipt: Dict[str, Any],
+    *,
+    context: str,
+) -> None:
+    """Fail before parsing replacement text or a stream closed before EOF."""
+    execution = receipt.get("execution")
+    indicators = []
+    if isinstance(execution, dict):
+        indicators.extend(
+            f"execution.{name}"
+            for name in (
+                "capture_errors",
+                "capture_limit",
+                "undecodable_streams_base64",
+            )
+            if name in execution
+        )
+    if "raw_streams_base64" in receipt:
+        indicators.append("raw_streams_base64")
+    if indicators:
+        raise SubprocessCaptureEvidenceError(
+            context=context,
+            receipt=receipt,
+            indicators=indicators,
+        )
 
 
 def _parse_subprocess_output_tolerances(
@@ -259,6 +336,7 @@ def _cleanup_process_group(pgid: Optional[int], *, grace_seconds: float = 2.0) -
     except (ProcessLookupError, PermissionError, OSError):
         return
     import logging
+
     logger = logging.getLogger(__name__)
 
 
@@ -291,14 +369,14 @@ def _terminate_process_group(
 
 
 def _benchmark_child_preexec() -> None:
-    """Start benchmark workers in a fresh session without inherited suite alarms.
+    """Clear inherited suite alarms before benchmark worker startup.
 
     The top-level bench CLI installs a suite-wide SIGALRM timeout. Benchmark
     workers launched via subprocess/torchrun must clear that inherited timer or
     a long-running parent suite can kill a later child immediately with the
-    parent's timeout message.
+    parent's timeout message. Callers create the new session with
+    ``start_new_session=True`` so launch ownership stays explicit in the parent.
     """
-    os.setsid()
     sigalrm = getattr(signal, "SIGALRM", None)
     if sigalrm is None:
         return
@@ -391,7 +469,9 @@ def _nvidia_smi(args: Sequence[str]) -> bytes:
             sudo_cmd = ["sudo", "-n", "nvidia-smi", *args]
             out = subprocess.check_output(sudo_cmd, stderr=subprocess.STDOUT)
             if LOGGER_AVAILABLE:
-                logger.info("nvidia-smi required sudo for: %s", " ".join(shlex.quote(x) for x in cmd))
+                logger.info(
+                    "nvidia-smi required sudo for: %s", " ".join(shlex.quote(x) for x in cmd)
+                )
             return out
         except (FileNotFoundError, subprocess.CalledProcessError):
             # Keep the original error so callers see the true underlying failure.
@@ -504,7 +584,9 @@ def ramp_gpu_clocks(device: int = 0, duration_ms: float = 50.0, max_iters: int =
 
 
 @contextmanager
-def lock_gpu_clocks(device: int = 0, sm_clock_mhz: Optional[int] = None, mem_clock_mhz: Optional[int] = None):
+def lock_gpu_clocks(
+    device: int = 0, sm_clock_mhz: Optional[int] = None, mem_clock_mhz: Optional[int] = None
+):
     """Hold verified application clocks while preserving an enclosing lock.
 
     Matching nested contexts borrow the application-clock state. A context that
@@ -579,11 +661,10 @@ def lock_gpu_clocks(device: int = 0, sm_clock_mhz: Optional[int] = None, mem_clo
                 "restorable and is unsupported"
             ) from exc
 
-    def _application_clocks_match(state: _GpuClockControlState, target_sm: int, target_mem: int) -> bool:
-        return (
-            state.application_sm_mhz == target_sm
-            and state.application_memory_mhz == target_mem
-        )
+    def _application_clocks_match(
+        state: _GpuClockControlState, target_sm: int, target_mem: int
+    ) -> bool:
+        return state.application_sm_mhz == target_sm and state.application_memory_mhz == target_mem
 
     def _verify_target(state: _GpuClockControlState, target_sm: int, target_mem: int) -> None:
         if not state.persistence_enabled:
@@ -619,7 +700,12 @@ def lock_gpu_clocks(device: int = 0, sm_clock_mhz: Optional[int] = None, mem_clo
                 ]
             )
             max_sm, max_mem = [int(x.strip()) for x in out.decode().split(",")]
-        except (subprocess.CalledProcessError, FileNotFoundError, UnicodeDecodeError, ValueError) as exc:
+        except (
+            subprocess.CalledProcessError,
+            FileNotFoundError,
+            UnicodeDecodeError,
+            ValueError,
+        ) as exc:
             raise RuntimeError(f"Failed to resolve maximum GPU clocks: {exc}") from exc
         if sm_clock_mhz is None:
             sm_clock_mhz = max_sm
@@ -731,7 +817,9 @@ def lock_gpu_clocks(device: int = 0, sm_clock_mhz: Optional[int] = None, mem_clo
                     _set_persistence(entry_state.persistence_enabled)
                 except Exception as exc:
                     cleanup_errors.append(str(exc))
-        elif observed is not None and observed.persistence_enabled != entry_state.persistence_enabled:
+        elif (
+            observed is not None and observed.persistence_enabled != entry_state.persistence_enabled
+        ):
             cleanup_errors.append(
                 "borrowed GPU persistence mode changed while the context was active: "
                 f"entry={int(entry_state.persistence_enabled)} "
@@ -762,12 +850,16 @@ def lock_gpu_clocks(device: int = 0, sm_clock_mhz: Optional[int] = None, mem_clo
             cleanup_errors.append(f"could not verify restored GPU clock state: {exc}")
 
         if cleanup_errors:
-            cleanup_error = RuntimeError("GPU clock state cleanup failed: " + " | ".join(cleanup_errors))
+            cleanup_error = RuntimeError(
+                "GPU clock state cleanup failed: " + " | ".join(cleanup_errors)
+            )
             if primary_error is None:
                 raise cleanup_error
             primary_error.add_note(str(cleanup_error))
             if LOGGER_AVAILABLE:
-                logger.warning("GPU clock cleanup failed while handling another error: %s", cleanup_error)
+                logger.warning(
+                    "GPU clock cleanup failed while handling another error: %s", cleanup_error
+                )
         elif clock_mutation_attempted or persistence_mutation_attempted:
             logger.info(
                 "GPU clock control state restored: application SM=%dMHz Mem=%dMHz, persistence=%d",
@@ -818,7 +910,7 @@ def _configure_attention_kernels() -> None:
                 if LOGGER_AVAILABLE:
                     logger.debug("SDPA kernel preference failed: %s", exc)
 
-    if hasattr(torch.backends.cuda, 'enable_flash_sdp'):
+    if hasattr(torch.backends.cuda, "enable_flash_sdp"):
         torch.backends.cuda.enable_flash_sdp(True)  # type: ignore[attr-defined]
         torch.backends.cuda.enable_mem_efficient_sdp(True)  # type: ignore[attr-defined]
         torch.backends.cuda.enable_math_sdp(False)  # type: ignore[attr-defined]
@@ -847,7 +939,7 @@ _configure_quick_wins()
 
 _VERIFY_OUTPUT_MAX_BYTES = 64 * 1024 * 1024
 """Maximum verify_output payload size (bytes) before spilling to file."""
-_RUNTIME_PROVENANCE_TIMEOUT_SECONDS = 15.0
+_RUNTIME_PROVENANCE_TIMEOUT_SECONDS = RUNTIME_PROVENANCE_TIMEOUT_SECONDS
 
 
 def _extract_skip_reason_from_messages(messages: Sequence[str]) -> Optional[str]:
@@ -863,6 +955,7 @@ def _extract_skip_reason_from_messages(messages: Sequence[str]) -> Optional[str]
             return msg[idx:].strip()
     return None
 
+
 from core.profiling.gpu_memory_logger import (
     GpuMemoryLogger,
     resolve_gpu_log_interval,
@@ -874,6 +967,7 @@ from core.profiling.gpu_telemetry import query_gpu_telemetry
 
 class BenchmarkMode(Enum):
     """Benchmarking mode selection."""
+
     TRITON = "triton"  # Use triton.testing.do_bench
     PYTORCH = "pytorch"  # Use torch.utils.benchmark.Timer
     CUSTOM = "custom"  # Use CUDA Events / time.perf_counter
@@ -882,7 +976,9 @@ class BenchmarkMode(Enum):
 class _ObservedTimings(list):
     """Internal timing samples with their observation unit, preserved in results."""
 
-    def __init__(self, values, *, sample_scope: Optional[str], iterations_per_sample: Optional[int]):
+    def __init__(
+        self, values, *, sample_scope: Optional[str], iterations_per_sample: Optional[int]
+    ):
         super().__init__(values)
         self.sample_scope = sample_scope
         self.iterations_per_sample = iterations_per_sample
@@ -890,12 +986,14 @@ class _ObservedTimings(list):
 
 class ExecutionMode(str, Enum):
     """How the harness executes benchmarks."""
+
     SUBPROCESS = "subprocess"
     THREAD = "thread"
 
 
 class LaunchVia(str, Enum):
     """Which launcher to use for running a benchmark."""
+
     PYTHON = "python"
     TORCHRUN = "torchrun"
 
@@ -903,6 +1001,7 @@ class LaunchVia(str, Enum):
 # Import BenchmarkDefaults to use as source of truth for defaults
 try:
     from core.benchmark.defaults import BenchmarkDefaults, get_defaults
+
     _get_defaults_fn: Optional[Callable[[], BenchmarkDefaults]] = get_defaults
 except ImportError:
     # Fallback if benchmark defaults are unavailable (docs builds)
@@ -920,11 +1019,11 @@ def _get_default_value(attr_name: str, fallback):
 @dataclass
 class BenchmarkConfig:
     """Configuration for a benchmark run.
-    
+
     Default values are loaded from BenchmarkDefaults, which provides hardcoded defaults.
     This ensures a single source of truth for all configuration defaults.
     Configuration can be overridden via CLI flags or by passing values directly.
-    
+
     Reproducibility Notes:
         - deterministic=True: Enables deterministic algorithms (torch.use_deterministic_algorithms).
           This ensures bitwise reproducibility but may impact performance:
@@ -933,18 +1032,27 @@ class BenchmarkConfig:
           * Operations without deterministic implementations may raise errors at runtime
           * Performance impact typically 5-20% depending on workload
           * Use only when reproducibility is more important than performance
-        
+
         - seed: Sets random seeds for Python random, numpy, torch, and CUDA.
           When combined with deterministic=True, ensures reproducible results.
           Without deterministic=True, results may still vary due to non-deterministic algorithms.
     """
+
     # Use field(default_factory=...) to get defaults from BenchmarkDefaults at instance creation time
     # Each lambda calls _get_default_value() which calls get_defaults() to get current defaults
     iterations: int = field(default_factory=lambda: _get_default_value("iterations", 100))
     warmup: int = field(default_factory=lambda: _get_default_value("warmup", 10))
-    min_run_time_ms: float = field(default_factory=lambda: _get_default_value("min_run_time_ms", 100.0))
-    percentiles: List[float] = field(default_factory=lambda: (_get_default_value("percentiles", [25, 50, 75, 90, 99]) or [25, 50, 75, 90, 99]).copy())
-    enable_memory_tracking: bool = field(default_factory=lambda: _get_default_value("enable_memory_tracking", False))
+    min_run_time_ms: float = field(
+        default_factory=lambda: _get_default_value("min_run_time_ms", 100.0)
+    )
+    percentiles: List[float] = field(
+        default_factory=lambda: (
+            _get_default_value("percentiles", [25, 50, 75, 90, 99]) or [25, 50, 75, 90, 99]
+        ).copy()
+    )
+    enable_memory_tracking: bool = field(
+        default_factory=lambda: _get_default_value("enable_memory_tracking", False)
+    )
     deterministic: bool = field(default_factory=lambda: _get_default_value("deterministic", False))
     seed: Optional[int] = field(default_factory=lambda: _get_default_value("seed", None))
     device: Optional[torch.device] = None  # Not in BenchmarkDefaults (runtime-specific)
@@ -952,119 +1060,217 @@ class BenchmarkConfig:
     """Expected full-device GPU UUID. Configure together with expected_compute_capability."""
     expected_compute_capability: Optional[str] = None
     """Expected CUDA compute capability, normalized to ``major.minor``."""
-    enable_profiling: bool = field(default_factory=lambda: _get_default_value("enable_profiling", False))
+    enable_profiling: bool = field(
+        default_factory=lambda: _get_default_value("enable_profiling", False)
+    )
     enable_nsys: bool = field(default_factory=lambda: _get_default_value("enable_nsys", False))
     enable_ncu: bool = field(default_factory=lambda: _get_default_value("enable_ncu", False))
     enable_proton: bool = field(default_factory=lambda: _get_default_value("enable_proton", False))
-    profiling_output_dir: Optional[str] = field(default_factory=lambda: _get_default_value("profiling_output_dir", None))
-    subprocess_stderr_dir: Optional[str] = field(default_factory=lambda: _get_default_value("subprocess_stderr_dir", None))
-    profile_mode: Optional[str] = field(default_factory=lambda: _get_default_value("profile_mode", "none"))
+    profiling_output_dir: Optional[str] = field(
+        default_factory=lambda: _get_default_value("profiling_output_dir", None)
+    )
+    subprocess_stderr_dir: Optional[str] = field(
+        default_factory=lambda: _get_default_value("subprocess_stderr_dir", None)
+    )
+    profile_mode: Optional[str] = field(
+        default_factory=lambda: _get_default_value("profile_mode", "none")
+    )
     profile_type: str = field(default_factory=lambda: _get_default_value("profile_type", "minimal"))
-    nsys_preset_override: Optional[str] = field(default_factory=lambda: _get_default_value("nsys_preset_override", None))
-    nsys_nvtx_include: Optional[List[str]] = field(default_factory=lambda: _get_default_value("nsys_nvtx_include", None))
-    backend_policy: str = field(default_factory=lambda: _get_default_value("backend_policy", "performance"))
-    enable_nvtx: Optional[bool] = field(default_factory=lambda: _get_default_value("enable_nvtx", None))
-    enable_cleanup: bool = field(default_factory=lambda: _get_default_value("enable_cleanup", False))
+    nsys_preset_override: Optional[str] = field(
+        default_factory=lambda: _get_default_value("nsys_preset_override", None)
+    )
+    nsys_nvtx_include: Optional[List[str]] = field(
+        default_factory=lambda: _get_default_value("nsys_nvtx_include", None)
+    )
+    backend_policy: str = field(
+        default_factory=lambda: _get_default_value("backend_policy", "performance")
+    )
+    enable_nvtx: Optional[bool] = field(
+        default_factory=lambda: _get_default_value("enable_nvtx", None)
+    )
+    enable_cleanup: bool = field(
+        default_factory=lambda: _get_default_value("enable_cleanup", False)
+    )
     use_subprocess: bool = field(default_factory=lambda: _get_default_value("use_subprocess", True))
-    execution_mode: Union[ExecutionMode, str, None] = field(default_factory=lambda: _get_default_value("execution_mode", None))
-    launch_via: Union[LaunchVia, str] = field(default_factory=lambda: _get_default_value("launch_via", "python"))
-    nproc_per_node: Optional[int] = field(default_factory=lambda: _get_default_value("nproc_per_node", None))
+    execution_mode: Union[ExecutionMode, str, None] = field(
+        default_factory=lambda: _get_default_value("execution_mode", None)
+    )
+    launch_via: Union[LaunchVia, str] = field(
+        default_factory=lambda: _get_default_value("launch_via", "python")
+    )
+    nproc_per_node: Optional[int] = field(
+        default_factory=lambda: _get_default_value("nproc_per_node", None)
+    )
     nnodes: Optional[str] = field(default_factory=lambda: _get_default_value("nnodes", None))
-    rdzv_backend: Optional[str] = field(default_factory=lambda: _get_default_value("rdzv_backend", None))
-    rdzv_endpoint: Optional[str] = field(default_factory=lambda: _get_default_value("rdzv_endpoint", None))
-    env_passthrough: List[str] = field(default_factory=lambda: (_get_default_value("env_passthrough", ["CUDA_VISIBLE_DEVICES"]) or []).copy())
-    target_extra_args: Dict[str, List[str]] = field(default_factory=lambda: (_get_default_value("target_extra_args", {}) or {}).copy())
-    multi_gpu_required: bool = field(default_factory=lambda: bool(_get_default_value("multi_gpu_required", False)))
-    required_world_size: Optional[int] = field(default_factory=lambda: _get_default_value("required_world_size", None))
+    rdzv_backend: Optional[str] = field(
+        default_factory=lambda: _get_default_value("rdzv_backend", None)
+    )
+    rdzv_endpoint: Optional[str] = field(
+        default_factory=lambda: _get_default_value("rdzv_endpoint", None)
+    )
+    env_passthrough: List[str] = field(
+        default_factory=lambda: (
+            _get_default_value("env_passthrough", ["CUDA_VISIBLE_DEVICES"]) or []
+        ).copy()
+    )
+    target_extra_args: Dict[str, List[str]] = field(
+        default_factory=lambda: (_get_default_value("target_extra_args", {}) or {}).copy()
+    )
+    multi_gpu_required: bool = field(
+        default_factory=lambda: bool(_get_default_value("multi_gpu_required", False))
+    )
+    required_world_size: Optional[int] = field(
+        default_factory=lambda: _get_default_value("required_world_size", None)
+    )
     single_gpu: bool = field(default_factory=lambda: bool(_get_default_value("single_gpu", False)))
     target_label: Optional[str] = None
     _execution_mode_overridden: bool = field(init=False, repr=False, default=False)
-    
+
     # Per-stage timeouts (in seconds)
-    setup_timeout_seconds: Optional[int] = field(default_factory=lambda: _get_default_value("setup_timeout_seconds", 60))
-    warmup_timeout_seconds: Optional[int] = field(default_factory=lambda: _get_default_value("warmup_timeout_seconds", None))
-    measurement_timeout_seconds: int = field(default_factory=lambda: _get_default_value("measurement_timeout_seconds", 180))
-    enable_gpu_memory_logging: bool = field(default_factory=lambda: _get_default_value("enable_gpu_memory_logging", False))
-    gpu_memory_log_interval_seconds: float = field(default_factory=lambda: _get_default_value("gpu_memory_log_interval_seconds", 5.0))
-    gpu_memory_log_path: Optional[str] = field(default_factory=lambda: _get_default_value("gpu_memory_log_path", None))
-    profiling_timeout_seconds: Optional[int] = field(default_factory=lambda: _get_default_value("profiling_timeout_seconds", None))
-    ncu_metric_set: str = field(default_factory=lambda: _get_default_value("ncu_metric_set", "auto"))
-    pm_sampling_interval: Optional[int] = field(default_factory=lambda: _get_default_value("pm_sampling_interval", None))
-    ncu_replay_mode: str = field(default_factory=lambda: _get_default_value("ncu_replay_mode", "application"))
-    ncu_replay_mode_override: bool = field(default_factory=lambda: _get_default_value("ncu_replay_mode_override", False))
-    profiling_warmup: Optional[int] = field(default_factory=lambda: _get_default_value("profiling_warmup", None))
+    setup_timeout_seconds: Optional[int] = field(
+        default_factory=lambda: _get_default_value("setup_timeout_seconds", 60)
+    )
+    warmup_timeout_seconds: Optional[int] = field(
+        default_factory=lambda: _get_default_value("warmup_timeout_seconds", None)
+    )
+    measurement_timeout_seconds: int = field(
+        default_factory=lambda: _get_default_value("measurement_timeout_seconds", 180)
+    )
+    # An explicit operator override applies after multipliers. Zero requires an owned subprocess.
+    execution_timeout_seconds: Optional[int] = None
+    enable_gpu_memory_logging: bool = field(
+        default_factory=lambda: _get_default_value("enable_gpu_memory_logging", False)
+    )
+    gpu_memory_log_interval_seconds: float = field(
+        default_factory=lambda: _get_default_value("gpu_memory_log_interval_seconds", 5.0)
+    )
+    gpu_memory_log_path: Optional[str] = field(
+        default_factory=lambda: _get_default_value("gpu_memory_log_path", None)
+    )
+    profiling_timeout_seconds: Optional[int] = field(
+        default_factory=lambda: _get_default_value("profiling_timeout_seconds", None)
+    )
+    ncu_metric_set: str = field(
+        default_factory=lambda: _get_default_value("ncu_metric_set", "auto")
+    )
+    pm_sampling_interval: Optional[int] = field(
+        default_factory=lambda: _get_default_value("pm_sampling_interval", None)
+    )
+    ncu_replay_mode: str = field(
+        default_factory=lambda: _get_default_value("ncu_replay_mode", "application")
+    )
+    ncu_replay_mode_override: bool = field(
+        default_factory=lambda: _get_default_value("ncu_replay_mode_override", False)
+    )
+    profiling_warmup: Optional[int] = field(
+        default_factory=lambda: _get_default_value("profiling_warmup", None)
+    )
     """Warmup iterations used by wrapper-based profiler runs (nsys/ncu/proton)."""
-    profiling_iterations: Optional[int] = field(default_factory=lambda: _get_default_value("profiling_iterations", None))
+    profiling_iterations: Optional[int] = field(
+        default_factory=lambda: _get_default_value("profiling_iterations", None)
+    )
     """Iteration count used by wrapper-based profiler runs (nsys/ncu/proton)."""
-    profile_env_overrides: Optional[Dict[str, str]] = field(default_factory=lambda: _get_default_value("profile_env_overrides", None))
+    profile_env_overrides: Optional[Dict[str, str]] = field(
+        default_factory=lambda: _get_default_value("profile_env_overrides", None)
+    )
     """Optional environment overrides applied only to profiler subprocesses."""
 
     # Triton-style best practices (based on triton/testing.py)
     # See: https://github.com/triton-lang/triton/blob/main/python/triton/testing.py
     clear_l2_cache: bool = field(default_factory=lambda: _get_default_value("clear_l2_cache", True))
     """Clear L2 cache before each iteration to ensure fair memory-bound comparisons."""
-    
-    full_device_sync: bool = field(default_factory=lambda: _get_default_value("full_device_sync", True))
+
+    full_device_sync: bool = field(
+        default_factory=lambda: _get_default_value("full_device_sync", True)
+    )
     """Use torch.cuda.synchronize() instead of event.synchronize() for stream-safe timing.
     Critical for protecting against multi-stream timing exploits (see Locus/KernelBench 2025)."""
 
-    force_synchronize: bool = field(default_factory=lambda: _get_default_value("force_synchronize", False))
+    force_synchronize: bool = field(
+        default_factory=lambda: _get_default_value("force_synchronize", False)
+    )
     """Force a device-wide synchronize immediately after benchmark_fn() (opt-in safeguard)."""
 
-    timing_method: str = field(default_factory=lambda: _get_default_value("timing_method", "cuda_event"))
+    timing_method: str = field(
+        default_factory=lambda: _get_default_value("timing_method", "cuda_event")
+    )
     """Timing method for CUDA benchmarks.
 
     - "cuda_event" (default): Use CUDA events for device-side timing.
     - "wall_clock": Use host wall clock timing + full device sync. Prefer this for
       workloads that launch work on non-default streams (e.g., framework runtimes).
     """
-    
-    grad_to_none: Optional[List[str]] = field(default_factory=lambda: _get_default_value("grad_to_none", None))
+
+    grad_to_none: Optional[List[str]] = field(
+        default_factory=lambda: _get_default_value("grad_to_none", None)
+    )
     """List of tensor attribute names to clear gradients for between iterations."""
-    
-    lock_gpu_clocks: bool = field(default_factory=lambda: _get_default_value("lock_gpu_clocks", False))
+
+    lock_gpu_clocks: bool = field(
+        default_factory=lambda: _get_default_value("lock_gpu_clocks", False)
+    )
     """Lock GPU clocks for consistent benchmarking (requires nvidia-smi permissions)."""
-    
-    gpu_sm_clock_mhz: Optional[int] = field(default_factory=lambda: _get_default_value("gpu_sm_clock_mhz", None))
+
+    gpu_sm_clock_mhz: Optional[int] = field(
+        default_factory=lambda: _get_default_value("gpu_sm_clock_mhz", None)
+    )
     """Target SM clock rate in MHz when lock_gpu_clocks=True."""
-    
-    gpu_mem_clock_mhz: Optional[int] = field(default_factory=lambda: _get_default_value("gpu_mem_clock_mhz", None))
+
+    gpu_mem_clock_mhz: Optional[int] = field(
+        default_factory=lambda: _get_default_value("gpu_mem_clock_mhz", None)
+    )
     """Target memory clock rate in MHz when lock_gpu_clocks=True."""
-    
-    isolate_warmup_cache: bool = field(default_factory=lambda: _get_default_value("isolate_warmup_cache", True))
+
+    isolate_warmup_cache: bool = field(
+        default_factory=lambda: _get_default_value("isolate_warmup_cache", True)
+    )
     """Clear L2 cache after warmup to prevent warmup from pre-populating caches for measurement.
     This ensures measurement iterations start with a cold L2 cache (Triton best practice)."""
-    
-    cross_validate_timing: bool = field(default_factory=lambda: _get_default_value("cross_validate_timing", True))
+
+    cross_validate_timing: bool = field(
+        default_factory=lambda: _get_default_value("cross_validate_timing", True)
+    )
     """Cross-validate CUDA event timing against wall clock timing.
     Warns if CUDA events report significantly less time than wall clock,
     which could indicate timing manipulation or missing stream sync."""
-    
-    timing_cross_validation_threshold: float = field(default_factory=lambda: _get_default_value("timing_cross_validation_threshold", 0.5))
+
+    timing_cross_validation_threshold: float = field(
+        default_factory=lambda: _get_default_value("timing_cross_validation_threshold", 0.5)
+    )
     """Threshold for timing cross-validation. If CUDA timing / wall clock < this value,
     a warning is issued. Default 0.5 means warn if CUDA reports < 50% of wall time."""
-    
-    enforce_config_immutability: bool = field(default_factory=lambda: _get_default_value("enforce_config_immutability", True))
+
+    enforce_config_immutability: bool = field(
+        default_factory=lambda: _get_default_value("enforce_config_immutability", True)
+    )
     """Enforce that critical timing config (warmup, iterations) cannot be modified by benchmarks.
     If enabled, raises an error if these values change during benchmark execution."""
-    
+
     # Adaptive iterations (Triton-style best practice)
-    adaptive_iterations: bool = field(default_factory=lambda: _get_default_value("adaptive_iterations", True))
+    adaptive_iterations: bool = field(
+        default_factory=lambda: _get_default_value("adaptive_iterations", True)
+    )
     """Enable adaptive iteration count to ensure statistically significant measurements.
     When enabled, iterations will be dynamically adjusted to achieve min_total_duration_ms.
     This is a Triton best practice for reliable benchmarking."""
-    
-    min_total_duration_ms: float = field(default_factory=lambda: _get_default_value("min_total_duration_ms", 100.0))
+
+    min_total_duration_ms: float = field(
+        default_factory=lambda: _get_default_value("min_total_duration_ms", 100.0)
+    )
     """Minimum total duration for all measurement iterations (in ms).
     Only used when adaptive_iterations=True. Iterations continue until this duration is reached.
     Default 100ms provides a good balance of speed and statistical significance."""
-    
-    max_adaptive_iterations: int = field(default_factory=lambda: _get_default_value("max_adaptive_iterations", 10000))
+
+    max_adaptive_iterations: int = field(
+        default_factory=lambda: _get_default_value("max_adaptive_iterations", 10000)
+    )
     """Maximum iterations when using adaptive mode. Prevents runaway if kernels are very fast.
     Default 10000 should handle even microsecond-level kernels."""
-    
+
     # CUDA Graph mode (Triton-style best practice)
-    enable_cuda_graph: bool = field(default_factory=lambda: _get_default_value("enable_cuda_graph", False))
+    enable_cuda_graph: bool = field(
+        default_factory=lambda: _get_default_value("enable_cuda_graph", False)
+    )
     """Enable CUDA Graph capture and replay for benchmarking.
     This can significantly reduce CPU overhead for repetitive kernel launches.
     The benchmark function is captured once, then replayed for all iterations.
@@ -1079,28 +1285,42 @@ class BenchmarkConfig:
     - CPU-GPU synchronization inside benchmark_fn()
     - Host-side callbacks
     """
-    
-    cuda_graph_warmup_iters: int = field(default_factory=lambda: _get_default_value("cuda_graph_warmup_iters", 3))
+
+    cuda_graph_warmup_iters: int = field(
+        default_factory=lambda: _get_default_value("cuda_graph_warmup_iters", 3)
+    )
     """Number of warmup iterations before CUDA graph capture.
     Graph capture requires a warm state for optimal performance."""
-    
+
     # Additional Validity Protections (addressing remaining 49 issues)
-    reset_memory_pool: bool = field(default_factory=lambda: _get_default_value("reset_memory_pool", True))
+    reset_memory_pool: bool = field(
+        default_factory=lambda: _get_default_value("reset_memory_pool", True)
+    )
     """Reset CUDA memory pool before each benchmark to prevent memory reuse gaming."""
-    
-    disable_gc_during_timing: bool = field(default_factory=lambda: _get_default_value("disable_gc_during_timing", True))
+
+    disable_gc_during_timing: bool = field(
+        default_factory=lambda: _get_default_value("disable_gc_during_timing", True)
+    )
     """Disable Python garbage collection during timing to prevent GC interference."""
-    
-    check_input_output_aliasing: bool = field(default_factory=lambda: _get_default_value("check_input_output_aliasing", True))
+
+    check_input_output_aliasing: bool = field(
+        default_factory=lambda: _get_default_value("check_input_output_aliasing", True)
+    )
     """Verify output tensors don't alias input tensors (prevent pre-filled results)."""
-    
-    clear_compile_cache: bool = field(default_factory=lambda: _get_default_value("clear_compile_cache", True))
+
+    clear_compile_cache: bool = field(
+        default_factory=lambda: _get_default_value("clear_compile_cache", True)
+    )
     """Clear torch.compile cache before benchmark to ensure consistent compilation state."""
 
-    audit_stream_sync: bool = field(default_factory=lambda: _get_default_value("audit_stream_sync", True))
+    audit_stream_sync: bool = field(
+        default_factory=lambda: _get_default_value("audit_stream_sync", True)
+    )
     """Enable CUDA stream auditing to catch missing synchronizations by default."""
-    
-    detect_setup_precomputation: bool = field(default_factory=lambda: _get_default_value("detect_setup_precomputation", True))
+
+    detect_setup_precomputation: bool = field(
+        default_factory=lambda: _get_default_value("detect_setup_precomputation", True)
+    )
     """Hash inputs before/after setup() to detect pre-computation during setup."""
 
     detect_benchmark_fn_sync: bool = field(
@@ -1122,22 +1342,30 @@ class BenchmarkConfig:
         default_factory=lambda: _get_default_value("benchmark_fn_antipattern_policy", "warn")
     )
     """Policy for hot-path anti-patterns inside benchmark_fn(): ignore, warn, or error."""
-    
-    monitor_gpu_state: bool = field(default_factory=lambda: _get_default_value("monitor_gpu_state", True))
+
+    monitor_gpu_state: bool = field(
+        default_factory=lambda: _get_default_value("monitor_gpu_state", True)
+    )
     """Monitor GPU temperature, frequency, and power during benchmark."""
 
-    monitor_backend_policy: bool = field(default_factory=lambda: _get_default_value("monitor_backend_policy", True))
+    monitor_backend_policy: bool = field(
+        default_factory=lambda: _get_default_value("monitor_backend_policy", True)
+    )
     """Monitor backend precision policy flags for mutation during timing."""
 
     enforce_backend_policy_immutability: bool = field(
         default_factory=lambda: _get_default_value("enforce_backend_policy_immutability", True)
     )
     """Fail-fast when backend precision policy flags change during timing."""
-    
-    track_memory_allocations: bool = field(default_factory=lambda: _get_default_value("track_memory_allocations", True))
+
+    track_memory_allocations: bool = field(
+        default_factory=lambda: _get_default_value("track_memory_allocations", True)
+    )
     """Track memory allocations during benchmark to detect suspicious patterns."""
-    
-    force_tensor_evaluation: bool = field(default_factory=lambda: _get_default_value("force_tensor_evaluation", True))
+
+    force_tensor_evaluation: bool = field(
+        default_factory=lambda: _get_default_value("force_tensor_evaluation", True)
+    )
     """Force evaluation of lazy tensors by calling sync after operations."""
 
     enforce_environment_validation: bool = field(
@@ -1150,14 +1378,18 @@ class BenchmarkConfig:
     test contexts where other host policy checks are intentionally bypassed.
     """
 
-    validity_profile: str = field(default_factory=lambda: _get_default_value("validity_profile", "strict"))
+    validity_profile: str = field(
+        default_factory=lambda: _get_default_value("validity_profile", "strict")
+    )
     """Benchmark validity profile: strict (default) or portable.
 
     strict: fail-fast on environment and hardware capability requirements.
     portable: explicit opt-in mode for broader hardware support with loud warnings.
     """
 
-    allow_virtualization: bool = field(default_factory=lambda: _get_default_value("allow_virtualization", False))
+    allow_virtualization: bool = field(
+        default_factory=lambda: _get_default_value("allow_virtualization", False)
+    )
     """Compatibility flag retained for profile behavior wiring.
 
     Virtualization is warning-only in all profiles; this flag remains for
@@ -1173,20 +1405,32 @@ class BenchmarkConfig:
     timeout_seconds: int = field(default_factory=lambda: _get_default_value("timeout_seconds", 180))
 
     # Graph capture cheat detection thresholds
-    graph_capture_cheat_ratio_threshold: float = field(default_factory=lambda: _get_default_value("graph_capture_cheat_ratio_threshold", 10.0))
+    graph_capture_cheat_ratio_threshold: float = field(
+        default_factory=lambda: _get_default_value("graph_capture_cheat_ratio_threshold", 10.0)
+    )
     """Max allowed capture/replay ratio before flagging a cheat (higher is more permissive)."""
-    
-    graph_capture_memory_threshold_mb: float = field(default_factory=lambda: _get_default_value("graph_capture_memory_threshold_mb", 100.0))
+
+    graph_capture_memory_threshold_mb: float = field(
+        default_factory=lambda: _get_default_value("graph_capture_memory_threshold_mb", 100.0)
+    )
     """Memory allocated during capture above this threshold is considered suspicious."""
-    
+
     # Profiler-specific timeouts
-    nsys_timeout_seconds: int = field(default_factory=lambda: _get_default_value("nsys_timeout_seconds", 120))
-    ncu_timeout_seconds: int = field(default_factory=lambda: _get_default_value("ncu_timeout_seconds", 3600))
-    proton_timeout_seconds: int = field(default_factory=lambda: _get_default_value("proton_timeout_seconds", 120))
-    
+    nsys_timeout_seconds: int = field(
+        default_factory=lambda: _get_default_value("nsys_timeout_seconds", 120)
+    )
+    ncu_timeout_seconds: int = field(
+        default_factory=lambda: _get_default_value("ncu_timeout_seconds", 3600)
+    )
+    proton_timeout_seconds: int = field(
+        default_factory=lambda: _get_default_value("proton_timeout_seconds", 120)
+    )
+
     # Timeout multiplier
-    timeout_multiplier: float = field(default_factory=lambda: _get_default_value("timeout_multiplier", 1.0))
-    
+    timeout_multiplier: float = field(
+        default_factory=lambda: _get_default_value("timeout_multiplier", 1.0)
+    )
+
     def __post_init__(self):
         """Set enable_nvtx based on profiling if not explicitly set, apply timeout multiplier, and ensure percentiles is never None."""
         # CRITICAL: Ensure percentiles is always a list, never None (fixes comparison errors)
@@ -1227,13 +1471,14 @@ class BenchmarkConfig:
                 or self.min_total_duration_ms <= 0
             ):
                 raise ValueError("min_total_duration_ms must be finite and positive")
-        
+
         # CRITICAL: Validate and enforce minimum warmup iterations
         # This ensures JIT/compile overhead is NEVER included in measurements.
         # See benchmark/defaults.py for rationale.
         from core.benchmark.defaults import validate_warmup, MINIMUM_WARMUP_ITERATIONS
+
         self.warmup = validate_warmup(self.warmup, context="BenchmarkConfig")
-        
+
         if self.enable_nvtx is None:
             # Auto-enable NVTX whenever profiling is requested (for nsys traces)
             self.enable_nvtx = self.enable_profiling
@@ -1245,9 +1490,10 @@ class BenchmarkConfig:
                     f"Invalid nsys_preset_override={self.nsys_preset_override!r}. Expected 'light' or 'full'."
                 )
             self.nsys_preset_override = preset
-        
+
         # Apply timeout multiplier to all timeout fields
         if self.timeout_multiplier != 1.0:
+
             def _apply_timeout_multiplier(field_name: str) -> None:
                 current_value = getattr(self, field_name)
                 if current_value is None:
@@ -1259,7 +1505,7 @@ class BenchmarkConfig:
                         field_name,
                         int(current_value * self.timeout_multiplier),
                     )
-            
+
             _apply_timeout_multiplier("setup_timeout_seconds")
             _apply_timeout_multiplier("warmup_timeout_seconds")
             _apply_timeout_multiplier("measurement_timeout_seconds")
@@ -1268,18 +1514,30 @@ class BenchmarkConfig:
             _apply_timeout_multiplier("ncu_timeout_seconds")
             _apply_timeout_multiplier("proton_timeout_seconds")
             _apply_timeout_multiplier("timeout_seconds")  # Legacy field
-        
+
         # Set defaults for None timeouts
         if self.warmup_timeout_seconds is None:
             # Warmup timeout defaults to measurement timeout
             self.warmup_timeout_seconds = self.measurement_timeout_seconds
         if self.profiling_timeout_seconds is None:
             # Profiling timeout defaults to max of nsys/ncu timeouts
-            self.profiling_timeout_seconds = max(self.nsys_timeout_seconds, self.ncu_timeout_seconds, self.proton_timeout_seconds)
+            self.profiling_timeout_seconds = max(
+                self.nsys_timeout_seconds, self.ncu_timeout_seconds, self.proton_timeout_seconds
+            )
 
         self._execution_mode_overridden = self.execution_mode is not None
         self._sync_execution_mode()
         self._sync_launch_via()
+
+        execution_timeout = validate_execution_timeout_seconds(self.execution_timeout_seconds)
+        if execution_timeout is not None:
+            for field_name in (
+                "setup_timeout_seconds",
+                "warmup_timeout_seconds",
+                "measurement_timeout_seconds",
+                "timeout_seconds",
+            ):
+                setattr(self, field_name, execution_timeout)
 
     def _sync_execution_mode(self) -> None:
         """Ensure execution_mode and use_subprocess remain consistent."""
@@ -1299,7 +1557,7 @@ class BenchmarkConfig:
                 raise TypeError(
                     f"execution_mode must be a string or ExecutionMode, got {type(mode).__name__}"
                 )
-        self.use_subprocess = (mode == ExecutionMode.SUBPROCESS)
+        self.use_subprocess = mode == ExecutionMode.SUBPROCESS
         self.execution_mode = mode
 
     def _sync_launch_via(self) -> None:
@@ -1313,9 +1571,7 @@ class BenchmarkConfig:
                     f"Invalid launch_via '{mode}'. Expected 'python' or 'torchrun'."
                 ) from exc
         elif not isinstance(mode, LaunchVia):
-            raise TypeError(
-                f"launch_via must be a string or LaunchVia, got {type(mode).__name__}"
-            )
+            raise TypeError(f"launch_via must be a string or LaunchVia, got {type(mode).__name__}")
         self.launch_via = mode
 
     def set_execution_mode(self, mode: Union[ExecutionMode, str]) -> None:
@@ -1323,30 +1579,30 @@ class BenchmarkConfig:
         self.execution_mode = mode
         self._execution_mode_overridden = True
         self._sync_execution_mode()
-        
+
         # Backward compatibility: sync timeout_seconds with measurement_timeout_seconds
         # (This ensures legacy code using timeout_seconds still works)
         if self.timeout_seconds == 15 and self.measurement_timeout_seconds != 15:
             # If timeout_seconds wasn't explicitly changed, sync it
             self.timeout_seconds = self.measurement_timeout_seconds
-    
+
     def get_effective_timeout(self, stage: str) -> Optional[int]:
         """Get effective timeout for a given stage, accounting for multiplier.
-        
+
         Args:
             stage: One of 'setup', 'warmup', 'measurement', 'profiling', 'torch', 'nsys', 'ncu', 'proton'
-            
+
         Returns:
             Timeout in seconds, or None if no timeout for this stage
         """
         return self.timing.timeout_for(stage)
-    
+
     def capture_timing_snapshot(self) -> Dict[str, Any]:
         """Capture a snapshot of timing-critical configuration values.
-        
+
         Used to detect if a benchmark modifies timing config during execution,
         which would be a form of timing manipulation.
-        
+
         Returns:
             Dict of timing-critical field names to their values
         """
@@ -1406,13 +1662,13 @@ class BenchmarkConfig:
                 preview = f"{preview}; ... (+{len(changes) - 10} more)"
             return False, f"BenchmarkConfig modified during execution: {preview}"
         return True, None
-    
+
     def verify_timing_unchanged(self, snapshot: Dict[str, Any]) -> Tuple[bool, Optional[str]]:
         """Verify timing-critical fields haven't changed since snapshot.
-        
+
         Args:
             snapshot: Dict from capture_timing_snapshot()
-            
+
         Returns:
             Tuple of (unchanged, error_message)
         """
@@ -1422,10 +1678,11 @@ class BenchmarkConfig:
             current_value = current.get(key)
             if current_value != original_value:
                 changes.append(f"{key}: {original_value} -> {current_value}")
-        
+
         if changes:
             return False, f"Timing config modified during execution: {'; '.join(changes)}"
         return True, None
+
 
 @dataclass(frozen=True)
 class BenchmarkTimingView:
@@ -1443,7 +1700,7 @@ class BenchmarkTimingView:
     cuda_graph_warmup_iters: int
     setup_timeout_seconds: Optional[int]
     warmup_timeout_seconds: Optional[int]
-    measurement_timeout_seconds: int
+    measurement_timeout_seconds: Optional[int]
     profiling_timeout_seconds: Optional[int]
     nsys_timeout_seconds: int
     ncu_timeout_seconds: int
@@ -1571,15 +1828,65 @@ def _build_timing_view_from_mapping(values: Dict[str, Any]) -> BenchmarkTimingVi
         max_adaptive_iterations=int(values["max_adaptive_iterations"]),
         enable_cuda_graph=bool(values["enable_cuda_graph"]),
         cuda_graph_warmup_iters=int(values["cuda_graph_warmup_iters"]),
-        setup_timeout_seconds=cast(Optional[int], values.get("setup_timeout_seconds")),
-        warmup_timeout_seconds=cast(Optional[int], values.get("warmup_timeout_seconds")),
-        measurement_timeout_seconds=int(values["measurement_timeout_seconds"]),
+        setup_timeout_seconds=cast(
+            Optional[int], execution_deadline_seconds(values.get("setup_timeout_seconds"))
+        ),
+        warmup_timeout_seconds=cast(
+            Optional[int], execution_deadline_seconds(values.get("warmup_timeout_seconds"))
+        ),
+        measurement_timeout_seconds=cast(
+            Optional[int], execution_deadline_seconds(values.get("measurement_timeout_seconds"))
+        ),
         profiling_timeout_seconds=cast(Optional[int], values.get("profiling_timeout_seconds")),
         nsys_timeout_seconds=int(values["nsys_timeout_seconds"]),
         ncu_timeout_seconds=int(values["ncu_timeout_seconds"]),
         proton_timeout_seconds=int(values["proton_timeout_seconds"]),
         timeout_multiplier=float(values["timeout_multiplier"]),
     )
+
+
+def _measurement_execution_deadline(config: BenchmarkConfig) -> Optional[float]:
+    """Keep legacy fallback for None while honoring an explicit zero."""
+    value = config.measurement_timeout_seconds
+    if value is None:
+        value = config.timeout_seconds
+    if value is None:
+        raise ValueError(
+            "Execution requires a measurement timeout or legacy timeout_seconds. "
+            "Set execution_timeout_seconds=0 for an explicitly uncapped owned subprocess."
+        )
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, (int, float))
+        or value < 0
+        or not math.isfinite(value)
+    ):
+        raise ValueError(f"Invalid measurement timeout: {value!r}")
+    return cast(Optional[float], execution_deadline_seconds(float(value)))
+
+
+def validate_benchmark_execution_timeout(
+    config: BenchmarkConfig,
+    *,
+    actual_execution_mode: Optional[ExecutionMode] = None,
+    owned_subprocess: bool = False,
+) -> None:
+    """Require the caller to select uncapped execution explicitly."""
+    requested = validate_execution_timeout_seconds(config.execution_timeout_seconds)
+    measurement_timeout = config.measurement_timeout_seconds
+    if measurement_timeout is None:
+        measurement_timeout = config.timeout_seconds
+    validate_execution_timeout_mode(
+        0 if measurement_timeout == 0 else requested,
+        execution_mode=actual_execution_mode or config.execution_mode,
+        launch_via=config.launch_via,
+        owned_subprocess=owned_subprocess,
+    )
+    if measurement_timeout == 0 and requested != 0:
+        raise ValueError(
+            "A zero measurement timeout requires explicit execution_timeout_seconds=0. "
+            "Select uncapped execution at the caller."
+        )
 
 
 def _build_profiling_view_from_mapping(values: Dict[str, Any]) -> BenchmarkProfilingView:
@@ -1611,9 +1918,7 @@ def _build_validity_view_from_mapping(values: Dict[str, Any]) -> BenchmarkValidi
     return BenchmarkValidityView(
         validity_profile=str(values["validity_profile"]),
         expected_device_uuid=cast(Optional[str], values.get("expected_device_uuid")),
-        expected_compute_capability=cast(
-            Optional[str], values.get("expected_compute_capability")
-        ),
+        expected_compute_capability=cast(Optional[str], values.get("expected_compute_capability")),
         enforce_environment_validation=bool(values["enforce_environment_validation"]),
         allow_virtualization=bool(values["allow_virtualization"]),
         allow_foreign_gpu_processes=bool(values["allow_foreign_gpu_processes"]),
@@ -1756,7 +2061,7 @@ class ReadOnlyBenchmarkConfigView:
 @dataclass
 class WorkloadMetadata:
     """Metadata describing workload units processed per benchmark iteration."""
-    
+
     requests_per_iteration: float = 1.0
     tokens_per_iteration: Optional[float] = None
     samples_per_iteration: Optional[float] = None
@@ -1788,14 +2093,11 @@ class TorchrunLaunchSpec:
         if self.timing_source == "process_wall":
             if self.timing_iterations_per_sample is not None:
                 raise ValueError(
-                    "Torchrun process_wall timing cannot declare "
-                    "timing_iterations_per_sample"
+                    "Torchrun process_wall timing cannot declare timing_iterations_per_sample"
                 )
             return
         if self.timing_source != "rank0_time_per_iter_ms":
-            raise ValueError(
-                f"Unsupported torchrun timing_source: {self.timing_source!r}"
-            )
+            raise ValueError(f"Unsupported torchrun timing_source: {self.timing_source!r}")
         count = self.timing_iterations_per_sample
         if isinstance(count, bool) or not isinstance(count, int) or count <= 0:
             raise ValueError(
@@ -1810,29 +2112,29 @@ BenchmarkResult = PydanticBenchmarkResult
 
 class BaseBenchmark:
     """Base class for benchmarks with shared functionality.
-    
+
     Provides common patterns for device resolution, setup, teardown, validation,
     NVTX range management (_nvtx_range()), and CUDA synchronization (_synchronize()).
     Benchmarks should inherit from this class (or a helper base that derives from it).
-    
+
     Usage:
         class MyBenchmark(BaseBenchmark):
             def __init__(self):
                 super().__init__()
                 self.model = None
                 self.data = None
-            
+
             def setup(self) -> None:
                 torch.manual_seed(42)
                 self.model = nn.Linear(256, 256).to(self.device)
                 self.data = torch.randn(32, 256, device=self.device)
                 torch.cuda.synchronize()
-            
+
             def benchmark_fn(self) -> None:
                 with self._nvtx_range("my_benchmark"):
                     _ = self.model(self.data)
     """
-    
+
     allow_cpu: bool = False
     multi_gpu_required: bool = False
     required_world_size: Optional[int] = None
@@ -1863,13 +2165,13 @@ class BaseBenchmark:
     @device.setter
     def device(self, value: Optional[torch.device]) -> None:
         self._device = value
-    
+
     def _resolve_device(self) -> torch.device:
         """Resolve CUDA device, failing fast if CUDA is not available.
-        
+
         Returns:
             torch.device("cuda") if CUDA is available
-            
+
         Raises:
             RuntimeError: If CUDA is not available (NVIDIA GPU required)
         """
@@ -1878,17 +2180,17 @@ class BaseBenchmark:
         if getattr(self, "allow_cpu", False):
             return torch.device("cpu")
         raise RuntimeError("CUDA required - NVIDIA GPU and tools must be available")
-    
+
     def setup(self) -> None:
         """Setup phase: initialize models, data, etc.
-        
+
         Subclasses should override this method to implement their specific setup logic.
         """
         pass
-    
+
     def benchmark_fn(self) -> None:
         """Function to benchmark. Must be callable with no args.
-        
+
         Subclasses must override this method to implement their benchmark logic.
         """
         raise NotImplementedError("Subclasses must implement benchmark_fn()")
@@ -1902,10 +2204,10 @@ class BaseBenchmark:
         measurement (and VerifyRunner calls it after verify runs).
         """
         return None
-    
+
     def teardown(self) -> None:
         """Cleanup phase.
-        
+
         Default implementation clears CUDA cache. Subclasses can override
         to add additional cleanup logic.
         """
@@ -1915,10 +2217,10 @@ class BaseBenchmark:
         self._config = None
         self._nvtx_config_cache = None
         self._nvtx_enabled_cache = False
-    
+
     def get_config(self) -> Optional[BenchmarkConfig]:
         """Return the active harness config when available.
-        
+
         Subclasses can override to provide custom overrides; the harness
         will still stash the merged config on ``self._config`` for runtime checks.
         """
@@ -1939,16 +2241,18 @@ class BaseBenchmark:
             "_set_verification_payload() from capture_verification_payload() (post-timing)."
         )
 
-    def get_torchrun_spec(self, config: Optional[BenchmarkConfig] = None) -> Optional[TorchrunLaunchSpec]:
+    def get_torchrun_spec(
+        self, config: Optional[BenchmarkConfig] = None
+    ) -> Optional[TorchrunLaunchSpec]:
         """Optional torchrun launch description for multi-GPU benchmarks."""
         return None
-    
+
     def validate_result(self) -> Optional[str]:
         """Validate benchmark result, return error message if invalid.
-        
+
         Default implementation returns None (no validation).
         Subclasses should override to implement validation logic.
-        
+
         Returns:
             None if validation passes, or error message string if validation fails
         """
@@ -1956,16 +2260,16 @@ class BaseBenchmark:
 
     def get_verify_output(self) -> torch.Tensor:
         """Return the output tensor for verification comparison.
-        
+
         MANDATORY: Every benchmark MUST implement this method explicitly.
         There are NO fallbacks or auto-detection.
-        
+
         This method is used by the verification system to compare outputs
         between baseline and optimized benchmarks.
-        
+
         Returns:
             Output tensor for verification
-            
+
         Raises:
             NotImplementedError: If subclass doesn't implement this method
         """
@@ -1981,11 +2285,11 @@ class BaseBenchmark:
 
     def skip_input_verification(self) -> bool:
         """Return True to skip input equivalence verification for this benchmark.
-        
+
         Override this in benchmarks where input verification is not applicable
         (e.g., benchmarks that intentionally use different input sizes to test
         scaling behavior, or informational benchmarks).
-        
+
         Returns:
             False by default (verification enabled)
         """
@@ -1996,11 +2300,11 @@ class BaseBenchmark:
 
     def skip_output_verification(self) -> bool:
         """Return True to skip output correctness verification for this benchmark.
-        
+
         Override this in benchmarks where output verification is not applicable
         (e.g., benchmarks that produce non-deterministic outputs, or benchmarks
         that test different algorithms with legitimately different results).
-        
+
         Returns:
             False by default (verification enabled)
         """
@@ -2011,23 +2315,23 @@ class BaseBenchmark:
 
     def get_input_signature(self) -> Dict[str, Any]:
         """MANDATORY: Return a signature describing this benchmark's input workload.
-        
+
         Used by the harness to verify that baseline and optimized benchmarks
         operate on equivalent workloads. Without this verification, performance
         comparisons are meaningless.
-        
+
         The signature MUST capture all parameters that affect workload size:
         - Tensor shapes (batch_size, seq_len, hidden_size, etc.)
         - Model parameters (num_layers, num_heads, etc.)
         - Any other configuration that affects computational work
-        
+
         NO AUTO-INFERENCE. NO FALLBACKS. EVERYTHING EXPLICIT.
-        
+
         Every benchmark MUST override this method and return a non-empty dict.
-        
+
         Returns:
             Dict describing the input workload (MUST be non-empty)
-            
+
         Raises:
             NotImplementedError: If not overridden by subclass
         """
@@ -2085,24 +2389,24 @@ class BaseBenchmark:
         kernel_source: Optional[str] = None,
     ) -> tuple:
         """Verify kernel correctness using core/verification/kernel_correctness.
-        
+
         Helper method for benchmarks to verify their kernels match a reference.
         Can be called in validate_result() or anywhere else.
-        
+
         Args:
             kernel_fn: The kernel function to verify
             reference_fn: Reference implementation to compare against
             shape: Input tensor shape for testing
             formal: If True, use formal verification with proofs (slower but thorough)
             kernel_source: CUDA source code (required if formal=True)
-            
+
         Returns:
             Tuple of (passed: bool, result: VerificationResult or FormalVerificationResult)
-            
+
         Example:
             def validate_result(self) -> Optional[str]:
                 passed, result = self._verify_kernel(
-                    self.my_kernel, 
+                    self.my_kernel,
                     self.reference_impl,
                     shape=(1024, 1024),
                 )
@@ -2113,11 +2417,13 @@ class BaseBenchmark:
         try:
             if formal:
                 from core.verification.kernel_correctness import FormalKernelVerifier
+
                 verifier = FormalKernelVerifier(device=str(self.device))
                 result = verifier.verify(kernel_fn, reference_fn, kernel_source or "")
                 return (result.all_proven, result)
             else:
                 from core.verification.kernel_correctness import ManualKernelVerifier
+
                 verifier = ManualKernelVerifier(device=str(self.device))
                 result = verifier.verify(kernel_fn, reference_fn, shape)
                 return (result.all_passed, result)
@@ -2138,7 +2444,9 @@ class BaseBenchmark:
     ) -> None:
         """Register workload metadata for throughput calculations."""
         self._workload_metadata = WorkloadMetadata(
-            requests_per_iteration=requests_per_iteration if requests_per_iteration is not None else 1.0,
+            requests_per_iteration=requests_per_iteration
+            if requests_per_iteration is not None
+            else 1.0,
             tokens_per_iteration=tokens_per_iteration,
             samples_per_iteration=samples_per_iteration,
             bytes_per_iteration=bytes_per_iteration,
@@ -2220,15 +2528,15 @@ class BaseBenchmark:
 
     def get_optimization_goal(self) -> str:
         """Return the primary optimization goal for this benchmark.
-        
+
         Override this method to indicate what metric the optimization targets.
         The harness will use this to evaluate success appropriately.
-        
+
         Returns:
             One of: "speed", "memory", "throughput", "latency", "power",
             or the repo-local "comparison" category.
             Default is "speed" (lower time = better)
-            
+
         Examples:
             - "speed": Traditional speedup (baseline_time / optimized_time)
             - "memory": Memory reduction (baseline_memory / optimized_memory)
@@ -2247,7 +2555,7 @@ class BaseBenchmark:
         default threshold in the benchmark runner.
         """
         return None
-    
+
     def _record_start(self) -> float:
         """Return a high-resolution timestamp for chunk-level timing."""
         return time.perf_counter()
@@ -2255,13 +2563,13 @@ class BaseBenchmark:
     def _record_stop(self, start: float) -> float:
         """Return elapsed time in milliseconds since ``start``."""
         return (time.perf_counter() - start) * 1000.0
-    
+
     def _scale_workload_by_memory(self, base_size: int) -> int:
         """Scale workload size based on available GPU memory.
-        
+
         Args:
             base_size: Base workload size for large GPUs (>=16GB)
-            
+
         Returns:
             Scaled workload size based on GPU memory:
             - >=16GB: base_size (100%)
@@ -2271,7 +2579,7 @@ class BaseBenchmark:
         """
         if not torch.cuda.is_available():
             return base_size
-        
+
         total_memory_gb = torch.cuda.get_device_properties(0).total_memory / (1024**3)
         if total_memory_gb >= 16:
             return base_size
@@ -2302,23 +2610,23 @@ class BaseBenchmark:
             blocking = tensor.is_pinned() if non_blocking is None else non_blocking
             return tensor.to(target, non_blocking=bool(blocking))
         return tensor.to(target)
-    
+
     @contextmanager
     def _nvtx_range(self, name: str):
         """Context manager for NVTX ranges with automatic enable/disable.
-        
+
         Automatically checks if NVTX is enabled via get_config().
-        
+
         Args:
             name: Name for the NVTX range
-            
+
         Usage:
             with self._nvtx_range("my_operation"):
                 # code to profile
                 pass
         """
         from core.profiling.nvtx_helper import nvtx_range, get_nvtx_enabled
-        
+
         # Prefer the harness-merged config if present to honor CLI flags.
         # Cache by config object so repeated hot-path NVTX ranges avoid
         # re-reading profiling flags while still honoring a new harness config.
@@ -2332,17 +2640,19 @@ class BaseBenchmark:
 
         with nvtx_range(name, enable=self._nvtx_enabled_cache):
             yield
-    
+
     def _synchronize(self) -> None:
         """Synchronize CUDA device if available.
-        
+
         Convenience method for benchmarks to ensure operations complete.
         """
         if torch.cuda.is_available() and self.device.type == "cuda":
             torch.cuda.synchronize(self.device)
 
 
-def _maybe_write_subprocess_stderr(stderr: str, benchmark_name: str, config: BenchmarkConfig) -> None:
+def _maybe_write_subprocess_stderr(
+    stderr: str, benchmark_name: str, config: BenchmarkConfig
+) -> None:
     _maybe_write_subprocess_stream(stderr, benchmark_name, config, stream="stderr")
 
 
@@ -2358,7 +2668,9 @@ def _maybe_write_subprocess_stream(
     if env_flag is not None:
         if str(env_flag).strip().lower() not in {"1", "true", "yes", "y", "on"}:
             return
-    output_dir = getattr(config, "subprocess_stderr_dir", None) or getattr(config, "profiling_output_dir", None)
+    output_dir = getattr(config, "subprocess_stderr_dir", None) or getattr(
+        config, "profiling_output_dir", None
+    )
     if not output_dir:
         return
     try:
@@ -2368,12 +2680,66 @@ def _maybe_write_subprocess_stream(
         path.write_text(content)
     except Exception as exc:
         if LOGGER_AVAILABLE:
-            logger.warning("Failed to persist subprocess %s for %s: %s", stream, benchmark_name, exc)
+            logger.warning(
+                "Failed to persist subprocess %s for %s: %s", stream, benchmark_name, exc
+            )
+
+
+def _authenticated_nested_cleanup_receipt_or_raise(
+    result: Dict[str, Any],
+) -> Optional[Dict[str, Any]]:
+    """Fail closed when an authenticated cleanup event is malformed."""
+    execution = result.get("execution")
+    if isinstance(execution, dict) and execution.get("completion_scope") == "cleanup_incomplete":
+        return validate_cleanup_incomplete_receipt(result)
+    nonce = execution.get("cleanup_event_nonce") if isinstance(execution, dict) else None
+    if not isinstance(nonce, str) or not nonce:
+        return None
+    try:
+        return parse_cleanup_incomplete_event(
+            str(result.get("stderr", "")),
+            expected_nonce=nonce,
+        )
+    except ValueError as protocol_error:
+        receipt = dict(result)
+        receipt["stdout"] = str(result.get("stdout", ""))
+        receipt["stderr"] = str(result.get("stderr", ""))
+        receipt_execution = dict(execution)
+        receipt_execution["outer_completion_scope"] = execution.get("completion_scope")
+        receipt_execution["completion_scope"] = "cleanup_incomplete"
+        receipt_execution["live_process_group_members"] = None
+        receipt_execution["cleanup_protocol_scope"] = "authenticated_nested_event"
+        receipt_execution["cleanup_protocol_error"] = str(protocol_error)
+        receipt["execution"] = receipt_execution
+        receipt["outer_execution"] = dict(execution)
+        receipt["cleanup_protocol_error"] = str(protocol_error)
+        fatal = CooperativeCleanupIncomplete(validate_cleanup_incomplete_receipt(receipt))
+        fatal.outer_process_result = result
+        fatal.cleanup_protocol_error = str(protocol_error)
+        raise fatal from protocol_error
+
+
+def _require_safe_benchmark_worker_receipt(
+    result: Dict[str, Any],
+    *,
+    context: str,
+) -> None:
+    """Preserve terminal cleanup priority before checking capture fidelity."""
+    terminal_cleanup_receipt = _authenticated_nested_cleanup_receipt_or_raise(result)
+    if terminal_cleanup_receipt is not None:
+        cancellation = terminal_cleanup_receipt.get("cancellation", {})
+        if cancellation.get("operator_interrupt_observed"):
+            terminal_error = CooperativeProcessInterrupted(terminal_cleanup_receipt)
+        else:
+            terminal_error = CooperativeCleanupIncomplete(terminal_cleanup_receipt)
+        terminal_error.outer_process_result = result
+        raise terminal_error
+    _require_exact_subprocess_capture(result, context=context)
 
 
 class BenchmarkHarness:
     """Production-grade benchmarking harness with profiling support."""
-    
+
     def __init__(
         self,
         mode: BenchmarkMode = BenchmarkMode.CUSTOM,
@@ -2391,6 +2757,19 @@ class BenchmarkHarness:
         self._runtime_initialized = False
         self._thread_executor: Optional[ThreadPoolExecutor] = None
         self._environment_probe = environment_probe or EnvironmentProbe()
+        self._owned_process_execution = False
+
+    def _validate_execution_timeout_mode(
+        self,
+        config: BenchmarkConfig,
+        *,
+        actual_execution_mode: Optional[ExecutionMode] = None,
+    ) -> None:
+        validate_benchmark_execution_timeout(
+            config,
+            actual_execution_mode=actual_execution_mode,
+            owned_subprocess=self._owned_process_execution,
+        )
 
     def _ensure_runtime_initialized(self) -> None:
         """Perform CUDA-touching runtime setup only in the executing process."""
@@ -2398,10 +2777,10 @@ class BenchmarkHarness:
             return
         self._seed_info = self._setup_reproducibility()
         self._runtime_initialized = True
-    
+
     def _setup_reproducibility(self) -> Dict[str, Any]:
         """Setup for reproducible benchmarks.
-        
+
         Returns:
             Dictionary with seed values that were set (for manifest capture).
         """
@@ -2412,7 +2791,7 @@ class BenchmarkHarness:
             "cuda_seed": None,
             "deterministic_mode": self.config.deterministic,
         }
-        
+
         if self.config.seed is not None:
             seed = self.config.seed
             random.seed(seed)
@@ -2420,13 +2799,13 @@ class BenchmarkHarness:
             torch.manual_seed(seed)
             seed_info["random_seed"] = seed
             seed_info["numpy_seed"] = seed
-            
+
             if torch.cuda.is_available():
                 torch.cuda.manual_seed_all(seed)
-            
+
             if LOGGER_AVAILABLE:
                 logger.info(f"Seeds set to {seed} (random, numpy, torch, cuda)")
-        
+
         # Always capture current seeds for mutation detection, even if we did not explicitly seed.
         try:
             seed_info["torch_seed"] = int(torch.initial_seed())
@@ -2437,22 +2816,24 @@ class BenchmarkHarness:
             try:
                 seed_info["cuda_seed"] = int(torch.cuda.initial_seed())
             except Exception as exc:
-                raise RuntimeError("Failed to read torch.cuda.initial_seed() for seed tracking") from exc
+                raise RuntimeError(
+                    "Failed to read torch.cuda.initial_seed() for seed tracking"
+                ) from exc
 
         return seed_info
 
     @contextmanager
     def _nvtx_range(self, name: str):
         """Context manager for NVTX ranges with automatic enable/disable.
-        
+
         Args:
             name: Name for the NVTX range
         """
         from core.profiling.nvtx_helper import nvtx_range, get_nvtx_enabled
-        
+
         config = self.config
         enable_nvtx = get_nvtx_enabled(config) if config else False
-        
+
         with nvtx_range(name, enable=enable_nvtx):
             yield
 
@@ -2516,15 +2897,21 @@ class BenchmarkHarness:
                 raise ValueError(f"required_world_size must be positive, got {required}")
             return required, True
         multi_gpu_required = bool(
-            getattr(config, "multi_gpu_required", False) or getattr(benchmark, "multi_gpu_required", False)
+            getattr(config, "multi_gpu_required", False)
+            or getattr(benchmark, "multi_gpu_required", False)
         )
         if multi_gpu_required:
             return 2, False
         return 1, False
 
-    def _enforce_world_size_requirement(self, benchmark: BaseBenchmark, config: BenchmarkConfig) -> None:
+    def _enforce_world_size_requirement(
+        self, benchmark: BaseBenchmark, config: BenchmarkConfig
+    ) -> None:
         """Fail fast if world size/visible GPUs do not match requirements."""
-        if getattr(benchmark, "allow_cpu", False) and getattr(benchmark, "device", None) is not None:
+        if (
+            getattr(benchmark, "allow_cpu", False)
+            and getattr(benchmark, "device", None) is not None
+        ):
             if getattr(benchmark, "device").type != "cuda":
                 return
         required, exact = self._resolve_world_size_requirement(benchmark, config)
@@ -2573,9 +2960,15 @@ class BenchmarkHarness:
     ) -> None:
         """Attach launch metadata onto a BenchmarkResult in-place."""
         result.launch_via = getattr(config, "launch_via", None)
-        resolved_world_size = world_size if world_size is not None else self._world_size_hint(config)
+        resolved_world_size = (
+            world_size if world_size is not None else self._world_size_hint(config)
+        )
         result.world_size = resolved_world_size
-        requires_multi = getattr(config, "multi_gpu_required", False) if multi_gpu_required is None else multi_gpu_required
+        requires_multi = (
+            getattr(config, "multi_gpu_required", False)
+            if multi_gpu_required is None
+            else multi_gpu_required
+        )
         result.multi_gpu_required = bool(requires_multi)
         result.multi_gpu = bool(resolved_world_size and resolved_world_size > 1)
 
@@ -2618,13 +3011,16 @@ class BenchmarkHarness:
             setattr(benchmark, "_applied_target_override_signature", override_signature)
             return
         launcher = getattr(config, "launch_via", None)
-        if not launcher_final or str(getattr(launcher, "value", launcher)).lower() == LaunchVia.TORCHRUN.value:
+        if (
+            not launcher_final
+            or str(getattr(launcher, "value", launcher)).lower() == LaunchVia.TORCHRUN.value
+        ):
             return
         raise ValueError(
             f"--target-extra-arg was given for {target_label}, but {type(benchmark).__name__} has no "
             "apply_target_overrides hook, so the arguments would be ignored"
         )
-    
+
     def _create_timeout_result(
         self,
         *,
@@ -2637,7 +3033,27 @@ class BenchmarkHarness:
         watchdog: Optional[Dict[str, Any]] = None,
     ) -> PydanticBenchmarkResult:
         """Helper to build a timeout result with consistent schema."""
-        timeout_timing = TimingStats(
+        result = self._create_failure_result(
+            errors=errors,
+            benchmark_name=benchmark_name,
+            config=config,
+            watchdog=watchdog,
+        )
+        result.timeout_stage = stage
+        result.timeout_duration_seconds = duration
+        result.timeout_limit_seconds = int(limit) if limit is not None else None
+        return result
+
+    def _create_failure_result(
+        self,
+        *,
+        errors: List[str],
+        benchmark_name: str,
+        config: BenchmarkConfig,
+        watchdog: Optional[Dict[str, Any]] = None,
+    ) -> PydanticBenchmarkResult:
+        """Report failed execution without claiming a deadline expired."""
+        failure_timing = TimingStats(
             mean_ms=0.0,
             median_ms=0.0,
             std_ms=0.0,
@@ -2654,11 +3070,11 @@ class BenchmarkHarness:
             schemaVersion="1.0",
         )
         result = PydanticBenchmarkResult(
-            timing=timeout_timing,
+            timing=failure_timing,
             errors=errors,
-            timeout_stage=stage,
-            timeout_duration_seconds=duration,
-            timeout_limit_seconds=int(limit) if limit is not None else None,
+            timeout_stage=None,
+            timeout_duration_seconds=None,
+            timeout_limit_seconds=None,
             inference_timing=None,
             memory=None,
             artifacts=None,
@@ -2673,7 +3089,7 @@ class BenchmarkHarness:
         )
         self._annotate_launch_metadata(result, config, world_size=self._world_size_hint(config))
         return result
-    
+
     @staticmethod
     def _extract_tokens_per_s(lines: List[str]) -> Optional[float]:
         """Return the highest 'NUMBER tokens/s' rate reported in worker logs."""
@@ -2694,9 +3110,7 @@ class BenchmarkHarness:
                 continue
             candidate = float(match.group(1).replace(",", ""))
             if not math.isfinite(candidate):
-                raise RuntimeError(
-                    f"Torchrun worker reported a non-finite token rate: {line!r}"
-                )
+                raise RuntimeError(f"Torchrun worker reported a non-finite token rate: {line!r}")
             best = candidate if best is None else max(best, candidate)
         return best
 
@@ -2705,9 +3119,7 @@ class BenchmarkHarness:
         """Read one explicitly declared rank-0 worker iteration mean."""
         pattern = re.compile(r"^\s*rank0 time_per_iter_ms:\s*(\S+)\s*$")
         encoded_values = [
-            match.group(1)
-            for line in lines
-            if (match := pattern.fullmatch(line)) is not None
+            match.group(1) for line in lines if (match := pattern.fullmatch(line)) is not None
         ]
         if len(encoded_values) != 1:
             raise RuntimeError(
@@ -2719,8 +3131,7 @@ class BenchmarkHarness:
             value = float(encoded_values[0])
         except ValueError as exc:
             raise RuntimeError(
-                "Torchrun rank0 time_per_iter_ms must be numeric, got "
-                f"{encoded_values[0]!r}"
+                f"Torchrun rank0 time_per_iter_ms must be numeric, got {encoded_values[0]!r}"
             ) from exc
         if not math.isfinite(value) or value <= 0:
             raise RuntimeError(
@@ -2729,10 +3140,15 @@ class BenchmarkHarness:
             )
         return value
 
-    def _benchmark_with_torchrun(self, benchmark: BaseBenchmark, config: BenchmarkConfig) -> PydanticBenchmarkResult:
+    def _benchmark_with_torchrun(
+        self, benchmark: BaseBenchmark, config: BenchmarkConfig
+    ) -> PydanticBenchmarkResult:
         """Launch benchmark via torchrun for multi-GPU targets."""
         import inspect
-        from core.harness.torchrun_runtime_provenance import parse_torchrun_runtime_provenance_stdout
+        from core.harness.torchrun_runtime_provenance import (
+            parse_torchrun_runtime_provenance_stdout,
+        )
+
         print("[harness] _benchmark_with_torchrun start", flush=True)
 
         def _filter_logs(lines: List[str], dedupe: bool = True) -> List[str]:
@@ -2748,9 +3164,7 @@ class BenchmarkHarness:
                 seen.add(key)
                 # Filter explicit worker labels, not prose such as "per rank".
                 # Unlabelled summaries are emitted by rank 0 in training scripts.
-                rank = re.search(
-                    r"\b(?:local_rank|rank)[\s:=]*(\d+)\b|\br(\d+)\b", key
-                )
+                rank = re.search(r"\b(?:local_rank|rank)[\s:=]*(\d+)\b|\br(\d+)\b", key)
                 if spec.parse_rank0_only and rank is not None:
                     rank_number = next(group for group in rank.groups() if group is not None)
                     if int(rank_number) != 0 and "world_size" not in key:
@@ -2772,13 +3186,17 @@ class BenchmarkHarness:
         spec: Optional[TorchrunLaunchSpec] = getter(config)
         if spec is None:
             # BaseBenchmark's default getter explicitly returns None.
-            benchmark_module = inspect.getmodule(benchmark) or inspect.getmodule(benchmark.__class__)
+            benchmark_module = inspect.getmodule(benchmark) or inspect.getmodule(
+                benchmark.__class__
+            )
             module_path = Path(getattr(benchmark_module, "__file__", "")).resolve()
             spec = TorchrunLaunchSpec(script_path=module_path)
         result_callback = None
         if spec.result_callback is not None:
             if not isinstance(spec.result_callback, str) or not spec.result_callback:
-                raise TypeError("TorchrunLaunchSpec.result_callback must be a non-empty method name")
+                raise TypeError(
+                    "TorchrunLaunchSpec.result_callback must be a non-empty method name"
+                )
             result_callback = getattr(benchmark, spec.result_callback, None)
             if not callable(result_callback):
                 raise TypeError(
@@ -2790,7 +3208,9 @@ class BenchmarkHarness:
             flush=True,
         )
 
-        script_path = Path(spec.script_path).resolve() if spec and spec.script_path is not None else None
+        script_path = (
+            Path(spec.script_path).resolve() if spec and spec.script_path is not None else None
+        )
         module_name = spec.module_name if spec else None
         if bool(script_path) == bool(module_name):
             raise RuntimeError(
@@ -2800,13 +3220,16 @@ class BenchmarkHarness:
             raise RuntimeError("SKIPPED: Torchrun launch requested but script_path does not exist.")
 
         world_size_hint = self._world_size_hint(config)
-        multi_gpu_required = bool(spec.multi_gpu_required or getattr(config, "multi_gpu_required", False))
+        multi_gpu_required = bool(
+            spec.multi_gpu_required or getattr(config, "multi_gpu_required", False)
+        )
         if multi_gpu_required and (world_size_hint is not None and world_size_hint < 2):
             message = "SKIPPED: Multi-GPU benchmark requires nproc_per_node>=2."
             errors.append(message)
             raise RuntimeError(message)
 
         nproc_per_node = getattr(config, "nproc_per_node", None) or 1
+
         def _sockets_permitted() -> bool:
             """Return True if the runtime can create sockets (required by torchrun rendezvous)."""
             try:
@@ -2827,12 +3250,21 @@ class BenchmarkHarness:
         if not sockets_permitted:
             nnodes = int(getattr(config, "nnodes", None) or 1)
             if nnodes != 1:
-                raise RuntimeError("Torchrun launch requires socket permissions (nnodes>1 requested).")
+                raise RuntimeError(
+                    "Torchrun launch requires socket permissions (nnodes>1 requested)."
+                )
             if int(nproc_per_node) != 1:
-                raise RuntimeError("Torchrun launch requires socket permissions (nproc_per_node>1 requested).")
+                raise RuntimeError(
+                    "Torchrun launch requires socket permissions (nproc_per_node>1 requested)."
+                )
             if getattr(config, "rdzv_backend", None) or getattr(config, "rdzv_endpoint", None):
-                raise RuntimeError("Torchrun rendezvous flags require socket permissions in this environment.")
-            print("[harness] sockets unavailable; launching torchrun wrapper directly (single process)", flush=True)
+                raise RuntimeError(
+                    "Torchrun rendezvous flags require socket permissions in this environment."
+                )
+            print(
+                "[harness] sockets unavailable; launching torchrun wrapper directly (single process)",
+                flush=True,
+            )
             torchrun_cmd = [sys.executable]
         else:
             # A PATH torchrun can belong to another Python/PyTorch environment.
@@ -2905,17 +3337,27 @@ class BenchmarkHarness:
                 raise RuntimeError("Missing expected CUDA seed for torchrun enforcement")
             wrapper_args.extend(["--aisp-expected-cuda-seed", str(int(expected_cuda_seed))])
 
-        full_cmd = torchrun_cmd + ["-m", "core.harness.torchrun_wrapper"] + wrapper_args + script_args
+        full_cmd = (
+            torchrun_cmd + ["-m", "core.harness.torchrun_wrapper"] + wrapper_args + script_args
+        )
         print(f"[harness] torchrun cmd: {' '.join(full_cmd)}", flush=True)
 
         repo_root = Path(__file__).resolve().parents[2]
         env = build_repo_python_env(repo_root, base_env=os.environ.copy())
-        env.setdefault("AISP_BENCHMARK_OWNER_RUN_ID", os.environ.get("AISP_BENCHMARK_OWNER_RUN_ID", str(os.getpid())))
-        env.setdefault("AISP_BENCHMARK_OWNER_PID", os.environ.get("AISP_BENCHMARK_OWNER_PID", str(os.getpid())))
+        env.setdefault(
+            "AISP_BENCHMARK_OWNER_RUN_ID",
+            os.environ.get("AISP_BENCHMARK_OWNER_RUN_ID", str(os.getpid())),
+        )
+        env.setdefault(
+            "AISP_BENCHMARK_OWNER_PID", os.environ.get("AISP_BENCHMARK_OWNER_PID", str(os.getpid()))
+        )
         for key in getattr(config, "env_passthrough", []) or []:
             if key in os.environ:
                 env[key] = os.environ[key]
-        print(f"[harness] torchrun env passthrough: {getattr(config, 'env_passthrough', [])}", flush=True)
+        print(
+            f"[harness] torchrun env passthrough: {getattr(config, 'env_passthrough', [])}",
+            flush=True,
+        )
         env.update(spec.env)
         if getattr(config, "single_gpu", False):
             env["CUDA_VISIBLE_DEVICES"] = self._select_single_gpu_visible()
@@ -2949,6 +3391,7 @@ class BenchmarkHarness:
             )
         if not isinstance(timeout_limit, (int, float)) or timeout_limit <= 0:
             raise ValueError(f"Invalid torchrun measurement timeout: {timeout_limit!r}")
+        validate_subprocess_wait_timeout(timeout_limit)
         timeout_limit = float(timeout_limit)
 
         try:
@@ -2958,44 +3401,60 @@ class BenchmarkHarness:
                 env["AISP_TORCHRUN_RESULT_LAUNCH_WALL_NS"] = str(launch_wall_ns)
                 env["AISP_TORCHRUN_RESULT_LAUNCH_MONOTONIC_NS"] = str(launch_monotonic_ns)
             start = time.perf_counter()
-            process = subprocess.Popen(
+            completed = run_owned_process(
                 full_cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
+                timeout_seconds=timeout_limit,
                 preexec_fn=_benchmark_child_preexec,
                 env=env,
             )
-            child_pgid = process.pid  # _benchmark_child_preexec() starts a fresh session.
-            try:
-                stdout, stderr = process.communicate(timeout=timeout_limit)
-            except subprocess.TimeoutExpired:
-                _terminate_process_group(process, child_pgid, grace_seconds=2.0)
+            if completed.get("errno") == errno.ENOENT:
+                raise RuntimeError(
+                    f"SKIPPED: torchrun launcher executable not found: {full_cmd[0]}"
+                )
+            _require_exact_subprocess_capture(
+                completed,
+                context="torchrun worker",
+            )
+            stdout, stderr = completed["stdout"], completed["stderr"]
+            returncode = completed["returncode"]
+            torchrun_benchmark_name = f"torchrun_{spec.name or benchmark.__class__.__name__}"
+            _maybe_write_subprocess_stream(
+                stdout,
+                torchrun_benchmark_name,
+                config,
+                stream="stdout",
+            )
+            _maybe_write_subprocess_stream(
+                stderr,
+                torchrun_benchmark_name,
+                config,
+                stream="stderr",
+            )
+            if completed.get("timeout_hit"):
                 elapsed = time.perf_counter() - start
                 return self._create_timeout_result(
                     stage="measurement",
                     duration=elapsed,
                     limit=timeout_limit,
                     errors=["Torchrun launch exceeded timeout", *errors],
-                    benchmark_name=spec.name or getattr(benchmark, "name", None) or benchmark.__class__.__name__,
+                    benchmark_name=spec.name
+                    or getattr(benchmark, "name", None)
+                    or benchmark.__class__.__name__,
                     config=config,
                 )
             elapsed = time.perf_counter() - start
             finish_monotonic_ns = time.monotonic_ns()
             finish_wall_ns = time.time_ns()
-            _maybe_write_subprocess_stream(
-                stdout, f"torchrun_{spec.name or benchmark.__class__.__name__}", config, stream="stdout"
-            )
-            if process.returncode != 0:
+            if returncode != 0:
                 stdout_lines = stdout.splitlines() if stdout else []
-                stderr_lines = [line.strip() for line in (stderr or "").splitlines() if line.strip()]
+                stderr_lines = [
+                    line.strip() for line in (stderr or "").splitlines() if line.strip()
+                ]
                 skip_reason = _extract_skip_reason_from_messages([*stdout_lines, *stderr_lines])
                 if skip_reason:
                     errors.append(f"SKIPPED: {skip_reason}")
                 else:
-                    errors.append(f"torchrun exited with code {process.returncode}")
-                if stderr:
-                    _maybe_write_subprocess_stderr(stderr, f"torchrun_{spec.name or benchmark.__class__.__name__}", config)
+                    errors.append(f"torchrun exited with code {returncode}")
                 if stderr_lines and not skip_reason:
                     # Prefer showing the root-cause message (e.g., seed mutation) instead of only the
                     # torchrun elastic summary tail.
@@ -3045,12 +3504,16 @@ class BenchmarkHarness:
                         launch_monotonic_ns=launch_monotonic_ns,
                         finish_wall_ns=finish_wall_ns,
                         finish_monotonic_ns=finish_monotonic_ns,
-                        returncode=int(process.returncode),
+                        returncode=int(returncode),
                         stdout=stdout,
                         stderr=stderr,
                     )
-        except FileNotFoundError:
-            raise RuntimeError("SKIPPED: torchrun not found in PATH.")
+        except FileNotFoundError as exc:
+            if exc.filename != str(full_cmd[0]):
+                raise
+            raise RuntimeError(
+                f"SKIPPED: torchrun launcher executable not found: {full_cmd[0]}"
+            ) from exc
 
         stdout_lines = stdout.splitlines() if stdout else []
         filtered_lines = _filter_logs(stdout_lines, dedupe=spec.parse_rank0_only)
@@ -3074,7 +3537,9 @@ class BenchmarkHarness:
             )
         result = self._compute_stats(times_ms, config)
         if worker_runtime_receipts is not None:
-            result.runtime_provenance = worker_runtime_receipts.primary_snapshot.model_copy(deep=True)
+            result.runtime_provenance = worker_runtime_receipts.primary_snapshot.model_copy(
+                deep=True
+            )
             result.runtime_provenance_by_local_rank = {
                 rank: snapshot.model_copy(deep=True)
                 for rank, snapshot in worker_runtime_receipts.snapshots_by_local_rank.items()
@@ -3123,7 +3588,7 @@ class BenchmarkHarness:
             multi_gpu_required=multi_gpu_required,
         )
         return result
-    
+
     def _ensure_thread_executor(self) -> None:
         """Initialize thread executor for threaded execution mode."""
         if self._thread_executor is None:
@@ -3131,28 +3596,28 @@ class BenchmarkHarness:
                 max_workers=1,
                 thread_name_prefix="benchmark-thread",
             )
-    
+
     def _reset_thread_executor(self) -> None:
         """Shutdown and reset thread executor."""
         if self._thread_executor is not None:
             self._thread_executor.shutdown(wait=False, cancel_futures=True)
             self._thread_executor = None
-    
+
     @contextmanager
     def _memory_tracking(self, config: Optional[BenchmarkConfig] = None):
         """Context manager for memory tracking.
-        
+
         Yields a MemoryStats pydantic model (or None if tracking disabled).
-        
+
         Args:
             config: BenchmarkConfig to check for enable_memory_tracking. If None, uses self.config.
-        
+
         Yields:
             MemoryStats pydantic model if tracking enabled, None otherwise.
         """
         # Use provided config or fall back to instance config
         check_config = config if config is not None else self.config
-        
+
         if (
             not check_config.enable_memory_tracking
             or self.device.type != "cuda"
@@ -3160,44 +3625,43 @@ class BenchmarkHarness:
         ):
             yield None
             return
-        
+
         # Create MemoryStats model
         result = MemoryStats(peak_mb=None, allocated_mb=None, reserved_mb=None, schemaVersion="1.0")
-        
+
         torch.cuda.reset_peak_memory_stats(self.device)
         torch.cuda.synchronize(self.device)
         yield result
         torch.cuda.synchronize(self.device)
-        
+
         # Set memory values
         result.peak_mb = torch.cuda.max_memory_allocated(self.device) / (1024**2)
         result.allocated_mb = torch.cuda.memory_allocated(self.device) / (1024**2)
-        
+
         # Try to get reserved memory if available
         try:
             result.reserved_mb = torch.cuda.memory_reserved(self.device) / (1024**2)
         except AttributeError:
             # memory_reserved may not be available in all PyTorch versions
             result.reserved_mb = None
-    
+
     def benchmark(
-        self,
-        benchmark: Union[BaseBenchmark, Callable[[], Any]],
-        name: Optional[str] = None
+        self, benchmark: Union[BaseBenchmark, Callable[[], Any]], name: Optional[str] = None
     ) -> PydanticBenchmarkResult:
         """Run benchmark and return statistical results.
-        
+
         Uses subprocess isolation (if enabled) or threading timeout to prevent hangs.
         Default timeout is 15 seconds.
         """
         from core.harness.profiler_guard import assert_no_active_profiler
+
         assert_no_active_profiler()
         callable_wrapped = False
         # Support callable benchmarks by wrapping in a minimal BaseBenchmark
         if not isinstance(benchmark, BaseBenchmark):
             fn = benchmark
             callable_wrapped = True
-            
+
             class _CallableBenchmark(BaseBenchmark):  # type: ignore[misc]
                 def __init__(self, wrapped_fn: Callable[[], Any], bench_name: Optional[str]):
                     # Callable benchmarks should not force CUDA; allow CPU for lightweight examples/docs.
@@ -3205,14 +3669,14 @@ class BenchmarkHarness:
                     super().__init__()
                     self._fn = wrapped_fn
                     self.name = bench_name or "callable_benchmark"
-                
+
                 def setup(self) -> None:
                     # No-op setup by default for raw callables
                     pass
-                
+
                 def benchmark_fn(self) -> None:
                     self._fn()
-            
+
             benchmark = _CallableBenchmark(fn, name)
         elif name and getattr(benchmark, "name", None) is None:
             # Preserve provided name if the benchmark did not set one
@@ -3228,12 +3692,18 @@ class BenchmarkHarness:
             "_subprocess_input_signature",
         ):
             vars(benchmark).pop(transport_attr, None)
-        
+
         print("[harness] benchmark() start", flush=True)
         # Clone config to avoid mutating shared instance; deepcopy prevents
         # dataclasses.replace from re-running __post_init__ (which re-applies multipliers)
         config = copy.deepcopy(self.config)
-        print(f"[harness] initial launch_via={config.launch_via} execution_mode={config.execution_mode}", flush=True)
+        requested_execution_timeout = validate_execution_timeout_seconds(
+            config.execution_timeout_seconds
+        )
+        print(
+            f"[harness] initial launch_via={config.launch_via} execution_mode={config.execution_mode}",
+            flush=True,
+        )
         if callable_wrapped:
             # Callable benchmarks run in-process to avoid JSON parsing of custom stdout
             config.use_subprocess = False
@@ -3254,13 +3724,16 @@ class BenchmarkHarness:
             # Override with benchmark-specific settings
             default_bench_config = BenchmarkConfig()
             for key, value in bench_config.__dict__.items():
-                # Skip private/internal fields and None values.
-                if key.startswith("_") or value is None:
+                # Keep the caller's deadline selector, including an omitted value.
+                if key.startswith("_") or value is None or key == "execution_timeout_seconds":
                     continue
 
                 # Never allow benchmarks to re-enable subprocess mode when we're already
                 # running inside an isolated subprocess (prevents recursive launches).
-                if key in ("use_subprocess", "execution_mode") and self.config.use_subprocess is False:
+                if (
+                    key in ("use_subprocess", "execution_mode")
+                    and self.config.use_subprocess is False
+                ):
                     continue
 
                 # Merge target-specific extra args.
@@ -3302,13 +3775,26 @@ class BenchmarkHarness:
                         # Caller already chose a non-default value; keep it.
                         continue
                 setattr(config, key, value)
+        config.execution_timeout_seconds = requested_execution_timeout
+        if requested_execution_timeout is not None:
+            for field_name in (
+                "setup_timeout_seconds",
+                "warmup_timeout_seconds",
+                "measurement_timeout_seconds",
+                "timeout_seconds",
+            ):
+                setattr(config, field_name, requested_execution_timeout)
         config._sync_execution_mode()
         config._sync_launch_via()
-        print(f"[harness] execution_mode={config.execution_mode} launch_via={config.launch_via}", flush=True)
+        self._validate_execution_timeout_mode(config)
+        print(
+            f"[harness] execution_mode={config.execution_mode} launch_via={config.launch_via}",
+            flush=True,
+        )
         # The merge can select torchrun, which passes the values to the launched
         # script. With the launcher final, fail a target whose values would be ignored.
         self._apply_target_overrides(benchmark, config)
-        
+
         previous_config = getattr(benchmark, "_config", None)
 
         # Fail-fast compliance gate for perf path
@@ -3331,7 +3817,7 @@ class BenchmarkHarness:
                 meth = getattr(benchmark, method, None)
                 if meth is None or not callable(meth):
                     raise RuntimeError(f"SKIPPED: Benchmark missing required method '{method}'")
-        
+
         # CRITICAL: Ensure percentiles is always a list (never None)
         # This handles cases where benchmark.get_config() returns a config with percentiles=None
         # or where the config was created before __post_init__ could fix it
@@ -3369,8 +3855,12 @@ class BenchmarkHarness:
             probe=self._environment_probe,
             allow_virtualization=bool(getattr(config, "allow_virtualization", False)),
             allow_foreign_gpu_processes=bool(getattr(config, "allow_foreign_gpu_processes", False)),
-            expected_device_uuid=config.expected_device_uuid if self.device.type == "cuda" else None,
-            expected_compute_capability=config.expected_compute_capability if self.device.type == "cuda" else None,
+            expected_device_uuid=config.expected_device_uuid
+            if self.device.type == "cuda"
+            else None,
+            expected_compute_capability=config.expected_compute_capability
+            if self.device.type == "cuda"
+            else None,
         )
         if LOGGER_AVAILABLE:
             if env_result.details:
@@ -3405,22 +3895,22 @@ class BenchmarkHarness:
                 warnings.warn(
                     "ENVIRONMENT PRECHECK DEFERRED: parent benchmark() observed only "
                     "foreign CUDA process errors before subprocess isolation; "
-                    "strict validation will re-run inside the isolated subprocess. "
-                    + message,
+                    "strict validation will re-run inside the isolated subprocess. " + message,
                     RuntimeWarning,
                 )
             if LOGGER_AVAILABLE:
                 logger.warning(message)
-        
+
         gpu_mem_logger: Optional[GpuMemoryLogger] = None
         if not subprocess_coordinator:
             self._ensure_runtime_initialized()
 
-        if (
-            not subprocess_coordinator
-            and should_enable_gpu_memory_logging(getattr(config, "enable_gpu_memory_logging", False))
+        if not subprocess_coordinator and should_enable_gpu_memory_logging(
+            getattr(config, "enable_gpu_memory_logging", False)
         ):
-            log_interval = resolve_gpu_log_interval(getattr(config, "gpu_memory_log_interval_seconds", 5.0))
+            log_interval = resolve_gpu_log_interval(
+                getattr(config, "gpu_memory_log_interval_seconds", 5.0)
+            )
             log_path = resolve_gpu_log_path(getattr(config, "gpu_memory_log_path", None))
             gpu_mem_logger = GpuMemoryLogger(self.device, interval=log_interval, log_path=log_path)
             if gpu_mem_logger.start():
@@ -3434,7 +3924,10 @@ class BenchmarkHarness:
                 gpu_mem_logger = None
 
         backend_state = None
-        if config.launch_via != LaunchVia.TORCHRUN and config.execution_mode != ExecutionMode.SUBPROCESS:
+        if (
+            config.launch_via != LaunchVia.TORCHRUN
+            and config.execution_mode != ExecutionMode.SUBPROCESS
+        ):
             policy_name = normalize_backend_policy(getattr(config, "backend_policy", None))
             backend_state = apply_backend_policy(policy_name, bool(config.deterministic))
             if self._seed_info is not None:
@@ -3468,21 +3961,19 @@ class BenchmarkHarness:
                 log_file = gpu_mem_logger.stop()
                 if LOGGER_AVAILABLE:
                     logger.info("GPU memory log saved to %s", log_file)
-    
+
     def benchmark_with_manifest(
-        self, 
-        benchmark: BaseBenchmark,
-        run_id: Optional[str] = None
+        self, benchmark: BaseBenchmark, run_id: Optional[str] = None
     ) -> BenchmarkRun:
         """Run benchmark with manifest and return BenchmarkRun.
-        
+
         This method creates a RunManifest at the start, runs the benchmark,
         and returns a BenchmarkRun containing both the manifest and result.
-        
+
         Args:
             benchmark: BaseBenchmark instance to run
             run_id: Optional run identifier (defaults to timestamp)
-        
+
         Returns:
             BenchmarkRun with manifest and result
         """
@@ -3516,7 +4007,9 @@ class BenchmarkHarness:
 
         config_dict = {k: _serialize_manifest_value(v) for k, v in self.config.__dict__.items()}
         manifest = RunManifest.create(
-            config=config_dict, start_time=start_time, capture_execution_runtime=False,
+            config=config_dict,
+            start_time=start_time,
+            capture_execution_runtime=False,
         )
 
         def _append_manifest_warning(message: str) -> None:
@@ -3547,7 +4040,7 @@ class BenchmarkHarness:
                 deterministic_mode=manifest_seed_info.deterministic_mode,
                 schemaVersion="1.0",
             )
-        
+
         # Run benchmark
         result = self.benchmark(benchmark)
 
@@ -3573,6 +4066,7 @@ class BenchmarkHarness:
             locked = getattr(result, "gpu_metrics", None)
             hw = getattr(manifest, "hardware", None)
             if isinstance(locked, dict) and hw is not None:
+
                 def _maybe_int(v: Any) -> Optional[int]:
                     if v is None:
                         return None
@@ -3590,16 +4084,27 @@ class BenchmarkHarness:
                         return None
 
                 hw.gpu_clock_mhz = _maybe_int(locked.get("graphics_clock_mhz")) or hw.gpu_clock_mhz
-                hw.memory_clock_mhz = _maybe_int(locked.get("memory_clock_mhz")) or hw.memory_clock_mhz
-                hw.gpu_app_clock_mhz = _maybe_int(locked.get("applications_clock_sm_mhz")) or hw.gpu_app_clock_mhz
+                hw.memory_clock_mhz = (
+                    _maybe_int(locked.get("memory_clock_mhz")) or hw.memory_clock_mhz
+                )
+                hw.gpu_app_clock_mhz = (
+                    _maybe_int(locked.get("applications_clock_sm_mhz")) or hw.gpu_app_clock_mhz
+                )
                 hw.memory_app_clock_mhz = (
-                    _maybe_int(locked.get("applications_clock_memory_mhz")) or hw.memory_app_clock_mhz
+                    _maybe_int(locked.get("applications_clock_memory_mhz"))
+                    or hw.memory_app_clock_mhz
                 )
                 hw.power_draw_w = _maybe_float(locked.get("power_draw_w")) or hw.power_draw_w
-                hw.temperature_gpu_c = _maybe_float(locked.get("temperature_gpu_c")) or hw.temperature_gpu_c
-                hw.temperature_memory_c = _maybe_float(locked.get("temperature_memory_c")) or hw.temperature_memory_c
+                hw.temperature_gpu_c = (
+                    _maybe_float(locked.get("temperature_gpu_c")) or hw.temperature_gpu_c
+                )
+                hw.temperature_memory_c = (
+                    _maybe_float(locked.get("temperature_memory_c")) or hw.temperature_memory_c
+                )
                 hw.fan_speed_pct = _maybe_float(locked.get("fan_speed_pct")) or hw.fan_speed_pct
-                hw.utilization_gpu_pct = _maybe_float(locked.get("utilization_gpu_pct")) or hw.utilization_gpu_pct
+                hw.utilization_gpu_pct = (
+                    _maybe_float(locked.get("utilization_gpu_pct")) or hw.utilization_gpu_pct
+                )
                 hw.utilization_memory_pct = (
                     _maybe_float(locked.get("utilization_memory_pct")) or hw.utilization_memory_pct
                 )
@@ -3613,16 +4118,18 @@ class BenchmarkHarness:
                 for key, value in runtime_env.items():
                     env_info.relevant_env_vars[str(key)] = str(value)
         except Exception as exc:
-            _append_manifest_warning(f"Failed to merge runtime environment overrides into manifest: {exc}")
-        
+            _append_manifest_warning(
+                f"Failed to merge runtime environment overrides into manifest: {exc}"
+            )
+
         # Finalize manifest
         end_time = datetime.now()
         manifest.finalize(end_time=end_time)
-        
+
         # Generate run_id if not provided
         if run_id is None:
             run_id = start_time.strftime("run_%Y%m%d_%H%M%S")
-        
+
         # Create BenchmarkRun
         return BenchmarkRun(
             manifest=manifest,
@@ -3631,7 +4138,7 @@ class BenchmarkHarness:
             timestamp=start_time.isoformat(),
             schemaVersion="1.0",
         )
-    
+
     def _validate_jitter_signature(self, benchmark: BaseBenchmark) -> None:
         """Fail fast if get_input_signature() cannot support jitter checks."""
         from core.benchmark.verification import coerce_input_signature, select_jitter_dimension
@@ -3649,7 +4156,9 @@ class BenchmarkHarness:
             raise RuntimeError(f"SKIPPED: {reason}")
 
         # Multi-GPU benchmarks are skipped entirely when <2 GPUs.
-        cfg = getattr(benchmark, "_config", None) or getattr(benchmark, "get_config", lambda: None)()
+        cfg = (
+            getattr(benchmark, "_config", None) or getattr(benchmark, "get_config", lambda: None)()
+        )
         multi_gpu_flag = False
         if cfg is not None and getattr(cfg, "multi_gpu_required", False):
             multi_gpu_flag = True
@@ -3667,7 +4176,7 @@ class BenchmarkHarness:
             raise RuntimeError(
                 "Jitter check requires get_input_signature() to include at least one tensor shape with >=2 dims."
             )
-    
+
     def verify(
         self,
         baseline: BaseBenchmark,
@@ -3675,35 +4184,35 @@ class BenchmarkHarness:
         force_recache: bool = False,
     ) -> "VerifyResult":
         """Run verification on a baseline/optimized benchmark pair.
-        
+
         This method verifies that baseline and optimized benchmarks:
         1. Have equivalent input signatures (same workload)
         2. Produce equivalent outputs (within tolerance)
         3. Pass anti-hacking checks (fresh-input, jitter)
-        
+
         Verification runs with deterministic seeds (seed=42) and caches
         baseline golden outputs for subsequent comparisons.
-        
+
         Args:
             baseline: The baseline benchmark instance
-            optimized: The optimized benchmark instance  
+            optimized: The optimized benchmark instance
             force_recache: If True, regenerate baseline golden output
-            
+
         Returns:
             VerifyResult with verification outcome
-            
+
         Example:
             harness = BenchmarkHarness()
             baseline = BaselineGemmBenchmark()
             optimized = OptimizedGemmBenchmark()
-            
+
             result = harness.verify(baseline, optimized)
             if not result.passed:
                 print(f"Verification failed: {result.reason}")
         """
         from core.benchmark.verify_runner import VerifyRunner, VerifyConfig
         from core.benchmark.verification import VerifyResult
-        
+
         # Fail early on missing jitter metadata to avoid late surprises.
         self._validate_jitter_signature(baseline)
         self._validate_jitter_signature(optimized)
@@ -3714,24 +4223,24 @@ class BenchmarkHarness:
             force_recache=force_recache,
             verbose=LOGGER_AVAILABLE,
         )
-        
+
         return runner.verify_pair(baseline, optimized, config)
-    
+
     def gate_perf(
         self,
         benchmark_path: str,
     ) -> Tuple[bool, Optional[str]]:
         """Check if a benchmark is allowed to run performance measurement.
-        
+
         Based on enforcement phase and quarantine status, determines
         whether perf measurement should proceed.
-        
+
         Args:
             benchmark_path: Path to the benchmark file
-            
+
         Returns:
             Tuple of (allowed, reason_if_blocked)
-            
+
         Example:
             harness = BenchmarkHarness()
             allowed, reason = harness.gate_perf("ch01/baseline_gemm.py")
@@ -3739,10 +4248,10 @@ class BenchmarkHarness:
                 print(f"Perf blocked: {reason}")
         """
         from core.benchmark.verify_runner import VerifyRunner
-        
+
         runner = VerifyRunner()
         return runner.gate_perf(benchmark_path)
-    
+
     def _benchmark_with_subprocess(
         self,
         benchmark: BaseBenchmark,
@@ -3751,11 +4260,12 @@ class BenchmarkHarness:
         declared_output_tolerances: Optional[OutputToleranceMap] = None,
     ) -> PydanticBenchmarkResult:
         """Run benchmark in subprocess for reliable timeout cancellation."""
+        self._validate_execution_timeout_mode(config)
         import json
         import inspect
         import torch
         from core.benchmark.run_manifest import RuntimeProvenance
-        
+
         errors: List[str] = []
         memory_peak_mb: Optional[float] = None
         memory_allocated_mb: Optional[float] = None
@@ -3765,6 +4275,9 @@ class BenchmarkHarness:
         proton_metrics: Dict[str, float] = {}
         times_ms: List[float] = []
         child_timing: Optional[TimingStats] = None
+        child_failure_result: Optional[PydanticBenchmarkResult] = None
+        terminal_cleanup_receipt: Optional[Dict[str, Any]] = None
+        terminal_cleanup_interrupted = False
         inference_timing_data: Optional[Dict[str, List[float]]] = None
         seed_metadata = copy.deepcopy(getattr(self, "_seed_info", None))
         child_custom_metrics: Optional[Dict[str, float]] = None
@@ -3780,36 +4293,40 @@ class BenchmarkHarness:
             "profiling": {"status": "pending"},
             "measurement": {"status": "pending"},
         }
-        
+
         # Get benchmark name and module info for error messages
         module_override = getattr(benchmark, "_module_file_override", None)
         class_override = getattr(benchmark, "_factory_name_override", None)
         benchmark_module = inspect.getmodule(benchmark)
         benchmark_class = class_override or benchmark.__class__.__name__
-        benchmark_name = getattr(benchmark, '__name__', None) or getattr(benchmark, 'name', None) or benchmark_class
-        
+        benchmark_name = (
+            getattr(benchmark, "__name__", None)
+            or getattr(benchmark, "name", None)
+            or benchmark_class
+        )
+
         if benchmark_module is None:
             benchmark_module = inspect.getmodule(benchmark.__class__)
-        
+
         if benchmark_module is None:
             # Fallback to threading if we can't determine module
             return self._benchmark_with_threading(benchmark, config)
-        
+
         module_file = module_override or getattr(benchmark_module, "__file__", None)
         if module_file is None:
             spec = getattr(benchmark_module, "__spec__", None)
             if spec is not None:
                 module_file = getattr(spec, "origin", None)
-        
+
         if module_file is None:
             # Fallback to threading if we can't determine module file
             return self._benchmark_with_threading(benchmark, config)
-        
+
         module_path = Path(module_file).resolve()
         if not module_path.exists():
             # Fallback to threading if module file doesn't exist
             return self._benchmark_with_threading(benchmark, config)
-        
+
         def _is_simple(value: Any) -> bool:
             """Return True for JSON-serializable scalar/collection values."""
             if isinstance(value, (str, int, float, bool)) or value is None:
@@ -3846,8 +4363,8 @@ class BenchmarkHarness:
                 config_dict[key] = value
 
         # CRITICAL: Ensure percentiles is always in config_dict
-        if 'percentiles' not in config_dict:
-            config_dict['percentiles'] = [25, 50, 75, 99]
+        if "percentiles" not in config_dict:
+            config_dict["percentiles"] = [25, 50, 75, 99]
 
         initial_state = {
             key: value
@@ -3875,20 +4392,15 @@ class BenchmarkHarness:
         )
         if target_override_argv:
             input_data["target_override_argv"] = target_override_argv
-        # Spawn subprocess using isolated runner
-        # Use measurement_timeout_seconds (or fallback to timeout_seconds for backward compatibility).
-        # Fail fast if no timeout is configured to avoid indefinite hangs.
-        measurement_timeout = getattr(config, "measurement_timeout_seconds", None)
+        # Preserve None's legacy fallback and transport an explicit zero unchanged.
+        measurement_timeout = _measurement_execution_deadline(config)
         if measurement_timeout is None:
-            measurement_timeout = getattr(config, "timeout_seconds", None)
-        if measurement_timeout is None:
-            raise ValueError(
-                "Subprocess execution requires a finite timeout; set BenchmarkConfig.measurement_timeout_seconds "
-                "(or legacy timeout_seconds)."
+            require_cooperative_process_support()
+        else:
+            validate_subprocess_wait_timeout(
+                measurement_timeout,
+                additional_seconds=_RUNTIME_PROVENANCE_TIMEOUT_SECONDS,
             )
-        if not isinstance(measurement_timeout, (int, float)) or measurement_timeout <= 0:
-            raise ValueError(f"Invalid measurement timeout: {measurement_timeout!r}")
-        measurement_timeout = float(measurement_timeout)
 
         try:
             fd, verify_output_path = tempfile.mkstemp(prefix="aisp_verify_output_", suffix=".pt")
@@ -3898,11 +4410,75 @@ class BenchmarkHarness:
         input_data["verify_output_path"] = verify_output_path
         input_data["verify_output_max_bytes"] = _VERIFY_OUTPUT_MAX_BYTES
         start_time = time.time()
-        process: Optional[subprocess.Popen[str]] = None
-        child_pgid: Optional[int] = None
-        
+        worker_pid: Optional[int] = None
+        stdout, stderr = "", ""
+
+        def retain_worker_receipt(error: BaseException, receipt: Dict[str, Any]) -> None:
+            _maybe_write_subprocess_stream(
+                receipt["stdout"], benchmark_name, config, stream="stdout"
+            )
+            _maybe_write_subprocess_stream(
+                receipt["stderr"], benchmark_name, config, stream="stderr"
+            )
+            try:
+                nested = _authenticated_nested_cleanup_receipt_or_raise(receipt)
+            except CooperativeCleanupIncomplete as protocol_fatal:
+                if isinstance(error, KeyboardInterrupt):
+                    error.cleanup_incomplete_receipt = protocol_fatal.result
+                    error.cleanup_protocol_error = protocol_fatal.cleanup_protocol_error
+                    error.outer_process_result = protocol_fatal.outer_process_result
+                    return
+                raise
+            if nested is not None:
+                error.cleanup_incomplete_receipt = nested
+
+        def retain_attached_worker_receipt(error: BaseException) -> None:
+            receipt = process_receipt_from_error(error)
+            if isinstance(receipt, dict):
+                retain_worker_receipt(error, receipt)
+
+        def measurement_timeout_result(elapsed_time: float) -> BenchmarkResult:
+            assert measurement_timeout is not None
+            logger.error("=" * 80)
+            logger.error("TIMEOUT: Benchmark execution exceeded timeout limit")
+            logger.error("=" * 80)
+            logger.error(f"   Benchmark: {benchmark_name}")
+            logger.error("   Stage: measurement (benchmark iterations)")
+            logger.error(f"   Timeout limit: {measurement_timeout} seconds")
+            logger.error(f"   Elapsed time: {elapsed_time:.2f} seconds")
+            logger.error(f"   Config: iterations={config.iterations}, warmup={config.warmup}")
+            logger.error("   Status: Benchmark subprocess did not complete within timeout period")
+            logger.error("")
+            logger.error("   Possible causes:")
+            logger.error("   - Benchmark is too slow for current timeout")
+            logger.error("   - Benchmark is hanging or deadlocked")
+            logger.error("   - GPU is under heavy load from other processes")
+            logger.error("")
+            logger.error("   Suggested actions:")
+            logger.error(
+                f"   - Increase timeout: config.measurement_timeout_seconds = {measurement_timeout * 2}"
+            )
+            logger.error("   - Use timeout multiplier: config.timeout_multiplier = 2.0")
+            logger.error("   - Check for GPU resource contention")
+            logger.error("   - Review benchmark code for potential deadlocks")
+            logger.error("")
+            logger.error("   Action: Owned worker cleanup completed before returning")
+            logger.error("=" * 80)
+            errors.append(
+                f"TIMEOUT: Benchmark measurement stage exceeded timeout of {measurement_timeout} seconds "
+                f"(ran for {elapsed_time:.2f}s). Consider increasing "
+                "measurement_timeout_seconds or using timeout_multiplier."
+            )
+            return self._create_timeout_result(
+                stage="measurement",
+                duration=elapsed_time,
+                limit=measurement_timeout,
+                errors=errors,
+                benchmark_name=benchmark_name,
+                config=config,
+            )
+
         try:
-            import signal
             repo_root = Path(__file__).resolve().parents[2]
             env = build_repo_python_env(repo_root, base_env=os.environ.copy())
             owner_run_id = os.environ.get("AISP_BENCHMARK_OWNER_RUN_ID", str(os.getpid()))
@@ -3913,71 +4489,79 @@ class BenchmarkHarness:
                 env["CUDA_VISIBLE_DEVICES"] = self._select_single_gpu_visible()
                 if self.device.type == "cuda":
                     input_data["device"] = "cuda:0"
-            process = subprocess.Popen(
-                [
-                    sys.executable,
-                    "-m",
-                    "core.harness.isolated_runner",
-                    "--aisp-owner-run-id",
-                    owner_run_id,
-                    "--aisp-owner-pid",
-                    owner_pid,
-                ],
-                stdin=subprocess.PIPE,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                env=env,
-                preexec_fn=_benchmark_child_preexec,
-            )
-            child_pgid = process.pid  # _benchmark_child_preexec() starts a fresh session.
-            execution_process_ids = {0: process.pid}
-            if LOGGER_AVAILABLE:
-                logger.info(
-                    "SUBPROCESS DISPATCH: coordinator_pid=%s worker_pid=%s owner_run_id=%s owner_pid=%s",
-                    os.getpid(),
-                    process.pid,
-                    owner_run_id,
-                    owner_pid,
-                )
-            
-            # Send input JSON and wait for result
-            input_json = json.dumps(input_data)
-            subprocess_failed = False
-            try:
-                stdout, stderr = process.communicate(
-                    input=input_json,
-                    timeout=measurement_timeout + _RUNTIME_PROVENANCE_TIMEOUT_SECONDS,
-                )
-            except BrokenPipeError as exc:
-                subprocess_failed = True
-                errors.append(f"Subprocess stdin closed early: {exc}")
-                try:
-                    if process.stdin:
-                        process.stdin.close()
-                except Exception as close_exc:
-                    errors.append(f"Failed to close subprocess stdin after broken pipe: {close_exc}")
-                try:
-                    stdout, stderr = process.communicate(timeout=5)
-                except Exception as follow_exc:
-                    errors.append(f"Failed to read subprocess output after broken pipe: {follow_exc}")
-                    stdout = stdout or ""
-                    stderr = stderr or ""
-                if stderr:
-                    _maybe_write_subprocess_stderr(stderr, benchmark_name, config)
-                _cleanup_process_group(child_pgid)
-            else:
-                _cleanup_process_group(child_pgid)
+            worker_command = [
+                sys.executable,
+                "-m",
+                "core.harness.isolated_runner",
+                "--aisp-owner-run-id",
+                owner_run_id,
+                "--aisp-owner-pid",
+                owner_pid,
+            ]
 
+            def prepare_worker_input(spawned: subprocess.Popen[str]) -> str:
+                nonlocal worker_pid, execution_process_ids
+                worker_pid = spawned.pid
+                if measurement_timeout is None:
+                    input_data["process_execution_owner"] = {
+                        "coordinator_pid": os.getpid(),
+                        "worker_pid": spawned.pid,
+                        "process_group_id": spawned.pid,
+                    }
+                execution_process_ids = {0: spawned.pid}
+                if LOGGER_AVAILABLE:
+                    logger.info(
+                        "SUBPROCESS DISPATCH: coordinator_pid=%s worker_pid=%s owner_run_id=%s owner_pid=%s",
+                        os.getpid(),
+                        spawned.pid,
+                        owner_run_id,
+                        owner_pid,
+                    )
+                return json.dumps(input_data)
+
+            if measurement_timeout is None:
+                completed = run_cooperative_process(
+                    worker_command,
+                    env=env,
+                    input_factory=prepare_worker_input,
+                    preexec_fn=_benchmark_child_preexec,
+                )
+            else:
+                completed = run_owned_process(
+                    worker_command,
+                    timeout_seconds=measurement_timeout + _RUNTIME_PROVENANCE_TIMEOUT_SECONDS,
+                    env=env,
+                    input_factory=prepare_worker_input,
+                    preexec_fn=_benchmark_child_preexec,
+                )
+            execution = completed.get("execution")
+            if isinstance(execution, dict):
+                retained_pid = execution.get("process_id")
+                if isinstance(retained_pid, int) and not isinstance(retained_pid, bool):
+                    worker_pid = retained_pid
+            _require_safe_benchmark_worker_receipt(
+                completed,
+                context=f"benchmark worker {benchmark_name!r}",
+            )
+            stdout, stderr = completed["stdout"], completed["stderr"]
+            worker_returncode = completed.get("returncode")
             _maybe_write_subprocess_stream(stdout, benchmark_name, config, stream="stdout")
-            if subprocess_failed or process.returncode != 0:
-                error_msg = f"Subprocess exited with code {process.returncode}"
+            if stderr:
+                _maybe_write_subprocess_stderr(stderr, benchmark_name, config)
+            if completed.get("timeout_hit"):
+                timeout_result = measurement_timeout_result(time.time() - start_time)
+                timeout_result.execution_process_ids = dict(execution_process_ids)
+                return timeout_result
+            if worker_returncode != 0:
+                error_msg = f"Subprocess exited with code {worker_returncode}"
                 errors.append(error_msg)
                 if stderr:
                     stderr_preview = stderr[:500] if len(stderr) > 500 else stderr
                     errors.append(f"Stderr: {stderr_preview}")
                     if LOGGER_AVAILABLE:
-                        logger.error(f"Benchmark '{benchmark_name}' subprocess failed with return code {process.returncode}")
+                        logger.error(
+                            f"Benchmark '{benchmark_name}' subprocess failed with return code {worker_returncode}"
+                        )
                         logger.error(f"Stderr preview: {stderr_preview}")
                     _maybe_write_subprocess_stderr(stderr, benchmark_name, config)
                 times_ms = cast(List[float], [])
@@ -3990,24 +4574,35 @@ class BenchmarkHarness:
                     # libraries may print Python dicts containing '{' on stdout.
                     json_start = stdout.rfind('{"success"')
                     if json_start < 0:
-                        json_start = stdout.find('{')
+                        json_start = stdout.find("{")
                     if json_start > 0:
                         # There's content before JSON - store it for debugging but parse only JSON
                         prefix = stdout[:json_start].strip()
                         if prefix:
                             # Log the prefix for debugging but don't treat as error
                             if LOGGER_AVAILABLE:
-                                logger.debug(f"Stripped non-JSON prefix from subprocess output: {prefix[:200]}")
+                                logger.debug(
+                                    f"Stripped non-JSON prefix from subprocess output: {prefix[:200]}"
+                                )
                         stdout = stdout[json_start:]
-                    
+
                     # Parse the first JSON object and ignore any trailing noise.
                     # Prefer a real JSON parser over brace counting to avoid false
                     # truncation when strings contain braces/escapes.
                     decoder = json.JSONDecoder()
                     result_dict, json_end = decoder.raw_decode(stdout)
+                    if "cleanup_incomplete" in result_dict:
+                        terminal_cleanup_receipt = validate_cleanup_incomplete_receipt(
+                            result_dict["cleanup_incomplete"]
+                        )
+                        terminal_cleanup_interrupted = (
+                            result_dict.get("operator_interrupted") is True
+                        )
                     suffix = stdout[json_end:].strip()
                     if suffix and LOGGER_AVAILABLE:
-                        logger.debug(f"Stripped non-JSON suffix from subprocess output: {suffix[:200]}")
+                        logger.debug(
+                            f"Stripped non-JSON suffix from subprocess output: {suffix[:200]}"
+                        )
                     result_success = bool(result_dict.get("success"))
                     result_json_str = result_dict.get("result_json")
                     benchmark_result = (
@@ -4015,20 +4610,38 @@ class BenchmarkHarness:
                         if result_json_str
                         else None
                     )
+                    if benchmark_result is not None and not result_success:
+                        errors.extend(
+                            benchmark_result.errors
+                            or result_dict.get("errors")
+                            or ["Subprocess execution failed"]
+                        )
                     if benchmark_result is not None and benchmark_result.evaluation is not None:
                         child_evaluation = benchmark_result.evaluation.model_copy(deep=True)
-                    if benchmark_result is not None and benchmark_result.runtime_provenance is not None:
-                        child_runtime_provenance = benchmark_result.runtime_provenance.model_copy(deep=True)
-                        if child_runtime_provenance.process_id != process.pid:
-                            raise ValueError("Runtime provenance PID does not match the launched benchmark worker")
+                    if (
+                        benchmark_result is not None
+                        and benchmark_result.runtime_provenance is not None
+                    ):
+                        child_runtime_provenance = benchmark_result.runtime_provenance.model_copy(
+                            deep=True
+                        )
+                        if worker_pid is None or child_runtime_provenance.process_id != worker_pid:
+                            raise ValueError(
+                                "Runtime provenance PID does not match the launched benchmark worker"
+                            )
                     if benchmark_result is not None:
                         child_device = benchmark_result.device
-                        if child_device is None or torch.device(child_device) != torch.device(input_data["device"]):
-                            raise ValueError("Executed child device does not match the dispatched benchmark device")
+                        if (result_success or child_device is not None) and (
+                            child_device is None
+                            or torch.device(child_device) != torch.device(input_data["device"])
+                        ):
+                            raise ValueError(
+                                "Executed child device does not match the dispatched benchmark device"
+                            )
                     if result_success and benchmark_result is not None:
                         # Deserialize Pydantic BenchmarkResult from JSON
                         child_gpu_metrics = getattr(benchmark_result, "gpu_metrics", None)
-                        
+
                         # Preserve the child's measured summary when raw samples
                         # are unavailable. Synthesized samples would invent tail
                         # percentiles and misrepresent the measurement history.
@@ -4041,28 +4654,30 @@ class BenchmarkHarness:
                             )
                         else:
                             self._validate_timing_summary(child_timing)
-                        
+
                         # Extract memory data
                         if benchmark_result.memory:
                             memory_peak_mb = benchmark_result.memory.peak_mb
                             memory_allocated_mb = benchmark_result.memory.allocated_mb
-                        
+
                         # Extract errors
                         errors.extend(benchmark_result.errors)
-                        
+
                         # Extract seeds (propagate actual subprocess seed info)
                         if getattr(benchmark_result, "seeds", None) is not None:
                             seed_metadata = benchmark_result.seeds
-                        
+
                         # Extract profiling artifacts
                         if benchmark_result.artifacts:
                             if benchmark_result.artifacts.nsys_rep:
-                                profiling_outputs['nsys'] = benchmark_result.artifacts.nsys_rep
+                                profiling_outputs["nsys"] = benchmark_result.artifacts.nsys_rep
                             if benchmark_result.artifacts.ncu_rep:
-                                profiling_outputs['ncu'] = benchmark_result.artifacts.ncu_rep
+                                profiling_outputs["ncu"] = benchmark_result.artifacts.ncu_rep
                             if benchmark_result.artifacts.torch_trace_json:
-                                profiling_outputs['torch'] = benchmark_result.artifacts.torch_trace_json
-                        
+                                profiling_outputs["torch"] = (
+                                    benchmark_result.artifacts.torch_trace_json
+                                )
+
                         # Extract profiler metrics
                         if benchmark_result.profiler_metrics:
                             if benchmark_result.profiler_metrics.nsys:
@@ -4076,7 +4691,7 @@ class BenchmarkHarness:
                             str(key): str(value)
                             for key, value in dict(benchmark_result.runtime_env or {}).items()
                         }
-                        
+
                         # Extract verify_output/tolerance/signature from subprocess and store on benchmark
                         verify_output_data = result_dict.get("verify_output")
                         if verify_output_data is not None:
@@ -4085,11 +4700,15 @@ class BenchmarkHarness:
 
                                 kind = verify_output_data.get("kind") or "tensor"
                                 if kind == "tensor":
-                                    benchmark._subprocess_verify_output = deserialize_verify_tensor(verify_output_data)
+                                    benchmark._subprocess_verify_output = deserialize_verify_tensor(
+                                        verify_output_data
+                                    )
                                 elif kind == "tensor_file":
                                     path = verify_output_data.get("path")
                                     if not path:
-                                        raise ValueError("verify_output kind='tensor_file' missing path")
+                                        raise ValueError(
+                                            "verify_output kind='tensor_file' missing path"
+                                        )
                                     loaded = torch.load(path, map_location="cpu")
                                     if not isinstance(loaded, torch.Tensor):
                                         raise TypeError(
@@ -4099,7 +4718,9 @@ class BenchmarkHarness:
                                 elif kind == "dict":
                                     tensors_obj = verify_output_data.get("tensors")
                                     if not isinstance(tensors_obj, dict) or not tensors_obj:
-                                        raise ValueError("verify_output kind='dict' missing tensors")
+                                        raise ValueError(
+                                            "verify_output kind='dict' missing tensors"
+                                        )
                                     benchmark._subprocess_verify_output = {
                                         name: deserialize_verify_tensor(tensor_dict)
                                         for name, tensor_dict in tensors_obj.items()
@@ -4107,7 +4728,9 @@ class BenchmarkHarness:
                                 elif kind == "dict_file":
                                     path = verify_output_data.get("path")
                                     if not path:
-                                        raise ValueError("verify_output kind='dict_file' missing path")
+                                        raise ValueError(
+                                            "verify_output kind='dict_file' missing path"
+                                        )
                                     loaded = torch.load(path, map_location="cpu")
                                     if not isinstance(loaded, dict):
                                         raise TypeError(
@@ -4117,7 +4740,9 @@ class BenchmarkHarness:
                                 else:
                                     raise ValueError(f"Unknown verify_output kind '{kind}'")
                             except Exception as e:
-                                errors.append(f"Failed to reconstruct verify_output from subprocess: {e}")
+                                errors.append(
+                                    f"Failed to reconstruct verify_output from subprocess: {e}"
+                                )
                                 raise
 
                         tol_data = result_dict.get("output_tolerance")
@@ -4127,7 +4752,9 @@ class BenchmarkHarness:
                                 atol = float(tol_data.get("atol"))
                                 benchmark._subprocess_output_tolerance = (rtol, atol)
                             except Exception as e:
-                                errors.append(f"Failed to parse output_tolerance from subprocess: {e}")
+                                errors.append(
+                                    f"Failed to parse output_tolerance from subprocess: {e}"
+                                )
                                 raise
 
                         try:
@@ -4140,9 +4767,7 @@ class BenchmarkHarness:
                             if has_output_tolerances:
                                 benchmark._subprocess_output_tolerances = output_tolerances
                         except Exception as e:
-                            errors.append(
-                                f"Failed to parse output_tolerances from subprocess: {e}"
-                            )
+                            errors.append(f"Failed to parse output_tolerances from subprocess: {e}")
                             raise
 
                         sig_data = result_dict.get("input_signature")
@@ -4152,12 +4777,11 @@ class BenchmarkHarness:
                             _maybe_write_subprocess_stderr(stderr, benchmark_name, config)
                     else:
                         if benchmark_result is not None:
-                            errors.extend(
-                                benchmark_result.errors
-                                or result_dict.get("errors", ["Subprocess execution failed"])
-                            )
+                            child_failure_result = benchmark_result.model_copy(deep=True)
                         else:
-                            errors.extend(result_dict.get("errors", ["Subprocess execution failed"]))
+                            errors.extend(
+                                result_dict.get("errors") or ["Subprocess execution failed"]
+                            )
                         times_ms = cast(List[float], [])
                         child_timing = None
                         if stderr:
@@ -4172,70 +4796,32 @@ class BenchmarkHarness:
                     errors.append(f"Traceback: {traceback.format_exc()}")
                     times_ms = cast(List[float], [])
                     child_timing = None
-        
-        except KeyboardInterrupt:
-            if process is not None:
-                _terminate_process_group(process, child_pgid, grace_seconds=2.0)
-                try:
-                    stdout, stderr = process.communicate()
-                    _maybe_write_subprocess_stream(stdout, benchmark_name, config, stream="stdout")
-                    _maybe_write_subprocess_stderr(stderr, benchmark_name, config)
-                except (subprocess.SubprocessError, OSError, ValueError) as exc:
-                    _emit_harness_warning(
-                        f"Cancelled benchmark worker {process.pid} could not retain trailing output",
-                        exc=exc,
-                    )
+
+        except SubprocessCaptureEvidenceError:
             raise
-        except subprocess.TimeoutExpired:
-            # TIMEOUT - kill the process group
-            elapsed_time = time.time() - start_time
-            
-            logger.error("=" * 80)
-            logger.error("TIMEOUT: Benchmark execution exceeded timeout limit")
-            logger.error("=" * 80)
-            logger.error(f"   Benchmark: {benchmark_name}")
-            logger.error(f"   Stage: measurement (benchmark iterations)")
-            logger.error(f"   Timeout limit: {measurement_timeout} seconds")
-            logger.error(f"   Elapsed time: {elapsed_time:.2f} seconds")
-            logger.error(f"   Config: iterations={config.iterations}, warmup={config.warmup}")
-            logger.error(f"   Status: Benchmark subprocess did not complete within timeout period")
-            logger.error("")
-            logger.error("   Possible causes:")
-            logger.error("   - Benchmark is too slow for current timeout")
-            logger.error("   - Benchmark is hanging or deadlocked")
-            logger.error("   - GPU is under heavy load from other processes")
-            logger.error("")
-            logger.error("   Suggested actions:")
-            logger.error(f"   - Increase timeout: config.measurement_timeout_seconds = {measurement_timeout * 2}")
-            logger.error(f"   - Use timeout multiplier: config.timeout_multiplier = 2.0")
-            logger.error("   - Check for GPU resource contention")
-            logger.error("   - Review benchmark code for potential deadlocks")
-            logger.error("")
-            logger.error("   Action: Terminating subprocess to free GPU resources")
-            logger.error("=" * 80)
-            
-            _terminate_process_group(process, child_pgid, grace_seconds=2.0)
-            
-            timeout_error_msg = (
-                f"TIMEOUT: Benchmark measurement stage exceeded timeout of {measurement_timeout} seconds "
-                f"(ran for {elapsed_time:.2f}s). "
-                f"Consider increasing measurement_timeout_seconds or using timeout_multiplier."
+        except CooperativeProcessInterrupted as exc:
+            retain_worker_receipt(
+                exc,
+                getattr(exc, "outer_process_result", exc.result),
             )
-            errors.append(timeout_error_msg)
-            times_ms = cast(List[float], [])
-            
-            # Create a result with timeout information even though we failed
-            if not times_ms:
-                return self._create_timeout_result(
-                    stage="measurement",
-                    duration=elapsed_time,
-                    limit=measurement_timeout,
-                    errors=errors,
-                    benchmark_name=benchmark_name,
-                    config=config,
-                )
-        
+            raise
+        except CooperativeCleanupIncomplete as exc:
+            retain_worker_receipt(
+                exc,
+                getattr(exc, "outer_process_result", exc.result),
+            )
+            raise
+        except KeyboardInterrupt as error:
+            retain_attached_worker_receipt(error)
+            raise
+
         except Exception as e:
+            retain_attached_worker_receipt(e)
+            nested_receipt = cleanup_incomplete_receipt_from_error(e)
+            if nested_receipt is not None:
+                if operator_interrupt_from_error(e):
+                    raise CooperativeProcessInterrupted(nested_receipt) from e
+                raise CooperativeCleanupIncomplete(nested_receipt) from e
             error_msg = f"Subprocess execution failed: {str(e)}"
             errors.append(error_msg)
             if LOGGER_AVAILABLE:
@@ -4243,6 +4829,9 @@ class BenchmarkHarness:
                 logger.error(f"Error: {error_msg}")
             times_ms = cast(List[float], [])
             child_timing = None
+        except BaseException as error:
+            retain_attached_worker_receipt(error)
+            raise
         finally:
             try:
                 Path(verify_output_path).unlink(missing_ok=True)
@@ -4251,13 +4840,28 @@ class BenchmarkHarness:
                     f"Failed to remove subprocess verify-output file {verify_output_path}",
                     exc=exc,
                 )
-        
+
+        if terminal_cleanup_receipt is not None:
+            cancellation = terminal_cleanup_receipt.get("cancellation", {})
+            original = terminal_cleanup_receipt.get("execution", {}).get("coordinator_error")
+            cause = (
+                RuntimeError(f"{original.get('type')}: {original.get('message')}")
+                if isinstance(original, dict)
+                else None
+            )
+            if terminal_cleanup_interrupted or cancellation.get("operator_interrupt_observed"):
+                raise CooperativeProcessInterrupted(terminal_cleanup_receipt) from cause
+            raise CooperativeCleanupIncomplete(terminal_cleanup_receipt) from cause
+
         # Don't raise if we already returned a timeout result
-        if not times_ms and child_timing is None and 'timeout_result' not in locals():
+        if not times_ms and child_timing is None and "timeout_result" not in locals():
             # Build comprehensive error message with context
+            timeout_summary = (
+                "disabled" if measurement_timeout is None else f"{measurement_timeout}s"
+            )
             config_summary = (
                 f"iterations={config.iterations}, warmup={config.warmup}, "
-                f"timeout={getattr(config, 'measurement_timeout_seconds', config.timeout_seconds)}s"
+                f"measurement timeout={timeout_summary}"
             )
             error_details = [
                 f"Benchmark: {benchmark_name}",
@@ -4268,11 +4872,17 @@ class BenchmarkHarness:
             if memory_peak_mb is not None:
                 error_details.append(f"Partial memory stats: peak={memory_peak_mb:.2f}MB")
             if profiling_outputs:
-                error_details.append(f"Profiling artifacts collected: {list(profiling_outputs.keys())}")
+                error_details.append(
+                    f"Profiling artifacts collected: {list(profiling_outputs.keys())}"
+                )
 
             skip_reason = _extract_skip_reason_from_messages(errors)
             if skip_reason:
-                skip_message = skip_reason if skip_reason.upper().startswith("SKIPPED") else f"SKIPPED: {skip_reason}"
+                skip_message = (
+                    skip_reason
+                    if skip_reason.upper().startswith("SKIPPED")
+                    else f"SKIPPED: {skip_reason}"
+                )
                 if LOGGER_AVAILABLE:
                     logger.warning("Benchmark '%s' skipped: %s", benchmark_name, skip_message)
                 raise RuntimeError(skip_message)
@@ -4286,30 +4896,19 @@ class BenchmarkHarness:
                     logger.error(f"  {detail}")
                 logger.error("=" * 80)
 
-            # Return a structured failure result instead of raising
-            stage_watchdog["measurement"] = {"status": "error", "duration": 0.0}
-            failure_stage = next(
-                (stage for stage, meta in stage_watchdog.items() if meta.get('status') in ('error', 'timeout')),
-                "measurement",
-            )
-            failure_meta = stage_watchdog.get(failure_stage, {})
-            duration = failure_meta.get("duration", 0.0) or 0.0
-            limit_lookup = {
-                "setup": config.get_effective_timeout("setup"),
-                "warmup": config.get_effective_timeout("warmup"),
-                "profiling": config.get_effective_timeout("profiling"),
-                "measurement": getattr(config, 'measurement_timeout_seconds', config.timeout_seconds),
-            }
-            limit = limit_lookup.get(failure_stage, getattr(config, 'measurement_timeout_seconds', config.timeout_seconds))
-            result = self._create_timeout_result(
-                stage=failure_stage,
-                duration=duration,
-                limit=limit,
-                errors=errors,
-                benchmark_name=benchmark_name,
-                config=config,
-                watchdog=stage_watchdog,
-            )
+            # Preserve the worker's actual deadline fields and failure receipt.
+            # A launch, parsing, or execution error is not itself a timeout.
+            if child_failure_result is not None:
+                result = child_failure_result
+                result.errors = errors
+            else:
+                stage_watchdog["measurement"] = {"status": "error", "duration": 0.0}
+                result = self._create_failure_result(
+                    errors=errors,
+                    benchmark_name=benchmark_name,
+                    config=config,
+                    watchdog=stage_watchdog,
+                )
             if child_evaluation is not None:
                 result.evaluation = child_evaluation.model_copy(deep=True)
             if child_runtime_provenance is not None:
@@ -4318,7 +4917,7 @@ class BenchmarkHarness:
             result.local_world_size = 1
             result.device = child_device
             return result
-        
+
         # Compute statistics only from actual samples. Summary-only children
         # retain exactly the statistics they supplied, including absent percentiles.
         if times_ms:
@@ -4351,17 +4950,21 @@ class BenchmarkHarness:
         if child_runtime_env is not None:
             result.runtime_env = child_runtime_env
         self._attach_throughput_metrics(result, benchmark)
-        
+
         # Add inference timing if available
-        if inference_timing_data and inference_timing_data.get("ttft_times_ms") and inference_timing_data.get("tpot_times_ms"):
+        if (
+            inference_timing_data
+            and inference_timing_data.get("ttft_times_ms")
+            and inference_timing_data.get("tpot_times_ms")
+        ):
             inference_timing = self._capture_inference_timing(
                 inference_timing_data["ttft_times_ms"],
                 inference_timing_data["tpot_times_ms"],
-                config
+                config,
             )
             if inference_timing:
                 result.inference_timing = inference_timing
-        
+
         # Add memory stats
         if memory_peak_mb is not None or memory_allocated_mb is not None:
             result.memory = MemoryStats(
@@ -4370,61 +4973,85 @@ class BenchmarkHarness:
                 reserved_mb=None,
                 schemaVersion="1.0",
             )
-        
+
         # Add errors
         result.errors = errors
-        
+
         # Add profiling artifacts
         if profiling_outputs:
             result.artifacts = ProfilerArtifacts(
-                nsys_rep=profiling_outputs.get('nsys_rep') or profiling_outputs.get('nsys'),
-                ncu_rep=profiling_outputs.get('ncu_rep') or profiling_outputs.get('ncu'),
-                torch_trace_json=profiling_outputs.get('torch') or profiling_outputs.get('pytorch_trace'),
-                proton_report=profiling_outputs.get('proton_report') or profiling_outputs.get('proton'),
+                nsys_rep=profiling_outputs.get("nsys_rep") or profiling_outputs.get("nsys"),
+                ncu_rep=profiling_outputs.get("ncu_rep") or profiling_outputs.get("ncu"),
+                torch_trace_json=profiling_outputs.get("torch")
+                or profiling_outputs.get("pytorch_trace"),
+                proton_report=profiling_outputs.get("proton_report")
+                or profiling_outputs.get("proton"),
                 schemaVersion="1.0",
             )
-        
+
         # Add profiler metrics
         nsys_metrics_obj = None
         ncu_metrics_obj = None
         proton_metrics_obj = None
-        
+
         if nsys_metrics:
             nsys_metrics_obj = NsysMetrics(
-                total_gpu_time_ms=nsys_metrics.get('nsys_total_gpu_time_ms'),
-                raw_metrics={k.replace('nsys_', ''): v for k, v in nsys_metrics.items() 
-                            if not k.startswith('nsys_total_gpu_time_ms')},
+                total_gpu_time_ms=nsys_metrics.get("nsys_total_gpu_time_ms"),
+                raw_metrics={
+                    k.replace("nsys_", ""): v
+                    for k, v in nsys_metrics.items()
+                    if not k.startswith("nsys_total_gpu_time_ms")
+                },
                 schemaVersion="1.0",
             )
-        
+
         if ncu_metrics:
             ncu_metrics_obj = _ncu_metrics_from_flat(ncu_metrics)
-        
+
         if proton_metrics:
-            occ_field = proton_metrics.get('proton_occupancy_limited_kernels_list', proton_metrics.get('proton_occupancy_limited_kernels', ""))
+            occ_field = proton_metrics.get(
+                "proton_occupancy_limited_kernels_list",
+                proton_metrics.get("proton_occupancy_limited_kernels", ""),
+            )
             if isinstance(occ_field, list):
                 occupancy = [str(item) for item in occ_field if item]
             else:
-                occupancy = [item for item in occ_field.split(",") if item] if isinstance(occ_field, str) else []
+                occupancy = (
+                    [item for item in occ_field.split(",") if item]
+                    if isinstance(occ_field, str)
+                    else []
+                )
             summary_stats: Dict[str, Any] = {}
-            summary_from_report = proton_metrics.get('proton_summary_stats')
+            summary_from_report = proton_metrics.get("proton_summary_stats")
             if isinstance(summary_from_report, dict):
                 summary_stats.update(summary_from_report)
-            summary_stats.update({
-                k.replace('proton_', ''): v for k, v in proton_metrics.items()
-                if k.startswith('proton_') and k not in {'proton_kernel_count', 'proton_occupancy_limited_kernels', 'proton_top_kernels', 'proton_summary_stats', 'proton_kernel_summaries', 'proton_occupancy_limited_kernels_list'}
-            })
-            kernel_summaries = proton_metrics.get('proton_kernel_summaries')
+            summary_stats.update(
+                {
+                    k.replace("proton_", ""): v
+                    for k, v in proton_metrics.items()
+                    if k.startswith("proton_")
+                    and k
+                    not in {
+                        "proton_kernel_count",
+                        "proton_occupancy_limited_kernels",
+                        "proton_top_kernels",
+                        "proton_summary_stats",
+                        "proton_kernel_summaries",
+                        "proton_occupancy_limited_kernels_list",
+                    }
+                }
+            )
+            kernel_summaries = proton_metrics.get("proton_kernel_summaries")
             if not isinstance(kernel_summaries, list):
                 kernel_summaries = []
             proton_metrics_obj = ProtonMetrics(
-                kernel_count=proton_metrics.get('proton_kernel_count'),
+                kernel_count=proton_metrics.get("proton_kernel_count"),
                 occupancy_limited_kernels=occupancy,
                 summary_stats=summary_stats,
                 kernel_summaries=kernel_summaries,
                 schemaVersion="1.0",
             )
-        
+
         if nsys_metrics_obj or ncu_metrics_obj or proton_metrics_obj:
             result.profiler_metrics = ProfilerMetrics(
                 nsys=nsys_metrics_obj,
@@ -4433,16 +5060,19 @@ class BenchmarkHarness:
                 torch=None,
                 schemaVersion="1.0",
             )
-        
+
         self._annotate_launch_metadata(result, config)
         return result
-    
-    def _benchmark_with_threading(self, benchmark: BaseBenchmark, config: BenchmarkConfig) -> PydanticBenchmarkResult:
+
+    def _benchmark_with_threading(
+        self, benchmark: BaseBenchmark, config: BenchmarkConfig
+    ) -> PydanticBenchmarkResult:
         """Run benchmark using threading (alternative to subprocess method)."""
+        self._validate_execution_timeout_mode(config, actual_execution_mode=ExecutionMode.THREAD)
         self._ensure_runtime_initialized()
         import inspect
         from core.benchmark.run_manifest import RuntimeProvenance, capture_runtime_provenance
-        
+
         errors = []
         memory_peak_mb = None
         memory_allocated_mb = None
@@ -4457,10 +5087,14 @@ class BenchmarkHarness:
         captured_custom_metrics: Optional[Dict[str, float]] = None
         evaluation_provenance: Optional[EvaluationProvenance] = None
         worker_runtime_provenance: Optional[RuntimeProvenance] = None
-        
+
         # Get benchmark name for error messages (same as subprocess path)
         benchmark_class = benchmark.__class__.__name__
-        benchmark_name = getattr(benchmark, '__name__', None) or getattr(benchmark, 'name', None) or benchmark_class
+        benchmark_name = (
+            getattr(benchmark, "__name__", None)
+            or getattr(benchmark, "name", None)
+            or benchmark_class
+        )
 
         # Environment validity gate for direct thread invocations (tests call this directly).
         from core.harness.validity_checks import validate_environment
@@ -4470,8 +5104,12 @@ class BenchmarkHarness:
             probe=self._environment_probe,
             allow_virtualization=bool(getattr(config, "allow_virtualization", False)),
             allow_foreign_gpu_processes=bool(getattr(config, "allow_foreign_gpu_processes", False)),
-            expected_device_uuid=config.expected_device_uuid if self.device.type == "cuda" else None,
-            expected_compute_capability=config.expected_compute_capability if self.device.type == "cuda" else None,
+            expected_device_uuid=config.expected_device_uuid
+            if self.device.type == "cuda"
+            else None,
+            expected_compute_capability=config.expected_compute_capability
+            if self.device.type == "cuda"
+            else None,
         )
         if LOGGER_AVAILABLE:
             for warning in env_result.warnings:
@@ -4521,37 +5159,37 @@ class BenchmarkHarness:
                 return result
             if LOGGER_AVAILABLE:
                 logger.warning(message)
-        
+
         # Use a lock to prevent teardown from running while benchmark is executing
         execution_lock = threading.Lock()
         execution_complete = threading.Event()
         provenance_started = threading.Event()
         provenance_start_time: List[float] = []
         teardown_called = threading.Event()  # Track if teardown has been called
-        
+
         # Store timeout result if one occurs (needs to be accessible from outer scope)
         timeout_result_storage: List[Optional[PydanticBenchmarkResult]] = [None]
         stage_watchdog: Dict[str, Dict[str, Any]] = {
-            'setup': {'status': 'pending', 'duration': 0.0},
-            'warmup': {'status': 'pending', 'duration': 0.0},
-            'measurement': {'status': 'pending', 'duration': 0.0},
-            'profiling': {'status': 'pending', 'duration': 0.0},
-            'runtime_provenance': {'status': 'pending', 'duration': 0.0},
+            "setup": {"status": "pending", "duration": 0.0},
+            "warmup": {"status": "pending", "duration": 0.0},
+            "measurement": {"status": "pending", "duration": 0.0},
+            "profiling": {"status": "pending", "duration": 0.0},
+            "runtime_provenance": {"status": "pending", "duration": 0.0},
         }
         stage_start_times: Dict[str, float] = {}
 
         def start_stage(stage: str) -> None:
             stage_start_times[stage] = time.time()
-            stage_watchdog[stage] = {'status': 'running'}
+            stage_watchdog[stage] = {"status": "running"}
 
         def finish_stage(stage: str, status: str = "completed") -> None:
             start = stage_start_times.get(stage)
             duration = time.time() - start if start else 0.0
-            stage_watchdog[stage] = {'status': status, 'duration': duration}
+            stage_watchdog[stage] = {"status": status, "duration": duration}
 
         def mark_stage(stage: str, status: str) -> None:
             entry = stage_watchdog.get(stage, {})
-            entry['status'] = status
+            entry["status"] = status
             stage_watchdog[stage] = entry
 
         def attach_evaluation(result: PydanticBenchmarkResult) -> PydanticBenchmarkResult:
@@ -4568,16 +5206,28 @@ class BenchmarkHarness:
                     receipt = finalize_evaluation_provenance(receipt, None)
                 result.evaluation = receipt
             return result
-        
+
         def run_benchmark_internal():
             """Internal benchmark execution function."""
-            nonlocal times_ms, memory_peak_mb, memory_allocated_mb, profiling_outputs, errors, nsys_metrics, ncu_metrics, timeout_result_storage, inference_timing_data, locked_gpu_metrics, captured_custom_metrics, evaluation_provenance
+            nonlocal \
+                times_ms, \
+                memory_peak_mb, \
+                memory_allocated_mb, \
+                profiling_outputs, \
+                errors, \
+                nsys_metrics, \
+                ncu_metrics, \
+                timeout_result_storage, \
+                inference_timing_data, \
+                locked_gpu_metrics, \
+                captured_custom_metrics, \
+                evaluation_provenance
             nonlocal worker_runtime_provenance
             validity_profile = str(getattr(config, "validity_profile", "strict")).strip().lower()
             portable_mode = validity_profile == "portable"
             clock_lock_active = False
             device_identity_contract: Optional[DeviceIdentityContract] = None
-            
+
             with execution_lock:  # Acquire lock during execution
                 lock_stack = ExitStack()
                 try:
@@ -4615,7 +5265,9 @@ class BenchmarkHarness:
                     def _init_cuda_for_worker_thread() -> None:
                         if not torch.cuda.is_available():
                             return
-                        target_device = self.device if isinstance(self.device, torch.device) else None
+                        target_device = (
+                            self.device if isinstance(self.device, torch.device) else None
+                        )
                         if target_device is None or target_device.type != "cuda":
                             target_device = torch.device("cuda")
                         device_index = target_device.index if target_device.index is not None else 0
@@ -4651,7 +5303,9 @@ class BenchmarkHarness:
                     # Clear torch.compile caches BEFORE setup/warmup so compilation
                     # overhead cannot leak into measured iterations.
                     if getattr(config, "clear_compile_cache", False):
-                        from core.harness.validity_checks import clear_compile_cache as _clear_compile_cache
+                        from core.harness.validity_checks import (
+                            clear_compile_cache as _clear_compile_cache,
+                        )
 
                         _clear_compile_cache()
 
@@ -4660,9 +5314,11 @@ class BenchmarkHarness:
                     # teardown races, so executor-level measurement timeouts are the only hard stop; the
                     # setup_timeout_seconds gate is enforced post-hoc once setup returns.
                     import time
+
                     setup_start_time = time.time()
-                    setup_timeout = config.get_effective_timeout('setup')
+                    setup_timeout = config.get_effective_timeout("setup")
                     from core.harness.validity_checks import check_setup_precomputation
+
                     def _collect_outputs_for_hash():
                         outputs = {}
                         if hasattr(benchmark, "output"):
@@ -4671,7 +5327,7 @@ class BenchmarkHarness:
 
                     def _run_setup_with_detection():
                         nonlocal evaluation_provenance
-                        start_stage('setup')
+                        start_stage("setup")
                         try:
                             if device_identity_contract is not None:
                                 device_identity_contract.check("before_setup")
@@ -4685,16 +5341,18 @@ class BenchmarkHarness:
                                     benchmark.setup,
                                 )
                                 if not precompute_ok:
-                                    raise RuntimeError(precompute_err or "Setup pre-computation detected")
+                                    raise RuntimeError(
+                                        precompute_err or "Setup pre-computation detected"
+                                    )
                             else:
                                 benchmark.setup()
                             if device_identity_contract is not None:
                                 device_identity_contract.check("after_setup")
                         except Exception:
-                            finish_stage('setup', status='error')
+                            finish_stage("setup", status="error")
                             raise
-                        finish_stage('setup')
-                    
+                        finish_stage("setup")
+
                     _run_setup_with_detection()
                     setup_time = time.time() - setup_start_time
 
@@ -4702,7 +5360,7 @@ class BenchmarkHarness:
                         # Thread-mode cannot safely preempt a hung setup() without risking teardown races.
                         # Instead, treat setup_timeout_seconds as a post-hoc gate and fail fast once setup returns.
                         if setup_time > setup_timeout:
-                            finish_stage('setup', status='timeout')
+                            finish_stage("setup", status="timeout")
                             timeout_error = TimeoutError(
                                 f"Setup exceeded timeout of {setup_timeout}s (ran for {setup_time:.1f}s)"
                             )
@@ -4718,12 +5376,19 @@ class BenchmarkHarness:
                             )
                             return
                         if setup_time > setup_timeout * 0.8:  # Warn if setup takes >80% of timeout
-                            logger.warning(f"Setup took {setup_time:.1f}s (near timeout limit of {setup_timeout}s)")
+                            logger.warning(
+                                f"Setup took {setup_time:.1f}s (near timeout limit of {setup_timeout}s)"
+                            )
                     else:
                         # Warn if setup is suspiciously long (even without an explicit setup timeout).
-                        measurement_timeout = config.get_effective_timeout('measurement')
-                        if measurement_timeout is not None and setup_time > measurement_timeout * 0.5:
-                            logger.warning(f"Setup took {setup_time:.1f}s (consider setting setup_timeout_seconds)")
+                        measurement_timeout = config.get_effective_timeout("measurement")
+                        if (
+                            measurement_timeout is not None
+                            and setup_time > measurement_timeout * 0.5
+                        ):
+                            logger.warning(
+                                f"Setup took {setup_time:.1f}s (consider setting setup_timeout_seconds)"
+                            )
 
                     if clock_lock_active and self.device.type == "cuda":
                         device_index = self.device.index if self.device.index is not None else 0
@@ -4732,12 +5397,12 @@ class BenchmarkHarness:
                             from core.harness.validity_checks import reset_cuda_memory_pool
 
                             reset_cuda_memory_pool(self.device)
-                    
+
                     # Warmup with timeout enforcement
-                    warmup_timeout = config.get_effective_timeout('warmup')
+                    warmup_timeout = config.get_effective_timeout("warmup")
                     if config.warmup > 0:
                         warmup_start_time = time.time()
-                        start_stage('warmup')
+                        start_stage("warmup")
                         try:
                             if device_identity_contract is not None:
                                 device_identity_contract.check("before_warmup")
@@ -4745,13 +5410,13 @@ class BenchmarkHarness:
                             if device_identity_contract is not None:
                                 device_identity_contract.check("after_warmup")
                         except Exception:
-                            finish_stage('warmup', status='error')
+                            finish_stage("warmup", status="error")
                             raise
                         warmup_time = time.time() - warmup_start_time
                         if warmup_timeout is not None and warmup_time > warmup_timeout:
                             # Thread-mode cannot safely preempt a hung warmup() without risking teardown races.
                             # Treat warmup_timeout_seconds as a post-hoc gate and fail fast once warmup returns.
-                            finish_stage('warmup', status='timeout')
+                            finish_stage("warmup", status="timeout")
                             timeout_error = TimeoutError(
                                 f"Warmup exceeded timeout of {warmup_timeout}s (ran for {warmup_time:.1f}s)"
                             )
@@ -4766,10 +5431,10 @@ class BenchmarkHarness:
                                 watchdog=stage_watchdog,
                             )
                             return
-                        finish_stage('warmup')
+                        finish_stage("warmup")
                     else:
-                        mark_stage('warmup', 'skipped')
-                    
+                        mark_stage("warmup", "skipped")
+
                     if clock_lock_active and self.device.type == "cuda":
                         device_index = self.device.index if self.device.index is not None else 0
                         # Re-assert application clocks right before measurement. We've observed rare cases where
@@ -4785,13 +5450,20 @@ class BenchmarkHarness:
                                 physical_index = _resolve_physical_device_index(device_index)
 
                                 def _read_app_clocks() -> tuple[int, int]:
-                                    snap = query_gpu_telemetry(device_index=device_index, force_refresh=True)
+                                    snap = query_gpu_telemetry(
+                                        device_index=device_index, force_refresh=True
+                                    )
                                     app_sm = int(float(snap.get("applications_clock_sm_mhz") or -1))
-                                    app_mem = int(float(snap.get("applications_clock_memory_mhz") or -1))
+                                    app_mem = int(
+                                        float(snap.get("applications_clock_memory_mhz") or -1)
+                                    )
                                     return app_sm, app_mem
 
                                 app_sm, app_mem = _read_app_clocks()
-                                if abs(app_sm - target_sm_i) > 50 or abs(app_mem - target_mem_i) > 50:
+                                if (
+                                    abs(app_sm - target_sm_i) > 50
+                                    or abs(app_mem - target_mem_i) > 50
+                                ):
                                     last_app = (app_sm, app_mem)
                                     last_lock_retry_error: Optional[BaseException] = None
                                     for _attempt in range(3):
@@ -4809,7 +5481,10 @@ class BenchmarkHarness:
                                         time.sleep(0.05)
                                         app_sm, app_mem = _read_app_clocks()
                                         last_app = (app_sm, app_mem)
-                                        if abs(app_sm - target_sm_i) <= 50 and abs(app_mem - target_mem_i) <= 50:
+                                        if (
+                                            abs(app_sm - target_sm_i) <= 50
+                                            and abs(app_mem - target_mem_i) <= 50
+                                        ):
                                             break
                                     else:
                                         retry_detail = (
@@ -4828,7 +5503,9 @@ class BenchmarkHarness:
                             ramp_gpu_clocks(device=device_index, duration_ms=10.0, max_iters=40)
                             # Capture telemetry while clocks are locked so the run manifest reflects
                             # the real measurement environment (not the post-reset state).
-                            locked_gpu_metrics = query_gpu_telemetry(device_index=device_index, force_refresh=True)
+                            locked_gpu_metrics = query_gpu_telemetry(
+                                device_index=device_index, force_refresh=True
+                            )
                         except Exception:
                             if not portable_mode:
                                 raise
@@ -4839,25 +5516,32 @@ class BenchmarkHarness:
                                 )
 
                     # Memory tracking: Use context manager to track peak memory during benchmark execution
-                    start_stage('measurement')
+                    start_stage("measurement")
                     if device_identity_contract is not None:
                         device_identity_contract.check("before_measurement")
                     with self._memory_tracking(config) as mem_result:
                         # Benchmark using selected mode
                         # Note: nsys/ncu profiling wraps the entire process, so it's handled separately
-                        if config.enable_profiling and (config.enable_nsys or config.enable_ncu or config.enable_proton):
-                            if stage_watchdog['profiling']['status'] == 'pending':
-                                start_stage('profiling')
+                        if config.enable_profiling and (
+                            config.enable_nsys or config.enable_ncu or config.enable_proton
+                        ):
+                            if stage_watchdog["profiling"]["status"] == "pending":
+                                start_stage("profiling")
                             # Delegate to unified profiling orchestration with timeout enforcement
-                            profiling_timeout = config.get_effective_timeout('profiling')
+                            profiling_timeout = config.get_effective_timeout("profiling")
                             if PROFILING_RUNNER_AVAILABLE:
                                 try:
-                                    from core.profiling.profiling_runner import run_profiling_orchestration
+                                    from core.profiling.profiling_runner import (
+                                        run_profiling_orchestration,
+                                    )
                                     import time
+
                                     profiling_start_time = time.time()
 
                                     # Wrap _benchmark_without_profiling to match expected signature
-                                    def timing_wrapper(fn: Callable, cfg: BenchmarkConfig) -> List[float]:
+                                    def timing_wrapper(
+                                        fn: Callable, cfg: BenchmarkConfig
+                                    ) -> List[float]:
                                         times, _ = self._benchmark_without_profiling(fn, cfg)
                                         return times
 
@@ -4871,18 +5555,21 @@ class BenchmarkHarness:
                                             else None,
                                         )
                                     except Exception:
-                                        finish_stage('profiling', status='error')
+                                        finish_stage("profiling", status="error")
                                         raise
 
                                     profiling_time = time.time() - profiling_start_time
-                                    if profiling_timeout is not None and profiling_time > profiling_timeout:
+                                    if (
+                                        profiling_timeout is not None
+                                        and profiling_time > profiling_timeout
+                                    ):
                                         # Thread-mode cannot safely preempt a hung profiler run without risking teardown
                                         # races. Treat profiling_timeout_seconds as a post-hoc gate once profiling returns.
                                         timeout_error = TimeoutError(
                                             f"Profiling exceeded timeout of {profiling_timeout}s (ran for {profiling_time:.1f}s)"
                                         )
                                         errors.append(str(timeout_error))
-                                        finish_stage('profiling', status='timeout')
+                                        finish_stage("profiling", status="timeout")
                                         timeout_result_storage[0] = self._create_timeout_result(
                                             stage="profiling",
                                             duration=profiling_time,
@@ -4894,50 +5581,54 @@ class BenchmarkHarness:
                                         )
                                         return
 
-                                    finish_stage('profiling')
-                                    
+                                    finish_stage("profiling")
+
                                     if prof_result:
                                         times_ms = prof_result.get("times_ms", [])
                                         if "profiling_outputs" in prof_result:
-                                            profiling_outputs.update(prof_result.get("profiling_outputs", {}))
+                                            profiling_outputs.update(
+                                                prof_result.get("profiling_outputs", {})
+                                            )
                                         nsys_metrics = prof_result.get("nsys_metrics", {})
                                         ncu_metrics = prof_result.get("ncu_metrics", {})
                                         proton_metrics = prof_result.get("proton_metrics", {})
                                 except ImportError:
                                     # Fallback if orchestration function not available
-                                    if stage_watchdog['profiling']['status'] == 'pending':
-                                        start_stage('profiling')
+                                    if stage_watchdog["profiling"]["status"] == "pending":
+                                        start_stage("profiling")
                                     times_ms, profiling_outputs = self._benchmark_with_profiling(
                                         benchmark.benchmark_fn, config
                                     )
-                                    finish_stage('profiling')
+                                    finish_stage("profiling")
                                     nsys_metrics = {}
                                     ncu_metrics = {}
                                     proton_metrics = {}
                             else:
                                 # Fallback to PyTorch profiler if profiling runner not available
-                                if stage_watchdog['profiling']['status'] == 'pending':
-                                    start_stage('profiling')
+                                if stage_watchdog["profiling"]["status"] == "pending":
+                                    start_stage("profiling")
                                 times_ms, profiling_outputs = self._benchmark_with_profiling(
                                     benchmark.benchmark_fn, config
                                 )
-                                finish_stage('profiling')
+                                finish_stage("profiling")
                                 nsys_metrics = {}
                                 ncu_metrics = {}
                                 proton_metrics = {}
                         elif config.enable_profiling:
-                            start_stage('profiling')
+                            start_stage("profiling")
                             times_ms, profiling_outputs = self._benchmark_with_profiling(
                                 benchmark.benchmark_fn, config
                             )
-                            finish_stage('profiling')
+                            finish_stage("profiling")
                         else:
-                            mark_stage('profiling', 'skipped')
-                            times_ms, inference_timing_data = self._benchmark_without_profiling(benchmark.benchmark_fn, config)
+                            mark_stage("profiling", "skipped")
+                            times_ms, inference_timing_data = self._benchmark_without_profiling(
+                                benchmark.benchmark_fn, config
+                            )
 
                     if device_identity_contract is not None:
                         device_identity_contract.check("after_measurement")
-                    
+
                     # Extract memory tracking results from context manager
                     if mem_result is not None:
                         if not isinstance(mem_result, MemoryStats):
@@ -4951,12 +5642,12 @@ class BenchmarkHarness:
                     except Exception as exc:
                         errors.append(f"capture_verification_payload() failed: {exc}")
                         raise
-                    
+
                     # Validate result
                     validation_error = benchmark.validate_result()
                     if validation_error:
                         errors.append(f"Validation failed: {validation_error}")
-                    
+
                     if hasattr(benchmark, "mark_execution_complete"):
                         try:
                             benchmark.mark_execution_complete()
@@ -4968,40 +5659,54 @@ class BenchmarkHarness:
 
                     # Capture benchmark-specific metrics before teardown mutates benchmark state.
                     captured_custom_metrics = self._resolve_custom_metrics(benchmark)
-                    
-                    if stage_watchdog['measurement']['status'] == 'running':
-                        finish_stage('measurement')
+
+                    if stage_watchdog["measurement"]["status"] == "running":
+                        finish_stage("measurement")
                     # Collect versions after timed work so metadata enumeration
                     # and runtime queries cannot pre-warm the measured workload.
                     # A separate bounded grace period covers this receipt stage.
-                    start_stage('runtime_provenance')
+                    start_stage("runtime_provenance")
                     provenance_start_time.append(time.monotonic())
                     provenance_started.set()
                     worker_runtime_provenance = capture_runtime_provenance()
-                    if time.monotonic() - provenance_start_time[0] > _RUNTIME_PROVENANCE_TIMEOUT_SECONDS:
-                        raise TimeoutError(
+                    provenance_duration = time.monotonic() - provenance_start_time[0]
+                    if provenance_duration > _RUNTIME_PROVENANCE_TIMEOUT_SECONDS:
+                        finish_stage("runtime_provenance", status="timeout")
+                        errors.append(
                             "Runtime provenance collection exceeded its separate "
-                            f"{_RUNTIME_PROVENANCE_TIMEOUT_SECONDS:g} second budget"
+                            f"{_RUNTIME_PROVENANCE_TIMEOUT_SECONDS:g} second deadline"
                         )
-                    finish_stage('runtime_provenance')
-                
+                        timeout_result_storage[0] = self._create_timeout_result(
+                            stage="runtime_provenance",
+                            duration=provenance_duration,
+                            limit=_RUNTIME_PROVENANCE_TIMEOUT_SECONDS,
+                            errors=errors,
+                            benchmark_name=benchmark_name,
+                            config=config,
+                            watchdog=stage_watchdog,
+                        )
+                        return
+                    finish_stage("runtime_provenance")
+
                 except Exception as e:
                     error_msg = str(e) or repr(e)
                     # Handle generator errors gracefully (common with torch.compile)
                     if "generator didn't stop after throw" in error_msg:
-                        errors.append(f"Benchmark execution failed: Generator error (likely from torch.compile or async operations)")
+                        errors.append(
+                            f"Benchmark execution failed: Generator error (likely from torch.compile or async operations)"
+                        )
                     else:
                         errors.append(f"Benchmark execution failed: {error_msg}")
                         errors.append(f"Traceback: {traceback.format_exc()}")
                     times_ms = cast(List[float], [])
-                    if stage_watchdog['measurement']['status'] == 'running':
-                        finish_stage('measurement', status='error')
-                    if stage_watchdog['runtime_provenance']['status'] == 'running':
-                        finish_stage('runtime_provenance', status='error')
+                    if stage_watchdog["measurement"]["status"] == "running":
+                        finish_stage("measurement", status="error")
+                    if stage_watchdog["runtime_provenance"]["status"] == "running":
+                        finish_stage("runtime_provenance", status="error")
                 finally:
                     # Mark execution as complete before teardown
                     execution_complete.set()
-                    
+
                     # Teardown is now safe to call - we hold the lock
                     # Only call teardown once - set flag to prevent double invocation
                     if not teardown_called.is_set():
@@ -5009,7 +5714,9 @@ class BenchmarkHarness:
                             try:
                                 device_identity_contract.check("before_teardown")
                             except Exception as e:
-                                errors.append(f"Device identity validation failed before teardown: {str(e)}")
+                                errors.append(
+                                    f"Device identity validation failed before teardown: {str(e)}"
+                                )
                                 times_ms = cast(List[float], [])
                         try:
                             benchmark.teardown()
@@ -5021,7 +5728,9 @@ class BenchmarkHarness:
                                 try:
                                     device_identity_contract.check("after_teardown")
                                 except Exception as e:
-                                    errors.append(f"Device identity validation failed after teardown: {str(e)}")
+                                    errors.append(
+                                        f"Device identity validation failed after teardown: {str(e)}"
+                                    )
                                     times_ms = cast(List[float], [])
 
                     try:
@@ -5032,7 +5741,10 @@ class BenchmarkHarness:
                         times_ms = cast(List[float], [])
 
                     try:
-                        if evaluation_provenance is None and current_evaluation_contract is not None:
+                        if (
+                            evaluation_provenance is None
+                            and current_evaluation_contract is not None
+                        ):
                             evaluation_provenance = start_evaluation(current_evaluation_contract)
                             evaluation_provenance.failures.append(
                                 EvaluationFailure(
@@ -5059,7 +5771,7 @@ class BenchmarkHarness:
                     except Exception as e:
                         errors.append(f"Evaluation provenance finalization failed: {str(e)}")
                         times_ms = cast(List[float], [])
-                    
+
                     # Force cleanup (only if enabled to avoid distorting timings)
                     try:
                         if config.enable_cleanup:
@@ -5074,51 +5786,56 @@ class BenchmarkHarness:
                             except Exception as e:
                                 errors.append(f"Failed to restore entry CUDA device: {str(e)}")
                                 times_ms = cast(List[float], [])
-        
-        # ALWAYS run with timeout (required, default 15 seconds). Thread-mode benchmarks execute
-        # inside a managed executor so we can recycle workers if a benchmark hangs.
-        measurement_timeout = getattr(config, "measurement_timeout_seconds", None)
-        if measurement_timeout is None:
-            measurement_timeout = getattr(config, "timeout_seconds", None)
-        if measurement_timeout is None:
-            raise ValueError(
-                "Thread execution requires a finite timeout; set BenchmarkConfig.measurement_timeout_seconds "
-                "(or legacy timeout_seconds)."
-            )
-        if not isinstance(measurement_timeout, (int, float)) or measurement_timeout <= 0:
-            raise ValueError(f"Invalid measurement timeout: {measurement_timeout!r}")
-        measurement_timeout = float(measurement_timeout)
+
+        # Uncapped work runs on its owned worker's main thread so SIGINT
+        # unwinds the active call through teardown before any later stage starts.
+        measurement_timeout = _measurement_execution_deadline(config)
+        if measurement_timeout is not None:
+            validate_thread_wait_timeout(measurement_timeout)
         thread_start_time = time.time()
-        self._ensure_thread_executor()
-        future = self._thread_executor.submit(run_benchmark_internal)
+        future = None
         timeout_result: Optional[PydanticBenchmarkResult] = None
         try:
-            try:
-                future.result(timeout=measurement_timeout)
-            except _FuturesTimeoutError:
-                if not provenance_started.is_set():
-                    raise
-                remaining = _RUNTIME_PROVENANCE_TIMEOUT_SECONDS - (
-                    time.monotonic() - provenance_start_time[0]
-                )
-                future.result(timeout=max(0.0, remaining))
+            if measurement_timeout is None:
+                run_benchmark_internal()
+            else:
+                self._ensure_thread_executor()
+                future = self._thread_executor.submit(run_benchmark_internal)
+                try:
+                    future.result(timeout=measurement_timeout)
+                except _FuturesTimeoutError:
+                    if not provenance_started.is_set():
+                        raise
+                    remaining = _RUNTIME_PROVENANCE_TIMEOUT_SECONDS - (
+                        time.monotonic() - provenance_start_time[0]
+                    )
+                    future.result(timeout=max(0.0, remaining))
             elapsed_time = time.time() - thread_start_time
         except _FuturesTimeoutError:
+            if measurement_timeout is None:
+                raise
+            assert future is not None
+            assert measurement_timeout is not None
             elapsed_time = time.time() - thread_start_time
             future.cancel()
-            timeout_stage = 'measurement'
+            timeout_stage = "measurement"
             if provenance_started.is_set():
                 timeout_stage = (
-                    'runtime_provenance'
-                    if stage_watchdog['runtime_provenance']['status'] == 'running'
-                    else 'finalization'
+                    "runtime_provenance"
+                    if stage_watchdog["runtime_provenance"]["status"] == "running"
+                    else "finalization"
                 )
-            timeout_limit = _RUNTIME_PROVENANCE_TIMEOUT_SECONDS if provenance_started.is_set() else measurement_timeout
+            timeout_limit = (
+                _RUNTIME_PROVENANCE_TIMEOUT_SECONDS
+                if provenance_started.is_set()
+                else measurement_timeout
+            )
             timeout_duration = (
                 time.monotonic() - provenance_start_time[0]
-                if provenance_started.is_set() else elapsed_time
+                if provenance_started.is_set()
+                else elapsed_time
             )
-            finish_stage(timeout_stage, status='timeout')
+            finish_stage(timeout_stage, status="timeout")
 
             if timeout_result_storage[0] is not None:
                 timeout_result = timeout_result_storage[0]
@@ -5140,15 +5857,19 @@ class BenchmarkHarness:
                 logger.error("   - GPU is under heavy load from other processes")
                 logger.error("")
                 logger.error("   Suggested actions:")
-                logger.error(f"   - Increase timeout: config.measurement_timeout_seconds = {measurement_timeout * 2}")
+                logger.error(
+                    f"   - Increase timeout: config.measurement_timeout_seconds = {measurement_timeout * 2}"
+                )
                 logger.error(f"   - Use timeout multiplier: config.timeout_multiplier = 2.0")
                 logger.error("   - Check for GPU resource contention")
                 logger.error("   - Review benchmark code for potential deadlocks")
-                logger.error("   - Use subprocess mode (more reliable): config.use_subprocess = True")
+                logger.error(
+                    "   - Use subprocess mode (more reliable): config.use_subprocess = True"
+                )
                 logger.error("")
                 logger.error("   WARNING: Threading timeout cannot force-stop hung CUDA kernels.")
                 logger.error("=" * 80)
-                
+
                 timeout_error_msg = (
                     f"TIMEOUT: Benchmark {timeout_stage} stage exceeded timeout of {timeout_limit} seconds "
                     f"(ran for {timeout_duration:.2f}s). "
@@ -5157,13 +5878,13 @@ class BenchmarkHarness:
                 )
                 errors.append(timeout_error_msg)
                 times_ms = cast(List[float], [])
-                
+
                 if torch.cuda.is_available():
                     torch.cuda.empty_cache()
                     torch.cuda.reset_peak_memory_stats()
                 gc.collect()
                 gc.collect()
-                
+
                 timeout_result = self._create_timeout_result(
                     stage=timeout_stage,
                     duration=timeout_duration,
@@ -5178,11 +5899,11 @@ class BenchmarkHarness:
 
         if timeout_result is not None:
             return attach_evaluation(timeout_result)
-        
+
         # Check if a timeout occurred in setup/warmup/profiling stages
         if timeout_result_storage[0] is not None:
             return attach_evaluation(timeout_result_storage[0])
-        
+
         if execution_complete.is_set():
             # Thread completed normally - results are already set
             pass
@@ -5191,12 +5912,15 @@ class BenchmarkHarness:
             if not times_ms:
                 errors.append("Benchmark execution completed but no results collected")
         # Don't print success message for normal completion - only print on timeout/failure
-        
+
         if not times_ms:
             # Build comprehensive error message with context
+            timeout_summary = (
+                "disabled" if measurement_timeout is None else f"{measurement_timeout}s"
+            )
             config_summary = (
                 f"iterations={config.iterations}, warmup={config.warmup}, "
-                f"timeout={getattr(config, 'measurement_timeout_seconds', config.timeout_seconds)}s"
+                f"measurement timeout={timeout_summary}"
             )
             error_details = [
                 f"Benchmark: {benchmark_name}",
@@ -5207,11 +5931,17 @@ class BenchmarkHarness:
             if memory_peak_mb is not None:
                 error_details.append(f"Partial memory stats: peak={memory_peak_mb:.2f}MB")
             if profiling_outputs:
-                error_details.append(f"Profiling artifacts collected: {list(profiling_outputs.keys())}")
+                error_details.append(
+                    f"Profiling artifacts collected: {list(profiling_outputs.keys())}"
+                )
 
             skip_reason = _extract_skip_reason_from_messages(errors)
             if skip_reason:
-                skip_message = skip_reason if skip_reason.upper().startswith("SKIPPED") else f"SKIPPED: {skip_reason}"
+                skip_message = (
+                    skip_reason
+                    if skip_reason.upper().startswith("SKIPPED")
+                    else f"SKIPPED: {skip_reason}"
+                )
                 if LOGGER_AVAILABLE:
                     logger.warning("Benchmark '%s' skipped: %s", benchmark_name, skip_message)
                 raise RuntimeError(skip_message)
@@ -5224,30 +5954,16 @@ class BenchmarkHarness:
                 for detail in error_details:
                     logger.error(f"  {detail}")
                 logger.error("=" * 80)
-            
-            failure_stage = next(
-                (stage for stage, meta in stage_watchdog.items() if meta.get('status') in ('error', 'timeout')),
-                "measurement",
+
+            return attach_evaluation(
+                self._create_failure_result(
+                    errors=errors,
+                    benchmark_name=benchmark_name,
+                    config=config,
+                    watchdog=stage_watchdog,
+                )
             )
-            failure_meta = stage_watchdog.get(failure_stage, {})
-            duration = failure_meta.get("duration", 0.0) or 0.0
-            limit_lookup = {
-                "setup": config.get_effective_timeout("setup"),
-                "warmup": config.get_effective_timeout("warmup"),
-                "profiling": config.get_effective_timeout("profiling"),
-                "measurement": getattr(config, 'measurement_timeout_seconds', config.timeout_seconds),
-            }
-            limit = limit_lookup.get(failure_stage, getattr(config, 'measurement_timeout_seconds', config.timeout_seconds))
-            return attach_evaluation(self._create_timeout_result(
-                stage=failure_stage,
-                duration=duration,
-                limit=limit,
-                errors=errors,
-                benchmark_name=benchmark_name,
-                config=config,
-                watchdog=stage_watchdog,
-            ))
-        
+
         # Compute statistics
         result = self._compute_stats(times_ms, config)
         result = attach_evaluation(result)
@@ -5265,15 +5981,19 @@ class BenchmarkHarness:
         self._attach_throughput_metrics(result, benchmark)
 
         # Add inference timing if available
-        if inference_timing_data and inference_timing_data.get("ttft_times_ms") and inference_timing_data.get("tpot_times_ms"):
+        if (
+            inference_timing_data
+            and inference_timing_data.get("ttft_times_ms")
+            and inference_timing_data.get("tpot_times_ms")
+        ):
             inference_timing = self._capture_inference_timing(
                 inference_timing_data["ttft_times_ms"],
                 inference_timing_data["tpot_times_ms"],
-                config
+                config,
             )
             if inference_timing:
                 result.inference_timing = inference_timing
-        
+
         # Add memory stats
         if memory_peak_mb is not None or memory_allocated_mb is not None:
             result.memory = MemoryStats(
@@ -5282,61 +6002,85 @@ class BenchmarkHarness:
                 reserved_mb=None,
                 schemaVersion="1.0",
             )
-        
+
         # Add errors
         result.errors = errors
-        
+
         # Add profiling artifacts
         if profiling_outputs:
             result.artifacts = ProfilerArtifacts(
-                nsys_rep=profiling_outputs.get('nsys_rep') or profiling_outputs.get('nsys'),
-                ncu_rep=profiling_outputs.get('ncu_rep') or profiling_outputs.get('ncu'),
-                torch_trace_json=profiling_outputs.get('torch') or profiling_outputs.get('pytorch_trace'),
-                proton_report=profiling_outputs.get('proton_report') or profiling_outputs.get('proton'),
+                nsys_rep=profiling_outputs.get("nsys_rep") or profiling_outputs.get("nsys"),
+                ncu_rep=profiling_outputs.get("ncu_rep") or profiling_outputs.get("ncu"),
+                torch_trace_json=profiling_outputs.get("torch")
+                or profiling_outputs.get("pytorch_trace"),
+                proton_report=profiling_outputs.get("proton_report")
+                or profiling_outputs.get("proton"),
                 schemaVersion="1.0",
             )
-        
+
         # Add profiler metrics
         nsys_metrics_obj = None
         ncu_metrics_obj = None
         proton_metrics_obj = None
-        
+
         if nsys_metrics:
             nsys_metrics_obj = NsysMetrics(
-                total_gpu_time_ms=nsys_metrics.get('nsys_total_gpu_time_ms'),
-                raw_metrics={k.replace('nsys_', ''): v for k, v in nsys_metrics.items() 
-                            if not k.startswith('nsys_total_gpu_time_ms')},
+                total_gpu_time_ms=nsys_metrics.get("nsys_total_gpu_time_ms"),
+                raw_metrics={
+                    k.replace("nsys_", ""): v
+                    for k, v in nsys_metrics.items()
+                    if not k.startswith("nsys_total_gpu_time_ms")
+                },
                 schemaVersion="1.0",
             )
-        
+
         if ncu_metrics:
             ncu_metrics_obj = _ncu_metrics_from_flat(ncu_metrics)
-        
+
         if proton_metrics:
-            occ_field = proton_metrics.get('proton_occupancy_limited_kernels_list', proton_metrics.get('proton_occupancy_limited_kernels', ""))
+            occ_field = proton_metrics.get(
+                "proton_occupancy_limited_kernels_list",
+                proton_metrics.get("proton_occupancy_limited_kernels", ""),
+            )
             if isinstance(occ_field, list):
                 occupancy = [str(item) for item in occ_field if item]
             else:
-                occupancy = [item for item in occ_field.split(",") if item] if isinstance(occ_field, str) else []
+                occupancy = (
+                    [item for item in occ_field.split(",") if item]
+                    if isinstance(occ_field, str)
+                    else []
+                )
             summary_stats: Dict[str, Any] = {}
-            summary_from_report = proton_metrics.get('proton_summary_stats')
+            summary_from_report = proton_metrics.get("proton_summary_stats")
             if isinstance(summary_from_report, dict):
                 summary_stats.update(summary_from_report)
-            summary_stats.update({
-                k.replace('proton_', ''): v for k, v in proton_metrics.items()
-                if k.startswith('proton_') and k not in {'proton_kernel_count', 'proton_occupancy_limited_kernels', 'proton_top_kernels', 'proton_summary_stats', 'proton_kernel_summaries', 'proton_occupancy_limited_kernels_list'}
-            })
-            kernel_summaries = proton_metrics.get('proton_kernel_summaries')
+            summary_stats.update(
+                {
+                    k.replace("proton_", ""): v
+                    for k, v in proton_metrics.items()
+                    if k.startswith("proton_")
+                    and k
+                    not in {
+                        "proton_kernel_count",
+                        "proton_occupancy_limited_kernels",
+                        "proton_top_kernels",
+                        "proton_summary_stats",
+                        "proton_kernel_summaries",
+                        "proton_occupancy_limited_kernels_list",
+                    }
+                }
+            )
+            kernel_summaries = proton_metrics.get("proton_kernel_summaries")
             if not isinstance(kernel_summaries, list):
                 kernel_summaries = []
             proton_metrics_obj = ProtonMetrics(
-                kernel_count=proton_metrics.get('proton_kernel_count'),
+                kernel_count=proton_metrics.get("proton_kernel_count"),
                 occupancy_limited_kernels=occupancy,
                 summary_stats=summary_stats,
                 kernel_summaries=kernel_summaries,
                 schemaVersion="1.0",
             )
-        
+
         if nsys_metrics_obj or ncu_metrics_obj or proton_metrics_obj:
             result.profiler_metrics = ProfilerMetrics(
                 nsys=nsys_metrics_obj,
@@ -5345,19 +6089,20 @@ class BenchmarkHarness:
                 torch=None,
                 schemaVersion="1.0",
             )
-        
+
         self._annotate_launch_metadata(result, config)
         return result
-    
+
     def _benchmark_with_profiling(
         self, fn: Callable, config: BenchmarkConfig
     ) -> tuple[List[float], Dict[str, str]]:
         """Benchmark with profiling enabled."""
         from core.harness.profiler_guard import assert_no_active_profiler
+
         assert_no_active_profiler()
         self._ensure_runtime_initialized()
         profiling_outputs = {}
-        
+
         # Create profiling output directory
         if config.profiling_output_dir:
             prof_dir = Path(config.profiling_output_dir)
@@ -5365,14 +6110,15 @@ class BenchmarkHarness:
         else:
             prof_dir = Path("profiling_results")
             prof_dir.mkdir(parents=True, exist_ok=True)
-        
+
         # Try PyTorch profiler first (best for Python benchmarks)
         try:
             import torch.profiler
-            
+
             torch_profiler_kwargs = {}
             try:
                 from core.profiling import profiler_config as profiler_config_mod
+
                 profiler_cfg = None
                 if hasattr(profiler_config_mod, "build_profiler_config_from_benchmark"):
                     profiler_cfg = profiler_config_mod.build_profiler_config_from_benchmark(config)
@@ -5405,22 +6151,20 @@ class BenchmarkHarness:
             cuda_profile_requested = torch.profiler.ProfilerActivity.CUDA in (
                 torch_profiler_kwargs.get("activities") or ()
             )
-            prepare_torch_cuda_profiler(
-                cuda_profile_requested=cuda_profile_requested
-            )
-            
+            prepare_torch_cuda_profiler(cuda_profile_requested=cuda_profile_requested)
+
             # Run benchmark with PyTorch profiler
             with torch.profiler.profile(**torch_profiler_kwargs) as prof:
                 profile_iterations = min(config.iterations, 10)
                 times_ms = cast(List[float], [])
                 is_cuda = self.device.type == "cuda"
-                
+
                 if is_cuda:
                     # Create events once, reuse across iterations
                     start_event = torch.cuda.Event(enable_timing=True)
                     end_event = torch.cuda.Event(enable_timing=True)
                     torch.cuda.synchronize(self.device)  # Sync once before loop
-                    
+
                     for _ in range(profile_iterations):
                         start_event.record()
                         fn()
@@ -5436,29 +6180,28 @@ class BenchmarkHarness:
                         end_time = time.perf_counter()
                         times_ms.append((end_time - start_time) * 1000)
                         prof.step()  # Record each iteration in profiling trace
-            
+
             # Export profiling data
             trace_file = prof_dir / "trace.json"
             prof.export_chrome_trace(str(trace_file))
             profiling_outputs["pytorch_trace"] = str(trace_file)
-            
+
             return times_ms, profiling_outputs
-            
+
         except Exception as e:
             # NO SILENT FALLBACK - profiling was explicitly requested, so raise on failure
             raise RuntimeError(f"Profiling failed (no silent fallback): {e}") from e
-    
-    
+
     # Profiling methods moved to profiling.profiling_runner module
     # Use run_nsys_profiling() and run_ncu_profiling() from profiling_runner.py
     # Wrapper generation moved to profiling.profiler_wrapper module
     # Use create_benchmark_wrapper() from profiler_wrapper.py
-    
+
     def _benchmark_without_profiling(
         self, fn: Callable, config: BenchmarkConfig
     ) -> tuple[List[float], Optional[Dict[str, List[float]]]]:
         """Benchmark without profiling.
-        
+
         Returns:
             Tuple of (times_ms, inference_timing_data) where inference_timing_data is None
             or a dict with 'ttft_times_ms' and 'tpot_times_ms' keys
@@ -5471,13 +6214,15 @@ class BenchmarkHarness:
             return times_ms, None
         else:
             return self._benchmark_custom(fn, config)
-    
+
     def _benchmark_triton(self, fn: Callable, config: BenchmarkConfig) -> List[float]:
         """Use Triton's do_bench (returns single value per call)."""
         from core.harness.profiler_guard import assert_no_active_profiler
+
         assert_no_active_profiler()
         try:
             import triton.testing as tt
+
             times_ms = cast(List[float], [])
             # Triton do_bench handles warmup internally, but we do our own
             for _ in range(config.iterations):
@@ -5486,8 +6231,10 @@ class BenchmarkHarness:
             return times_ms
         except ImportError as e:
             # Triton not installed - fail explicitly, don't silently fall back
-            raise RuntimeError(f"Triton benchmarking mode requested but Triton not available: {e}") from e
-    
+            raise RuntimeError(
+                f"Triton benchmarking mode requested but Triton not available: {e}"
+            ) from e
+
     def _benchmark_pytorch(self, fn: Callable, config: BenchmarkConfig) -> List[float]:
         """Retain every observed Timer block mean; never resample to a requested count.
 
@@ -5495,46 +6242,51 @@ class BenchmarkHarness:
         iterations field counts measured blocks, not config.iterations calls.
         """
         from core.harness.profiler_guard import assert_no_active_profiler
+
         assert_no_active_profiler()
         try:
             from torch.utils.benchmark import Timer
-            
+
             timer = Timer(
                 stmt="fn()",
                 globals={"fn": fn},
                 num_threads=1,
             )
-            
+
             # blocked_autorange runs until min_run_time is met
             measurement = timer.blocked_autorange(
                 min_run_time=config.min_run_time_ms / 1000.0  # Convert to seconds
             )
-            
+
             # Measurement.times divides each actual block interval by its
             # number_per_run. These are block means, not individual-call tails.
             if not measurement.times or measurement.number_per_run < 1:
                 raise RuntimeError("PyTorch Timer returned no measured blocks")
             return _ObservedTimings(
                 [t * 1000 for t in measurement.times],
-                sample_scope="block_mean", iterations_per_sample=measurement.number_per_run,
+                sample_scope="block_mean",
+                iterations_per_sample=measurement.number_per_run,
             )
         except Exception as e:
             # NO SILENT FALLBACK - PyTorch Timer mode was explicitly requested
             raise RuntimeError(f"PyTorch Timer benchmarking failed: {e}") from e
-    
-    def _benchmark_custom(self, fn: Callable, config: BenchmarkConfig) -> tuple[List[float], Optional[Dict[str, List[float]]]]:
+
+    def _benchmark_custom(
+        self, fn: Callable, config: BenchmarkConfig
+    ) -> tuple[List[float], Optional[Dict[str, List[float]]]]:
         """Custom benchmarking with CUDA Events for accurate GPU timing.
-        
+
         Optimized for minimal overhead:
         - Uses CUDA Events for accurate GPU timing without blocking
         - Reuses events across iterations for efficiency
         - Synchronizes only when necessary for accurate timing
-        
+
         Returns:
             Tuple of (times_ms, inference_timing_data) where inference_timing_data is None
             or a dict with 'ttft_times_ms' and 'tpot_times_ms' keys
         """
         from core.harness.profiler_guard import assert_no_active_profiler
+
         assert_no_active_profiler()
         self._ensure_runtime_initialized()
         times_ms: List[float] = []
@@ -5544,35 +6296,51 @@ class BenchmarkHarness:
 
         # Capture config snapshot for immutability verification (Option C: full config).
         # This protects against benchmarks manipulating harness protections mid-run.
-        config_snapshot = config.capture_config_snapshot() if getattr(config, 'enforce_config_immutability', True) else None
+        config_snapshot = (
+            config.capture_config_snapshot()
+            if getattr(config, "enforce_config_immutability", True)
+            else None
+        )
 
         # Some benchmarks (e.g., external CUDA binaries) report their own timing.
         benchmark_obj = getattr(fn, "__self__", None)
         allowed_antipatterns = getattr(benchmark_obj, "allowed_benchmark_fn_antipatterns", ())
         use_reported_time = bool(getattr(benchmark_obj, "use_reported_time", False))
         range_name = getattr(config, "name", None) or getattr(fn, "__name__", "benchmark_fn")
-        
+
         # ===== VALIDITY PROTECTIONS (Pre-benchmark) =====
         # These checks address benchmark validity issues.
         from core.harness.validity_checks import (
-            reset_cuda_memory_pool, capture_gpu_state, gc_disabled,
-            clear_compile_cache, force_tensor_evaluation, validate_environment,
-            capture_precision_policy_state, check_precision_policy_consistency,
-            MemoryAllocationTracker, get_active_streams,
-            check_benchmark_fn_antipatterns, check_benchmark_fn_sync_calls,
+            reset_cuda_memory_pool,
+            capture_gpu_state,
+            gc_disabled,
+            clear_compile_cache,
+            force_tensor_evaluation,
+            validate_environment,
+            capture_precision_policy_state,
+            check_precision_policy_consistency,
+            MemoryAllocationTracker,
+            get_active_streams,
+            check_benchmark_fn_antipatterns,
+            check_benchmark_fn_sync_calls,
         )
-        
+
         # 0. Validate environment and log device enumeration
         env_result = validate_environment(
             device=self.device,
             probe=self._environment_probe,
             allow_virtualization=bool(getattr(config, "allow_virtualization", False)),
             allow_foreign_gpu_processes=bool(getattr(config, "allow_foreign_gpu_processes", False)),
-            expected_device_uuid=config.expected_device_uuid if self.device.type == "cuda" else None,
-            expected_compute_capability=config.expected_compute_capability if self.device.type == "cuda" else None,
+            expected_device_uuid=config.expected_device_uuid
+            if self.device.type == "cuda"
+            else None,
+            expected_compute_capability=config.expected_compute_capability
+            if self.device.type == "cuda"
+            else None,
         )
         for warning in env_result.warnings:
             import warnings as warn_module
+
             warn_module.warn(f"ENVIRONMENT WARNING: {warning}", RuntimeWarning)
         if LOGGER_AVAILABLE:
             for notice in env_result.notices:
@@ -5583,12 +6351,13 @@ class BenchmarkHarness:
             if enforce_env:
                 raise RuntimeError(message)
             import warnings as warn_module
+
             warn_module.warn(message, RuntimeWarning)
-        
+
         # 1. Reset memory pool to prevent memory reuse gaming
-        if getattr(config, 'reset_memory_pool', True) and self.device.type == "cuda":
+        if getattr(config, "reset_memory_pool", True) and self.device.type == "cuda":
             reset_cuda_memory_pool(self.device)
-        
+
         # 2. Clear torch.compile cache for consistent compilation state
         # NOTE: compile caches are cleared before setup/warmup in BenchmarkHarness.benchmark().
 
@@ -5618,9 +6387,9 @@ class BenchmarkHarness:
                 allowed_codes=allowed_antipatterns,
             )
             if not antipattern_ok:
-                policy = str(
-                    getattr(config, "benchmark_fn_antipattern_policy", "warn")
-                ).strip().lower()
+                policy = (
+                    str(getattr(config, "benchmark_fn_antipattern_policy", "warn")).strip().lower()
+                )
                 message = (
                     "BENCHMARK_FN ANTI-PATTERN WARNING: benchmark_fn() contains hot-path work "
                     "that will distort timings or hide the real kernel cost.\n- "
@@ -5635,23 +6404,23 @@ class BenchmarkHarness:
 
         # 3. Capture GPU state before benchmark (for consistency check)
         gpu_state_before = None
-        if getattr(config, 'monitor_gpu_state', True) and self.device.type == "cuda":
+        if getattr(config, "monitor_gpu_state", True) and self.device.type == "cuda":
             gpu_state_before = capture_gpu_state(self.device.index or 0)
 
         # 3b. Capture backend precision policy before benchmark
         precision_policy_before = None
-        if getattr(config, 'monitor_backend_policy', True):
+        if getattr(config, "monitor_backend_policy", True):
             precision_policy_before = capture_precision_policy_state()
-        
+
         # 4. Start memory allocation tracking
         memory_tracker = None
-        if getattr(config, 'track_memory_allocations', True) and self.device.type == "cuda":
+        if getattr(config, "track_memory_allocations", True) and self.device.type == "cuda":
             memory_tracker = MemoryAllocationTracker(self.device)
             memory_tracker.start()
-        
+
         is_cuda = self.device.type == "cuda"
         force_eval_warning_emitted = False
-        
+
         if is_cuda:
             timing_method = getattr(config, "timing_method", "cuda_event")
             if timing_method not in {"cuda_event", "wall_clock"}:
@@ -5666,7 +6435,7 @@ class BenchmarkHarness:
             # Create events once - reuse across iterations (efficient)
             start_event = torch.cuda.Event(enable_timing=True) if use_cuda_events else None
             end_event = torch.cuda.Event(enable_timing=True) if use_cuda_events else None
-            
+
             # L2 cache clearing buffer (Triton best practice)
             # See: https://github.com/triton-lang/triton/blob/main/python/triton/testing.py
             # Buffer size is dynamically determined based on GPU architecture:
@@ -5675,78 +6444,87 @@ class BenchmarkHarness:
             # - Ampere (A100): 40MB L2
             # See core/harness/l2_cache_utils.py for details
             l2_cache_buffer = None
-            if getattr(config, 'clear_l2_cache', False):
+            if getattr(config, "clear_l2_cache", False):
                 from core.harness.l2_cache_utils import create_l2_flush_buffer
+
                 l2_cache_buffer = create_l2_flush_buffer(self.device)
-            
+
             # Gradient clearing (Triton best practice)
             grad_tensors = []
-            grad_names = getattr(config, 'grad_to_none', None)
+            grad_names = getattr(config, "grad_to_none", None)
             if grad_names and benchmark_obj:
                 for name in grad_names:
                     tensor = getattr(benchmark_obj, name, None)
-                    if tensor is not None and hasattr(tensor, 'grad'):
+                    if tensor is not None and hasattr(tensor, "grad"):
                         grad_tensors.append(tensor)
-            
+
             # Synchronize once before starting to ensure clean state
             torch.cuda.synchronize(self.device)
-            
+
             # 4. Disable GC during timing to prevent GC interference
             # This is wrapped around the timing loop, not the full benchmark
-            gc_context = gc_disabled() if getattr(config, 'disable_gc_during_timing', True) else nullcontext()
-            
+            gc_context = (
+                gc_disabled()
+                if getattr(config, "disable_gc_during_timing", True)
+                else nullcontext()
+            )
+
             # Run benchmark iterations with accurate per-iteration timing
             # CUDA Events provide accurate timing with minimal overhead
-            # 
+            #
             # Cross-validation: Also track wall clock time to detect timing anomalies
             # This protects against cases where CUDA event timing is manipulated
             wall_clock_times_ms: List[float] = []
-            
+
             # Adaptive iterations setup (Triton-style best practice)
             # If enabled, dynamically adjust iterations to achieve target duration
-            use_adaptive = getattr(config, 'adaptive_iterations', False)
-            min_total_duration_ms = getattr(config, 'min_total_duration_ms', 100.0)
-            max_adaptive_iterations = getattr(config, 'max_adaptive_iterations', 10000)
+            use_adaptive = getattr(config, "adaptive_iterations", False)
+            min_total_duration_ms = getattr(config, "min_total_duration_ms", 100.0)
+            max_adaptive_iterations = getattr(config, "max_adaptive_iterations", 10000)
             target_iterations = config.iterations  # Fixed iterations (or initial if adaptive)
             if use_adaptive and max_adaptive_iterations < target_iterations:
-                raise ValueError("max_adaptive_iterations must be >= iterations for adaptive CUDA timing")
+                raise ValueError(
+                    "max_adaptive_iterations must be >= iterations for adaptive CUDA timing"
+                )
             total_duration_ms = 0.0
             iteration_count = 0
-            
+
             # CUDA Graph mode setup (Triton-style best practice)
             # Captures the benchmark function once, then replays for each iteration
             # This reduces CPU overhead significantly for repetitive kernel launches
-            use_cuda_graph = getattr(config, 'enable_cuda_graph', False)
+            use_cuda_graph = getattr(config, "enable_cuda_graph", False)
             cuda_graph = None
             cuda_graph_captured = False
-            graph_cheat_detector = GraphCaptureCheatDetector(self.device) if use_cuda_graph else None
+            graph_cheat_detector = (
+                GraphCaptureCheatDetector(self.device) if use_cuda_graph else None
+            )
             internal_stream_ids: Set[int] = set()
             graph_replay_warning_emitted = False
-            
+
             def _run_single_iteration():
                 """Helper to run a single benchmark iteration and return timing."""
                 nonlocal iteration_count, total_duration_ms, cuda_graph, cuda_graph_captured
                 nonlocal graph_replay_warning_emitted, force_eval_warning_emitted
-                
+
                 # Clear L2 cache before each iteration (Triton best practice)
                 # This ensures each iteration measures "cold cache" performance
                 if l2_cache_buffer is not None:
                     l2_cache_buffer.zero_()
                     torch.cuda.synchronize(self.device)
-                
+
                 # Clear gradients (Triton best practice)
                 for tensor in grad_tensors:
                     tensor.grad = None
-                
+
                 # Start wall clock timer for cross-validation
                 wall_start = time.perf_counter()
-                
+
                 # Record start event (non-blocking)
                 if start_event is not None:
                     start_event.record()
-                
+
                 result = None
-                
+
                 # CUDA Graph mode (Triton-style best practice)
                 # If enabled and already captured, replay the graph instead of running fn()
                 if use_cuda_graph and cuda_graph_captured and cuda_graph is not None:
@@ -5761,31 +6539,36 @@ class BenchmarkHarness:
 
                 if is_cuda and getattr(config, "force_synchronize", False):
                     torch.cuda.synchronize(self.device)
-                
+
                 # Record end event (non-blocking)
                 if end_event is not None:
                     end_event.record()
-                
+
                 # CRITICAL: Full device sync vs event sync (Triton/Locus best practice)
                 # event.synchronize() only waits for operations on the stream where the event was recorded.
                 # torch.cuda.synchronize() waits for ALL streams on ALL devices.
                 # This is critical for protecting against multi-stream timing exploits.
                 # See: Locus/KernelBench 2025 - 32.8% of RL kernels exploited stream timing loopholes.
-                if getattr(config, 'full_device_sync', True):
+                if getattr(config, "full_device_sync", True):
                     torch.cuda.synchronize()  # Wait for ALL streams (stream-safe)
                 else:
                     end_event.synchronize()  # Only wait for this event's stream (faster but less safe)
-                
+
                 # Stop wall clock timer
                 wall_end = time.perf_counter()
                 wall_elapsed_ms = (wall_end - wall_start) * 1000
                 wall_clock_times_ms.append(wall_elapsed_ms)
-                
+
                 if start_event is not None and end_event is not None:
                     elapsed_ms = start_event.elapsed_time(end_event)
                 else:
                     elapsed_ms = wall_elapsed_ms
-                if use_cuda_graph and cuda_graph_captured and cuda_graph is not None and graph_cheat_detector is not None:
+                if (
+                    use_cuda_graph
+                    and cuda_graph_captured
+                    and cuda_graph is not None
+                    and graph_cheat_detector is not None
+                ):
                     try:
                         graph_cheat_detector.end_replay(elapsed_ms)
                     except Exception as exc:
@@ -5815,19 +6598,19 @@ class BenchmarkHarness:
                                 merged = dict(result)
                                 merged.update(finalized)
                                 result = merged
-                
+
                 # Check if function returned inference timing data (only if not graph replay)
                 if result is not None and isinstance(result, dict):
                     if "ttft_times_ms" in result and isinstance(result["ttft_times_ms"], list):
                         ttft_times_ms.extend(result["ttft_times_ms"])
                     if "tpot_times_ms" in result and isinstance(result["tpot_times_ms"], list):
                         tpot_times_ms.extend(result["tpot_times_ms"])
-                
+
                 iteration_count += 1
                 total_duration_ms += elapsed_ms
-                
+
                 # Force evaluation of lazy tensors after timing to prevent skipped compute
-                if getattr(config, 'force_tensor_evaluation', True) and result is not None:
+                if getattr(config, "force_tensor_evaluation", True) and result is not None:
                     try:
                         tensors_to_force: Dict[str, Any] = {}
                         if isinstance(result, torch.Tensor):
@@ -5846,15 +6629,15 @@ class BenchmarkHarness:
                             )
                             force_eval_warning_emitted = True
                 return elapsed_ms, result
-            
+
             def _capture_cuda_graph():
                 """Capture the benchmark function as a CUDA graph for fast replay."""
                 nonlocal cuda_graph, cuda_graph_captured, internal_stream_ids
-                
+
                 try:
                     # CUDA graphs must be captured on a non-default stream. Capturing on
                     # the default stream can leave RNG in an invalid state on failure.
-                    graph_warmup_iters = getattr(config, 'cuda_graph_warmup_iters', 3)
+                    graph_warmup_iters = getattr(config, "cuda_graph_warmup_iters", 3)
                     capture_stream = torch.cuda.Stream(device=self.device)
                     internal_stream_ids.add(int(capture_stream.cuda_stream))
                     # Ensure capture stream sees prior work.
@@ -5863,16 +6646,16 @@ class BenchmarkHarness:
                         with torch.cuda.stream(capture_stream):
                             fn()
                         torch.cuda.synchronize(self.device)
-                    
+
                     # Capture the CUDA graph
                     # Note: The benchmark function must be deterministic and have no CPU work
                     cuda_graph = torch.cuda.CUDAGraph()
-                    
+
                     # Warm up before capture (ensures allocations are complete)
                     with torch.cuda.stream(capture_stream):
                         fn()
                     torch.cuda.synchronize(self.device)
-                    
+
                     # Capture the graph
                     if graph_cheat_detector is not None:
                         graph_cheat_detector.start_capture()
@@ -5881,7 +6664,7 @@ class BenchmarkHarness:
                     if graph_cheat_detector is not None:
                         graph_cheat_detector.end_capture()
                     torch.cuda.synchronize(self.device)
-                    
+
                     cuda_graph_captured = True
                 except Exception as e:
                     # CUDA graph capture failed - fall back to normal execution
@@ -5890,6 +6673,7 @@ class BenchmarkHarness:
                     # - There are CPU-GPU syncs inside benchmark_fn()
                     # - The benchmark does allocations inside the function
                     import warnings
+
                     warnings.warn(
                         f"CUDA graph capture failed, falling back to normal execution: {e}. "
                         "Ensure benchmark_fn() has no dynamic shapes, CPU work, or allocations.",
@@ -5897,15 +6681,17 @@ class BenchmarkHarness:
                     )
                     cuda_graph = None
                     cuda_graph_captured = False
-            
-            audit_streams_enabled = getattr(config, 'audit_stream_sync', True)
+
+            audit_streams_enabled = getattr(config, "audit_stream_sync", True)
             pre_streams: List[int] = []
             declared_streams: List[Any] = []
             if audit_streams_enabled and hasattr(benchmark_obj, "get_custom_streams"):
                 try:
                     streams = benchmark_obj.get_custom_streams()
                     if streams:
-                        declared_streams = [streams] if isinstance(streams, torch.cuda.Stream) else list(streams)
+                        declared_streams = (
+                            [streams] if isinstance(streams, torch.cuda.Stream) else list(streams)
+                        )
                 except Exception as exc:
                     raise RuntimeError(f"get_custom_streams() failed: {exc}")
             stream_auditor = None
@@ -5923,7 +6709,7 @@ class BenchmarkHarness:
                     # Capture before starting timed iterations for graph replay mode
                     if use_cuda_graph:
                         _capture_cuda_graph()
-                    
+
                     if use_adaptive:
                         # Stop on observed device time, not an extrapolation from
                         # the first (often much slower) launch. Respect both the
@@ -5937,12 +6723,14 @@ class BenchmarkHarness:
                         # Fixed iterations mode (original behavior)
                         for _ in range(config.iterations):
                             _run_single_iteration()
-            
+
             # Stream audit check - verify all streams are properly synchronized
             # This detects the Locus/KernelBench stream timing vulnerability
             if audit_streams_enabled:
                 post_streams = get_active_streams(self.device, declared_streams)
-                sync_complete, sync_warning = check_stream_sync_completeness(pre_streams, post_streams)
+                sync_complete, sync_warning = check_stream_sync_completeness(
+                    pre_streams, post_streams
+                )
                 audit_ok = True
                 audit_warnings: List[str] = []
                 if stream_auditor is not None:
@@ -5972,7 +6760,13 @@ class BenchmarkHarness:
                             declared_ids.update(info.stream_ids)
                         elif declared_streams:
                             # Only add explicitly declared streams when auto-declare is disabled
-                            declared_ids.update({s.cuda_stream for s in declared_streams if hasattr(s, "cuda_stream")})
+                            declared_ids.update(
+                                {
+                                    s.cuda_stream
+                                    for s in declared_streams
+                                    if hasattr(s, "cuda_stream")
+                                }
+                            )
                         undeclared_streams = info.stream_ids - declared_ids
                         if undeclared_streams:
                             issues.append(
@@ -5984,15 +6778,15 @@ class BenchmarkHarness:
                     issues.extend(audit_warnings)
                 if issues:
                     raise RuntimeError(
-                        "STREAM TIMING VIOLATION: " +
-                        " | ".join(issues) +
-                        " | All streams must be synchronized to avoid under-timing (see Locus/KernelBench 2025)."
+                        "STREAM TIMING VIOLATION: "
+                        + " | ".join(issues)
+                        + " | All streams must be synchronized to avoid under-timing (see Locus/KernelBench 2025)."
                     )
-            
+
             # Graph capture cheat detection: fail fast if capture vs replay looks suspicious
             if graph_cheat_detector is not None:
-                ratio_thresh = getattr(config, 'graph_capture_cheat_ratio_threshold', 10.0)
-                mem_thresh = getattr(config, 'graph_capture_memory_threshold_mb', 100.0)
+                ratio_thresh = getattr(config, "graph_capture_cheat_ratio_threshold", 10.0)
+                mem_thresh = getattr(config, "graph_capture_memory_threshold_mb", 100.0)
                 is_cheating, cheat_reason = graph_cheat_detector.check_for_cheat(
                     capture_replay_ratio_threshold=ratio_thresh,
                     memory_threshold_mb=mem_thresh,
@@ -6002,39 +6796,44 @@ class BenchmarkHarness:
                 elif LOGGER_AVAILABLE:
                     try:
                         stats = graph_cheat_detector.get_stats()
-                        logger.debug(f"Graph capture check passed (ratio<= {ratio_thresh}, mem<= {mem_thresh}MB): {stats}")
+                        logger.debug(
+                            f"Graph capture check passed (ratio<= {ratio_thresh}, mem<= {mem_thresh}MB): {stats}"
+                        )
                     except Exception:
                         logger.debug("Graph capture check passed")
-            
+
             # Cross-validate CUDA event timing vs wall clock timing
             # Flag anomalies where CUDA events report much less time than wall clock
             # (this could indicate timing manipulation or missing stream sync)
             timing_cross_validation_ratio = None
             if (
                 timing_method == "cuda_event"
-                and getattr(config, 'cross_validate_timing', True)
+                and getattr(config, "cross_validate_timing", True)
                 and wall_clock_times_ms
                 and times_ms
             ):
                 cuda_median = sorted(times_ms)[len(times_ms) // 2]
                 wall_median = sorted(wall_clock_times_ms)[len(wall_clock_times_ms) // 2]
-                
+
                 # Calculate the ratio for reporting
-                timing_cross_validation_ratio = cuda_median / wall_median if wall_median > 0 else 1.0
-                
+                timing_cross_validation_ratio = (
+                    cuda_median / wall_median if wall_median > 0 else 1.0
+                )
+
                 # Configurable threshold (default 0.5 = warn if CUDA < 50% of wall)
-                threshold = getattr(config, 'timing_cross_validation_threshold', 0.5)
-                
+                threshold = getattr(config, "timing_cross_validation_threshold", 0.5)
+
                 if timing_cross_validation_ratio < threshold:
                     message = (
                         f"TIMING CROSS-VALIDATION FAILURE: CUDA event timing ({cuda_median:.3f}ms) "
-                        f"is only {timing_cross_validation_ratio*100:.1f}% of wall clock timing ({wall_median:.3f}ms). "
+                        f"is only {timing_cross_validation_ratio * 100:.1f}% of wall clock timing ({wall_median:.3f}ms). "
                         f"This likely indicates timing manipulation or missing stream synchronization. "
                         f"Set full_device_sync=True and ensure all streams are synchronized."
                     )
                     if _is_chapter_or_labs_benchmark(benchmark_obj):
                         raise RuntimeError(message)
                     import warnings
+
                     warnings.warn(message, RuntimeWarning)
         else:
             # CPU: use high-resolution timer
@@ -6052,15 +6851,15 @@ class BenchmarkHarness:
                 if benchmark_obj is not None:
                     benchmark_obj._last_elapsed_ms = elapsed_ms
                     benchmark_obj._last_wall_elapsed_ms = elapsed_ms
-                
+
                 # Check if function returned inference timing data
                 if isinstance(result, dict):
                     if "ttft_times_ms" in result and isinstance(result["ttft_times_ms"], list):
                         ttft_times_ms.extend(result["ttft_times_ms"])
                     if "tpot_times_ms" in result and isinstance(result["tpot_times_ms"], list):
                         tpot_times_ms.extend(result["tpot_times_ms"])
-                
-                if getattr(config, 'force_tensor_evaluation', True) and result is not None:
+
+                if getattr(config, "force_tensor_evaluation", True) and result is not None:
                     try:
                         tensors_to_force: Dict[str, Any] = {}
                         if isinstance(result, torch.Tensor):
@@ -6078,14 +6877,14 @@ class BenchmarkHarness:
                                 exc=exc,
                             )
                             force_eval_warning_emitted = True
-        
+
         # Build inference timing data if collected
         if ttft_times_ms or tpot_times_ms:
             inference_timing_data = {
                 "ttft_times_ms": ttft_times_ms,
                 "tpot_times_ms": tpot_times_ms,
             }
-        
+
         # Verify harness config wasn't modified during benchmark execution
         if config_snapshot is not None:
             unchanged, error_msg = config.verify_config_unchanged(config_snapshot)
@@ -6116,10 +6915,10 @@ class BenchmarkHarness:
                         f"Expected torch.cuda.initial_seed()={expected_cuda_seed}, got {current_cuda_seed}. "
                         "Benchmarks MUST NOT reseed during setup/warmup/measurement; rely on harness-configured seeds."
                     )
-        
+
         # ===== VALIDITY PROTECTIONS (Post-benchmark) =====
         # Check backend precision policy for unexpected mutation
-        if precision_policy_before is not None and getattr(config, 'monitor_backend_policy', True):
+        if precision_policy_before is not None and getattr(config, "monitor_backend_policy", True):
             precision_policy_after = capture_precision_policy_state()
             _, policy_warnings = check_precision_policy_consistency(
                 precision_policy_before,
@@ -6128,30 +6927,38 @@ class BenchmarkHarness:
             if policy_warnings:
                 message = "BACKEND POLICY MUTATION DETECTED: " + " | ".join(policy_warnings)
                 enforce_policy = bool(getattr(config, "enforce_backend_policy_immutability", True))
-                if enforce_policy and (_is_chapter_or_labs_benchmark(benchmark_obj) if benchmark_obj else False):
+                if enforce_policy and (
+                    _is_chapter_or_labs_benchmark(benchmark_obj) if benchmark_obj else False
+                ):
                     raise RuntimeError(message)
                 import warnings as warn_module
+
                 warn_module.warn(message, RuntimeWarning)
 
         # Check GPU state consistency to detect throttling/thermal issues
-        if gpu_state_before is not None and getattr(config, 'monitor_gpu_state', True):
+        if gpu_state_before is not None and getattr(config, "monitor_gpu_state", True):
             from core.harness.validity_checks import check_gpu_state_consistency
+
             gpu_state_after = capture_gpu_state(self.device.index or 0)
-            is_consistent, gpu_warnings = check_gpu_state_consistency(gpu_state_before, gpu_state_after)
-            
+            is_consistent, gpu_warnings = check_gpu_state_consistency(
+                gpu_state_before, gpu_state_after
+            )
+
             if gpu_warnings:
                 for warning in gpu_warnings:
                     import warnings as warn_module
+
                     warn_module.warn(f"GPU STATE WARNING: {warning}", RuntimeWarning)
-        
+
         # Check memory allocation patterns for suspicious behavior
         if memory_tracker is not None:
             memory_tracker.stop()
             no_mem_issues, mem_warnings = memory_tracker.check_patterns()
-            
+
             if mem_warnings:
                 for warning in mem_warnings:
                     import warnings as warn_module
+
                     warn_module.warn(f"MEMORY TRACKING WARNING: {warning}", RuntimeWarning)
 
         # ===== OPT-IN GRAPHED TIMING SUPPLEMENT (env: AISP_BENCH_TIMING_MODE) =====
@@ -6168,9 +6975,7 @@ class BenchmarkHarness:
                     "Expected 'graphed' (or unset/'default')."
                 )
             if not is_cuda:
-                raise RuntimeError(
-                    "AISP_BENCH_TIMING_MODE=graphed requires a CUDA device."
-                )
+                raise RuntimeError("AISP_BENCH_TIMING_MODE=graphed requires a CUDA device.")
             graphed_metrics = self._graphed_timing_supplement(fn, config, times_ms)
             if benchmark_obj is not None:
                 setattr(benchmark_obj, "_aisp_graphed_timing_metrics", graphed_metrics)
@@ -6212,6 +7017,7 @@ class BenchmarkHarness:
         l2_buffer = None
         if getattr(config, "clear_l2_cache", False):
             from core.harness.l2_cache_utils import create_l2_flush_buffer
+
             l2_buffer = create_l2_flush_buffer(self.device)
 
         try:
@@ -6261,6 +7067,7 @@ class BenchmarkHarness:
             )
             from torch.profiler import ProfilerActivity
             from torch.profiler import profile as torch_profile
+
             torch.cuda.synchronize(self.device)
             prepare_torch_cuda_profiler(cuda_profile_requested=True)
             with torch_profile(activities=[ProfilerActivity.CUDA]) as prof:
@@ -6314,7 +7121,9 @@ class BenchmarkHarness:
         if graph_cold is not None and graph_clears is not None:
             cold_per_iter_ms = _time_graph_per_iter(graph_cold)
             clears_per_iter_ms = _time_graph_per_iter(graph_clears)
-            cold_median = statistics.median(cold_per_iter_ms) - statistics.median(clears_per_iter_ms)
+            cold_median = statistics.median(cold_per_iter_ms) - statistics.median(
+                clears_per_iter_ms
+            )
 
         # Restore benchmark state with one eager call on the default stream so
         # tensors the benchmark exposes for verification reference ordinary
@@ -6353,9 +7162,11 @@ class BenchmarkHarness:
             logger.info(message)
         return metrics
 
-    def _warmup(self, fn: Callable, warmup_iterations: int, config: Optional[BenchmarkConfig] = None) -> None:
+    def _warmup(
+        self, fn: Callable, warmup_iterations: int, config: Optional[BenchmarkConfig] = None
+    ) -> None:
         """Perform warmup iterations.
-        
+
         Args:
             fn: The function to warm up
             warmup_iterations: Number of warmup iterations
@@ -6370,71 +7181,72 @@ class BenchmarkHarness:
                 torch.cuda.synchronize(self.device)
         if is_cuda:
             torch.cuda.synchronize(self.device)
-            
+
             # Warmup buffer isolation: Clear L2 cache after warmup (Triton best practice)
             # This prevents warmup from pre-populating caches that artificially
             # speed up measurement iterations.
             # Buffer size is dynamically determined based on GPU architecture:
             # - Blackwell (B100/B200): 96MB L2
-            # - Hopper (H100/H200): 50MB L2  
+            # - Hopper (H100/H200): 50MB L2
             # - Ampere (A100): 40MB L2
             # See core/harness/l2_cache_utils.py for details
-            isolate = getattr(config, 'isolate_warmup_cache', True) if config else True
+            isolate = getattr(config, "isolate_warmup_cache", True) if config else True
             if isolate:
                 from core.harness.l2_cache_utils import flush_l2_cache
+
                 flush_l2_cache(self.device)
                 # Force garbage collection
                 import gc
+
                 gc.collect()
                 torch.cuda.empty_cache()
-    
-    def _compute_percentiles(self, values: List[float], percentiles: List[float]) -> Dict[float, float]:
+
+    def _compute_percentiles(
+        self, values: List[float], percentiles: List[float]
+    ) -> Dict[float, float]:
         """Compute percentiles for a list of values.
-        
+
         Args:
             values: List of numeric values
             percentiles: List of percentile values (e.g., [50.0, 90.0, 95.0, 99.0])
-            
+
         Returns:
             Dictionary mapping percentile to value
         """
         if not values:
             return {}
-        
+
         # Ensure percentiles is a list
         if percentiles is None:
             percentiles = [25, 50, 75, 99]
-        
+
         sorted_values = sorted(values)
         n = len(sorted_values)
         percentiles_dict = {}
-        
+
         for p in percentiles:
             idx = int((p / 100.0) * (n - 1))
             idx = min(idx, n - 1)
             percentiles_dict[p] = sorted_values[idx]
-        
+
         return percentiles_dict
-    
+
     def _capture_inference_timing(
-        self,
-        ttft_times_ms: List[float],
-        tpot_times_ms: List[float],
-        config: BenchmarkConfig
+        self, ttft_times_ms: List[float], tpot_times_ms: List[float], config: BenchmarkConfig
     ) -> Optional[InferenceTimingStats]:
         """Capture inference timing statistics from raw TTFT and TPOT measurements.
-        
+
         Args:
             ttft_times_ms: List of TTFT measurements (one per request) in milliseconds
             tpot_times_ms: List of TPOT measurements (one per token) in milliseconds
             config: BenchmarkConfig for percentile configuration
-            
+
         Returns:
             InferenceTimingStats object or None if no data
         """
         if not ttft_times_ms or not tpot_times_ms:
             return None
-        
+
         # Compute TTFT percentiles - ensure percentiles is a list
         percentiles = config.percentiles if config.percentiles is not None else [25, 50, 75, 99]
         ttft_percentiles = self._compute_percentiles(ttft_times_ms, percentiles)
@@ -6442,18 +7254,18 @@ class BenchmarkHarness:
         ttft_p90 = ttft_percentiles.get(90.0)
         ttft_p95 = ttft_percentiles.get(95.0)
         ttft_p99 = ttft_percentiles.get(99.0)
-        
+
         # Compute TPOT percentiles
         tpot_percentiles = self._compute_percentiles(tpot_times_ms, percentiles)
         tpot_p50 = tpot_percentiles.get(50.0) or statistics.median(tpot_times_ms)
         tpot_p90 = tpot_percentiles.get(90.0)
         tpot_p95 = tpot_percentiles.get(95.0)
         tpot_p99 = tpot_percentiles.get(99.0)
-        
+
         # Count requests and tokens
         num_requests = len(ttft_times_ms)
         total_tokens_generated = len(tpot_times_ms)
-        
+
         return InferenceTimingStats(
             ttft_mean_ms=statistics.mean(ttft_times_ms),
             ttft_p50_ms=ttft_p50,
@@ -6473,14 +7285,14 @@ class BenchmarkHarness:
             raw_tpot_times_ms=tpot_times_ms,
             schemaVersion="1.0",
         )
-    
+
     def _compute_stats(
         self, times_ms: List[float], config: BenchmarkConfig
     ) -> PydanticBenchmarkResult:
         """Compute statistical measures and return Pydantic BenchmarkResult."""
         if not times_ms:
             raise ValueError("No timing data collected")
-        
+
         # Every observation is evidence. Reject a corrupt sample instead of
         # silently dropping it and reporting statistics for a different run.
         valid_times_ms: List[float] = []
@@ -6498,28 +7310,38 @@ class BenchmarkHarness:
                         f"Invalid timing sample at index {location}: timing values must be finite and nonnegative"
                     )
                 valid_times_ms.append(value)
-        
+
         if not valid_times_ms:
-            raise ValueError(f"No valid timing data collected. Original times_ms had {len(times_ms)} entries, but none were valid numbers.")
-        
+            raise ValueError(
+                f"No valid timing data collected. Original times_ms had {len(times_ms)} entries, but none were valid numbers."
+            )
+
         sorted_times = sorted(valid_times_ms)
         n = len(sorted_times)
-        
+
         # Compute percentiles - ensure percentiles is a list
         process_wall = getattr(times_ms, "sample_scope", None) == "process_wall"
-        percentiles = [] if process_wall else (config.percentiles if config.percentiles is not None else [25, 50, 75, 99])
+        percentiles = (
+            []
+            if process_wall
+            else (config.percentiles if config.percentiles is not None else [25, 50, 75, 99])
+        )
         percentiles_dict = {}
         for p in percentiles:
             idx = int((p / 100.0) * (n - 1))
             idx = min(idx, n - 1)
             percentiles_dict[p] = sorted_times[idx]
-        
+
         # Extract p50/p90/p95/p99 from percentiles
-        p50 = None if process_wall else (percentiles_dict.get(50.0) or statistics.median(valid_times_ms))
+        p50 = (
+            None
+            if process_wall
+            else (percentiles_dict.get(50.0) or statistics.median(valid_times_ms))
+        )
         p90 = percentiles_dict.get(90.0)
         p95 = percentiles_dict.get(95.0)
         p99 = percentiles_dict.get(99.0)
-        
+
         timing = TimingStats(
             mean_ms=statistics.mean(valid_times_ms),
             median_ms=statistics.median(valid_times_ms),
@@ -6546,7 +7368,11 @@ class BenchmarkHarness:
         """Wrap reported timing without inventing missing samples or percentiles."""
         device_index = None
         if torch.cuda.is_available():
-            device_index = self.device.index if getattr(self.device, "index", None) is not None else torch.cuda.current_device()
+            device_index = (
+                self.device.index
+                if getattr(self.device, "index", None) is not None
+                else torch.cuda.current_device()
+            )
         gpu_metrics = query_gpu_telemetry(device_index=device_index)
 
         result = PydanticBenchmarkResult(
@@ -6575,7 +7401,9 @@ class BenchmarkHarness:
     def _validate_timing_summary(timing: TimingStats) -> None:
         """Reject unusable summary-only child results without inventing samples."""
         if timing.iterations <= 0 or timing.warmup_iterations < 0:
-            raise ValueError("Invalid timing summary: iteration counts must describe an executed run")
+            raise ValueError(
+                "Invalid timing summary: iteration counts must describe an executed run"
+            )
         for name in ("mean_ms", "median_ms", "std_ms", "min_ms", "max_ms"):
             value = getattr(timing, name)
             if not math.isfinite(value) or value < 0:
@@ -6588,10 +7416,14 @@ class BenchmarkHarness:
             if not math.isfinite(percentile) or not 0 <= percentile <= 100:
                 raise ValueError("Invalid timing summary: percentile must be between 0 and 100")
             if not math.isfinite(value) or not timing.min_ms <= value <= timing.max_ms:
-                raise ValueError("Invalid timing summary: percentile value must be within min_ms/max_ms")
+                raise ValueError(
+                    "Invalid timing summary: percentile value must be within min_ms/max_ms"
+                )
         for name in ("p50_ms", "p90_ms", "p95_ms", "p99_ms"):
             value = getattr(timing, name)
-            if value is not None and (not math.isfinite(value) or not timing.min_ms <= value <= timing.max_ms):
+            if value is not None and (
+                not math.isfinite(value) or not timing.min_ms <= value <= timing.max_ms
+            ):
                 raise ValueError(f"Invalid timing summary: {name} must be within min_ms/max_ms")
 
     def _resolve_workload_metadata(self, benchmark: BaseBenchmark) -> Optional[WorkloadMetadata]:
@@ -6651,7 +7483,9 @@ class BenchmarkHarness:
                     logger.debug(f"get_story_metadata() raised: {exc}")
         return None
 
-    def _infer_workload_metadata_from_attributes(self, benchmark: BaseBenchmark) -> Optional[WorkloadMetadata]:
+    def _infer_workload_metadata_from_attributes(
+        self, benchmark: BaseBenchmark
+    ) -> Optional[WorkloadMetadata]:
         """Workload inference is disabled; benchmarks must register explicitly."""
         return None
 
@@ -6671,7 +7505,7 @@ class BenchmarkHarness:
         custom_units_per_iteration = None
         custom_unit_name = None
         goodput = None
-        
+
         if workload is not None:
             if workload.requests_per_iteration is not None:
                 requests_per_iteration = max(float(workload.requests_per_iteration), 0.0)
@@ -6685,23 +7519,29 @@ class BenchmarkHarness:
                 custom_units_per_iteration = float(workload.custom_units_per_iteration)
             custom_unit_name = workload.custom_unit_name
             goodput = workload.goodput
-        
+
         requests_per_s = requests_per_iteration / mean_seconds if mean_seconds > 0 else None
         tokens_per_s = (
-            tokens_per_iteration / mean_seconds if tokens_per_iteration is not None and mean_seconds > 0 else None
+            tokens_per_iteration / mean_seconds
+            if tokens_per_iteration is not None and mean_seconds > 0
+            else None
         )
         samples_per_s = (
-            samples_per_iteration / mean_seconds if samples_per_iteration is not None and mean_seconds > 0 else None
+            samples_per_iteration / mean_seconds
+            if samples_per_iteration is not None and mean_seconds > 0
+            else None
         )
         bytes_per_s = (
-            bytes_per_iteration / mean_seconds if bytes_per_iteration is not None and mean_seconds > 0 else None
+            bytes_per_iteration / mean_seconds
+            if bytes_per_iteration is not None and mean_seconds > 0
+            else None
         )
         custom_unit_per_s = (
             custom_units_per_iteration / mean_seconds
             if custom_units_per_iteration is not None and mean_seconds > 0
             else None
         )
-        
+
         return ThroughputStats(
             requests_per_s=requests_per_s,
             tokens_per_s=tokens_per_s,
@@ -6713,7 +7553,9 @@ class BenchmarkHarness:
             goodput=goodput,
         )
 
-    def _attach_throughput_metrics(self, result: PydanticBenchmarkResult, benchmark: BaseBenchmark) -> None:
+    def _attach_throughput_metrics(
+        self, result: PydanticBenchmarkResult, benchmark: BaseBenchmark
+    ) -> None:
         """Attach throughput metrics to the benchmark result when possible."""
         workload = self._resolve_workload_metadata(benchmark)
         throughput_stats = self._compute_throughput_stats(result.timing, workload)
@@ -6726,48 +7568,52 @@ def compare_benchmarks(
     optimized: BaseBenchmark,
     harness: Optional[BenchmarkHarness] = None,
     name: str = "Comparison",
-    regression_threshold_pct: float = 5.0
+    regression_threshold_pct: float = 5.0,
 ) -> Dict[str, Any]:
     """Compare baseline vs optimized benchmarks and return metrics.
-    
+
     Args:
         baseline: Baseline benchmark instance
         optimized: Optimized benchmark instance
         harness: BenchmarkHarness instance (creates new if None)
         name: Name for the comparison
         regression_threshold_pct: Percentage degradation to consider a regression (default: 5%)
-        
+
     Returns:
         Dictionary with comparison metrics including regression detection
     """
     if harness is None:
         harness = BenchmarkHarness()
-    
+
     from core.benchmark.verified_comparison import compare_verified_benchmark_runs
 
     baseline_run = harness.benchmark_with_manifest(baseline)
     optimized_run = harness.benchmark_with_manifest(optimized)
     return compare_verified_benchmark_runs(
-        baseline, optimized, baseline_run, optimized_run,
-        name=name, regression_threshold_pct=regression_threshold_pct,
+        baseline,
+        optimized,
+        baseline_run,
+        optimized_run,
+        name=name,
+        regression_threshold_pct=regression_threshold_pct,
     )
 
 
 def benchmark_main(
-    get_benchmark_fn: Callable[[], 'BaseBenchmark'],
+    get_benchmark_fn: Callable[[], "BaseBenchmark"],
     iterations: int = 10,
     warmup: int = 5,
     name: Optional[str] = None,
     force_sync: Optional[bool] = None,
 ) -> None:
     """Safe helper for standalone scripts that need to run a benchmark factory.
-    
+
     This function avoids CUDA initialization issues by NOT calling get_benchmark_fn()
     in the parent process when using subprocess mode. Instead, it:
     1. Checks if subprocess mode would be used
     2. If so, runs the benchmark directly without harness subprocess (single process)
     3. If not, uses the harness normally
-    
+
     Usage in standalone scripts:
         if __name__ == "__main__":
             from core.harness.benchmark_harness import benchmark_main
@@ -6777,13 +7623,13 @@ def benchmark_main(
     ``get_benchmark()``. Harness-discoverable benchmark modules should expose the
     factory and avoid defining ``__main__`` blocks so the supported execution
     path stays consistent across the repo.
-    
+
     This prevents the common mistake of:
         if __name__ == "__main__":
             bench = get_benchmark()  # <-- This initializes CUDA!
             harness = BenchmarkHarness(...)
             harness.benchmark(bench)  # <-- Subprocess inherits corrupted CUDA
-    
+
     Args:
         get_benchmark_fn: Callable that returns a benchmark instance
         iterations: Number of timed iterations
@@ -6794,9 +7640,9 @@ def benchmark_main(
             runs (unless explicitly disabled).
     """
     # Run directly without harness to avoid CUDA subprocess issues
-        # The harness subprocess mode is designed for run_benchmarks.py
+    # The harness subprocess mode is designed for run_benchmarks.py
     # which properly manages CUDA context by spawning fresh subprocesses
-    
+
     parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument("--iterations", type=int, default=None)
     parser.add_argument("--warmup", type=int, default=None)
@@ -6834,25 +7680,25 @@ def benchmark_main(
             warnings.warn(warn_msg, RuntimeWarning, stacklevel=1)
 
     benchmark = get_benchmark_fn()
-    bench_name = name or getattr(benchmark, 'name', None) or benchmark.__class__.__name__
-    
+    bench_name = name or getattr(benchmark, "name", None) or benchmark.__class__.__name__
+
     # Setup
     benchmark.setup()
-    
+
     # Check for CUDA
     cuda_available = torch.cuda.is_available()
     if cuda_available:
         torch.cuda.synchronize()
-    
+
     # Warmup
     for _ in range(warmup):
         benchmark.benchmark_fn()
         if cuda_available:
             torch.cuda.synchronize()
-    
+
     # Check if benchmark reports its own timing (e.g., CudaBinaryBenchmark parses kernel time from output)
     use_reported_time = bool(getattr(benchmark, "use_reported_time", False))
-    
+
     # Timed runs - use CUDA events for GPU timing (accurate), perf_counter for CPU only
     times_ms: List[float] = []
     if cuda_available:
@@ -6860,7 +7706,7 @@ def benchmark_main(
         start_event = torch.cuda.Event(enable_timing=True)
         end_event = torch.cuda.Event(enable_timing=True)
         torch.cuda.synchronize()  # sync once before timing loop
-        
+
         for _ in range(iterations):
             start_event.record()
             benchmark.benchmark_fn()
@@ -6869,13 +7715,13 @@ def benchmark_main(
             end_event.record()
             end_event.synchronize()
             elapsed_ms = start_event.elapsed_time(end_event)
-            
+
             # Use benchmark-reported time if available (e.g., parsed from CUDA binary output)
             if use_reported_time:
                 reported = getattr(benchmark, "last_time_ms", None)
                 if reported is not None:
                     elapsed_ms = reported
-            
+
             times_ms.append(elapsed_ms)
     else:
         # CPU: use perf_counter (only valid for CPU-only benchmarks)
@@ -6884,14 +7730,18 @@ def benchmark_main(
             benchmark.benchmark_fn()
             elapsed_ms = (time.perf_counter() - start) * 1000
             times_ms.append(elapsed_ms)
-    
+
     # Teardown
     benchmark.teardown()
-    
+
     # Report results
     mean = sum(times_ms) / len(times_ms) if times_ms else 0.0
-    std = (sum((t - mean) ** 2 for t in times_ms) / len(times_ms)) ** 0.5 if len(times_ms) > 1 else 0.0
+    std = (
+        (sum((t - mean) ** 2 for t in times_ms) / len(times_ms)) ** 0.5
+        if len(times_ms) > 1
+        else 0.0
+    )
     min_t = min(times_ms) if times_ms else 0.0
     max_t = max(times_ms) if times_ms else 0.0
-    
+
     print(f"\n{bench_name}: {mean:.3f} ms/iter (std={std:.3f}, min={min_t:.3f}, max={max_t:.3f})")

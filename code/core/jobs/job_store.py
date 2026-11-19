@@ -11,8 +11,80 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
+from core.utils.cooperative_subprocess import (
+    CooperativeCleanupIncomplete,
+    CooperativeProcessInterrupted,
+    cleanup_incomplete_receipt_from_error,
+    operator_interrupt_from_error,
+    validate_cleanup_incomplete_receipt,
+)
+
 
 JobRecord = Dict[str, Any]
+
+
+def _exception_attributes(error: BaseException) -> Dict[str, Any]:
+    """Read stored exception fields without invoking custom properties."""
+    try:
+        values = object.__getattribute__(error, "__dict__")
+    except BaseException:
+        return {}
+    return values if isinstance(values, dict) else {}
+
+
+def _exception_link(error: BaseException, name: str) -> Optional[BaseException]:
+    """Read a built-in exception link without invoking an override."""
+    try:
+        descriptor = vars(BaseException)[name]
+        linked = descriptor.__get__(error, type(error))
+    except BaseException:
+        return None
+    return linked if isinstance(linked, BaseException) else None
+
+
+def retained_process_result_from_error(error: BaseException) -> Optional[Dict[str, Any]]:
+    """Find the original process receipt through exception context and cause links."""
+    pending = [error]
+    seen: set[int] = set()
+    while pending:
+        current = pending.pop()
+        if id(current) in seen:
+            continue
+        seen.add(id(current))
+        attributes = _exception_attributes(current)
+        for name in ("outer_process_result", "result", "cooperative_process_result"):
+            candidate = attributes.get(name)
+            if isinstance(candidate, dict):
+                return candidate
+        for previous in (
+            _exception_link(current, "__context__"),
+            _exception_link(current, "__cause__"),
+        ):
+            if previous is not None:
+                pending.append(previous)
+    return None
+
+
+def process_failure_result_from_error(error: BaseException) -> Dict[str, Any]:
+    """Retain outer process output and nested cleanup state at JSON boundaries."""
+    captured = retained_process_result_from_error(error)
+    protocol_error = None
+    try:
+        incomplete = cleanup_incomplete_receipt_from_error(error)
+    except ValueError as exc:
+        incomplete = None
+        protocol_error = str(exc)
+    result = dict(captured or incomplete or {})
+    result.update({"success": False, "error": str(error) or type(error).__name__, "error_type": type(error).__name__})
+    if incomplete is not None:
+        result["cleanup_incomplete"] = incomplete
+    if protocol_error is not None:
+        result["cleanup_protocol_error"] = protocol_error
+    if operator_interrupt_from_error(error):
+        result["cancelled"] = True
+    if hasattr(error, "owned_work_admission"):
+        result["owned_work_admission"] = error.owned_work_admission
+    return result
 
 
 @dataclass
@@ -59,6 +131,7 @@ class JobStore:
             cleanup_interval_seconds or os.environ.get("AISP_MCP_JOB_CLEANUP_INTERVAL_SECONDS", "30") or "30"
         )
         self._last_cleanup_ts = 0.0
+        self._incomplete_cleanup_receipt: Optional[Dict[str, Any]] = None
 
     @classmethod
     def get(cls) -> "JobStore":
@@ -68,6 +141,17 @@ class JobStore:
                 if cls._instance is None:
                     cls._instance = cls()
         return cls._instance
+
+    def record_incomplete_cleanup(self, receipt: Dict[str, Any]) -> None:
+        """Keep admission blocked independently of completed-job expiry."""
+        validate_cleanup_incomplete_receipt(receipt)
+        with self._lock:
+            if self._incomplete_cleanup_receipt is None:
+                self._incomplete_cleanup_receipt = receipt
+
+    def incomplete_cleanup_receipt(self) -> Optional[Dict[str, Any]]:
+        with self._lock:
+            return self._incomplete_cleanup_receipt
 
     def cleanup(self, now: Optional[float] = None) -> None:
         """Evict old/completed jobs to keep the store bounded."""
@@ -154,6 +238,9 @@ class JobStore:
                     }
                 )
             try:
+                incomplete = self.incomplete_cleanup_receipt()
+                if incomplete is not None:
+                    raise CooperativeCleanupIncomplete(incomplete)
                 result = runner()
                 result_is_error = (
                     isinstance(result, dict)
@@ -161,6 +248,16 @@ class JobStore:
                 )
                 status = "error" if result_is_error else "completed"
                 error = None
+            except (CooperativeCleanupIncomplete, CooperativeProcessInterrupted) as exc:
+                try:
+                    incomplete = cleanup_incomplete_receipt_from_error(exc)
+                except ValueError:
+                    incomplete = None
+                if incomplete is not None:
+                    self.record_incomplete_cleanup(incomplete)
+                status = "error"
+                error = None
+                result = process_failure_result_from_error(exc)
             except Exception as exc:  # pragma: no cover - defensive
                 status = "error"
                 error = {"error": str(exc)}

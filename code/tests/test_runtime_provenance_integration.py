@@ -78,8 +78,12 @@ def test_subprocess_transport_rejects_corrupted_real_worker_receipt(tmp_path, mo
             stdout, stderr = super().communicate(*args, **kwargs)
             if "core.harness.isolated_runner" not in self.args:
                 return stdout, stderr
-            start = stdout.index('{"success"')
-            record, end = json.JSONDecoder().raw_decode(stdout[start:])
+            binary = isinstance(stdout, bytes)
+            needle = b'{"success"' if binary else '{"success"'
+            start = stdout.index(needle)
+            encoded_tail = stdout[start:]
+            text_tail = encoded_tail.decode("utf-8") if binary else encoded_tail
+            record, end = json.JSONDecoder().raw_decode(text_tail)
             assert record["success"], record
             result = json.loads(record["result_json"])
             if corruption == "pid":
@@ -87,7 +91,11 @@ def test_subprocess_transport_rejects_corrupted_real_worker_receipt(tmp_path, mo
             else:
                 result["device"] = "cuda:0"
             record["result_json"] = json.dumps(result)
-            return stdout[:start] + json.dumps(record) + stdout[start + end:], stderr
+            replacement = json.dumps(record)
+            if binary:
+                consumed = len(text_tail[:end].encode("utf-8"))
+                return stdout[:start] + replacement.encode("utf-8") + encoded_tail[consumed:], stderr
+            return stdout[:start] + replacement + encoded_tail[end:], stderr
 
     monkeypatch.setattr(subprocess, "Popen", CorruptingTransport)
     run = _harness(subprocess_mode=True).benchmark_with_manifest(_benchmark(tmp_path))

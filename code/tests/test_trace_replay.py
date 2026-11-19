@@ -6,8 +6,10 @@ import hashlib
 import json
 import os
 import signal
+import socket
 import subprocess
 import sys
+from contextlib import suppress
 from pathlib import Path
 
 import pytest
@@ -16,6 +18,7 @@ import torch
 from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.benchmark.verify_runner import VerifyConfig
 from core.harness.benchmark_harness import BaseBenchmark
+from core.utils.cooperative_subprocess import CooperativeProcessInterrupted
 from tests.protection_test_utils import make_runner, preserve_rng_state
 
 CODE = Path(__file__).resolve().parents[1]
@@ -510,64 +513,92 @@ def test_profiler_receipts_reject_forged_reports_outside_event_capture(tmp_path:
     assert len(issues) == 4
 
 
-@pytest.mark.skipif(os.name != "posix", reason="owned CLI process groups require POSIX signals")
-def test_owned_cli_interrupt_waits_for_real_child_cleanup(tmp_path: Path, monkeypatch) -> None:
-    from labs.trace_replay.runner import wait_for_owned_cli
+@pytest.mark.skipif(
+    os.name != "posix" or not hasattr(os, "waitid"),
+    reason="owned CLI process groups require POSIX waitid",
+)
+def test_owned_cli_launch_interrupt_cleans_child_and_retains_exact_evidence(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    request: pytest.FixtureRequest,
+) -> None:
+    from labs.trace_replay.runner import run_owned_cli
 
+    socket_path = tmp_path / "ready.sock"
     marker = tmp_path / "cleanup.txt"
     child_code = """
+import json
+import os
 import signal
+import socket
 import sys
 from pathlib import Path
 
 def cleanup(_signal, _frame):
     Path(sys.argv[1]).write_text("cleanup-completed\\n")
+    print("cleanup stdout", flush=True)
+    print("cleanup stderr", file=sys.stderr, flush=True)
     raise SystemExit(23)
 
 signal.signal(signal.SIGINT, cleanup)
-print("ready", flush=True)
+print("ready stdout", flush=True)
+print("ready stderr", file=sys.stderr, flush=True)
+connection = socket.socket(socket.AF_UNIX)
+connection.connect(sys.argv[2])
+connection.sendall((json.dumps({"pid": os.getpid(), "pgid": os.getpgrp()}) + "\\n").encode())
+connection.close()
 signal.pause()
 """
-    process = subprocess.Popen(
-        [sys.executable, "-u", "-c", child_code, str(marker)],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        start_new_session=True,
-    )
-    original_wait = process.wait
-    wait_calls = 0
-    receipt = {}
+    original_popen = subprocess.Popen
+    observed = {}
 
-    def interrupt_wait(*args, **kwargs):
-        nonlocal wait_calls
-        wait_calls += 1
-        if wait_calls <= 2:
-            raise KeyboardInterrupt
-        return original_wait(*args, **kwargs)
+    def clean_fixture_child() -> None:
+        child_pid = observed.get("pid")
+        if isinstance(child_pid, int):
+            with suppress(ProcessLookupError):
+                os.killpg(child_pid, signal.SIGKILL)
 
-    try:
-        assert process.stdout.readline() == "ready\n"
-        with monkeypatch.context() as scoped_patch:
-            scoped_patch.setattr(process, "wait", interrupt_wait)
-            with pytest.raises(KeyboardInterrupt):
-                wait_for_owned_cli(process, receipt)
-        assert marker.read_text() == "cleanup-completed\n"
-        assert process.returncode == receipt["returncode"] == 23
-        assert receipt["execution"] == {
-            "process_id": process.pid,
-            "process_group_id": process.pid,
-            "start_new_session": True,
-        }
-        assert receipt["cancellation"]["signal_forwarded"] is True
-        assert receipt["cancellation"]["status"] == "cleanup_completed"
-        assert receipt["cancellation"]["repeated_interrupts"] == 1
-        assert receipt["cancellation"]["completed_at"]
-    finally:
-        if process.poll() is None:
-            os.killpg(process.pid, signal.SIGINT)
-            original_wait()
-        process.communicate()
+    request.addfinalizer(clean_fixture_child)
+
+    with socket.socket(socket.AF_UNIX) as listener:
+        listener.bind(str(socket_path))
+        listener.listen(1)
+
+        def interrupt_before_handoff(command, *args, **kwargs):
+            process = original_popen(command, *args, **kwargs)
+            connection, _ = listener.accept()
+            with connection, connection.makefile("r", encoding="utf-8") as stream:
+                observed.update(json.loads(stream.readline()))
+            os.kill(os.getpid(), signal.SIGINT)
+            return process
+
+        monkeypatch.setattr(subprocess, "Popen", interrupt_before_handoff)
+        row = {}
+        event_root = tmp_path / "event"
+        event_root.mkdir()
+        with pytest.raises(CooperativeProcessInterrupted) as interrupted:
+            run_owned_cli(
+                [sys.executable, "-u", "-c", child_code, str(marker), str(socket_path)],
+                os.environ.copy(),
+                event_root,
+                row,
+            )
+
+    result = interrupted.value.result
+    assert marker.read_text() == "cleanup-completed\n"
+    assert observed["pid"] == observed["pgid"] == result["execution"]["process_id"]
+    with pytest.raises(ProcessLookupError):
+        os.kill(observed["pid"], 0)
+    assert result["returncode"] == 23
+    assert result["execution"]["completion_scope"] == "process_group_quiescent"
+    assert result["execution"]["live_process_group_members"] == []
+    assert result["cancellation"]["signal_forwarded"] is True
+    assert result["cancellation"]["status"] == "cleanup_completed"
+    assert result["cancellation"]["operator_interrupt_observed"] is True
+    assert (event_root / "stdout.log").read_text() == result["stdout"]
+    assert (event_root / "stderr.log").read_text() == result["stderr"]
+    assert json.loads((event_root / "process-receipt.json").read_text()) == result
+    assert row["execution"] == result["execution"]
 
 
 @pytest.mark.parametrize("kind", ["quantize", "add_rmsnorm", "silu_mul"])

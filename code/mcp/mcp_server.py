@@ -109,9 +109,10 @@ WORKFLOW EXAMPLES:
     Benchmarks:      run_benchmarks(async=true) → job_status → benchmark_triage
 """
 
-import asyncio
+import io
 import json
 import os
+import signal
 import shlex
 import sys
 import subprocess
@@ -120,11 +121,14 @@ import threading
 import uuid
 import re
 import contextlib
+import contextvars
 from collections import defaultdict, deque
 from pathlib import Path
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Callable, Dict, List, Optional, Tuple, TypedDict, NotRequired
+from typing import Any, Callable, Dict, List, NoReturn, Optional, Tuple, TypedDict
+
+from typing_extensions import NotRequired
 
 try:
     import fcntl  # POSIX-only; optional for portability.
@@ -168,13 +172,33 @@ from core.api.redaction import redact_sensitive_data
 from core.benchmark.expectations import UPDATE_EXPECTATIONS_HELP_TEXT
 from core.harness.progress import ProgressEvent, ProgressRecorder
 from core.jobs import JobStore
+from core.jobs.job_store import (
+    process_failure_result_from_error,
+    retained_process_result_from_error,
+)
 from core.profiling.profiler_config import (
     MINIMAL_METRICS,
     NCU_REPLAY_MODES,
     validate_ncu_app_range_capture,
     validate_ncu_replay_mode,
 )
+from core.utils.cooperative_subprocess import (
+    CooperativeCleanupIncomplete,
+    CooperativeProcessInterrupted,
+    _record_post_cleanup_interrupts,
+    cleanup_incomplete_receipt_from_error,
+    consume_cleanup_event_nonce,
+    emit_cleanup_incomplete_event,
+    operator_interrupt_from_error,
+    parse_cleanup_incomplete_event,
+    run_cooperative_process,
+    validate_cleanup_incomplete_receipt,
+)
 from core.utils.dotenv import load_repo_dotenv
+from core.utils.execution_timeouts import (
+    validate_execution_timeout_seconds,
+    validate_subprocess_wait_timeout,
+)
 
 
 def _load_mcp_env() -> None:
@@ -529,6 +553,8 @@ def register_tool(name: str, description: str, schema: Dict[str, Any] = None):
 
             try:
                 return func(call_params)
+            except OwnedWorkAdmissionBlocked:
+                raise
             except Exception as exc:  # pragma: no cover - defensive
                 # Return normalized error with success=False for consistency
                 return {"error": str(exc), "success": False}
@@ -674,45 +700,40 @@ def ensure_result(
     return attach_context_if_requested(normalized, include_context, context_level)
 
 
-_BENCH_CLI_TIMEOUT = 900  # generous default; keeps CLI invocations from hanging forever
+_BENCH_CLI_TIMEOUT = 900  # Finite default for callers that explicitly use this helper default.
 
 
 def _run_cli(args: List[str], timeout: Optional[int] = _BENCH_CLI_TIMEOUT) -> Dict[str, Any]:
     """Invoke aisp CLI directly (without bench prefix) and return stdout/stderr/exit code."""
+    _assert_owned_work_admission()
+    from core.diagnostics.process import run_owned_process
+
     cmd = [sys.executable, "-m", "cli.aisp", *args]
     env = _subprocess_env()
-    started_at = time.time()
     try:
-        proc = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=None if timeout is None or timeout <= 0 else timeout,
-            env=env,
-            cwd=str(CODE_ROOT),
-        )
-        result = {
-            "command": " ".join(cmd),
-            "returncode": proc.returncode,
-            "stdout": proc.stdout,
-            "stderr": proc.stderr,
-            "timeout_seconds": timeout if timeout and timeout > 0 else None,
-            "timeout_hit": False,
-            "duration_seconds": round(time.time() - started_at, 2),
-        }
+        if timeout is None or timeout <= 0:
+            result = run_cooperative_process(cmd, env=env, cwd=CODE_ROOT)
+        else:
+            result = run_owned_process(
+                cmd,
+                timeout_seconds=timeout,
+                env=env,
+                cwd=CODE_ROOT,
+            )
+        _check_child_cleanup_result(result)
+        if result["returncode"] != 0 and not result.get("error"):
+            result["error"] = (
+                result["stderr"]
+                or result["stdout"]
+                or f"CLI failed with code {result['returncode']}"
+            )
         return result
-    except subprocess.TimeoutExpired as te:
-        return {
-            "command": " ".join(cmd),
-            "returncode": -1,
-            "stdout": te.stdout.decode() if te.stdout else "",
-            "stderr": te.stderr.decode() if te.stderr else "",
-            "timeout_seconds": timeout,
-            "timeout_hit": True,
-            "duration_seconds": round(time.time() - started_at, 2),
-            "error": f"Timed out after {timeout}s",
-        }
+    except (CooperativeCleanupIncomplete, CooperativeProcessInterrupted) as exc:
+        _remember_terminal_cleanup(exc)
+        raise
     except Exception as exc:
+        if hasattr(exc, "owned_work_admission"):
+            raise
         return {
             "command": " ".join(cmd),
             "returncode": -1,
@@ -720,7 +741,6 @@ def _run_cli(args: List[str], timeout: Optional[int] = _BENCH_CLI_TIMEOUT) -> Di
             "stderr": str(exc),
             "timeout_seconds": timeout if timeout and timeout > 0 else None,
             "timeout_hit": False,
-            "duration_seconds": round(time.time() - started_at, 2),
             "error": str(exc),
         }
 
@@ -753,6 +773,7 @@ def _run_diagnostic_tools_cli(
     timeout_seconds: int = 300,
 ) -> Dict[str, Any]:
     """Run a diagnostic CLI and clean up its retained local descendants on timeout."""
+    _assert_owned_work_admission()
     from core.diagnostics.process import run_owned_process
 
     args: List[str] = ["tools", tool]
@@ -766,6 +787,7 @@ def _run_diagnostic_tools_cli(
         env=_subprocess_env(),
         cwd=CODE_ROOT,
     )
+    _check_child_cleanup_result(result)
     returncode = int(result.get("returncode", 0) or 0)
     if returncode != 0 and not result.get("error"):
         result["error"] = (
@@ -776,44 +798,61 @@ def _run_diagnostic_tools_cli(
     return result
 
 
-def _run_bench_cli(args: List[str], timeout: Optional[int] = _BENCH_CLI_TIMEOUT) -> Dict[str, Any]:
+def _run_bench_cli(
+    args: List[str], timeout: Optional[int] = _BENCH_CLI_TIMEOUT, *, uncapped: bool = False
+) -> Dict[str, Any]:
     """Invoke bench CLI and return stdout/stderr/exit code."""
+    _assert_owned_work_admission()
+    from core.diagnostics.process import run_owned_process
+
     cmd = [sys.executable, "-m", "core.benchmark.bench_commands", *args]
     env = _subprocess_env()
-    started_at = time.time()
     try:
-        proc = subprocess.run(
+        if uncapped or timeout is None or timeout <= 0:
+            result = run_cooperative_process(cmd, env=env, cwd=CODE_ROOT)
+            _check_child_cleanup_result(result)
+            if result["returncode"] != 0 and not result.get("error"):
+                result["error"] = (
+                    result.get("stderr")
+                    or result.get("stdout")
+                    or f"bench CLI failed with code {result['returncode']}"
+                )
+            return result
+        result = run_owned_process(
             cmd,
-            capture_output=True,
-            text=True,
-            timeout=None if timeout is None or timeout <= 0 else timeout,
+            timeout_seconds=timeout,
             env=env,
-            cwd=str(CODE_ROOT),
+            cwd=CODE_ROOT,
         )
-        result = {
-            "command": " ".join(cmd),
-            "returncode": proc.returncode,
-            "stdout": proc.stdout,
-            "stderr": proc.stderr,
-            "timeout_seconds": timeout if timeout and timeout > 0 else None,
-            "timeout_hit": False,
-            "duration_seconds": round(time.time() - started_at, 2),
-        }
-        if proc.returncode != 0 and not result.get("error"):
+        _check_child_cleanup_result(result)
+        if result["returncode"] != 0 and not result.get("error"):
             result["error"] = (
-                proc.stderr or proc.stdout or f"bench CLI failed with code {proc.returncode}"
+                result["stderr"]
+                or result["stdout"]
+                or f"bench CLI failed with code {result['returncode']}"
             )
         return result
-    except subprocess.TimeoutExpired as exc:
-        return {
-            "command": " ".join(cmd),
-            "error": f"bench CLI timed out after {timeout}s",
-            "stdout": exc.stdout or "",
-            "stderr": exc.stderr or "",
-            "timeout_seconds": timeout,
-            "timeout_hit": True,
-            "duration_seconds": round(time.time() - started_at, 2),
-        }
+    except (CooperativeCleanupIncomplete, CooperativeProcessInterrupted) as exc:
+        _remember_terminal_cleanup(exc)
+        raise
+    except Exception as exc:
+        incomplete = cleanup_incomplete_receipt_from_error(exc)
+        if incomplete is not None:
+            fatal = CooperativeCleanupIncomplete(incomplete)
+            _remember_terminal_cleanup(fatal)
+            raise fatal from exc
+        receipt = getattr(exc, "cooperative_process_result", None)
+        if uncapped and isinstance(receipt, dict):
+            result = dict(receipt)
+            result.update(
+                {
+                    "error": str(exc) or type(exc).__name__,
+                    "error_type": type(exc).__name__,
+                    "success": False,
+                }
+            )
+            return result
+        raise
 
 
 _BENCH_RESULTS_MARKER = "JSON results saved to:"
@@ -1629,9 +1668,19 @@ def _queue_job(
     job_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Run a task in the background and return a ticket for polling."""
+    _assert_owned_work_admission()
+
+    def guarded_runner() -> Any:
+        _assert_owned_work_admission()
+        try:
+            return runner()
+        except (CooperativeCleanupIncomplete, CooperativeProcessInterrupted) as exc:
+            _remember_terminal_cleanup(exc)
+            raise
+
     return JOB_STORE.queue_job(
         tool_name,
-        runner,
+        guarded_runner,
         arguments=_sanitize_arguments(arguments),
         run_metadata=run_metadata,
         job_id=job_id,
@@ -1651,6 +1700,175 @@ _QUEUE_WARN_LOCK = threading.Lock()
 _QUEUE_MAX_OVERLAP_RETRIES_ENV = "AISP_MCP_QUEUE_MAX_OVERLAP_RETRIES"
 _QUEUE_IDLE_TIMEOUT_ENV = "AISP_MCP_QUEUE_IDLE_TIMEOUT_SEC"
 _QUEUE_RUNNER_LOCK_TIMEOUT_ENV = "AISP_MCP_QUEUE_RUNNER_LOCK_TIMEOUT_SEC"
+_UNVERIFIABLE_CLEANUP: Dict[Path, Dict[str, Any]] = {}
+_ADMISSION_LOCK = threading.Lock()
+
+
+class OwnedWorkAdmissionBlocked(RuntimeError):
+    """Refuse new owned work without replaying a previous request's failure."""
+
+    def __init__(self, blocking_cleanup: Dict[str, Any], barrier_path: Path, reason: str) -> None:
+        super().__init__(f"Owned work is blocked by {reason} at {barrier_path}")
+        self.result = {
+            "admission_blocked": True,
+            "blocking_cleanup": blocking_cleanup,
+            "cleanup_barrier_path": str(barrier_path),
+        }
+
+
+@dataclass
+class _OwnedWorkAdmissionScope:
+    blocked: Optional[OwnedWorkAdmissionBlocked] = None
+
+
+_OWNED_WORK_ADMISSION_SCOPE: contextvars.ContextVar[Optional[_OwnedWorkAdmissionScope]] = (
+    contextvars.ContextVar("aisp_owned_work_admission_scope", default=None)
+)
+
+
+def _raise_owned_work_admission_blocked(
+    blocking_cleanup: Dict[str, Any],
+    barrier_path: Path,
+    reason: str = "retained cleanup evidence",
+) -> NoReturn:
+    error = OwnedWorkAdmissionBlocked(blocking_cleanup, barrier_path, reason)
+    scope = _OWNED_WORK_ADMISSION_SCOPE.get()
+    if scope is not None and scope.blocked is None:
+        scope.blocked = error
+    raise error
+
+
+def _cleanup_barrier_path() -> Path:
+    return _QUEUE_DIR / "cleanup_incomplete.json"
+
+
+def _persist_cleanup_barrier(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Retain a shared admission barrier without overwriting an earlier failure."""
+    path = _cleanup_barrier_path()
+    record: Dict[str, Any] = {"path": str(path), "stored_current_receipt": False}
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("x", encoding="utf-8") as stream:
+            stream.write(json.dumps(payload, default=str) + "\n")
+            stream.flush()
+            os.fsync(stream.fileno())
+        record["stored_current_receipt"] = True
+    except FileExistsError:
+        record["existing_record_preserved"] = True
+    except OSError as exc:
+        record["error"] = f"{type(exc).__name__}: {exc}"
+        print(f"Failed to retain owned-work admission barrier at {path}: {exc}", file=sys.stderr)
+    return record
+
+
+def _remember_unverifiable_cleanup(result: Dict[str, Any], error: ValueError) -> Dict[str, Any]:
+    payload = {"event": "aisp_cleanup_unverifiable", "error": str(error), "child_result": result}
+    with _ADMISSION_LOCK:
+        _UNVERIFIABLE_CLEANUP[_cleanup_barrier_path()] = payload
+    return _persist_cleanup_barrier(payload)
+
+
+def _remember_terminal_cleanup(error: BaseException) -> None:
+    try:
+        receipt = cleanup_incomplete_receipt_from_error(error)
+    except ValueError as protocol_error:
+        captured = next(
+            (
+                value
+                for name in ("result", "cooperative_process_result", "outer_process_result")
+                if isinstance((value := getattr(error, name, None)), dict)
+            ),
+            {"error": str(protocol_error)},
+        )
+        setattr(error, "cleanup_protocol_error", str(protocol_error))
+        setattr(
+            error,
+            "owned_work_admission",
+            _remember_unverifiable_cleanup(captured, protocol_error),
+        )
+        return
+    if receipt is None:
+        return
+    JOB_STORE.record_incomplete_cleanup(receipt)
+    setattr(
+        error,
+        "owned_work_admission",
+        _persist_cleanup_barrier(
+            {
+                "event": "aisp_cleanup_incomplete",
+                "receipt": receipt,
+            }
+        ),
+    )
+
+
+def _assert_owned_work_admission() -> None:
+    receipt = JOB_STORE.incomplete_cleanup_receipt()
+    if receipt is not None:
+        _raise_owned_work_admission_blocked(receipt, _cleanup_barrier_path())
+    path = _cleanup_barrier_path()
+    with _ADMISSION_LOCK:
+        unverifiable = _UNVERIFIABLE_CLEANUP.get(path)
+    if unverifiable is not None:
+        _raise_owned_work_admission_blocked(unverifiable, path, "unverifiable cleanup diagnostics")
+    if path.is_symlink():
+        _raise_owned_work_admission_blocked(
+            {"error": "Cleanup barrier is a symbolic link"}, path, "an untrusted cleanup record"
+        )
+    if not path.exists():
+        return
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        if isinstance(payload, dict) and payload.get("event") == "aisp_cleanup_unverifiable":
+            _raise_owned_work_admission_blocked(payload, path, "unverifiable cleanup diagnostics")
+        if not isinstance(payload, dict) or payload.get("event") != "aisp_cleanup_incomplete":
+            raise ValueError("Unrecognized cleanup barrier event")
+        receipt = validate_cleanup_incomplete_receipt(payload.get("receipt"))
+    except (OSError, UnicodeError, ValueError) as exc:
+        _raise_owned_work_admission_blocked({"error": str(exc)}, path, "an unreadable cleanup record")
+    _raise_owned_work_admission_blocked(receipt, path)
+
+
+def _stderr_text(value: Any) -> str:
+    return value.decode("utf-8", errors="replace") if isinstance(value, bytes) else str(value or "")
+
+
+def _parse_child_cleanup_event(result: Dict[str, Any]) -> Dict[str, Any] | None:
+    execution = result.get("execution")
+    nonce = execution.get("cleanup_event_nonce") if isinstance(execution, dict) else None
+    if not isinstance(nonce, str) or not nonce:
+        return None
+    return parse_cleanup_incomplete_event(
+        _stderr_text(result.get("stderr", "")),
+        expected_nonce=nonce,
+    )
+
+
+def _check_child_cleanup_result(result: Dict[str, Any]) -> Dict[str, Any]:
+    execution = result.get("execution")
+    if isinstance(execution, dict) and execution.get("completion_scope") == "cleanup_incomplete":
+        receipt = validate_cleanup_incomplete_receipt(result)
+    elif result.get("returncode") in (0, None):
+        receipt = None
+    else:
+        try:
+            receipt = _parse_child_cleanup_event(result)
+        except ValueError as exc:
+            setattr(exc, "owned_work_admission", _remember_unverifiable_cleanup(result, exc))
+            raise
+    if receipt is None:
+        return result
+    fatal = CooperativeCleanupIncomplete(receipt)
+    if operator_interrupt_from_error(fatal):
+        interrupted = CooperativeProcessInterrupted(result)
+        setattr(interrupted, "cleanup_incomplete_receipt", receipt)
+        _remember_terminal_cleanup(interrupted)
+        raise interrupted
+    setattr(fatal, "outer_process_result", result)
+    _remember_terminal_cleanup(fatal)
+    raise fatal
+
+
 _QUEUE_ARTIFACT_WARNED_KEYS: set[str] = set()
 
 
@@ -1980,14 +2198,15 @@ def _monitor_overlap(
         active = _active_run_processes(records, ignore_pids)
         if active:
             overlap_event.set()
-        time.sleep(poll_seconds)
+        stop_event.wait(poll_seconds)
 
 
 def _extract_exit_code(result: Any) -> Optional[int]:
     if isinstance(result, dict):
         if "returncode" in result:
             try:
-                return int(result.get("returncode"))
+                code = int(result.get("returncode"))
+                return 1 if code == 0 and _looks_like_error(result) else code
             except (TypeError, ValueError):
                 return None
         if "success" in result:
@@ -2022,6 +2241,7 @@ def _run_with_queue(
     queue_payload: Optional[Dict[str, Any]] = None,
     job_id: Optional[str] = None,
 ) -> Any:
+    _assert_owned_work_admission()
     if not _ensure_queue_artifacts():
         raise RuntimeError(
             "Queue runner unavailable: failed to initialize artifacts/parallel_runs."
@@ -2038,6 +2258,7 @@ def _run_with_queue(
         JOB_STORE.update_job(job_id, status="queued", note="Waiting for MCP queue runner.")
     with _QUEUE_LOCK:
         with _queue_runner_lock(queue_id, tool_name, queue_label):
+            _assert_owned_work_admission()
             if job_id:
                 JOB_STORE.update_job(job_id, status="running", note="Running via MCP queue runner.")
             retries = 0
@@ -2090,10 +2311,12 @@ def _run_with_queue(
                 )
                 monitor.start()
                 try:
+                    _assert_owned_work_admission()
                     result = runner()
-                except Exception as exc:
+                except BaseException as exc:
                     stop_event.set()
                     monitor.join()
+                    _remember_terminal_cleanup(exc)
                     _log_queue_event(
                         f"RUN_END id={queue_id} tool={tool_name} label={queue_label} exit_code=1 error={exc}"
                     )
@@ -2278,6 +2501,7 @@ def tool_gpu_bandwidth(params: Dict[str, Any]) -> Dict[str, Any]:
     from core.engine import get_engine
 
     include_context, context_level = extract_context_opts(params)
+    _assert_owned_work_admission()
     result = get_engine().gpu.bandwidth()
     return attach_context_if_requested(result, include_context, context_level)
 
@@ -2298,6 +2522,7 @@ def tool_gpu_topology(params: Dict[str, Any]) -> Dict[str, Any]:
     from core.engine import get_engine
 
     include_context, context_level = extract_context_opts(params)
+    _assert_owned_work_admission()
     result = get_engine().gpu.topology()
     return attach_context_if_requested(result, include_context, context_level)
 
@@ -2495,6 +2720,7 @@ def tool_clock_lock_check(params: Dict[str, Any]) -> Dict[str, Any]:
     from core.engine import get_engine
 
     include_context, context_level = extract_context_opts(params)
+    _assert_owned_work_admission()
     devices_raw = params.get("devices")
     devices: Optional[List[int]] = None
     if isinstance(devices_raw, list):
@@ -2627,13 +2853,42 @@ def tool_clock_lock_check(params: Dict[str, Any]) -> Dict[str, Any]:
                 },
                 "async": {
                     "type": "boolean",
-                    "description": "Run in background and return job_id; poll with job_status",
+                    "description": (
+                        "Run in background and return job_id. Poll with job_status. "
+                        "Requires an explicit positive timeout_seconds because a background "
+                        "worker cannot receive operator cancellation."
+                    ),
                     "default": False,
                 },
                 "timeout_seconds": {
-                    "type": "integer",
-                    "description": "Max runtime before returning with partial output; set 0/null for no timeout",
-                    "default": 900,
+                    "type": ["integer", "null"],
+                    "description": (
+                        "Outer bench CLI timeout in seconds. Omit it, set 0, or set null to run "
+                        "without this deadline and wait for owned cleanup on cancellation."
+                    ),
+                    "default": None,
+                },
+                "execution_timeout_seconds": {
+                    "type": ["integer", "null"],
+                    "minimum": 0,
+                    "description": (
+                        "Override each benchmark execution stage timeout in seconds. "
+                        "Omit or use null to retain stage defaults. "
+                        "Set 0 for owned subprocess execution without stage timeouts. "
+                        "This requires suite_timeout to be explicitly set to 0, "
+                        "timeout_seconds to be explicitly set to 0 or null, "
+                        "async=false, and AISP_STALE_WATCH_TIMING disabled."
+                    ),
+                    "default": None,
+                },
+                "suite_timeout": {
+                    "type": ["integer", "null"],
+                    "minimum": 0,
+                    "description": (
+                        "Override the benchmark suite timeout in seconds. "
+                        "Omit or use null to retain the CLI default. Set 0 for no suite timeout."
+                    ),
+                    "default": None,
                 },
                 "timeout_multiplier": {
                     "type": "number",
@@ -2738,6 +2993,86 @@ def tool_clock_lock_check(params: Dict[str, Any]) -> Dict[str, Any]:
     },
 )
 def tool_run_benchmarks(params: Dict[str, Any]) -> Dict[str, Any]:
+    try:
+        execution_timeout_seconds = validate_execution_timeout_seconds(
+            params.get("execution_timeout_seconds")
+        )
+    except ValueError as exc:
+        return {"error": str(exc).replace("or None", "or null"), "success": False}
+    suite_timeout = params.get("suite_timeout")
+    if suite_timeout is not None and (
+        isinstance(suite_timeout, bool) or not isinstance(suite_timeout, int) or suite_timeout < 0
+    ):
+        return {"error": "suite_timeout must be a nonnegative integer or null", "success": False}
+    timeout_param = params.get("timeout_seconds")
+    if execution_timeout_seconds == 0:
+        if suite_timeout != 0:
+            return {
+                "error": "execution_timeout_seconds=0 requires suite_timeout=0",
+                "success": False,
+            }
+        outer_timeout = params.get("timeout_seconds")
+        if "timeout_seconds" not in params or not (
+            outer_timeout is None or (type(outer_timeout) is int and outer_timeout == 0)
+        ):
+            return {
+                "error": (
+                    "execution_timeout_seconds=0 requires an explicit "
+                    "timeout_seconds=0 or null for owned cancellation cleanup"
+                ),
+                "success": False,
+            }
+        if os.environ.get("AISP_STALE_WATCH_TIMING", "0").strip().lower() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }:
+            return {
+                "error": (
+                    "execution_timeout_seconds=0 is incompatible with AISP_STALE_WATCH_TIMING. "
+                    "Unset AISP_STALE_WATCH_TIMING to keep timing execution uncapped."
+                ),
+                "success": False,
+            }
+        if bool(params.get("async", False)):
+            return {
+                "error": (
+                    "execution_timeout_seconds=0 requires async=false so the main thread "
+                    "can forward cancellation and wait for owned cleanup"
+                ),
+                "success": False,
+            }
+    if timeout_param is not None:
+        if (
+            isinstance(timeout_param, bool)
+            or not isinstance(timeout_param, int)
+            or timeout_param < 0
+        ):
+            return {
+                "error": "timeout_seconds must be a nonnegative integer or null",
+                "success": False,
+            }
+        if timeout_param > 0:
+            try:
+                validate_subprocess_wait_timeout(timeout_param)
+            except ValueError as exc:
+                return {"error": f"timeout_seconds: {exc}", "success": False}
+    timeout_seconds = timeout_param
+    test_mode = _is_test_mode()
+    if (
+        bool(params.get("async", False))
+        and not bool(params.get("precheck_only", False))
+        and not bool(params.get("dry_run") or params.get("estimate_only"))
+        and (timeout_seconds is None or timeout_seconds <= 0)
+    ):
+        return {
+            "error": (
+                "async=true requires an explicit positive timeout_seconds because "
+                "a background worker cannot receive operator cancellation"
+            ),
+            "success": False,
+        }
     targets = params.get("targets") or []
     for raw_target in targets:
         target_text = str(raw_target).strip()
@@ -2806,7 +3141,6 @@ def tool_run_benchmarks(params: Dict[str, Any]) -> Dict[str, Any]:
     only_cuda = bool(params.get("only_cuda", False))
     auto_analyze = bool(params.get("auto_analyze", True))
     auto_report = bool(params.get("auto_report", True))
-    test_mode = _is_test_mode()
     if test_mode:
         if "auto_analyze" not in params:
             auto_analyze = True
@@ -2840,10 +3174,7 @@ def tool_run_benchmarks(params: Dict[str, Any]) -> Dict[str, Any]:
     run_async = bool(params.get("async", False))
     queue_job_id_raw = params.get("_queue_job_id")
     queue_job_id = str(queue_job_id_raw).strip() if queue_job_id_raw else None
-    timeout_param = params.get("timeout_seconds")
-    timeout_seconds = None if timeout_param is None else int(timeout_param)
-    if test_mode and (timeout_seconds is None or timeout_seconds <= 0):
-        timeout_seconds = 600
+    uncapped_timeout = timeout_seconds is None or timeout_seconds <= 0
     include_context, context_level = extract_context_opts(params)
 
     if (
@@ -2914,6 +3245,9 @@ def tool_run_benchmarks(params: Dict[str, Any]) -> Dict[str, Any]:
         )
         return queued
 
+    if not precheck_only and not dry_run:
+        _assert_owned_work_admission()
+
     llm_requested = bool(
         llm_analysis or force_llm or apply_patches or rebenchmark_llm_patches or llm_explain
     )
@@ -2956,6 +3290,10 @@ def tool_run_benchmarks(params: Dict[str, Any]) -> Dict[str, Any]:
         args.extend(["--gpu-mem-clock-mhz", str(int(gpu_mem_clock_mhz))])
     if timeout_multiplier is not None:
         args.extend(["--timeout-multiplier", str(float(timeout_multiplier))])
+    if execution_timeout_seconds is not None:
+        args.extend(["--execution-timeout-seconds", str(execution_timeout_seconds)])
+    if suite_timeout is not None:
+        args.extend(["--suite-timeout", str(suite_timeout)])
     if nsys_timeout_seconds is not None:
         args.extend(["--nsys-timeout-seconds", str(int(nsys_timeout_seconds))])
     if ncu_timeout_seconds is not None:
@@ -2998,6 +3336,9 @@ def tool_run_benchmarks(params: Dict[str, Any]) -> Dict[str, Any]:
             "precheck_only": True,
             "cuda": cuda_check,
             "planned_args": args,
+            "timeout_seconds": timeout_seconds if timeout_seconds and timeout_seconds > 0 else None,
+            "execution_timeout_seconds": execution_timeout_seconds,
+            "suite_timeout": suite_timeout,
             "run_id": run_id,
             "run_dir": str(run_dir) if run_dir else None,
             "progress_path": str(progress_path) if progress_path else None,
@@ -3017,6 +3358,8 @@ def tool_run_benchmarks(params: Dict[str, Any]) -> Dict[str, Any]:
             "cuda": cuda_check,
             "command": " ".join([sys.executable, "-m", "cli.aisp", "bench", *args]),
             "timeout_seconds": timeout_seconds if timeout_seconds and timeout_seconds > 0 else None,
+            "execution_timeout_seconds": execution_timeout_seconds,
+            "suite_timeout": suite_timeout,
             "run_id": run_id,
             "run_dir": str(run_dir) if run_dir else None,
             "progress_path": str(progress_path) if progress_path else None,
@@ -3024,6 +3367,8 @@ def tool_run_benchmarks(params: Dict[str, Any]) -> Dict[str, Any]:
         }
 
     def _execute_bench_cli_only() -> Dict[str, Any]:
+        if uncapped_timeout:
+            return _attach_bench_artifact_paths(_run_bench_cli(args, timeout=None, uncapped=True))
         return _attach_bench_artifact_paths(
             _run_bench_cli(
                 args, timeout=timeout_seconds if timeout_seconds and timeout_seconds > 0 else None
@@ -3061,7 +3406,7 @@ def tool_run_benchmarks(params: Dict[str, Any]) -> Dict[str, Any]:
 def _benchmark_next_steps(result: Dict[str, Any]) -> List[Dict[str, Any]]:
     """Generate actionable next steps after benchmark completion."""
     steps = []
-    returncode = result.get("returncode", 0)
+    returncode = _extract_exit_code(result)
 
     if returncode == 0:
         # Success path
@@ -3180,13 +3525,20 @@ def _benchmark_next_steps(result: Dict[str, Any]) -> List[Dict[str, Any]]:
                 },
                 "async": {
                     "type": "boolean",
-                    "description": "Run in background and return job_id; poll with job_status",
+                    "description": (
+                        "Run in background and return job_id. Poll with job_status. "
+                        "Requires an explicit positive timeout_seconds because a background "
+                        "worker cannot receive operator cancellation."
+                    ),
                     "default": False,
                 },
                 "timeout_seconds": {
-                    "type": "integer",
-                    "description": "Max runtime before returning with partial output; set 0/null for no timeout",
-                    "default": 900,
+                    "type": ["integer", "null"],
+                    "description": (
+                        "Outer bench CLI timeout in seconds. Omit it, set 0, or set null to run "
+                        "without this deadline and wait for owned cleanup on cancellation."
+                    ),
+                    "default": None,
                 },
                 "validity_profile": {
                     "type": "string",
@@ -3271,12 +3623,20 @@ def tool_benchmark_variants(params: Dict[str, Any]) -> Dict[str, Any]:
                 },
                 "async": {
                     "type": "boolean",
-                    "description": "Run in background and return job_id; poll with job_status",
+                    "description": (
+                        "Run in background and return job_id. Poll with job_status. "
+                        "Requires an explicit positive timeout_seconds because a background "
+                        "worker cannot receive operator cancellation."
+                    ),
                     "default": False,
                 },
                 "timeout_seconds": {
-                    "type": "integer",
-                    "description": "Max runtime for the full run+analysis; set 0/null for no timeout.",
+                    "type": ["integer", "null"],
+                    "description": (
+                        "Max runtime for the nested benchmark run. Set 0 or null for no "
+                        "deadline in synchronous mode. Later in-process analysis is not "
+                        "included. Async mode requires a positive value."
+                    ),
                     "default": 0,
                 },
                 "validity_profile": {
@@ -3339,9 +3699,16 @@ def tool_benchmark_deep_dive_compare(params: Dict[str, Any]) -> Dict[str, Any]:
     )
     run_async = bool(params.get("async", False))
     timeout_param = params.get("timeout_seconds")
+    if run_async and (
+        isinstance(timeout_param, bool) or not isinstance(timeout_param, int) or timeout_param <= 0
+    ):
+        return make_error(
+            "async=true requires an explicit positive timeout_seconds because a "
+            "background worker cannot receive operator cancellation",
+            include_context,
+            context_level,
+        )
     timeout_seconds = None if timeout_param is None else int(timeout_param)
-    if _is_test_mode() and (timeout_seconds is None or timeout_seconds <= 0):
-        timeout_seconds = 600
     run_dir = _resolve_run_dir(output_dir, str(run_id))
     progress_path = _progress_path_for_run(run_dir, str(run_id))
 
@@ -3401,8 +3768,6 @@ def tool_benchmark_deep_dive_compare(params: Dict[str, Any]) -> Dict[str, Any]:
         if test_mode:
             bench_iterations = min(bench_iterations, 1)
             bench_warmup = min(bench_warmup, 1)
-            if bench_timeout is None or bench_timeout <= 0 or bench_timeout > 300:
-                bench_timeout = 300
         # Run bench with deep_dive profiling into output_dir/<timestamp>/...
         bench_params = {
             "targets": targets,
@@ -3414,9 +3779,10 @@ def tool_benchmark_deep_dive_compare(params: Dict[str, Any]) -> Dict[str, Any]:
             # Explicitly disable LLM analysis; caller can run it separately if desired.
             "llm_analysis": False,
             "apply_patches": False,
-            "timeout_seconds": bench_timeout,
             "only_python": bool(test_mode),
         }
+        if "timeout_seconds" in params:
+            bench_params["timeout_seconds"] = bench_timeout
         effective_validity_profile = validity_profile
         if test_mode and "validity_profile" not in params:
             effective_validity_profile = "portable"
@@ -4042,7 +4408,8 @@ def _cuda_source_code_only(cu_path: Path) -> str:
         elif char == '"' or (
             # A quote after an identifier or digit character is a C++14 digit
             # separator such as 1'000'000, not a character literal.
-            char == "'" and not (index > 0 and (text[index - 1].isalnum() or text[index - 1] == "_"))
+            char == "'"
+            and not (index > 0 and (text[index - 1].isalnum() or text[index - 1] == "_"))
         ):
             literal_end = index + 1
             while literal_end < length and text[literal_end] not in (char, "\n"):
@@ -4254,8 +4621,11 @@ def _resolve_baseline_wrapper_path(path: Path) -> Path:
                     "description": "Override warmup iterations for minimal profiling run.",
                 },
                 "timeout_seconds": {
-                    "type": "integer",
-                    "description": "Max runtime for minimal profiling run (0/null = no timeout).",
+                    "type": ["integer", "null"],
+                    "description": (
+                        "Max runtime for the minimal profiling run. Set 0 or null for no "
+                        "deadline in synchronous mode. Async mode requires a positive value."
+                    ),
                     "default": 0,
                 },
                 "deep_dive_iterations": {
@@ -4269,8 +4639,12 @@ def _resolve_baseline_wrapper_path(path: Path) -> Path:
                     "default": 5,
                 },
                 "deep_dive_timeout_seconds": {
-                    "type": "integer",
-                    "description": "Max runtime for deep_dive run (0/null = no timeout).",
+                    "type": ["integer", "null"],
+                    "description": (
+                        "Max runtime for the deep_dive run. Set 0 or null for no deadline in "
+                        "synchronous mode. Async mode with deep_dive=auto or always requires "
+                        "an explicit positive value."
+                    ),
                     "default": 0,
                 },
                 "update_expectations": {
@@ -4297,7 +4671,11 @@ def _resolve_baseline_wrapper_path(path: Path) -> Path:
                 },
                 "async": {
                     "type": "boolean",
-                    "description": "Run in background and return job_id; poll with job_status.",
+                    "description": (
+                        "Run in background and return job_id. Poll with job_status. "
+                        "Requires an explicit positive timeout_seconds because a background "
+                        "worker cannot receive operator cancellation."
+                    ),
                     "default": False,
                 },
             }
@@ -4307,9 +4685,44 @@ def _resolve_baseline_wrapper_path(path: Path) -> Path:
 )
 def tool_benchmark_explore(params: Dict[str, Any]) -> Dict[str, Any]:
     include_context, context_level = extract_context_opts(params)
+    run_async = bool(params.get("async", False))
+    timeout_param = params.get("timeout_seconds")
+    if run_async and (
+        isinstance(timeout_param, bool) or not isinstance(timeout_param, int) or timeout_param <= 0
+    ):
+        return make_error(
+            "async=true requires an explicit positive timeout_seconds because a "
+            "background worker cannot receive operator cancellation",
+            include_context,
+            context_level,
+        )
+    deep_dive_mode = str(params.get("deep_dive") or "auto").strip().lower()
+    if run_async and deep_dive_mode != "never":
+        deep_dive_timeout = params.get("deep_dive_timeout_seconds")
+        if (
+            isinstance(deep_dive_timeout, bool)
+            or not isinstance(deep_dive_timeout, int)
+            or deep_dive_timeout <= 0
+        ):
+            return make_error(
+                f"async=true with deep_dive={deep_dive_mode} requires an explicit positive "
+                "deep_dive_timeout_seconds because the background worker may run a deep dive "
+                "and cannot receive operator cancellation",
+                include_context,
+                context_level,
+            )
+        try:
+            validate_subprocess_wait_timeout(deep_dive_timeout)
+        except ValueError as exc:
+            return make_error(
+                f"deep_dive_timeout_seconds: {exc}",
+                include_context,
+                context_level,
+            )
     path = params.get("path")
     if not path or not isinstance(path, str):
         return make_error("path is required and must be a string.", include_context, context_level)
+    _assert_owned_work_admission()
 
     artifacts_dir = params.get("artifacts_dir") or "artifacts/runs"
     base_dir = Path(artifacts_dir)
@@ -4356,6 +4769,7 @@ def tool_benchmark_explore(params: Dict[str, Any]) -> Dict[str, Any]:
         from core.discovery import chapter_slug, get_bench_roots
         from core.harness.run_benchmarks import check_nsys_available, check_ncu_available
 
+        _assert_owned_work_admission()
         test_mode = _is_test_mode()
         effective_validity_profile = validity_profile
         if test_mode and "validity_profile" not in params:
@@ -4393,7 +4807,6 @@ def tool_benchmark_explore(params: Dict[str, Any]) -> Dict[str, Any]:
             "run_id": minimal_run_id,
             "iterations": params.get("iterations"),
             "warmup": params.get("warmup"),
-            "timeout_seconds": params.get("timeout_seconds"),
             "llm_analysis": True,
             "force_llm": True,
             "apply_patches": True,
@@ -4402,6 +4815,8 @@ def tool_benchmark_explore(params: Dict[str, Any]) -> Dict[str, Any]:
             "validity_profile": effective_validity_profile,
             "update_expectations": bool(params.get("update_expectations", True)),
         }
+        if "timeout_seconds" in params:
+            minimal_params["timeout_seconds"] = params["timeout_seconds"]
         if allow_portable_expectations_update:
             minimal_params["allow_portable_expectations_update"] = True
         minimal_result = tool_run_benchmarks(minimal_params)
@@ -4500,7 +4915,6 @@ def tool_benchmark_explore(params: Dict[str, Any]) -> Dict[str, Any]:
                 "run_id": deep_run_id,
                 "iterations": params.get("deep_dive_iterations", 1),
                 "warmup": params.get("deep_dive_warmup", 5),
-                "timeout_seconds": params.get("deep_dive_timeout_seconds"),
                 "llm_analysis": True,
                 "force_llm": True,
                 "apply_patches": True,
@@ -4509,6 +4923,8 @@ def tool_benchmark_explore(params: Dict[str, Any]) -> Dict[str, Any]:
                 "validity_profile": effective_validity_profile,
                 "update_expectations": bool(params.get("update_expectations", True)),
             }
+            if "deep_dive_timeout_seconds" in params:
+                deep_params["timeout_seconds"] = params["deep_dive_timeout_seconds"]
             if allow_portable_expectations_update:
                 deep_params["allow_portable_expectations_update"] = True
             deep_dive_result = tool_run_benchmarks(deep_params)
@@ -4564,7 +4980,6 @@ def tool_benchmark_explore(params: Dict[str, Any]) -> Dict[str, Any]:
             "progress_path": str(progress_path),
         }
 
-    run_async = bool(params.get("async", False))
     if run_async:
         job_id = f"benchmark_explore-{uuid.uuid4().hex[:10]}"
         run_metadata = {
@@ -4731,12 +5146,20 @@ def _extract_promoted_targets(results_json: Path) -> List[Dict[str, Any]]:
                 },
                 "async": {
                     "type": "boolean",
-                    "description": "Run in background and return job_id; poll with job_status",
+                    "description": (
+                        "Run in background and return job_id. Poll with job_status. "
+                        "Requires an explicit positive timeout_seconds because a background "
+                        "worker cannot receive operator cancellation."
+                    ),
                     "default": False,
                 },
                 "timeout_seconds": {
-                    "type": "integer",
-                    "description": "Max runtime for the full loop; set 0/null for no timeout.",
+                    "type": ["integer", "null"],
+                    "description": (
+                        "Max runtime applied separately to the patch benchmark and each "
+                        "comparison run. Set 0 or null for no deadline in synchronous mode. "
+                        "Async mode requires a positive value."
+                    ),
                     "default": 0,
                 },
                 "validity_profile": {
@@ -4791,6 +5214,15 @@ def tool_benchmark_llm_patch_loop(params: Dict[str, Any]) -> Dict[str, Any]:
     )
     run_async = bool(params.get("async", False))
     timeout_param = params.get("timeout_seconds")
+    if run_async and (
+        isinstance(timeout_param, bool) or not isinstance(timeout_param, int) or timeout_param <= 0
+    ):
+        return make_error(
+            "async=true requires an explicit positive timeout_seconds because a "
+            "background worker cannot receive operator cancellation",
+            include_context,
+            context_level,
+        )
     timeout_seconds = None if timeout_param is None else int(timeout_param)
 
     def _run_loop() -> Dict[str, Any]:
@@ -4806,8 +5238,9 @@ def tool_benchmark_llm_patch_loop(params: Dict[str, Any]) -> Dict[str, Any]:
             "rebenchmark_llm_patches": True,
             "llm_explain": llm_explain,
             "validity_profile": validity_profile,
-            "timeout_seconds": timeout_seconds,
         }
+        if "timeout_seconds" in params:
+            bench_params["timeout_seconds"] = timeout_seconds
         if allow_portable_expectations_update:
             bench_params["allow_portable_expectations_update"] = True
 
@@ -4855,8 +5288,9 @@ def tool_benchmark_llm_patch_loop(params: Dict[str, Any]) -> Dict[str, Any]:
                 "iterations": compare_iterations,
                 "warmup": compare_warmup,
                 "validity_profile": validity_profile,
-                "timeout_seconds": timeout_seconds,
             }
+            if "timeout_seconds" in params:
+                compare_params["timeout_seconds"] = timeout_seconds
             if allow_portable_expectations_update:
                 compare_params["allow_portable_expectations_update"] = True
             compare_result = tool_benchmark_deep_dive_compare(compare_params)
@@ -5395,7 +5829,12 @@ def tool_benchmark_e2e_sweep(params: Dict[str, Any]) -> Dict[str, Any]:
     from core.api import handlers
 
     include_context, context_level = extract_context_opts(params)
-    result = handlers.benchmark_e2e_sweep(params)
+    if not bool(params.get("dry_run", False)):
+        _assert_owned_work_admission()
+    if bool(params.get("async", False)) and not bool(params.get("dry_run", False)):
+        result = handlers.benchmark_e2e_sweep(params, queue_job=_queue_job)
+    else:
+        result = handlers.benchmark_e2e_sweep(params)
     return attach_context_if_requested(result, include_context, context_level)
 
 
@@ -5480,6 +5919,7 @@ def tool_benchmark_e2e_watch(params: Dict[str, Any]) -> Dict[str, Any]:
     from core.api import handlers
 
     include_context, context_level = extract_context_opts(params)
+    _assert_owned_work_admission()
     result = handlers.benchmark_e2e_watch(params)
     return attach_context_if_requested(result, include_context, context_level)
 
@@ -5537,6 +5977,7 @@ def tool_benchmark_report(params: Dict[str, Any]) -> Dict[str, Any]:
                 data_file=data_file,
             )
         args.extend(["--data-file", data_file])
+    _assert_owned_work_admission()
     if params.get("output"):
         args.extend(["--output", params["output"]])
         try:
@@ -5617,6 +6058,7 @@ def tool_benchmark_export(params: Dict[str, Any]) -> BenchmarkExportResult:
             context_level,
             data_file=str(data_path),
         )
+    _assert_owned_work_admission()
     output_path = Path(output) if output else Path(f"benchmark_export.{fmt}")
     _ensure_dir(output_path)
 
@@ -6256,13 +6698,20 @@ def tool_analyze_whatif(params: Dict[str, Any]) -> Dict[str, Any]:
                 },
                 "async": {
                     "type": "boolean",
-                    "description": "Run in background and return job_id; poll with job_status",
+                    "description": (
+                        "Run in background and return job_id. Poll with job_status. "
+                        "Requires an explicit positive timeout_seconds because a background "
+                        "worker cannot receive operator cancellation."
+                    ),
                     "default": False,
                 },
                 "timeout_seconds": {
-                    "type": "integer",
-                    "description": "Max runtime before returning with partial output; set 0/null for no timeout",
-                    "default": 900,
+                    "type": ["integer", "null"],
+                    "description": (
+                        "Outer bench CLI timeout in seconds. Omit it, set 0, or set null to run "
+                        "without this deadline and wait for owned cleanup on cancellation."
+                    ),
+                    "default": None,
                 },
                 "validity_profile": {
                     "type": "string",
@@ -7046,6 +7495,7 @@ def tool_profile_compare(params: Dict[str, Any]) -> Dict[str, Any]:
     if not profiles_dir or not profiles_dir.exists():
         return make_error(f"profiles_dir not found: {profiles_dir}", include_context, context_level)
 
+    _assert_owned_work_admission()
     pair_health = profile_insights.assess_profile_pair_health(profiles_dir, pair_key=pair_key)
     result = profile_insights.generate_flamegraph_comparison(profiles_dir, pair_key=pair_key)
     if result is None:
@@ -7267,6 +7717,7 @@ def tool_profile_nsys(params: Dict[str, Any]) -> Dict[str, Any]:
     if command_error:
         return make_error(command_error, include_context, context_level)
 
+    _assert_owned_work_admission()
     output_name = params.get("output_name", "mcp_nsys")
     run_dir, profile_dir, run_id = _prepare_profile_run(
         params.get("output_dir"),
@@ -7616,6 +8067,7 @@ def tool_profile_ncu(params: Dict[str, Any]) -> Dict[str, Any]:
     if command_error:
         return make_error(command_error, include_context, context_level)
 
+    _assert_owned_work_admission()
     output_name = params.get("output_name", "mcp_ncu")
     run_dir, profile_dir, run_id = _prepare_profile_run(
         params.get("output_dir"),
@@ -7980,6 +8432,7 @@ def tool_profile_torch(params: Dict[str, Any]) -> Dict[str, Any]:
         return make_error("script is required", include_context, context_level)
 
     script_path = Path(script)
+    _assert_owned_work_admission()
     output_name = params.get("output_name") or script_path.stem or "mcp_torch"
     run_dir, profile_dir, run_id = _prepare_profile_run(
         params.get("output_dir"),
@@ -8215,6 +8668,7 @@ def tool_profile_hta(params: Dict[str, Any]) -> Dict[str, Any]:
     if command_error:
         return make_error(command_error, include_context, context_level)
 
+    _assert_owned_work_admission()
     output_name = params.get("output_name", "mcp_hta")
     run_dir, profile_dir, run_id = _prepare_profile_run(
         params.get("output_dir"),
@@ -8511,6 +8965,8 @@ def tool_hw_speed(params: Dict[str, Any]) -> Dict[str, Any]:
     timeout_param = params.get("timeout_seconds")
     timeout_seconds = None if timeout_param is None else int(timeout_param)
     include_context, context_level = extract_context_opts(params)
+    if not precheck_only and not dry_run:
+        _assert_owned_work_admission()
     cuda_check = _cuda_precheck()
 
     test_type = normalize_param("test_type", params.get("type"), "all")
@@ -8635,6 +9091,8 @@ def tool_hw_roofline(params: Dict[str, Any]) -> Dict[str, Any]:
     timeout_param = params.get("timeout_seconds")
     timeout_seconds = None if timeout_param is None else int(timeout_param)
     include_context, context_level = extract_context_opts(params)
+    if not precheck_only and not dry_run:
+        _assert_owned_work_admission()
     cuda_check = _cuda_precheck()
 
     planned = {"size_mb": size_mb, "strides": strides or None}
@@ -8737,6 +9195,7 @@ def tool_test_disk(params: Dict[str, Any]) -> Dict[str, Any]:
             "timeout_seconds": timeout_seconds if timeout_seconds and timeout_seconds > 0 else None,
             "note": "No data written; rerun with dry_run=false to execute.",
         }
+    _assert_owned_work_admission()
     if tmp_dir:
         try:
             _ensure_dir(Path(tmp_dir))
@@ -8797,6 +9256,8 @@ def tool_test_pcie(params: Dict[str, Any]) -> Dict[str, Any]:
     dry_run = bool(params.get("dry_run") or params.get("estimate_only"))
     timeout_param = params.get("timeout_seconds")
     timeout_seconds = None if timeout_param is None else int(timeout_param)
+    if not precheck_only and not dry_run:
+        _assert_owned_work_admission()
     cuda_check = _cuda_precheck()
     if precheck_only:
         return {
@@ -8867,6 +9328,8 @@ def tool_test_mem_hierarchy(params: Dict[str, Any]) -> Dict[str, Any]:
     dry_run = bool(params.get("dry_run") or params.get("estimate_only"))
     timeout_param = params.get("timeout_seconds")
     timeout_seconds = None if timeout_param is None else int(timeout_param)
+    if not precheck_only and not dry_run:
+        _assert_owned_work_admission()
     cuda_check = _cuda_precheck()
     if precheck_only:
         return {
@@ -8942,6 +9405,8 @@ def tool_test_tensor_core(params: Dict[str, Any]) -> Dict[str, Any]:
     timeout_param = params.get("timeout_seconds")
     timeout_seconds = None if timeout_param is None else int(timeout_param)
     precision = normalize_param("precision", params.get("precision"), "fp16")
+    if not precheck_only and not dry_run:
+        _assert_owned_work_admission()
     cuda_check = _cuda_precheck()
     if precheck_only:
         return {
@@ -8987,6 +9452,7 @@ def tool_test_network(params: Dict[str, Any]) -> Dict[str, Any]:
     from core.engine import get_engine
 
     include_context, context_level = extract_context_opts(params)
+    _assert_owned_work_admission()
     result = get_engine().benchmark.network_test()
     return attach_context_if_requested(result, include_context, context_level)
 
@@ -9346,6 +9812,10 @@ def tool_ncu_summary(params: Dict[str, Any]) -> Dict[str, Any]:
     if isinstance(metrics, list):
         metrics_list = [str(x) for x in metrics if str(x).strip()]
 
+    path = Path(report_path)
+    companion_csv = path.with_suffix(".csv")
+    if path.exists() and path.suffix.lower() != ".csv" and not companion_csv.exists():
+        _assert_owned_work_admission()
     try:
         result = get_engine().profile.ncu_summary(
             str(report_path),
@@ -9381,9 +9851,12 @@ def tool_nsys_summary(params: Dict[str, Any]) -> Dict[str, Any]:
     from core.perf_core_base import PerformanceCoreBase
 
     include_context, context_level = extract_context_opts(params)
+    report_path = params.get("report_path")
+    path = Path(report_path) if report_path else None
+    if path is not None and path.exists() and path.suffix.lower() != ".csv":
+        _assert_owned_work_admission()
     try:
         core = PerformanceCoreBase()
-        report_path = params.get("report_path")
         result = core.summarize_nsys_report(report_path)
         return attach_context_if_requested(result, include_context, context_level)
     except Exception as e:
@@ -9452,6 +9925,7 @@ def tool_predict_scaling(params: Dict[str, Any]) -> Dict[str, Any]:
 def tool_gpu_topology_matrix(params: Dict[str, Any]) -> Dict[str, Any]:
     """Raw GPU topology matrix from nvidia-smi."""
     include_context, context_level = extract_context_opts(params)
+    _assert_owned_work_admission()
     try:
         proc = subprocess.run(
             ["nvidia-smi", "topo", "-m"], capture_output=True, text=True, timeout=5
@@ -9505,6 +9979,7 @@ def tool_compare_nsys(params: Dict[str, Any]) -> Dict[str, Any]:
     pair_key = params.get("pair")
     if not profiles_dir.exists():
         return make_error(f"profiles_dir not found: {profiles_dir}", include_context, context_level)
+    _assert_owned_work_admission()
     pair_health = profile_insights.assess_profile_pair_health(profiles_dir, pair_key=pair_key)
     try:
         result = profile_insights.compare_nsys_files(profiles_dir, pair_key=pair_key)
@@ -9576,6 +10051,7 @@ def tool_compare_ncu(params: Dict[str, Any]) -> Dict[str, Any]:
     pair_key = params.get("pair")
     if not profiles_dir.exists():
         return make_error(f"profiles_dir not found: {profiles_dir}", include_context, context_level)
+    _assert_owned_work_admission()
     pair_health = profile_insights.assess_profile_pair_health(profiles_dir, pair_key=pair_key)
     try:
         result = profile_insights.compare_ncu_files(profiles_dir, pair_key=pair_key)
@@ -9808,6 +10284,7 @@ def tool_hw_nccl(params: Dict[str, Any]) -> Dict[str, Any]:
 )
 def tool_hw_p2p(params: Dict[str, Any]) -> Dict[str, Any]:
     """GPU P2P bandwidth test."""
+    _assert_owned_work_admission()
     try:
         import torch
 
@@ -9982,6 +10459,7 @@ def tool_cluster_eval_suite(params: Dict[str, Any]) -> Dict[str, Any]:
     from core.cluster import run_cluster_eval_suite
 
     include_context, context_level = extract_context_opts(params)
+    _assert_owned_work_admission()
     try:
         result = run_cluster_eval_suite(
             mode=str(params.get("mode", "smoke")),
@@ -10097,6 +10575,7 @@ def tool_cluster_common_eval(params: Dict[str, Any]) -> Dict[str, Any]:
     from core.cluster import run_cluster_common_eval
 
     include_context, context_level = extract_context_opts(params)
+    _assert_owned_work_admission()
     try:
         result = run_cluster_common_eval(
             preset=str(params.get("preset", "core-system")),
@@ -10216,6 +10695,7 @@ def tool_cluster_fabric_eval(params: Dict[str, Any]) -> Dict[str, Any]:
     from core.cluster import run_cluster_fabric_eval
 
     include_context, context_level = extract_context_opts(params)
+    _assert_owned_work_admission()
     try:
         result = run_cluster_fabric_eval(
             run_id=params.get("run_id"),
@@ -10347,6 +10827,7 @@ def tool_cluster_build_canonical_package(params: Dict[str, Any]) -> Dict[str, An
     from core.cluster import build_canonical_package
 
     include_context, context_level = extract_context_opts(params)
+    _assert_owned_work_admission()
     try:
         result = build_canonical_package(
             canonical_run_id=str(params.get("canonical_run_id") or ""),
@@ -10425,6 +10906,7 @@ def tool_cluster_promote_run(params: Dict[str, Any]) -> Dict[str, Any]:
     from core.cluster import promote_cluster_run
 
     include_context, context_level = extract_context_opts(params)
+    _assert_owned_work_admission()
     try:
         run_id = str(params.get("run_id") or "").strip()
         if not run_id:
@@ -10518,6 +11000,7 @@ def tool_cluster_watch_promote(params: Dict[str, Any]) -> Dict[str, Any]:
     from core.cluster import watch_cluster_run_for_promotion
 
     include_context, context_level = extract_context_opts(params)
+    _assert_owned_work_admission()
     try:
         run_id = str(params.get("run_id") or "").strip()
         if not run_id:
@@ -10599,6 +11082,7 @@ def tool_cluster_validate_field_report(params: Dict[str, Any]) -> Dict[str, Any]
     from core.cluster import validate_field_report_requirements
 
     include_context, context_level = extract_context_opts(params)
+    _assert_owned_work_admission()
     try:
         allow = params.get("allow_run_id") if isinstance(params.get("allow_run_id"), list) else None
         result = validate_field_report_requirements(
@@ -10847,30 +11331,46 @@ from core.tools.tools_commands import DIAGNOSTIC_TOOLS
     "The invocation adds no wall-clock deadline. Results include stdout, stderr, and exit status.",
     {
         "type": "object",
-        "properties": with_context_params({
-            "args": {
-                "type": "array", "items": {"type": "string"}, "default": ["--help"],
-                "description": "CLI argument vector. Bundle and output paths refer to the server filesystem.",
-            },
-        }),
+        "properties": with_context_params(
+            {
+                "args": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "default": ["--help"],
+                    "description": "CLI argument vector. Bundle and output paths refer to the server filesystem.",
+                },
+            }
+        ),
     },
 )
 def tool_tools_trace_replay(params: Dict[str, Any]) -> Dict[str, Any]:
-    from core.utils.cooperative_subprocess import CooperativeProcessInterrupted, run_cooperative_process
-
     include_context, context_level = extract_context_opts(params)
     args = params.get("args", ["--help"])
     if not isinstance(args, list) or not all(isinstance(value, str) for value in args):
         return make_error("args must be a list of strings", include_context, context_level)
     command = [sys.executable, "-m", "cli.aisp", "tools", "trace-replay", "--", *args]
+    _assert_owned_work_admission()
     try:
         result = run_cooperative_process(command, env=_subprocess_env(), cwd=CODE_ROOT)
+        _check_child_cleanup_result(result)
+    except CooperativeCleanupIncomplete as exc:
+        _remember_terminal_cleanup(exc)
+        raise
     except CooperativeProcessInterrupted as exc:
+        _remember_terminal_cleanup(exc)
+        if cleanup_incomplete_receipt_from_error(exc) is not None or hasattr(
+            exc, "owned_work_admission"
+        ):
+            raise
         result = exc.result
         result["success"] = False
         result["error"] = "Cancelled after the owned CLI completed cleanup"
     if result["returncode"] != 0 and not result.get("error"):
-        result["error"] = result["stderr"] or result["stdout"] or f"trace-replay failed with code {result['returncode']}"
+        result["error"] = (
+            result["stderr"]
+            or result["stdout"]
+            or f"trace-replay failed with code {result['returncode']}"
+        )
     return attach_context_if_requested(result, include_context, context_level)
 
 
@@ -10884,14 +11384,28 @@ def tool_tools_trace_replay(params: Dict[str, Any]) -> Dict[str, Any]:
     "Diagnostic results are not canonical benchmark speedup evidence.",
     {
         "type": "object",
-        "properties": with_context_params({
-            "tool": {"type": "string", "enum": list(DIAGNOSTIC_TOOLS),
-                     "description": "Diagnostic CLI tool to invoke."},
-            "args": {"type": "array", "items": {"type": "string"}, "default": ["--help"],
-                     "description": "Argument vector forwarded unchanged. Paths refer to the server filesystem."},
-            "timeout_seconds": {"type": "integer", "minimum": 1, "maximum": 86400, "default": 300,
-                                "description": "Invocation timeout in seconds."},
-        }),
+        "properties": with_context_params(
+            {
+                "tool": {
+                    "type": "string",
+                    "enum": list(DIAGNOSTIC_TOOLS),
+                    "description": "Diagnostic CLI tool to invoke.",
+                },
+                "args": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "default": ["--help"],
+                    "description": "Argument vector forwarded unchanged. Paths refer to the server filesystem.",
+                },
+                "timeout_seconds": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 86400,
+                    "default": 300,
+                    "description": "Invocation timeout in seconds.",
+                },
+            }
+        ),
         "required": ["tool"],
     },
 )
@@ -10905,9 +11419,15 @@ def tool_tools_diagnostics(params: Dict[str, Any]) -> Dict[str, Any]:
         return make_error("args must be a list of strings", include_context, context_level)
     timeout = params.get("timeout_seconds", 300)
     if isinstance(timeout, bool) or not isinstance(timeout, int) or not 1 <= timeout <= 86400:
-        return make_error("timeout_seconds must be an integer from 1 through 86400", include_context, context_level)
+        return make_error(
+            "timeout_seconds must be an integer from 1 through 86400",
+            include_context,
+            context_level,
+        )
     return attach_context_if_requested(
-        _run_diagnostic_tools_cli(name, args, timeout_seconds=timeout), include_context, context_level,
+        _run_diagnostic_tools_cli(name, args, timeout_seconds=timeout),
+        include_context,
+        context_level,
     )
 
 
@@ -11340,6 +11860,113 @@ def tool_suggest_tools(params: Dict[str, Any]) -> Dict[str, Any]:
 # =============================================================================
 
 
+@dataclass
+class _DeferredTerminalInterrupts:
+    """Count repeated Ctrl-C signals while terminal evidence is being emitted."""
+
+    interrupt_count: int = 0
+    _applied_count: int = 0
+    _receipts: List[Dict[str, Any]] = field(default_factory=list)
+
+    @staticmethod
+    def _can_record(receipt: Dict[str, Any]) -> bool:
+        execution = receipt.get("execution")
+        if not isinstance(execution, dict):
+            return False
+        process_group_id = execution.get("process_group_id")
+        return (
+            not isinstance(process_group_id, bool)
+            and isinstance(process_group_id, int)
+            and process_group_id > 0
+        )
+
+    def track(self, receipt: Any) -> None:
+        if (
+            isinstance(receipt, dict)
+            and self._can_record(receipt)
+            and all(receipt is not existing for existing in self._receipts)
+        ):
+            self._receipts.append(receipt)
+
+    def attach(self, error: BaseException) -> None:
+        self.track(retained_process_result_from_error(error))
+        try:
+            receipt = cleanup_incomplete_receipt_from_error(error)
+        except ValueError:
+            receipt = None
+        if receipt is not None:
+            # A nested event parsed from stderr must keep one receipt across both outputs.
+            error.cleanup_incomplete_receipt = receipt
+            self.track(receipt)
+        self.apply_pending()
+
+    def observe(self) -> None:
+        self.interrupt_count += 1
+
+    def apply_pending(self) -> None:
+        pending = self.interrupt_count - self._applied_count
+        if pending <= 0 or not self._receipts:
+            return
+        self._apply(pending)
+        self._applied_count += pending
+
+    def _apply(self, count: int) -> None:
+        for receipt in self._receipts:
+            _record_post_cleanup_interrupts(receipt, count)
+
+    def encode(self, render: Callable[[int], str]) -> str:
+        """Retry encoding when Ctrl-C changes a receipt before the first write."""
+        while True:
+            observed = self.interrupt_count
+            self.apply_pending()
+            line = render(observed)
+            if self.interrupt_count == observed:
+                return line
+
+
+@contextlib.contextmanager
+def _defer_terminal_stdio_interrupts(error: BaseException):
+    """Keep repeated Ctrl-C from replacing a terminal response or event."""
+    state = _DeferredTerminalInterrupts()
+    if threading.current_thread() is not threading.main_thread():
+        state.attach(error)
+        yield state
+        return
+    previous_handler = signal.getsignal(signal.SIGINT)
+    if previous_handler == signal.SIG_IGN:
+        state.attach(error)
+        yield state
+        return
+
+    def record_interrupt(signum: int, frame: Any) -> None:
+        del signum, frame
+        state.observe()
+
+    signal.signal(signal.SIGINT, record_interrupt)
+    try:
+        state.attach(error)
+        yield state
+    finally:
+        signal.signal(signal.SIGINT, previous_handler)
+
+
+def _call_handler_with_admission_scope(name: str, arguments: Dict[str, Any]) -> Any:
+    """Preserve a request admission refusal even when a handler catches it."""
+    scope = _OwnedWorkAdmissionScope()
+    token = _OWNED_WORK_ADMISSION_SCOPE.set(scope)
+    try:
+        result = HANDLERS[name](arguments)
+    except Exception as exc:
+        if scope.blocked is not None and exc is not scope.blocked:
+            raise scope.blocked from None
+        raise
+    finally:
+        _OWNED_WORK_ADMISSION_SCOPE.reset(token)
+    if scope.blocked is not None:
+        raise scope.blocked
+    return result
+
+
 class MCPServer:
     """MCP Server for AI Systems Performance."""
 
@@ -11377,7 +12004,7 @@ class MCPServer:
             return ToolResult(content=_content_from_payload(payload), is_error=True)
 
         try:
-            raw_result = HANDLERS[name](arguments)
+            raw_result = _call_handler_with_admission_scope(name, arguments)
             result = _normalize_result(raw_result)
             duration_ms = int((time.time() - start_ts) * 1000)
             payload = _build_enriched_tool_payload(
@@ -11393,14 +12020,19 @@ class MCPServer:
             )
         except Exception as e:
             duration_ms = int((time.time() - start_ts) * 1000)
-            payload = _build_enriched_tool_payload(
-                name,
-                arguments,
-                {
+            failure = (
+                process_failure_result_from_error(e)
+                if isinstance(e, OwnedWorkAdmissionBlocked)
+                else {
                     "error": "Tool execution failed.",
                     "error_type": type(e).__name__,
                     "success": False,
-                },
+                }
+            )
+            payload = _build_enriched_tool_payload(
+                name,
+                arguments,
+                failure,
                 duration_ms=duration_ms,
                 had_exception=True,
                 server_info=server_info,
@@ -11469,16 +12101,18 @@ class MCPServer:
         sys.stderr.write(f"{message}\n")
         sys.stderr.flush()
 
-    def _emit_stdio_json(self, payload: Dict[str, Any], *, failure_context: str) -> bool:
-        """Emit a JSON-RPC payload to stdout and report transport failures visibly."""
+    def _emit_stdio_json(
+        self, payload: dict[str, Any] | Callable[[], str], *, failure_context: str
+    ) -> bool:
+        """Encode a JSON-RPC line immediately before writing it to stdout."""
         try:
-            print(json.dumps(payload), flush=True)
+            print(payload() if callable(payload) else json.dumps(payload), flush=True)
             return True
         except Exception as exc:
             self._write_stdio_warning(f"Failed to emit {failure_context}: {exc}")
             return False
 
-    async def handle_message(self, message: Any) -> Optional[Dict[str, Any]]:
+    def handle_message(self, message: Any) -> Optional[Dict[str, Any]]:
         """Handle an MCP message. Returns None for notifications (messages without an id)."""
         if not isinstance(message, dict):
             return {
@@ -11642,14 +12276,99 @@ class MCPServer:
             # Re-raise to be handled by outer error handler
             raise
 
-    async def run_stdio(self):
-        """Run MCP server over stdio."""
+    def _finish_terminal_stdio_request(
+        self,
+        exc: BaseException,
+        active_message: Optional[Dict[str, Any]],
+        *,
+        cleanup_event_nonce: str | None,
+        deferred_interrupts: _DeferredTerminalInterrupts,
+    ) -> int:
+        """Emit retained terminal evidence before returning the process exit code."""
+        _remember_terminal_cleanup(exc)
+        deferred_interrupts.apply_pending()
+        try:
+            receipt = cleanup_incomplete_receipt_from_error(exc)
+        except ValueError:
+            receipt = None
+        operator_interrupted = operator_interrupt_from_error(exc)
+        if (
+            receipt is None
+            and not hasattr(exc, "owned_work_admission")
+            and not operator_interrupted
+        ):
+            raise exc
+        event_count = -1
+        event_line = ""
+
+        def encode_event(observed: int) -> str:
+            nonlocal event_count, event_line
+            if receipt is not None and event_count != observed:
+                stream = io.StringIO()
+                emit_cleanup_incomplete_event(receipt, nonce=cleanup_event_nonce, stream=stream)
+                event_line = stream.getvalue()
+                event_count = observed
+            return event_line
+
+        request = active_message if isinstance(active_message, dict) else None
+        if request is not None:
+            params = request.get("params", {})
+            arguments = params.get("arguments", {}) if isinstance(params, dict) else {}
+            tool_name = params.get("name", "") if isinstance(params, dict) else ""
+            failed = redact_sensitive_data(process_failure_result_from_error(exc), source=arguments)
+            # Redaction makes independent copies of both receipts. Apply later signals to each.
+            deferred_interrupts.track(failed)
+            nested = failed.get("cleanup_incomplete")
+            deferred_interrupts.track(nested)
+            payload = {"tool": tool_name, "status": "error", "result": failed}
+
+            def encode_response(observed: int) -> str:
+                # Both lines must reflect interrupts during either serialization.
+                encode_event(observed)
+                if observed:
+                    failed["cancelled"] = True
+                    if (
+                        "cancellation" not in failed
+                        and isinstance(nested, dict)
+                        and "cancellation" in nested
+                    ):
+                        failed["cancellation"] = nested["cancellation"]
+                return json.dumps(
+                    {
+                        "jsonrpc": "2.0",
+                        "id": request.get("id"),
+                        "result": {
+                            "content": [{"type": "text", "text": json.dumps(payload)}],
+                            "isError": True,
+                        },
+                    }
+                )
+
+            if self._emit_stdio_json(
+                lambda: deferred_interrupts.encode(encode_response),
+                failure_context="terminal cleanup response",
+            ):
+                self._complete_request(request.get("id"))
+        if receipt is not None:
+            # A signal after stdout was written can still be included on stderr.
+            sys.stderr.write(deferred_interrupts.encode(encode_event))
+            sys.stderr.flush()
+        return (
+            130
+            if operator_interrupt_from_error(exc) or deferred_interrupts.interrupt_count
+            else 1
+        )
+
+    def run_stdio(self, *, cleanup_event_nonce: str | None = None):
+        """Run blocking stdio and tools on the main thread for signal delivery."""
         import sys
 
         print(f"AISP MCP Server v{self.version} - {len(TOOLS)} tools available", file=sys.stderr)
 
+        active_message: Dict[str, Any] | None = None
         while True:
             try:
+                active_message = None
                 line = sys.stdin.readline()
                 if not line:
                     break
@@ -11660,18 +12379,20 @@ class MCPServer:
                     continue
 
                 message = json.loads(line)
+                active_message = message if isinstance(message, dict) and "id" in message else None
 
-                response = await self.handle_message(message)
+                response = self.handle_message(message)
                 if response is not None:
                     response_id = response.get("id")
-                    if (
-                        self._emit_stdio_json(
-                            response,
-                            failure_context=f"response for id {response_id!r}",
-                        )
-                        and response_id is not None
-                    ):
+                    emitted = self._emit_stdio_json(
+                        response,
+                        failure_context=f"response for id {response_id!r}",
+                    )
+                    active_message = None
+                    if emitted and response_id is not None:
                         self._complete_request(response_id)
+                else:
+                    active_message = None
 
             except json.JSONDecodeError as e:
                 print(f"JSON decode error: {e}", file=sys.stderr)
@@ -11683,6 +12404,14 @@ class MCPServer:
                     },
                     failure_context="parse error response",
                 )
+            except (CooperativeCleanupIncomplete, KeyboardInterrupt, SystemExit) as exc:
+                with _defer_terminal_stdio_interrupts(exc) as deferred_interrupts:
+                    return self._finish_terminal_stdio_request(
+                        exc,
+                        active_message,
+                        cleanup_event_nonce=cleanup_event_nonce,
+                        deferred_interrupts=deferred_interrupts,
+                    )
             except Exception as e:
                 self._write_stdio_warning(
                     f"Internal error while handling request: {type(e).__name__}"
@@ -11718,6 +12447,7 @@ def main():
     """Main entry point."""
     import argparse
 
+    cleanup_event_nonce = consume_cleanup_event_nonce()
     parser = argparse.ArgumentParser(description="AISP MCP Server")
     parser.add_argument("--list", action="store_true", help="List available tools")
     parser.add_argument("--test", type=str, help="Test a specific tool")
@@ -11744,12 +12474,11 @@ def main():
 
     if args.serve:
         server = MCPServer()
-        asyncio.run(server.run_stdio())
-        return
+        return server.run_stdio(cleanup_event_nonce=cleanup_event_nonce)
 
     # Default: show help
     parser.print_help()
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

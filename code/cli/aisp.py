@@ -73,9 +73,7 @@ if __package__ in {None, ""}:
     if existing:
         pythonpath.extend(part for part in existing.split(os.pathsep) if part)
     env["PYTHONPATH"] = os.pathsep.join(dict.fromkeys(pythonpath))
-    raise SystemExit(
-        subprocess.call([sys.executable, "-m", "cli.aisp", *sys.argv[1:]], env=env)
-    )
+    os.execve(sys.executable, [sys.executable, "-m", "cli.aisp", *sys.argv[1:]], env)
 
 from core.plugins.loader import load_plugin_apps
 from core.utils.dotenv import load_repo_dotenv
@@ -2185,10 +2183,24 @@ def main() -> int:
         _typer_required()
     rewritten = _rewrite_help_aliases(sys.argv)
     sys.argv = rewritten
+    from core.utils.cooperative_subprocess import (
+        cleanup_incomplete_receipt_from_error,
+        consume_cleanup_event_nonce,
+        emit_cleanup_incomplete_event,
+        operator_interrupt_from_error,
+    )
+    cleanup_event_nonce = consume_cleanup_event_nonce()
+
     try:
         app()
-    except SystemExit as exc:  # Typer raises SystemExit
-        return int(exc.code or 0)
+    except BaseException as exc:
+        receipt = cleanup_incomplete_receipt_from_error(exc)
+        if receipt is not None:
+            emit_cleanup_incomplete_event(receipt, nonce=cleanup_event_nonce)
+            return 130 if operator_interrupt_from_error(exc) else 1
+        if isinstance(exc, SystemExit):
+            return int(exc.code or 0)
+        raise
     return 0
 
 

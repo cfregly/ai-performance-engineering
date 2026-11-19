@@ -1,10 +1,21 @@
 """Run the operator replay MCP entrypoint through the actual repository CLI."""
 
 import json
+import os
 
 import mcp.mcp_server as server
+import pytest
 
 
+OWNED_PROCESS_SUPPORTED = all(
+    hasattr(os, name) for name in ("waitid", "P_PID", "WEXITED", "WNOWAIT", "WNOHANG")
+)
+
+
+@pytest.mark.skipif(
+    not OWNED_PROCESS_SUPPORTED,
+    reason="owned subprocess cleanup requires waitid with WNOWAIT",
+)
 def test_mcp_replay_help_runs_real_cli():
     result = server.tool_tools_trace_replay({"args": ["--help"], "include_context": False})
     assert result["returncode"] == 0, result
@@ -18,6 +29,10 @@ def test_mcp_replay_rejects_invalid_arguments():
     assert "list of strings" in result["error"]
 
 
+@pytest.mark.skipif(
+    not OWNED_PROCESS_SUPPORTED,
+    reason="owned subprocess cleanup requires waitid with WNOWAIT",
+)
 def test_mcp_replay_captures_and_validates_real_cpu_inputs(tmp_path):
     from labs.trace_replay.schema import PLAN_SCHEMA, load_bundle
 

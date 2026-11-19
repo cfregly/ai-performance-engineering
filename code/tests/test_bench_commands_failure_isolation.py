@@ -233,3 +233,18 @@ def test_failure_boundary_does_not_capture_run_level_abort(
 
     with pytest.raises(type(abort)):
         bench_commands._run_test_chapter_with_failure_boundary(isolate_failures=True)
+
+
+def test_cli_main_preserves_string_system_exit_semantics(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    def exit_with_message() -> None:
+        raise SystemExit("synthetic CLI usage error")
+
+    monkeypatch.setattr(bench_commands, "app", exit_with_message)
+
+    assert bench_commands.main() == 1
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == "synthetic CLI usage error\n"

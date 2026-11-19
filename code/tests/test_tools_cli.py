@@ -75,6 +75,7 @@ def test_multi_gpu_communication_tool_runs_real_help(capfd) -> None:
 
     spec = tools_commands.TOOLS["multi-gpu-communication"]
     assert spec.module_name == "labs.multi_gpu_communication.run_lab_multi_gpu_communication"
+    assert spec.cooperative_process is True
     assert tools_commands._run_tool("multi-gpu-communication", ["--help"]) == 0
     output = capfd.readouterr().out
     assert "--registered-buffers" in output
@@ -87,7 +88,14 @@ def test_nvshmem_device_tool_runs_real_help(capfd) -> None:
 
     spec = tools_commands.TOOLS["nvshmem-device"]
     assert spec.module_name == "labs.nvshmem_device.run_lab_nvshmem_device"
+    assert spec.cooperative_process is True
     assert tools_commands._run_tool("nvshmem-device", ["--help"]) == 0
     output = capfd.readouterr().out
-    for mode in ("scalar-halo", "persistent-halo", "block-signal", "persistent-signal", "persistent-atomic"):
+    for mode in (
+        "scalar-halo",
+        "persistent-halo",
+        "block-signal",
+        "persistent-signal",
+        "persistent-atomic",
+    ):
         assert mode in output

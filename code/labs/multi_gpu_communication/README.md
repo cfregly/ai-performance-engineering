@@ -54,6 +54,19 @@ Makefile discovers Open MPI compile flags with `mpicxx --showme:compile` because
 `nvcc` preprocesses CUDA before invoking the host compiler wrapper. For another
 MPI implementation, supply its include flags through `MPI_COMPILE_FLAGS`.
 
+The Python launcher requires a POSIX Python environment with `psutil` and
+`waitid`/`WNOWAIT`. Linux Python provides the required process controls. SIGINT
+must not be ignored, SIGCHLD must have its default disposition, and no other
+component may reap the owned launcher. Unsupported
+signal dispositions are rejected before launch. The launcher retains stdout,
+stderr, and an `.execution.json` receipt beside the result, including after
+interruption. Each MPI launch runs in its own owned process group. The Python
+caller waits for that group to become quiescent before returning. If a descendant
+escapes into another process group while retaining a capture pipe, the launcher
+drains the available bytes and closes its read end once the owned group is
+quiescent. The receipt records this limit in `execution.capture_limit`. The
+launcher does not signal the escaped process or retain its later output.
+
 From this directory:
 
 ```bash
@@ -144,8 +157,10 @@ builds. From `code/`:
 
 ```bash
 python -m cli.aisp bench list-targets --chapter labs/multi_gpu_communication
-python -m cli.aisp bench run --targets labs/multi_gpu_communication:jacobi --profile none
 python -m cli.aisp bench run --targets labs/multi_gpu_communication:jacobi --profile none \
+  --suite-timeout 0 --execution-timeout-seconds 0
+python -m cli.aisp bench run --targets labs/multi_gpu_communication:jacobi --profile none \
+  --suite-timeout 0 --execution-timeout-seconds 0 \
   --target-extra-arg 'labs/multi_gpu_communication:jacobi=--nx 4096 --ny 4097 --steps 20 --native-warmup 2 --ranks 2'
 ```
 
@@ -153,6 +168,19 @@ The real wrapper lifecycles were tested on B200. The full `bench run` pipeline
 above has not been executed for this lab. Harness overrides use `--steps` and
 `--native-warmup`, while the native executable uses `--iterations` and `--warmup`.
 Two ranks are the default because this is the validated topology.
+
+These commands require both timeout flags to be explicitly set to zero. They
+disable the harness suite and execution-stage deadlines for the owned isolated
+subprocess. A finite outer worker timeout cannot safely clean up the native MPI
+launcher's separate process group, so both benchmark variants reject finite
+execution before the build starts. Standalone native launches remain supported.
+The native build and launch have no time deadline. Both use owned cooperative
+process groups and wait for cleanup after Ctrl-C. The caller retains bytes it
+has read from stdout and stderr. Output buffered by a child but never flushed is
+outside this guarantee. The generic harness profiler remains disabled for these
+native MPI wrappers.
+Environment, numerical, and speedup gates remain active.
+See the [execution deadline contract](../../docs/api-reference.md#8-benchmark-domain).
 
 The `256 × 257` default is a deliberate correctness-smoke exception to the
 repository's usual speedup-oriented benchmark defaults. It is intended for

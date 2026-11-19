@@ -8,6 +8,19 @@ buffer reuse, and GPU progress. Use the
 [host-on-stream communication lab](../multi_gpu_communication/README.md) when a
 regular host-enqueued communication phase is sufficient.
 
+The Python launcher requires a POSIX Python environment with `psutil` and
+`waitid`/`WNOWAIT`. Linux Python provides these process controls. SIGINT must not
+be ignored, SIGCHLD must have its default disposition,
+and no other component may reap the owned launcher. Unsupported signal
+dispositions are rejected before launch. Each MPI launch has its own owned
+process group. Cancellation forwards
+an interrupt and waits for cleanup, retaining both streams and an
+`.execution.json` receipt beside the result. If a descendant escapes into another
+process group while retaining a capture pipe, the launcher drains the available
+bytes and closes its read end after the owned group becomes quiescent. The receipt
+records this limit in `execution.capture_limit`. The launcher does not signal the
+escaped process or retain its later output.
+
 The learning sequence builds on the
 [FZJ-JSC multi-GPU tutorial](https://github.com/FZJ-JSC/tutorial-multi-gpu/tree/cd34f9d40d600efd8d84e433b1a9e84ab5eff5f3).
 The [integration review](../../../docs/reviews/2026-11-15-distributed-gpu-tutorial.md)
@@ -91,7 +104,10 @@ python -m cli.aisp tools nvshmem-device -- --help
 ```
 
 The [Makefile](Makefile) accepts `NVSHMEM_INCLUDE` and `NVSHMEM_LIBDIR` overrides
-for installations with different layouts. MPI include discovery uses Open MPI's
+for installations with different layouts. The runner also prepends that explicit
+`NVSHMEM_LIBDIR` to the child MPI process only. If the variable is unset, it uses
+`NVSHMEM_HOME/lib`. This keeps the runtime library aligned with the build without
+changing the shell or machine defaults. MPI include discovery uses Open MPI's
 `mpicxx --showme:compile`, or explicit `MPI_COMPILE_FLAGS` for another toolchain.
 Read the [native implementation](nvshmem_device_native.cu) and
 [runner](run_lab_nvshmem_device.py) alongside the protocol below.
@@ -248,15 +264,26 @@ The baseline uses `block-signal`, and the optimized wrapper uses
 
 ```bash
 python -m cli.aisp bench list-targets --chapter labs/nvshmem_device
-python -m cli.aisp bench run --targets labs/nvshmem_device:nvshmem_device --profile none
+python -m cli.aisp bench run --targets labs/nvshmem_device:nvshmem_device --profile none \
+  --suite-timeout 0 --execution-timeout-seconds 0
 ```
 
 Use the native profiling recipe below for communication kernels. The wrappers
 reject the generic harness profiler path because MPI execution and live peer
 state require explicit collection control. B200 validation exercised both real
 wrapper lifecycles and compared their complete outputs. It did not execute the
-full `bench run` pipeline, whose mandatory finite stage timeouts conflict with
-this validation run's uncapped execution instruction.
+full `bench run` pipeline. This command requires both timeout flags to be
+explicitly set to zero. They disable the harness suite and execution-stage
+deadlines for the owned isolated subprocess. A finite outer worker timeout
+cannot safely clean up the native MPI launcher's separate process group, so
+both benchmark variants reject finite execution before the build starts.
+Standalone native launches remain supported. The native build and launch have
+no time deadline. Both use owned cooperative process groups and wait for cleanup
+after Ctrl-C. The caller retains bytes it has read from stdout and stderr.
+Output buffered by a child but never flushed is outside this guarantee. The
+generic harness profiler remains disabled for these native MPI wrappers.
+Correctness, environment, and speedup gates remain active. See the
+[execution deadline contract](../../docs/api-reference.md#8-benchmark-domain).
 
 ## Profile the protocol that actually ran
 

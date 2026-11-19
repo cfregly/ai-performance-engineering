@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
+import base64
 import json
 import os
 import shlex
-import signal
 import subprocess
 import sys
 import time
@@ -15,6 +15,14 @@ from pathlib import Path
 
 import torch
 
+from core.utils.cooperative_subprocess import (
+    CooperativeCleanupIncomplete,
+    _record_post_cleanup_interrupts,
+    authenticated_cleanup_receipt_or_raise,
+    cleanup_incomplete_receipt_from_error,
+    process_receipt_from_error,
+    run_cooperative_process,
+)
 from labs.nvfp4_quantization.benchmarks import NVFP4Workload, build_inputs
 from labs.trace_replay.adapters import (
     CODE_ROOT,
@@ -289,42 +297,130 @@ def profiler_receipts(outcomes, event_root):
     return reports, issues
 
 
-def wait_for_owned_cli(process, receipt):
-    """Forward cancellation to the owned CLI group and await its cleanup."""
-    receipt["execution"] = {
-        "process_id": process.pid,
-        "process_group_id": process.pid,
-        "start_new_session": True,
-    }
+def _captured_stream_bytes(result, name):
+    raw_streams = result.get("raw_streams_base64")
+    if isinstance(raw_streams, dict) and name in raw_streams:
+        encoded = raw_streams[name]
+        if not isinstance(encoded, str):
+            raise ValueError(f"captured {name} bytes must use base64 text")
+        return base64.b64decode(encoded, validate=True)
+    text = result.get(name)
+    if not isinstance(text, str):
+        raise ValueError(f"captured {name} must be text")
+    return text.encode("utf-8")
+
+
+def _persist_owned_cli_result(event_root, row, result):
+    """Retain exact captured streams and the cooperative ownership receipt."""
+    for name in ("stdout", "stderr"):
+        with (event_root / f"{name}.log").open("xb") as stream:
+            stream.write(_captured_stream_bytes(result, name))
+    receipt_path = event_root / "process-receipt.json"
+    _json(receipt_path, result)
+    row["process_receipt"] = receipt_path.name
+    row["execution"] = dict(result["execution"])
+    row["returncode"] = result.get("returncode")
+
+
+def run_owned_cli(command, environment, event_root, row):
+    """Run one replay CLI under cooperative ownership and retain its evidence."""
+    pending_error = None
+    pending_cause = None
     try:
-        returncode = process.wait()
-    except KeyboardInterrupt:
-        cancellation = {
-            "requested_at": _now(),
-            "signal": "SIGINT",
-            "process_group_id": process.pid,
-            "repeated_interrupts": 0,
-            "status": "waiting_for_cleanup",
-        }
-        receipt["cancellation"] = cancellation
+        result = run_cooperative_process(command, cwd=CODE_ROOT, env=environment)
+    except BaseException as error:
+        result = process_receipt_from_error(error)
+        if result is None:
+            raise
+        pending_error = error
+
+    persistence_error = None
+    try:
+        _persist_owned_cli_result(event_root, row, result)
+    except BaseException as error:
+        persistence_error = error
+
+    protocol_fatal = None
+    while True:
         try:
-            os.killpg(process.pid, signal.SIGINT)
-            cancellation["signal_forwarded"] = True
-        except ProcessLookupError:
-            cancellation["signal_forwarded"] = False
-        while True:
-            try:
-                returncode = process.wait()
-                break
-            except KeyboardInterrupt:
-                # Repeated cancellation must not interrupt owned profiler cleanup.
-                cancellation["repeated_interrupts"] += 1
-        receipt["returncode"] = returncode
-        cancellation["status"] = "cleanup_completed"
-        cancellation["completed_at"] = _now()
-        raise
-    receipt["returncode"] = returncode
-    return returncode
+            cleanup_receipt = authenticated_cleanup_receipt_or_raise(result)
+            break
+        except CooperativeCleanupIncomplete as error:
+            protocol_fatal = error
+            cleanup_receipt = None
+            break
+        except KeyboardInterrupt as error:
+            _record_post_cleanup_interrupts(result, 1)
+            setattr(error, "cooperative_process_result", result)  # noqa: B010
+            if not isinstance(pending_error, KeyboardInterrupt):
+                pending_cause = pending_error
+                pending_error = error
+
+    if isinstance(pending_error, KeyboardInterrupt):
+        fatal = protocol_fatal
+        if fatal is None and cleanup_receipt is not None:
+            fatal = CooperativeCleanupIncomplete(cleanup_receipt)
+            setattr(fatal, "outer_process_result", result)  # noqa: B010
+        if fatal is not None:
+            setattr(  # noqa: B010
+                pending_error,
+                "cleanup_incomplete_receipt",
+                fatal.result,
+            )
+            setattr(pending_error, "outer_process_result", result)  # noqa: B010
+            protocol_error = getattr(fatal, "cleanup_protocol_error", None)
+            if protocol_error is not None:
+                setattr(  # noqa: B010
+                    pending_error,
+                    "cleanup_protocol_error",
+                    protocol_error,
+                )
+        if persistence_error is not None:
+            setattr(  # noqa: B010
+                pending_error,
+                "evidence_persistence_error",
+                persistence_error,
+            )
+            if persistence_error is not pending_error:
+                raise pending_error from persistence_error
+        if protocol_fatal is not None:
+            raise pending_error from protocol_fatal
+        if pending_cause is not None:
+            raise pending_error from pending_cause
+        raise pending_error
+
+    if isinstance(pending_error, CooperativeCleanupIncomplete):
+        if persistence_error is not None:
+            setattr(  # noqa: B010
+                pending_error,
+                "evidence_persistence_error",
+                persistence_error,
+            )
+            raise pending_error from persistence_error
+        raise pending_error
+
+    fatal = protocol_fatal
+    if fatal is None and cleanup_receipt is not None:
+        fatal = CooperativeCleanupIncomplete(cleanup_receipt)
+        setattr(fatal, "outer_process_result", result)  # noqa: B010
+    if fatal is not None:
+        if persistence_error is not None:
+            setattr(fatal, "evidence_persistence_error", persistence_error)  # noqa: B010
+            raise fatal from persistence_error
+        raise fatal
+
+    if pending_error is not None:
+        if persistence_error is not None:
+            setattr(  # noqa: B010
+                pending_error,
+                "evidence_persistence_error",
+                persistence_error,
+            )
+            raise pending_error from persistence_error
+        raise pending_error
+    if persistence_error is not None:
+        raise persistence_error
+    return result
 
 
 def replay_bundle(bundle_path, output_dir, validity_profile="strict"):
@@ -371,12 +467,7 @@ def replay_bundle(bundle_path, output_dir, validity_profile="strict"):
             environment["PYTHONPATH"] = str(CODE_ROOT) + (os.pathsep + environment["PYTHONPATH"] if environment.get("PYTHONPATH") else "")
             started = time.perf_counter()
             try:
-                with (event_root / "stdout.log").open("x") as stdout, (event_root / "stderr.log").open("x") as stderr:
-                    process = subprocess.Popen(
-                        command, cwd=CODE_ROOT, env=environment, stdout=stdout, stderr=stderr,
-                        start_new_session=True,
-                    )
-                    wait_for_owned_cli(process, row)
+                process_result = run_owned_cli(command, environment, event_root, row)
             finally:
                 row["command_duration_s"] = time.perf_counter() - started
             result_paths = list((event_root / "harness").rglob("benchmark_test_results.json"))
@@ -400,12 +491,14 @@ def replay_bundle(bundle_path, output_dir, validity_profile="strict"):
             row["profiler_artifacts"] = reports
             if profiler_issues:
                 row["profiler_issues"] = profiler_issues
-            if process.returncode or successful != 1 or failed or skipped:
-                raise RuntimeError(f"paired harness rejected the event: returncode={process.returncode}, successful={successful}, failed={failed}, skipped={skipped}")
+            if process_result["returncode"] or successful != 1 or failed or skipped:
+                raise RuntimeError(f"paired harness rejected the event: returncode={process_result['returncode']}, successful={successful}, failed={failed}, skipped={skipped}")
             if profiler_issues:
                 raise RuntimeError("native profiler evidence is incomplete: " + " | ".join(profiler_issues))
             row["status"] = "completed"
         except (Exception, KeyboardInterrupt) as exc:
+            if cleanup_incomplete_receipt_from_error(exc) is not None:
+                raise
             cancelled = cancelled or isinstance(exc, KeyboardInterrupt)
             row["status"] = "cancelled" if isinstance(exc, KeyboardInterrupt) else exc.status if isinstance(exc, _ReplayDispositionError) else "failed"
             row["error"] = f"{type(exc).__name__}: {exc}"
