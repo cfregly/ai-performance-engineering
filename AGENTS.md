@@ -11,6 +11,20 @@
 
 For work under `code/`, also follow [code/AGENTS.md](code/AGENTS.md), which routes to the relevant implementation and validation rules.
 
+## Agent skills
+
+### Issue tracker
+
+For specs, tickets, and issue updates, follow the [GitHub Issues workflow](docs/agents/issue-tracker.md).
+
+### Triage labels
+
+For issue triage, use the [five triage roles](docs/agents/triage-labels.md).
+
+### Domain docs
+
+For domain terminology and architecture work, open the [domain docs guide](docs/agents/domain.md) for the glossary, ADRs, and references by work area.
+
 ## Research posts
 
 - Every new or revised X and LinkedIn draft follows the [share-optimization check](research/post-workflow/SHARE_OPTIMIZATION.md) and [draft-only workflow](research/post-workflow/TYPEFULLY_WORKFLOW.md). Lead with a useful reader decision, payoff and material tradeoff. Verify relevant people and native mentions, and make each eligible Auto-Plug continue the exact topic.
