@@ -5,6 +5,7 @@ import json
 import os
 import subprocess
 from pathlib import Path
+from urllib.parse import quote
 
 import pytest
 
@@ -163,3 +164,59 @@ def test_apply_refuses_while_suite_queue_lock_is_held(root: Path) -> None:
     assert rejected.returncode != 0
     assert "Queue lock is held" in rejected.stderr
     assert (root / f"cluster/runs/{STALE}/raw/data.log").is_file()
+
+
+@pytest.mark.parametrize(
+    ("report_name", "link_format"),
+    [
+        ("cluster/field-report-localhost-notes.md", "[Dataset]({link}#table)"),
+        ("cluster/field-report.md", "<img src='{link}'>"),
+        ("cluster/published/current/reports/saved-report.md", "[dataset]: <{link}> \"Evidence\""),
+    ],
+)
+def test_cleanup_protects_published_report_links(root: Path, report_name: str, link_format: str) -> None:
+    plan = root / "cleanup.json"
+    asset = _write(root / f"cluster/runs/{STALE}/raw/data with spaces.log", "old evidence\n")
+    preview = _run(root, "--plan-file", str(plan))
+    assert preview.returncode == 0, preview.stderr
+    report = root / report_name
+    link = quote(os.path.relpath(asset, report.parent))
+    _write(report, link_format.format(link=link))
+
+    blocked_preview = _run(root, "--plan-file", str(root / "new.json"))
+    blocked_apply = _run(root, "--apply", "--plan-file", str(plan))
+    for result in (blocked_preview, blocked_apply):
+        assert result.returncode == 1
+        assert f"Cleanup would remove evidence linked by {report_name}" in result.stderr
+    assert not (root / "new.json").exists()
+    assert asset.is_file()
+
+    allowed = _run(root, "--allow-run-id", STALE)
+    assert allowed.returncode == 0, allowed.stderr
+    assert "No stale artifacts found." in allowed.stdout
+
+
+def test_cleanup_rejects_report_drift_even_when_links_do_not_change(root: Path) -> None:
+    plan = root / "cleanup.json"
+    report = _write(root / "cluster/field-report-notes.md", "# Notes\n")
+    assert _run(root, "--plan-file", str(plan)).returncode == 0
+    _write(report, "# Revised notes\n")
+
+    result = _run(root, "--apply", "--plan-file", str(plan))
+    assert result.returncode == 1
+    assert "Cleanup plan differs" in result.stderr
+    assert (root / f"cluster/runs/{STALE}/raw/data.log").is_file()
+
+
+def test_cleanup_handles_hard_linked_files_inside_stale_tree(root: Path) -> None:
+    plan = root / "cleanup.json"
+    artifact = root / f"cluster/runs/{STALE}/raw/data.log"
+    kept = root / f"cluster/runs/{CANONICAL}/retained.log"
+    os.link(artifact, artifact.with_name("duplicate.log"))
+    os.link(artifact, kept)
+    assert _run(root, "--plan-file", str(plan)).returncode == 0
+
+    result = _run(root, "--apply", "--plan-file", str(plan))
+    assert result.returncode == 0, result.stderr
+    assert not artifact.parent.parent.exists()
+    assert kept.read_text() == "old run\n"

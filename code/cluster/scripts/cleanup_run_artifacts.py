@@ -9,13 +9,13 @@ import hashlib
 import json
 import os
 import re
-import shutil
 import stat
 import sys
 from collections.abc import Iterator
 from contextlib import ExitStack, contextmanager
 from pathlib import Path
 from typing import Any
+from urllib.parse import unquote, urlsplit
 
 CODE_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(CODE_ROOT))
@@ -28,6 +28,18 @@ RAW = Path("cluster/results/raw")
 FIGURES = Path("cluster/docs/figures")
 BASES = (RUNS, STRUCTURED, RAW, FIGURES)
 PUBLISHED = Path("cluster/published/current")
+REPORTS = (
+    "field-report.md",
+    "field-report-notes.md",
+    "field-report-localhost.md",
+    "field-report-localhost-notes.md",
+)
+LINK = re.compile(
+    r'''(?:\]\(\s*|^\s*\[[^\]\n]+\]:[ \t]+)(?:<([^>\n]+)>|([^\s)<>]+))'''
+    r'''|\b(?:href|src)\s*=\s*["']([^"']+)["']''',
+    re.MULTILINE | re.IGNORECASE,
+)
+DIRECTORY_FLAGS = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
 MANIFEST_RUN = re.compile(r"(20\d{2}-\d{2}-\d{2}_[A-Za-z0-9][A-Za-z0-9._-]*)_manifest\.json")
 DATED = re.compile(r"20\d{2}-\d{2}-\d{2}_[A-Za-z0-9][A-Za-z0-9._-]*")
 ORPHAN = re.compile(r"_[A-Za-z0-9]")
@@ -112,22 +124,72 @@ def _belongs_to_run(name: str, run_id: str) -> bool:
     return name == run_id or name.startswith((f"{run_id}_", f"{run_id}."))
 
 
-def _tree_digest(path: Path, device: int) -> str:
-    digest = hashlib.sha256()
+@contextmanager
+def _open_directory(path: str | Path, *, parent_fd: int | None = None) -> Iterator[int]:
+    fd = os.open(path, DIRECTORY_FLAGS, dir_fd=parent_fd)
+    try:
+        yield fd
+    finally:
+        os.close(fd)
 
-    def visit(entry: Path) -> None:
-        info = entry.lstat()
+
+def _tree_inventory(parent_fd: int, name: str, device: int) -> dict[Path, list[int]]:
+    inventory = {}
+
+    def visit(fd: int, basename: str, relative: Path) -> None:
+        info = os.stat(basename, dir_fd=fd, follow_symlinks=False)
         if not (stat.S_ISDIR(info.st_mode) or stat.S_ISREG(info.st_mode)) or info.st_dev != device:
             raise ValueError(
-                f"Cleanup target contains a symlink, mount, or special file at {entry}"
+                f"Cleanup target contains a symlink, mount, or special file at {Path(name) / relative}"
             )
-        digest.update(json.dumps([str(entry.relative_to(path)), _identity(info)]).encode())
+        inventory[relative] = identity = _identity(info)
         if stat.S_ISDIR(info.st_mode):
-            for child in sorted(entry.iterdir()):
-                visit(child)
+            with _open_directory(basename, parent_fd=fd) as directory:
+                if _identity(os.fstat(directory)) != identity:
+                    raise ValueError(f"Cleanup directory changed at {Path(name) / relative}")
+                for child in sorted(os.listdir(directory)):
+                    visit(directory, child, relative / child)
+                if _identity(os.fstat(directory)) != identity:
+                    raise ValueError(f"Cleanup directory changed at {Path(name) / relative}")
 
-    visit(path)
+    visit(parent_fd, name, Path("."))
+    return inventory
+
+
+def _tree_digest(inventory: dict[Path, list[int]]) -> str:
+    digest = hashlib.sha256()
+    for path, identity in inventory.items():
+        digest.update(json.dumps([str(path), identity]).encode())
     return digest.hexdigest()
+
+
+def _published_reports(root: Path, targets: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    paths = [root / "cluster" / name for name in REPORTS]
+    published_reports = _directory(root, PUBLISHED / "reports")
+    if published_reports is not None:
+        paths.extend(sorted(published_reports.rglob("*.md")))
+    deletion_paths = [root / target["path"] for target in targets]
+    reports = []
+    for report in paths:
+        try:
+            content, identity = _read_regular(report)
+        except FileNotFoundError:
+            continue
+        reports.append({
+            "path": str(report.relative_to(root)),
+            "identity": identity,
+            "sha256": hashlib.sha256(content).hexdigest(),
+        })
+        for angle_link, markdown_link, html_link in LINK.findall(content.decode("utf-8")):
+            link = urlsplit(angle_link or markdown_link or html_link)
+            if link.scheme or link.netloc or not link.path:
+                continue
+            asset = report.parent / unquote(link.path)
+            lexical = Path(os.path.abspath(asset))
+            resolved = asset.resolve()
+            if any(lexical.is_relative_to(path) or resolved.is_relative_to(path) for path in deletion_paths):
+                raise ValueError(f"Cleanup would remove evidence linked by {report.relative_to(root)}: {link.path}")
+    return reports
 
 
 def _plan(root: Path, canonical: str, allow: set[str]) -> dict[str, Any]:
@@ -156,34 +218,35 @@ def _plan(root: Path, canonical: str, allow: set[str]) -> dict[str, Any]:
     for relative, base in directories.items():
         if base is None:
             continue
-        base_info = base.lstat()
-        base_identities[str(relative)] = [base_info.st_dev, base_info.st_ino]
-        for path in sorted(base.iterdir()):
-            info = path.lstat()
-            if relative == RUNS:
-                stale = (
-                    path.name not in keep
-                    and (DATED.fullmatch(path.name) or SMOKE.fullmatch(path.name))
-                    and (stat.S_ISDIR(info.st_mode) or stat.S_ISLNK(info.st_mode))
-                )
-            else:
-                stale = not any(_belongs_to_run(path.name, run_id) for run_id in keep) and (
-                    DATED.match(path.name)
-                    or ORPHAN.match(path.name)
-                    or SMOKE.fullmatch(path.name)
-                    or any(_belongs_to_run(path.name, run_id) for run_id in stale_ids)
-                )
-            if stale:
-                targets.append(
-                    {
-                        "path": str(path.relative_to(root)),
+        with _open_directory(base) as fd:
+            base_info = os.fstat(fd)
+            base_identities[str(relative)] = [base_info.st_dev, base_info.st_ino]
+            for name in sorted(os.listdir(fd)):
+                info = os.stat(name, dir_fd=fd, follow_symlinks=False)
+                if relative == RUNS:
+                    stale = (
+                        name not in keep
+                        and (DATED.fullmatch(name) or SMOKE.fullmatch(name))
+                        and (stat.S_ISDIR(info.st_mode) or stat.S_ISLNK(info.st_mode))
+                    )
+                else:
+                    stale = not any(_belongs_to_run(name, run_id) for run_id in keep) and (
+                        DATED.match(name)
+                        or ORPHAN.match(name)
+                        or SMOKE.fullmatch(name)
+                        or any(_belongs_to_run(name, run_id) for run_id in stale_ids)
+                    )
+                if stale:
+                    inventory = _tree_inventory(fd, name, base_info.st_dev)
+                    targets.append({
+                        "path": str(relative / name),
                         "identity": _identity(info),
-                        "tree_sha256": _tree_digest(path, base_info.st_dev),
-                    }
-                )
+                        "tree_sha256": _tree_digest(inventory),
+                    })
+    reports = _published_reports(root, targets)
     root_info = root.stat()
     return {
-        "version": 1,
+        "version": 2,
         "repo_root": str(root),
         "root_identity": [root_info.st_dev, root_info.st_ino],
         "canonical_run_id": canonical,
@@ -191,6 +254,7 @@ def _plan(root: Path, canonical: str, allow: set[str]) -> dict[str, Any]:
         "queue_lock_path": str(_queue_lock_path(root)),
         "canonical_manifests": evidence,
         "published_manifest": published,
+        "published_reports": reports,
         "stale_run_ids": sorted(stale_ids),
         "base_identities": base_identities,
         "targets": sorted(targets, key=lambda target: target["path"]),
@@ -243,43 +307,61 @@ def _require_same_plan(reviewed: Any, current: dict[str, Any]) -> None:
     )
 
 
-def _apply(root: Path, plan: dict[str, Any], verbose: bool) -> None:
-    if plan["targets"] and not shutil.rmtree.avoids_symlink_attacks:
-        raise ValueError("Cleanup apply requires directory-relative filesystem operations")
+def _remove_tree(
+    parent_fd: int, name: str, inventory: dict[Path, list[int]], relative: Path = Path(".")
+) -> None:
+    expected = inventory.get(relative)
+    actual = _identity(os.stat(name, dir_fd=parent_fd, follow_symlinks=False))
+    # Unlinking another name for the same regular file changes its ctime.
+    identity = actual[:5] if stat.S_ISREG(actual[2]) else actual
+    if expected is None or identity != expected[:len(identity)]:
+        raise ValueError(f"Cleanup target changed at {name}")
+    if stat.S_ISREG(actual[2]):
+        os.unlink(name, dir_fd=parent_fd)
+        return
+    with _open_directory(name, parent_fd=parent_fd) as directory:
+        if _identity(os.fstat(directory)) != actual:
+            raise ValueError(f"Cleanup directory changed at {name}")
+        for child in sorted(os.listdir(directory)):
+            _remove_tree(directory, child, inventory, relative / child)
+        if _identity(os.stat(name, dir_fd=parent_fd, follow_symlinks=False))[:3] != actual[:3]:
+            raise ValueError(f"Cleanup directory changed at {name}")
+        os.rmdir(name, dir_fd=parent_fd)
 
-    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+
+def _apply(root: Path, plan: dict[str, Any], verbose: bool) -> None:
     with ExitStack() as stack:
         # Keep deletion tied to the directory identities recorded in the plan.
-        root_fd = os.open(root, flags)
-        stack.callback(os.close, root_fd)
+        root_fd = stack.enter_context(_open_directory(root))
         root_info = os.fstat(root_fd)
         if [root_info.st_dev, root_info.st_ino] != plan["root_identity"]:
             raise ValueError("Repository root changed during cleanup")
 
         base_fds = {}
+        checked_targets = []
         for target in plan["targets"]:
             path = Path(target["path"])
             base_key = str(path.parent)
             if base_key not in base_fds:
                 fd = root_fd
                 for component in path.parent.parts:
-                    fd = os.open(component, flags, dir_fd=fd)
-                    stack.callback(os.close, fd)
+                    fd = stack.enter_context(_open_directory(component, parent_fd=fd))
                 info = os.fstat(fd)
                 if [info.st_dev, info.st_ino] != plan["base_identities"][base_key]:
                     raise ValueError(f"Cleanup directory changed at {path.parent}")
                 base_fds[base_key] = fd
-
-        for target in plan["targets"]:
-            path = Path(target["path"])
-            fd = base_fds[str(path.parent)]
-            info = os.stat(path.name, dir_fd=fd, follow_symlinks=False)
-            if _identity(info) != target["identity"]:
+            fd = base_fds[base_key]
+            inventory = _tree_inventory(fd, path.name, plan["base_identities"][base_key][0])
+            if inventory[Path(".")] != target["identity"] or _tree_digest(inventory) != target["tree_sha256"]:
                 raise ValueError(f"Cleanup target changed at {path}")
-            if stat.S_ISDIR(info.st_mode):
-                shutil.rmtree(path.name, dir_fd=fd)
-            else:
-                os.unlink(path.name, dir_fd=fd)
+            checked_targets.append((path, fd, inventory))
+
+        if _published_reports(root, plan["targets"]) != plan["published_reports"]:
+            raise ValueError("Published Markdown changed during cleanup. Preview a new plan")
+        if _manifest(root, PUBLISHED / "manifest.json") != plan["published_manifest"]:
+            raise ValueError("Published manifest changed during cleanup. Preview a new plan")
+        for path, fd, inventory in checked_targets:
+            _remove_tree(fd, path.name, inventory)
             if verbose:
                 print(f"DELETE {root / path}")
 

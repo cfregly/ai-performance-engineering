@@ -7,13 +7,31 @@ import io
 import json
 import sys
 import time
+from pathlib import Path
 from typing import Any
 
 import pytest
 
+import core.cluster
+from core.api import handlers
 from core.api.redaction import redact_sensitive_data
 from mcp import mcp_server
 from mcp.mcp_client import RobustMCPClient
+
+
+def _call_registered_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+    response = asyncio.run(
+        mcp_server.MCPServer().handle_message(
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "tools/call",
+                "params": {"name": name, "arguments": arguments},
+            }
+        )
+    )
+    assert response is not None
+    return response["result"]
 
 
 def test_mcp_payload_redacts_nested_credentials(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -153,11 +171,154 @@ def test_mcp_cluster_promotion_preserves_public_validation_error(
     }
 
 
+@pytest.mark.parametrize(
+    ("tool", "handler"),
+    [
+        ("cluster_eval_suite", "run_cluster_eval_suite"),
+        ("cluster_common_eval", "run_cluster_common_eval"),
+        ("cluster_fabric_eval", "run_cluster_fabric_eval"),
+        ("cluster_nmx_partition_lab", "build_cluster_nmx_partition_lab"),
+        ("cluster_build_canonical_package", "build_canonical_package"),
+        ("cluster_promote_run", "promote_cluster_run"),
+        ("cluster_watch_promote", "watch_cluster_run_for_promotion"),
+        ("cluster_validate_field_report", "validate_field_report_requirements"),
+    ],
+)
+def test_cluster_wrappers_use_generic_error_for_unexpected_failures(
+    tool: str, handler: str, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    detail = "internal-backend-failure-detail"
+
+    def fail(**_kwargs: Any) -> dict[str, Any]:
+        raise RuntimeError(detail)
+
+    monkeypatch.setattr(core.cluster, handler, fail)
+    monkeypatch.setattr(mcp_server, "_context_snapshot", lambda: {})
+    result = _call_registered_tool(tool, {"run_id": "test_run", "pid": 42})
+
+    assert result["isError"] is True
+    assert detail not in json.dumps(result)
+    payload = json.loads(result["content"][0]["text"])
+    assert payload["result"] == {
+        "error": "Tool execution failed.",
+        "error_type": "RuntimeError",
+        "success": False,
+    }
+    assert f"MCP tool {tool} failed with RuntimeError." in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    ("tool", "arguments", "message"),
+    [
+        (
+            "cluster_promote_run",
+            {"run_id": "test_run", "timeout_seconds": "invalid"},
+            "timeout_seconds must be an integer",
+        ),
+        (
+            "cluster_watch_promote",
+            {"run_id": "test_run", "pid": "invalid"},
+            "pid must be an integer",
+        ),
+    ],
+)
+def test_cluster_wrappers_keep_invalid_parameter_messages(
+    tool: str, arguments: dict[str, Any], message: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(mcp_server, "_context_snapshot", lambda: {})
+    result = _call_registered_tool(tool, arguments)
+    assert result["isError"] is True
+    assert json.loads(result["content"][0]["text"])["result"]["error"] == message
+
+
+def test_registered_queue_timeout_keeps_public_message(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    if mcp_server.fcntl is None:
+        pytest.skip("Queue runner locking requires fcntl")
+    monkeypatch.setattr(mcp_server, "TOOLS", {})
+    monkeypatch.setattr(mcp_server, "HANDLERS", {})
+    monkeypatch.setattr(mcp_server, "_context_snapshot", lambda: {})
+    monkeypatch.setattr(mcp_server, "_QUEUE_DIR", tmp_path)
+    monkeypatch.setattr(mcp_server, "_QUEUE_SCRIPT_PATH", tmp_path / "queue.sh")
+    monkeypatch.setattr(mcp_server, "_QUEUE_LOG_PATH", tmp_path / "queue.log")
+    monkeypatch.setenv("AISP_MCP_QUEUE_RUNNER_LOCK_TIMEOUT_SEC", "1")
+
+    @mcp_server.register_tool("queue_probe", "Check the MCP queue error response.")
+    def queued(_arguments: dict[str, Any]) -> dict[str, Any]:
+        def run() -> dict[str, Any]:
+            pytest.fail("A timed-out queue request must never reach its callback")
+
+        return mcp_server._run_with_queue("queue_probe", run)
+
+    with (tmp_path / "queue.runner.lock").open("a+", encoding="utf-8") as lock:
+        mcp_server.fcntl.flock(lock.fileno(), mcp_server.fcntl.LOCK_EX)
+        result = _call_registered_tool("queue_probe", {})
+
+    assert result["isError"] is True
+    message = json.loads(result["content"][0]["text"])["result"]["error"]
+    assert message.startswith("Queue runner lock timeout after 1s (tool=queue_probe,")
+
+
+def test_malformed_benchmark_export_keeps_public_diagnostic(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(mcp_server, "_context_snapshot", lambda: {})
+    malformed = tmp_path / "benchmark_test_results.json"
+    malformed.write_text("{", encoding="utf-8")
+    output = tmp_path / "export.csv"
+    result = _call_registered_tool(
+        "benchmark_export", {"data_file": str(malformed), "output": str(output)}
+    )
+
+    assert result["isError"] is True
+    message = json.loads(result["content"][0]["text"])["result"]["error"]
+    assert f"Failed to read benchmark results {malformed}" in message
+    assert not output.exists()
+
+
+@pytest.mark.parametrize(
+    ("format_name", "expected_row"),
+    [
+        ("csv", "ch_test:legacy_case,1.20,,python"),
+        ("markdown", "| ch_test:legacy_case | 1.20x | N/A | python |"),
+    ],
+)
+def test_mcp_exports_legacy_speedup_with_unavailable_baseline(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, format_name: str, expected_row: str
+) -> None:
+    monkeypatch.setattr(mcp_server, "_context_snapshot", lambda: {})
+    data = tmp_path / "benchmark_test_results.json"
+    data.write_text(
+        json.dumps(
+            {
+                "results": [
+                    {
+                        "chapter": "ch_test",
+                        "benchmarks": [{"example": "legacy_case", "best_speedup": 1.2}],
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    output = tmp_path / f"export.{format_name}"
+    arguments = {"data_file": str(data), "output": str(output), "format": format_name}
+    result = _call_registered_tool("benchmark_export", arguments)
+
+    assert result["isError"] is False
+    assert expected_row in output.read_text(encoding="utf-8")
+
+    triage = _call_registered_tool("benchmark_triage", {"data_file": str(data)})
+    assert triage["isError"] is False
+    payload = json.loads(triage["content"][0]["text"])["result"]
+    assert payload["improvements"][0]["baseline_ms"] is None
+    assert not any(item["tool"] == "profile_nsys" for item in payload["recommended_tools"])
+
+
 def test_mcp_tools_list_declares_cluster_promotion_side_effects() -> None:
     response = asyncio.run(
-        mcp_server.MCPServer().handle_message(
-            {"jsonrpc": "2.0", "id": 1, "method": "tools/list"}
-        )
+        mcp_server.MCPServer().handle_message({"jsonrpc": "2.0", "id": 1, "method": "tools/list"})
     )
 
     assert response is not None
@@ -165,11 +326,99 @@ def test_mcp_tools_list_declares_cluster_promotion_side_effects() -> None:
     promotion = descriptions["cluster_promote_run"]
     watcher = descriptions["cluster_watch_promote"]
     assert "Replaces cluster/published/current" in promotion
-    assert "removes eligible older run artifacts after publication" in promotion
+    assert "applies a revalidated cleanup plan after publication" in promotion
+    assert "Eligibility follows the retained run IDs regardless of age." in promotion
+    assert "steps.recover_publication" in promotion
+    assert "success, published" in promotion
+    assert "A later cleanup failure can leave `success` false." in promotion
     assert "Starts a detached process and writes watcher logs and status files" in watcher
-    assert "can replace the published package and run cleanup after publication" in watcher
+    assert "recovers interrupted publications before installing" in watcher
     assert "read-only snapshot" not in promotion
     assert "read-only snapshot" not in watcher
+
+
+@pytest.mark.parametrize(
+    ("tool", "arguments", "message"),
+    [
+        ("benchmark_data", {"page": 0}, "page must be >= 1"),
+        ("benchmark_data", {"sort_dir": "sideways"}, "sort_dir must be 'asc' or 'desc'"),
+        ("benchmark_opportunities", {"top": -1}, "top must be >= 0"),
+        ("benchmark_compare", {}, "baseline is required"),
+    ],
+)
+def test_benchmark_tools_keep_public_argument_errors(
+    tool: str, arguments: dict[str, Any], message: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(mcp_server, "_context_snapshot", lambda: {})
+    result = _call_registered_tool(tool, arguments)
+
+    assert result["isError"] is True
+    error = json.loads(result["content"][0]["text"])["result"]
+    assert error["error"] == message
+    assert error["error_type"] == "value_error"
+
+
+def test_benchmark_compare_keeps_public_missing_and_malformed_file_errors(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(mcp_server, "_context_snapshot", lambda: {})
+    baseline = tmp_path / "baseline.json"
+    candidate = tmp_path / "candidate.json"
+    candidate.write_text('{"results": []}', encoding="utf-8")
+    arguments = {"baseline": str(baseline), "candidate": str(candidate)}
+    missing = _call_registered_tool("benchmark_compare", arguments)
+    assert missing["isError"] is True
+    error = json.loads(missing["content"][0]["text"])["result"]
+    assert error["error"] == f"baseline not found: {baseline}"
+    assert error["error_type"] == "file_not_found"
+
+    baseline.write_text("{", encoding="utf-8")
+    malformed = _call_registered_tool("benchmark_compare", arguments)
+    assert malformed["isError"] is True
+    error = json.loads(malformed["content"][0]["text"])["result"]
+    assert error["error"] == f"Failed to parse JSON: {baseline}"
+    assert error["error_type"] == "value_error"
+
+
+def test_benchmark_overview_keeps_unexpected_processing_errors_generic(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fail() -> None:
+        raise ValueError("unexpected-processing-detail")
+
+    monkeypatch.setattr(handlers, "get_engine", fail)
+    monkeypatch.setattr(mcp_server, "_context_snapshot", lambda: {})
+    result = _call_registered_tool("benchmark_overview", {})
+
+    assert result["isError"] is True
+    assert "unexpected-processing-detail" not in json.dumps(result)
+    error = json.loads(result["content"][0]["text"])["result"]
+    assert error["error"] == "Tool execution failed."
+    assert error["error_type"] == "ValueError"
+
+
+def test_cluster_validator_accepts_package_only_staged_validation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(mcp_server, "_context_snapshot", lambda: {})
+    candidate = tmp_path / "staged"
+    candidate.mkdir()
+    (candidate / "manifest.json").write_text('{"run_id": "stage_fixture"}', encoding="utf-8")
+    arguments: dict[str, Any] = {"published_root": str(candidate), "package_only": True}
+    for item in ("report", "notes", "template", "runbook"):
+        path = tmp_path / f"{item}.md"
+        path.write_text("Canonical run: `stage_fixture`\n", encoding="utf-8")
+        arguments[item] = str(path)
+
+    result = _call_registered_tool("cluster_validate_field_report", arguments)
+    payload = json.loads(result["content"][0]["text"])["result"]
+
+    assert result["isError"] is True
+    assert (
+        "published manifest, report, and notes identify the same run (stage_fixture)"
+        in payload["stdout"]
+    )
+    assert "Stale-artifact hygiene: not requested" in payload["stdout"]
 
 
 def test_handle_message_rejects_non_object_without_crashing() -> None:

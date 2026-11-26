@@ -369,9 +369,9 @@ class PerformanceCoreBase:
         try:
             data = self.load_benchmark_data().get("benchmarks", [])
             for bench in data:
-                if "baseline_time_ms" in bench and "optimized_time_ms" in bench:
-                    baseline_ms = bench["baseline_time_ms"]
-                    optimized_ms = bench["optimized_time_ms"]
+                baseline_ms = bench.get("baseline_time_ms")
+                optimized_ms = bench.get("optimized_time_ms")
+                if baseline_ms and optimized_ms:
                     speedup = bench.get(
                         "speedup", baseline_ms / optimized_ms if optimized_ms else 0
                     )
@@ -2855,10 +2855,10 @@ class PerformanceCoreBase:
                 continue
 
             speedup = b.get("speedup", 1.0)
-            baseline_ms = b.get("baseline_time_ms", 0)
-            optimized_ms = b.get("optimized_time_ms", baseline_ms)
+            baseline_ms = b.get("baseline_time_ms")
+            optimized_ms = b.get("optimized_time_ms")
 
-            if baseline_ms <= 0 or optimized_ms <= 0 or speedup <= 1.0:
+            if not baseline_ms or not optimized_ms or baseline_ms < 0 or optimized_ms < 0 or speedup <= 1.0:
                 continue
 
             time_saved_ms = baseline_ms - optimized_ms

@@ -12,7 +12,7 @@ Last updated: YYYY-MM-DD
 | Manifest | `published/current/manifest.json` |
 | Suite steps | `published/current/structured/2026-03-17_localhost_fabric_canonical_suite_steps.json` |
 | Preserved localhost canonical package | `2026-03-17_localhost_fabric_canonical` |
-| Archived localhost comparison baseline | `2026-03-08_localhost_modern_profile_r32_full20b` retained as a historical baseline only; do not treat it as active canonical evidence. |
+| Archived localhost comparison baseline | `2026-03-08_localhost_modern_profile_r32_full20b` requires separately retained evidence for any historical comparison. |
 | Historical multi-node reference | `2026-02-10_full_suite_e2e_wire_qf_mon` may be documented as historical context, but do not treat it as active canonical evidence unless its artifacts are materialized locally. |
 | Localhost package convention | The suite renders `field-report-localhost.md` and `field-report-localhost-notes.md` under `cluster/runs/<RUN_ID>/reports/` for localhost runs. Promote the run to update the published report and notes. |
 | Localhost renderer | `python3 cluster/scripts/render_localhost_field_report_package.py --run-id <RUN_ID> --label <label>` |

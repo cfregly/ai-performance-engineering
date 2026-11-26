@@ -165,11 +165,32 @@ def test_cluster_eval_suite_smoke_writes_real_manifest_and_meta():
 
 def test_cluster_promote_run_reports_missing_run_dir_via_real_cli():
     result = _run_cli(["cluster", "promote-run", "--run-id", "does-not-exist"])
-    assert result.returncode == 0, result.stderr
+    assert result.returncode == 1, result.stderr
     payload = json.loads(result.stdout)
     assert payload["success"] is False
+    assert payload["published"] is False
     assert payload["run_id"] == "does-not-exist"
-    assert "missing run dir" in payload["stderr"]
+    assert "Missing or invalid run directory" in payload["error"]
+
+
+def test_cluster_validate_field_report_accepts_candidate_package(tmp_path):
+    candidate = tmp_path / "candidate"
+    shutil.copytree(REPO_ROOT / "cluster/published/current", candidate)
+    result = _run_cli([
+        "--json", "cluster", "validate-field-report", "--published-root", str(candidate), "--package-only",
+    ])
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["success"] is True, payload
+    assert "Stale-artifact hygiene: not requested" in payload["stdout"]
+
+    (candidate / "manifest.json").unlink()
+    missing = _run_cli([
+        "--json", "cluster", "validate-field-report", "--published-root", str(candidate), "--package-only",
+    ])
+    payload = json.loads(missing.stdout)
+    assert payload["success"] is False
+    assert "Invalid published manifest" in payload["stderr"]
 
 
 def test_cluster_common_eval_multinode_readiness_writes_real_manifest():
@@ -233,4 +254,4 @@ def test_cluster_watch_promote_reports_missing_run_dir_via_real_cli():
     assert result.returncode == 0, result.stderr
     payload = json.loads(result.stdout)
     assert payload["success"] is False
-    assert "Missing run dir" in payload["error"]
+    assert "Missing or invalid run directory" in payload["error"]

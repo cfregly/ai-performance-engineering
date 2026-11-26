@@ -66,10 +66,9 @@ def redact_nmx_base(value: Any) -> str:
     return re.sub(r"https?://[^\\s`]+/nmx/v1", "<nmx-base>", text)
 
 
-def localhost_fabric_repro_cmd(run_id: str, label: str) -> str:
+def localhost_fabric_repro_cmd(label: str) -> str:
     return (
-        "python -m cli.aisp cluster fabric-eval --run-id "
-        + run_id
+        "python -m cli.aisp cluster fabric-eval --run-id <new_run_id>"
         + " --hosts localhost --labels "
         + label
         + " --ssh-user $(id -un) --primary-label "
@@ -116,8 +115,9 @@ def parse_gpu_count(meta_payload: dict[str, Any]) -> int:
 
 
 def parse_suite_summary(steps: list[dict[str, Any]]) -> tuple[int, int, int]:
-    total = len(steps)
-    failures = sum(1 for step in steps if int(step.get("exit_code", 1)) != 0)
+    latest = {step.get("name") or index: step for index, step in enumerate(steps)}
+    total = len(latest)
+    failures = sum(1 for step in latest.values() if int(step.get("exit_code", 1)) != 0)
     ok = total - failures
     return ok, total, failures
 
@@ -314,7 +314,7 @@ def render_report(args: argparse.Namespace, *, target: str = "run_local") -> str
     last_vllm = vllm_rows[-1]
 
     validate_rc = "unknown"
-    for step in steps:
+    for step in reversed(steps):
         if step.get("name") == "validate_required_artifacts":
             validate_rc = str(step.get("exit_code"))
             break
@@ -727,17 +727,24 @@ def render_report(args: argparse.Namespace, *, target: str = "run_local") -> str
     lines.append("")
 
     lines.append("## Repro Steps")
+    lines.append("")
+    lines.append(f"The example starts a new run. See the [suite record]({suite_rel}) for the measured settings.")
+    lines.append("")
     lines.append("| Step | Command |")
     lines.append("| --- | --- |")
     lines.append(
-        "| Run localhost fabric eval | `"
-        + localhost_fabric_repro_cmd(run_id, label)
+        "| Example localhost fabric eval | `"
+        + localhost_fabric_repro_cmd(label)
         + "` |"
     )
     lines.append(
         "| Validate localhost report package | `cluster/scripts/validate_field_report_requirements.sh --report "
         + (
-            (f"cluster/runs/{run_id}/reports/field-report-localhost.md --notes cluster/runs/{run_id}/reports/field-report-localhost-notes.md")
+            (
+                f"cluster/runs/{run_id}/reports/field-report-localhost.md"
+                f" --notes cluster/runs/{run_id}/reports/field-report-localhost-notes.md"
+                f" --published-root cluster/runs/{run_id} --package-only"
+            )
             if target == "run_local"
             else "cluster/field-report-localhost.md --notes cluster/field-report-localhost-notes.md"
         )
@@ -889,11 +896,14 @@ def render_notes(args: argparse.Namespace, *, target: str = "run_local") -> str:
     lines.append("")
 
     lines.append("## Repro Entry Point")
+    lines.append("")
+    lines.append(f"The example starts a new run. See the [suite record]({suite_rel}) for the measured settings.")
+    lines.append("")
     lines.append("| Step | Command |")
     lines.append("| --- | --- |")
     lines.append(
-        "| Re-run localhost canonical package | `"
-        + localhost_fabric_repro_cmd(run_id, label)
+        "| Example localhost fabric eval | `"
+        + localhost_fabric_repro_cmd(label)
         + "` |"
     )
 

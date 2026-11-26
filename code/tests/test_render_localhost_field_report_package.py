@@ -96,7 +96,8 @@ def test_render_localhost_report_handles_missing_operator_checks(tmp_path: Path)
 
     assert "Operator checks | not run in this preset" in report
     assert "operator-friction and monitoring artifacts were not requested in this preset run." in report
-    assert "Run localhost fabric eval" in report
+    assert "Example localhost fabric eval" in report
+    assert "--run-id <new_run_id>" in report
     assert "Operator checks are optional and skipped in this preset" in notes
     assert "quick_friction | not run" in notes
 

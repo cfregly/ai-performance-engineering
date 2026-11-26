@@ -83,14 +83,14 @@ That path is for declarative scheduling, CI automation, and publication-vs-reali
 ## What To Ignore Most Of The Time
 - `cluster/published/current/structured/`: published structured artifacts for the current canonical package.
 - `cluster/published/current/figures/`: published figures for the current canonical package.
-- `cluster/published/current/raw/`: raw logs; useful for debugging, not for first-pass consumption.
+- `cluster/published/current/raw/`: raw logs when the publication includes them.
 
 That published package is for readers and stakeholder deliverables. It is not the forward runtime contract.
-Archived historical baselines live under `cluster/archive/runs/<run_id>/`.
+Use `cluster/archive/runs/<run_id>/` for independently retained historical baselines.
 
 ## Current Published State
 
-The published field report covers `2026-03-17_localhost_fabric_canonical`, a historical single-GPU localhost canary. The [snapshot manifest](published/current/manifest.json) lists the structured evidence and figures linked by the report and notes. Private identifiers and selected operator output were removed. The original run inventory includes raw logs unavailable in the historical publication.
+The published field report covers `2026-03-17_localhost_fabric_canonical`, a historical single-GPU localhost canary. The [snapshot manifest](published/current/manifest.json) lists the structured evidence and figures linked by the report and notes. Private identifiers and selected operator output were removed. Of 180 original inventory entries, 25 are in this snapshot, 95 from the historical publication are outside its reader scope, and 60 raw logs were unavailable. Four additional linked files bring the snapshot to 29. Operator activity logs stay under the run's `progress/activity/` directory.
 
 ## Promotion Rules
 When a run should become the new published package:
@@ -108,6 +108,7 @@ python -m cli.aisp cluster promote-run \
 Promotion checks the candidate manifest, suite records, and available artifact hashes. It renders
 and validates the report against the staged package before installing it. With `--cleanup`,
 it applies a checked cleanup plan after the publication succeeds.
+If promotion is interrupted, run `python3 cluster/scripts/promote_run.py --recover` from `code/` to restore an unfinished publication.
 
 3. If this run also becomes the stakeholder report package, sync:
    - `cluster/field-report.md`

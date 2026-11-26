@@ -29,10 +29,10 @@ Last updated: 2026-03-24. Canonical run: `2026-03-17_localhost_fabric_canonical`
 | Scope | `localhost` only, 1 GPU(s) |
 | Canonical run | `2026-03-17_localhost_fabric_canonical` |
 | Suite status | `41/41` steps green; `validate_required_artifacts=0` |
-| Networking headline | NCCL single-node peak algbw `2263.5 GB/s` (67108864 bytes); connectivity probe `84.867 GB/s` payload algbw |
+| Networking headline | Recorded single-GPU NCCL peak algbw `2263.5 GB/s` (67108864 bytes); connectivity probe `84.867 GB/s` payload algbw |
 | Inference headline | vLLM total throughput `484.494 tok/s` (c=1) -> `484.494 tok/s` (c=1); p99 TTFT `77.573 ms` -> `77.573 ms` |
 | Operator checks | quick_friction `ok` (pass=1, failed=0, expected=0, unexpected=0), monitoring_expectations `ok` |
-| Fabric headline | status `ok`, completeness `full_stack_verified`, full-stack families `1` |
+| Fabric scorecard | Stored category `full_stack_verified`. The topology has zero NVLink pairs. |
 | Key weird/new | Single-node NCCL env sweep can show `busbw=0.0` by definition (rank=1), while algbw is still strong. |
 
 ## Scope + Canonical Artifacts
@@ -51,7 +51,7 @@ Last updated: 2026-03-24. Canonical run: `2026-03-17_localhost_fabric_canonical`
 ## Fabric Evaluation
 | Family | Present | Completeness | Mgmt plane | Link health | Routing | AI workload impact |
 | --- | --- | --- | --- | --- | --- | --- |
-| `nvlink` | `True` | `full_stack_verified` | `True` | `runtime_verified` | `pass` | NVLink/NVSwitch runtime evidence peaks at 2263.5 GB/s algbw on the single-node NCCL path. |
+| `nvlink` | `True` | `full_stack_verified` | `True` | `runtime_verified` | `pass` | The stored NCCL run records 2263.5 GB/s algbw on one GPU. There is no peer NVLink path in its topology. |
 | `infiniband` | `False` | `not_present` | `False` | `n/a` | `n/a` | No direct AI workload finding. |
 | `spectrum-x` | `False` | `not_present` | `False` | `n/a` | `n/a` | No direct AI workload finding. |
 
@@ -145,7 +145,7 @@ Last updated: 2026-03-24. Canonical run: `2026-03-17_localhost_fabric_canonical`
 | Runtime interpretation | Collect multi-node NCCL, all-to-all, and torchrun connectivity artifacts before drawing Spectrum-X / RoCE conclusions. |
 
 Cross-fabric interpretation:
-- NVLink/NVSwitch runtime evidence peaks at 2263.5 GB/s algbw on the single-node NCCL path.
+- The stored NCCL run records 2263.5 GB/s algbw on one GPU. There is no peer NVLink path in its topology.
 - vLLM throughput ranges from 484.5 to 484.5 tok/s across 1 concurrency points.
 
 Data: [published/current/structured/2026-03-17_localhost_fabric_canonical_fabric_command_catalog.json](published/current/structured/2026-03-17_localhost_fabric_canonical_fabric_command_catalog.json), [published/current/structured/2026-03-17_localhost_fabric_canonical_fabric_capability_matrix.json](published/current/structured/2026-03-17_localhost_fabric_canonical_fabric_capability_matrix.json), [published/current/structured/2026-03-17_localhost_fabric_canonical_fabric_verification.json](published/current/structured/2026-03-17_localhost_fabric_canonical_fabric_verification.json), [published/current/structured/2026-03-17_localhost_fabric_canonical_fabric_ai_correlation.json](published/current/structured/2026-03-17_localhost_fabric_canonical_fabric_ai_correlation.json), [published/current/structured/2026-03-17_localhost_fabric_canonical_fabric_scorecard.json](published/current/structured/2026-03-17_localhost_fabric_canonical_fabric_scorecard.json)
@@ -287,12 +287,17 @@ Data: [published/current/structured/2026-03-17_localhost_fabric_canonical_localh
 | P2 | Run cleanup script with canonical-run retention after each new package | keeps artifact corpus unambiguous for stakeholders |
 
 ## Repro Steps
+
+The example uses the retained inference settings of 64 input tokens, 32 output tokens, and concurrency 1. Use a new run ID and the target cluster's connection settings.
+
 | Step | Command |
 | --- | --- |
-| Run localhost fabric eval | `python -m cli.aisp cluster fabric-eval --run-id 2026-03-17_localhost_fabric_canonical --hosts localhost --labels localhost --ssh-user $(id -un) --primary-label localhost --nmx-url https://<your-nmx-host> --timeout 7200 --extra-arg --skip-bootstrap-nodes --extra-arg --disable-fp4 --extra-arg --health-suite --extra-arg off --extra-arg --skip-vllm-multinode --extra-arg --model --extra-arg openai-community/gpt2 --extra-arg --tp --extra-arg 1 --extra-arg --isl --extra-arg 128 --extra-arg --osl --extra-arg 64 --extra-arg --concurrency-range --extra-arg '1 2' --extra-arg --vllm-request-rate-range --extra-arg '1 2' --extra-arg --vllm-request-rate-max-concurrency --extra-arg 4 --extra-arg --vllm-request-rate-num-prompts --extra-arg 80 --extra-arg --fio-runtime --extra-arg 15 --extra-arg --nvbandwidth-quick` |
+| Example localhost fabric eval | `python -m cli.aisp cluster fabric-eval --run-id <new_run_id> --hosts localhost --labels localhost --ssh-user $(id -un) --primary-label localhost --nmx-url https://<your-nmx-host> --timeout 7200 --extra-arg --skip-bootstrap-nodes --extra-arg --disable-fp4 --extra-arg --health-suite --extra-arg off --extra-arg --skip-vllm-multinode --extra-arg --model --extra-arg openai-community/gpt2 --extra-arg --tp --extra-arg 1 --extra-arg --isl --extra-arg 64 --extra-arg --osl --extra-arg 32 --extra-arg --concurrency-range --extra-arg 1 --extra-arg --fio-runtime --extra-arg 15 --extra-arg --nvbandwidth-quick` |
 | Validate localhost report package | `cluster/scripts/validate_field_report_requirements.sh --report cluster/field-report-localhost.md --notes cluster/field-report-localhost-notes.md --canonical-run-id 2026-03-17_localhost_fabric_canonical` |
 
 ## Reproducibility Package
+
+The retained overview figure missed the NCCL series. The structured NCCL file and dedicated bandwidth figure record the benchmark result.
 
 The published evidence is a historical reader snapshot. It contains the files linked from this report and its notes. Public labels replace private identifiers, and selected operator output was removed. The manifest records which published files differ from the historical publication.
 

@@ -138,7 +138,7 @@ def _repo_root(args: argparse.Namespace) -> Path:
 def watcher_run_dir(repo_root: Path, run_id: str) -> Path:
     if run_id in ("", ".", "..") or Path(run_id).name != run_id:
         raise ValueError("Run ID must name one directory under cluster/runs.")
-    runs = repo_root / "cluster" / "runs"
+    runs = (repo_root / "cluster" / "runs").resolve()
     run_dir = runs / run_id
     if not run_dir.is_dir() or run_dir.resolve() != run_dir:
         raise ValueError(f"Missing or invalid run directory: {run_dir}")
@@ -238,20 +238,46 @@ def _run_promote(args: argparse.Namespace, repo_root: Path) -> dict[str, Any]:
         if run_id:
             cmd.extend(["--allow-run-id", run_id])
 
-    proc = subprocess.run(
-        cmd,
-        cwd=str(repo_root),
-        capture_output=True,
-        text=True,
-        check=False,
-        timeout=args.timeout_seconds if args.timeout_seconds and args.timeout_seconds > 0 else None,
-    )
+    try:
+        proc = subprocess.run(
+            cmd,
+            cwd=str(repo_root),
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=args.timeout_seconds if args.timeout_seconds and args.timeout_seconds > 0 else None,
+        )
+    except subprocess.TimeoutExpired as exc:
+        def output_text(value: str | bytes | None) -> str:
+            return value.decode(errors="replace") if isinstance(value, bytes) else value or ""
+
+        return {
+            "command": cmd,
+            "returncode": None,
+            "stdout": output_text(exc.stdout),
+            "stderr": output_text(exc.stderr),
+            "success": False,
+            "timed_out": True,
+            "published": None,
+            "error": f"Promotion subprocess timed out after {exc.timeout} seconds.",
+        }
+
+    try:
+        summary = json.loads(proc.stdout)
+    except ValueError:
+        summary = {}
+    if not isinstance(summary, dict):
+        summary = {}
+    success = proc.returncode == 0
     return {
         "command": cmd,
         "returncode": proc.returncode,
         "stdout": proc.stdout,
         "stderr": proc.stderr,
-        "success": proc.returncode == 0,
+        "success": success,
+        "timed_out": False,
+        "published": success or summary.get("published") is True,
+        "error": summary.get("error"),
     }
 
 
@@ -311,32 +337,28 @@ def main() -> int:
         json.dumps(promote_result, indent=2) + "\n",
         encoding="utf-8",
     )
-    if not promote_result["success"]:
-        _write_json(
-            status_path,
-            {
-                "status": "promote_failed",
-                "run_id": args.run_id,
-                "pid": args.pid,
-                "finished_at": finished_at,
-                "promote_log_path": str(promote_log_path),
-                **evaluation,
-                "promote_returncode": promote_result["returncode"],
-            },
-        )
-        return 1
-
+    if promote_result["published"]:
+        status = "published"
+    elif promote_result["timed_out"]:
+        status = "promote_timeout"
+    else:
+        status = "promote_failed"
     _write_json(
         status_path,
         {
-            "status": "published",
+            "status": status,
             "run_id": args.run_id,
             "pid": args.pid,
             "finished_at": finished_at,
             "promote_log_path": str(promote_log_path),
+            **evaluation,
+            "success": promote_result["success"],
+            "published": promote_result["published"],
+            "promote_returncode": promote_result["returncode"],
+            "error": promote_result["error"],
         },
     )
-    return 0
+    return 0 if promote_result["success"] else 1
 
 
 if __name__ == "__main__":

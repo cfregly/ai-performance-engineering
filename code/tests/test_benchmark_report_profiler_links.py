@@ -134,9 +134,36 @@ def test_report_treats_profiler_rejection_as_diagnostic(tmp_path: Path) -> None:
     assert "| ch01 | PASS | 1 | 1 | 0 | 4.00x | 4.00x |" in report
     assert "Run status `failed_profiler`.\n- Required profiler capture failed" in report
     assert "Run status `provisional`." in report
-    assert "Observed speedup was 99.00x." in report
-    assert "Observed speedup was 50.00x." in report
+    assert "Recorded speedup was 99.00x." in report
+    assert "Recorded speedup was 50.00x." in report
     assert "optimized_profiler_rejected.py" not in report
     assert "optimized_provisional.py" not in report
     assert "rejected_patch" not in report
     assert "optimized_legacy.py" in report
+
+
+def test_markdown_report_excludes_speedups_that_disagree_with_observed_pairs(tmp_path: Path) -> None:
+    valid = {"file": "valid.py", "status": "succeeded", "time_ms": 5.0, "speedup": 2.0}
+    incomplete = {"file": "incomplete.py", "status": "succeeded", "speedup": 99.0}
+    results = [{
+        "chapter": "ch01",
+        "status": "completed",
+        "summary": {"total_benchmarks": 2, "successful": 2, "failed": 0},
+        "benchmarks": [
+            {
+                "example": "qualified", "status": "succeeded", "baseline_file": "baseline.py", "baseline_time_ms": 10.0,
+                "best_speedup": 2.0, "optimizations": [valid, incomplete],
+            },
+            {
+                "example": "unsupported", "status": "succeeded", "baseline_file": "baseline.py", "baseline_time_ms": 10.0,
+                "best_speedup": 99.0, "optimizations": [valid, incomplete],
+            },
+        ],
+    }]
+    path = tmp_path / "report.md"
+    generate_markdown_report(results, path, bench_root=tmp_path)
+    report = path.read_text(encoding="utf-8")
+
+    assert "**Best speedup:** 2.00x" in report
+    assert "Recorded speedup was 99.00x" in report
+    assert "`incomplete.py`: No qualified optimization measurement." in report

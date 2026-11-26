@@ -19,6 +19,7 @@ from core.analysis.performance_analyzer import (
     is_finite_measurement,
     is_qualified_benchmark,
     load_benchmark_data,
+    measured_optimizations,
     read_benchmark_json,
 )
 
@@ -75,9 +76,9 @@ class BenchmarkData:
     """Benchmark data for report generation."""
     name: str
     chapter: str = ""
-    baseline_time_ms: Optional[float] = 0
-    optimized_time_ms: Optional[float] = 0
-    speedup: Optional[float] = 1.0
+    baseline_time_ms: Optional[float] = None
+    optimized_time_ms: Optional[float] = None
+    speedup: Optional[float] = None
     techniques: List[str] = field(default_factory=list)
     memory_baseline_mb: float = 0
     memory_optimized_mb: float = 0
@@ -88,10 +89,21 @@ class BenchmarkData:
     pair_role: str = ""
     chapter_alignment: str = ""
     chapter_native_exemplar: Optional[bool] = None
+    optimizations: Optional[List[dict]] = None
 
     @property
     def qualified(self) -> bool:
-        return is_qualified_benchmark({"status": self.status, "speedup": self.speedup})
+        row = {
+            "name": self.name,
+            "status": self.status,
+            "speedup": self.speedup,
+            "baseline_time_ms": self.baseline_time_ms,
+        }
+        if self.run_id:
+            row["run_id"] = self.run_id
+        if self.optimizations is not None:
+            row["optimizations"] = self.optimizations
+        return is_qualified_benchmark(row)
 
 
 def _speedup_label(speedup: Optional[float], precision: int = 2) -> str:
@@ -169,13 +181,14 @@ class ReportGenerator:
             benchmarks = data
         
         # Generate HTML first
-        html_content = self._generate_html(benchmarks, template)
+        ingest_errors = data.get("ingest_errors", []) if isinstance(data, dict) else []
+        html_content = self._generate_html(benchmarks, template, ingest_errors=ingest_errors)
         
         # Convert to PDF
         if self.pdf_method == "weasyprint":
             self._generate_pdf_weasyprint(html_content, output_path)
         elif self.pdf_method == "reportlab":
-            self._generate_pdf_reportlab(benchmarks, output_path)
+            self._generate_pdf_reportlab(benchmarks, output_path, ingest_errors=ingest_errors)
         elif self.pdf_method == "wkhtmltopdf":
             self._generate_pdf_wkhtmltopdf(html_content, output_path)
         else:
@@ -202,7 +215,8 @@ class ReportGenerator:
         else:
             benchmarks = data
         
-        html_content = self._generate_html(benchmarks, template)
+        ingest_errors = data.get("ingest_errors", []) if isinstance(data, dict) else []
+        html_content = self._generate_html(benchmarks, template, ingest_errors=ingest_errors)
         output_path.write_text(html_content)
         
         return output_path
@@ -212,6 +226,11 @@ class ReportGenerator:
         benchmarks = []
         rows = data.get("benchmarks")
         diagnostics = data.get("diagnostics", [])
+        ingest_errors = data.get("ingest_errors", [])
+        if not isinstance(ingest_errors, list) or any(
+            not isinstance(item, dict) or not isinstance(item.get("error"), str) for item in ingest_errors
+        ):
+            raise ValueError("Expected error records in report input 'ingest_errors'")
         if not isinstance(rows, list) or not isinstance(diagnostics, list):
             raise ValueError("Expected 'benchmarks' and optional 'diagnostics' lists in report input")
 
@@ -233,27 +252,45 @@ class ReportGenerator:
                 index >= len(rows) or not is_qualified_benchmark(item)
             ):
                 status = "unqualified"
+            optimized_time = item.get("optimized_time_ms")
+            if "optimizations" in item:
+                measured = measured_optimizations(item)
+                best = max(measured, key=lambda opt: opt["speedup"], default=None)
+                optimized_time = best["time_ms"] if best is not None and has_success_status(status) else None
+            notes = [
+                text for text in (item.get("story_note") or item.get("notes"), item.get("error")) if text
+            ]
+            if item.get("measurement_source") == "legacy_speedup_only":
+                notes.append("Historical speedup. Optimized timing unavailable.")
+            newer = item.get("newer_diagnostic")
+            if isinstance(newer, dict) and newer.get("status"):
+                source = newer.get("run_id") or newer.get("source_file") or "unknown source"
+                timestamp = newer.get("source_timestamp") or "unknown time"
+                notes.append(f"Newer result {newer['status']} from {source} at {timestamp}.")
             benchmarks.append(BenchmarkData(
                 name=item["name"],
                 chapter=chapter,
                 baseline_time_ms=item.get("baseline_time_ms"),
-                optimized_time_ms=item.get("optimized_time_ms"),
+                optimized_time_ms=optimized_time,
                 speedup=item.get("speedup"),
                 techniques=techniques,
                 memory_baseline_mb=item.get("baseline_memory_mb", 0),
                 memory_optimized_mb=item.get("optimized_memory_mb", 0),
                 status=status,
-                notes=" ".join(str(value) for value in (item.get("story_note") or item.get("notes"), item.get("error")) if value),
+                notes=" ".join(str(note) for note in notes),
                 source_file=str(item.get("source_file") or ""),
                 run_id=str(item.get("run_id") or ""),
                 pair_role=item.get("pair_role", ""),
                 chapter_alignment=item.get("chapter_alignment", ""),
                 chapter_native_exemplar=item.get("chapter_native_exemplar"),
+                optimizations=item.get("optimizations"),
             ))
 
         return benchmarks
     
-    def _generate_html(self, benchmarks: List[BenchmarkData], template: str) -> str:
+    def _generate_html(
+        self, benchmarks: List[BenchmarkData], template: str, *, ingest_errors: Optional[List[dict]] = None
+    ) -> str:
         """Generate HTML content for the report."""
         
         total = len(benchmarks)
@@ -326,6 +363,12 @@ class ReportGenerator:
                 </table>
             </div>
             """
+
+        if ingest_errors:
+            messages = "".join(f"<li>{escape(item['error'])}</li>" for item in ingest_errors)
+            diagnostics_section += (
+                f'<div class="section"><h2 class="section-title">Input Errors</h2><ul>{messages}</ul></div>'
+            )
 
         # Generate full HTML
         html = f"""<!DOCTYPE html>
@@ -574,7 +617,9 @@ class ReportGenerator:
         finally:
             Path(html_path).unlink()
     
-    def _generate_pdf_reportlab(self, benchmarks: List[BenchmarkData], output_path: Path):
+    def _generate_pdf_reportlab(
+        self, benchmarks: List[BenchmarkData], output_path: Path, *, ingest_errors: Optional[List[dict]] = None
+    ):
         """Generate PDF using ReportLab."""
         
         page_size = A4 if self.config.page_size == "A4" else letter
@@ -681,6 +726,16 @@ class ReportGenerator:
                     escape(f"{b.chapter}:{b.name} | {b.status} | Recorded speedup {_speedup_label(b.speedup)} | {details}"),
                     styles["Normal"],
                 ))
+
+        notes = [b for b in qualified if b.notes]
+        if notes:
+            story.append(Paragraph("Result Notes", heading_style))
+            for b in notes:
+                story.append(Paragraph(escape(f"{b.chapter}:{b.name} | {b.notes}"), styles["Normal"]))
+        if ingest_errors:
+            story.append(Paragraph("Input Errors", heading_style))
+            for item in ingest_errors:
+                story.append(Paragraph(escape(item["error"]), styles["Normal"]))
 
         # Build PDF
         doc.build(story)

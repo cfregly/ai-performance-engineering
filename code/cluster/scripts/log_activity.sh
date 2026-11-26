@@ -8,8 +8,7 @@ Usage:
   log_activity.sh decision [--run-id <id>] --note <note>
 
 Notes:
-- Appends a markdown entry to field-report.md (Activity Log table section).
-- Writes a raw log to runs/<RUN_ID>/raw/activity/<RUN_ID>_activity.log.
+- Writes the activity table and command log under runs/<RUN_ID>/progress/activity/.
 EOF
 }
 
@@ -22,7 +21,6 @@ MODE="$1"
 shift
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-FIELD_REPORT="${ROOT_DIR}/field-report.md"
 # shellcheck source=./lib_artifact_dirs.sh
 source "${ROOT_DIR}/scripts/lib_artifact_dirs.sh"
 RUN_ID="$(date +%Y-%m-%d)"
@@ -56,9 +54,10 @@ while [[ $# -gt 0 ]]; do
 done
 
 resolve_cluster_artifact_dirs "$ROOT_DIR" "$RUN_ID"
-RAW_DIR="${CLUSTER_RAW_DIR_EFFECTIVE}/activity"
-RAW_LOG="${RAW_DIR}/${RUN_ID}_activity.log"
-mkdir -p "$RAW_DIR"
+ACTIVITY_DIR="${CLUSTER_RUN_DIR_EFFECTIVE}/progress/activity"
+ACTIVITY_LOG="${ACTIVITY_DIR}/${RUN_ID}_activity.log"
+ACTIVITY_REPORT="${ACTIVITY_DIR}/${RUN_ID}_activity.md"
+mkdir -p "$ACTIVITY_DIR"
 
 timestamp="$(date -Iseconds)"
 
@@ -75,34 +74,11 @@ append_entry() {
   local row
   row="| ${date_cell} | $(escape_md_cell "$update_cell") |"
 
-  if ! grep -q "ACTIVITY_LOG_START" "$FIELD_REPORT" || ! grep -q "ACTIVITY_LOG_END" "$FIELD_REPORT"; then
-    echo "Activity log markers not found in ${FIELD_REPORT}. Appending at end." >&2
-    printf "\n## Activity Log\n| Date | Update |\n| --- | --- |\n%s\n" "$row" >> "$FIELD_REPORT"
-    return
+  if [[ ! -e "$ACTIVITY_REPORT" ]]; then
+    (set -o noclobber; printf '## Activity Log\n\n| Date | Update |\n| --- | --- |\n' > "$ACTIVITY_REPORT") 2>/dev/null \
+      || [[ -f "$ACTIVITY_REPORT" ]]
   fi
-
-  if ! awk '/ACTIVITY_LOG_START/{f=1;next}/ACTIVITY_LOG_END/{f=0}f' "$FIELD_REPORT" | grep -q '^| Date | Update |'; then
-    local tmp_with_header
-    tmp_with_header="$(mktemp)"
-    awk '
-      /ACTIVITY_LOG_START/ {
-        print
-        print "| Date | Update |"
-        print "| --- | --- |"
-        next
-      }
-      { print }
-    ' "$FIELD_REPORT" > "$tmp_with_header"
-    mv "$tmp_with_header" "$FIELD_REPORT"
-  fi
-
-  local tmp
-  tmp="$(mktemp)"
-  awk -v row="$row" '
-    /ACTIVITY_LOG_END/ { print row; print; next }
-    { print }
-  ' "$FIELD_REPORT" > "$tmp"
-  mv "$tmp" "$FIELD_REPORT"
+  printf '%s\n' "$row" >> "$ACTIVITY_REPORT"
 }
 
 case "$MODE" in
@@ -116,12 +92,12 @@ case "$MODE" in
     {
       echo "== ${timestamp} [cmd] label=${LABEL:-n/a} note=${NOTE:-} =="
       echo "\$ ${cmd_str}"
-    } >> "$RAW_LOG"
+    } >> "$ACTIVITY_LOG"
     set +e
-    "$@" 2>&1 | tee -a "$RAW_LOG"
+    "$@" 2>&1 | tee -a "$ACTIVITY_LOG"
     rc=${PIPESTATUS[0]}
     set -e
-    echo "rc=${rc}" >> "$RAW_LOG"
+    echo "rc=${rc}" >> "$ACTIVITY_LOG"
     entry_date="${timestamp%%T*}"
     entry="[cmd] label=${LABEL:-n/a} rc=${rc} cmd=\`$cmd_str\`${NOTE:+ note=\"$NOTE\"}"
     append_entry "$entry_date" "$entry"
@@ -133,7 +109,7 @@ case "$MODE" in
       usage >&2
       exit 1
     fi
-    echo "== ${timestamp} [decision] note=${NOTE} ==" >> "$RAW_LOG"
+    echo "== ${timestamp} [decision] note=${NOTE} ==" >> "$ACTIVITY_LOG"
     entry_date="${timestamp%%T*}"
     entry="[decision] note=\"$NOTE\""
     append_entry "$entry_date" "$entry"

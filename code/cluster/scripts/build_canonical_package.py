@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import shutil
 from dataclasses import dataclass
@@ -106,11 +107,52 @@ def find_markdown_references(root: Path, run_id: str) -> List[Dict[str, object]]
     return refs
 
 
-def copy_run_family(root: Path, out_dir: Path, run_id: str) -> Dict[str, object]:
-    live_run_dir = root / "cluster" / "runs" / run_id
+def _check_published_snapshot(snapshot: Path, run_id: str) -> bool:
+    manifest_path = snapshot / "manifest.json"
+    if not manifest_path.is_file():
+        return False
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    if not isinstance(manifest, dict) or manifest.get("run_id") != run_id:
+        return False
+    files = manifest.get("files")
+    summary = manifest.get("summary")
+    if not isinstance(files, list) or not files or not isinstance(summary, dict):
+        raise ValueError("Published manifest has no complete artifact inventory.")
+    hashes = summary.get("sha256")
+    actual = {}
+    for path in snapshot.rglob("*"):
+        if path.is_symlink():
+            raise ValueError(f"Published snapshot contains a symlink: {path.relative_to(snapshot)}")
+        if path.is_file() and path != manifest_path:
+            actual[str(path.relative_to(snapshot))] = path
+    if (
+        not all(isinstance(name, str) for name in files)
+        or set(files) != set(actual)
+        or len(files) != len(actual)
+        or summary.get("file_count") != len(actual)
+        or not isinstance(hashes, dict)
+        or set(hashes) != set(actual)
+    ):
+        raise ValueError("Published manifest does not match the artifact inventory.")
+    for name, path in actual.items():
+        digest = hashlib.sha256()
+        with path.open("rb") as source:
+            for block in iter(lambda: source.read(1024 * 1024), b""):
+                digest.update(block)
+        if digest.hexdigest() != hashes[name]:
+            raise ValueError(f"Published snapshot hash mismatch: {name}")
+    return True
+
+
+def copy_run_family(
+    root: Path, out_dir: Path, run_id: str, *, published_snapshot: Path | None = None
+) -> Dict[str, object]:
+    live_run_dir = published_snapshot or root / "cluster" / "runs" / run_id
     if live_run_dir.exists():
         dst_run_dir = out_dir / "runs" / run_id
         copy_path(live_run_dir, dst_run_dir)
+        if published_snapshot and not _check_published_snapshot(dst_run_dir, run_id):
+            raise ValueError("Published snapshot changed during packaging.")
         counts = {
             category: sum(1 for path in (dst_run_dir / category).rglob("*") if path.is_file()) if (dst_run_dir / category).exists() else 0
             for category in ("structured", "raw", "figures", "reports")
@@ -118,7 +160,7 @@ def copy_run_family(root: Path, out_dir: Path, run_id: str) -> Dict[str, object]
         return {
             "run_id": run_id,
             "present": True,
-            "layout": "run_dir",
+            "layout": "published_snapshot" if published_snapshot else "run_dir",
             "artifacts": {
                 "run_dir": str(dst_run_dir.relative_to(out_dir)),
                 "structured": [str(path.relative_to(out_dir)) for path in sorted((dst_run_dir / "structured").rglob("*")) if path.is_file()] if (dst_run_dir / "structured").exists() else [],
@@ -192,7 +234,10 @@ def write_package_readme(
         if entry is None:
             continue
         counts = entry["counts"]
-        status = "materialized" if entry["present"] else "reference-only"
+        status = (
+            "published snapshot" if entry.get("layout") == "published_snapshot"
+            else "materialized" if entry["present"] else "reference-only"
+        )
         lines.append(
             f"| `{run_id}` | {counts['structured']} | {counts['raw']} | {counts['figures']} | {status} |"
         )
@@ -332,13 +377,21 @@ def main() -> int:
 
     canonical_artifacts = gather_run_artifacts(repo_root, args.canonical_run_id)
     flat_manifest_name = f"{args.canonical_run_id}_manifest.json"
-    if not any(
+    has_run_artifacts = any(
         path.name != flat_manifest_name
         and (path.is_file() or any(child.is_file() for child in path.rglob("*")))
         for paths in canonical_artifacts.values()
         for path in paths
-    ):
-        raise SystemExit(f"No canonical artifacts for run {args.canonical_run_id}.")
+    )
+    published_snapshot = None
+    if not has_run_artifacts:
+        candidate = repo_root / "cluster" / "published" / "current"
+        try:
+            if not _check_published_snapshot(candidate, args.canonical_run_id):
+                raise ValueError(f"No canonical artifacts for run {args.canonical_run_id}.")
+        except (OSError, ValueError) as exc:
+            raise SystemExit(str(exc)) from exc
+        published_snapshot = candidate
 
     out_dir.mkdir(parents=True, exist_ok=True)
     (out_dir / "runs").mkdir(parents=True, exist_ok=True)
@@ -349,7 +402,10 @@ def main() -> int:
 
     copied_runs: List[Dict[str, object]] = []
     for selection in selections:
-        entry = copy_run_family(repo_root, out_dir, selection.run_id)
+        entry = copy_run_family(
+            repo_root, out_dir, selection.run_id,
+            published_snapshot=published_snapshot if selection.category == "canonical" else None,
+        )
         entry["category"] = selection.category
         copied_runs.append(entry)
 

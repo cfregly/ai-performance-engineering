@@ -59,6 +59,20 @@ python -m cli.aisp bench run
 
 Use `--accept-regressions` to write expectation entries even when they regress, as long as the run's git commit, hardware key, profile, execution environment, validity profile and `--target-extra-arg` values match the stored entry. Use `--update-expectations` to write observed metrics even if they are slower or their provenance differs (full refresh). No flag stores timing whose mean exceeds its p75, or its median when no p75 is recorded, by more than 1.25x. Absolute throughput fields such as `bytes_per_s` are regression-checked with the same 25% tolerance as the speedup. A run whose expectation update is refused for invalid evidence is reported as `failed_expectation_invalid`. The harness will surface **SKIPPED** for known hardware gaps like DSMEM-only cluster kernels on GB10, NVFP4-only trainers on non-FP4 parts, or TF32 being disabled via the new helper APIs—those no longer count as failures.
 
+To refresh from a saved run, run the following from `code/`.
+
+```bash
+python -m core.analysis.refresh_expectations_from_run \
+  --results-json artifacts/runs/my-benchmark-run/results/benchmark_test_results.json \
+  --target ch01:gemm --dry-run
+```
+
+Remove `--dry-run` to apply eligible updates. Add `--accept-regressions` only
+when you intend to replace a baseline with an eligible slower result or drop a
+tracked throughput metric. The expectation records the original outcome, the
+operator's regression decision and which measurement manifests matched. Timing
+or profiler evidence that failed validation stays ineligible.
+
 ---
 
 ### 2. **Multiple Execution Modes**

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import subprocess
 import sys
@@ -27,6 +28,39 @@ def test_empty_canonical_run_leaves_package_destination_absent(tmp_path: Path) -
     assert proc.returncode != 0
     assert "No canonical artifacts" in proc.stderr
     assert not output.exists()
+
+
+def test_package_canonical_reader_snapshot_without_live_run(tmp_path: Path) -> None:
+    run_id = "historical_canary"
+    published = tmp_path / "cluster" / "published" / "current"
+    artifact = published / "structured" / "summary.json"
+    artifact.parent.mkdir(parents=True)
+    artifact.write_text("{}\n", encoding="utf-8")
+    name = str(artifact.relative_to(published))
+    manifest = {
+        "run_id": run_id,
+        "manifest_mode": "historical_reader_snapshot",
+        "files": [name],
+        "summary": {"file_count": 1, "sha256": {name: hashlib.sha256(artifact.read_bytes()).hexdigest()}},
+    }
+    (published / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    script = Path(__file__).resolve().parents[1] / "cluster" / "scripts" / "build_canonical_package.py"
+    command = [sys.executable, str(script), "--repo-root", str(tmp_path), "--canonical-run-id", run_id]
+
+    output = tmp_path / "package"
+    proc = subprocess.run([*command, "--output-dir", str(output)], capture_output=True, text=True, check=False)
+    assert proc.returncode == 0, proc.stdout or proc.stderr
+    packaged = output / "runs" / run_id
+    assert (packaged / name).read_bytes() == artifact.read_bytes()
+    assert json.loads((packaged / "manifest.json").read_text()) == manifest
+    assert "published snapshot" in (output / "README.md").read_text()
+
+    artifact.write_text('{"changed": true}\n', encoding="utf-8")
+    rejected = tmp_path / "rejected"
+    proc = subprocess.run([*command, "--output-dir", str(rejected)], capture_output=True, text=True, check=False)
+    assert proc.returncode != 0
+    assert "hash mismatch" in proc.stderr
+    assert not rejected.exists()
 
 
 def test_build_canonical_package_materializes_live_runs_and_tracks_missing_historical(tmp_path: Path) -> None:

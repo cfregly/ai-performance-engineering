@@ -205,9 +205,11 @@ These are repo helpers for cluster evaluations under `cluster/` (field report wo
 | `run_cluster_common_eval(...)` | Run a preset cluster evaluation bundle | `aisp cluster common-eval` | `cluster_common_eval` |
 | `run_cluster_fabric_eval(...)` | Run the canonical fabric evaluation bundle | `aisp cluster fabric-eval` | `cluster_fabric_eval` |
 | `build_canonical_package(...)` | Build a canonical comparison/history package | `aisp cluster build-canonical-package` | `cluster_build_canonical_package` |
-| `promote_cluster_run(...)` | Validate the candidate and replace `cluster/published/current` with its artifacts. Clean up eligible older run artifacts after publication when requested. | `aisp cluster promote-run` (optional `--repo-root` for alternate trees) | `cluster_promote_run` |
+| `promote_cluster_run(...)` | Validate the candidate and replace `cluster/published/current` with its artifacts. `published: true` records that the package was installed. A later failure during requested cleanup can leave `success: false`. | `aisp cluster promote-run` (optional `--repo-root` for alternate trees) | `cluster_promote_run` |
 | `watch_cluster_run_for_promotion(...)` | Start a detached watcher that logs its progress and promotes the run after the watched process exits and validation succeeds. | `aisp cluster watch-promote` (optional `--repo-root`) | `cluster_watch_promote` |
-| `validate_field_report_requirements(...)` | Validate `cluster/field-report*.md` requirements + artifact hygiene | `aisp cluster validate-field-report` | `cluster_validate_field_report` |
+| `validate_field_report_requirements(...)` | Validate report content, links, manifest identity, and artifact hygiene. Use `published_root` to check a staged package. Use `package_only` to skip hygiene checks. | `aisp cluster validate-field-report` | `cluster_validate_field_report` |
+
+Promotion restores interrupted publications before installing the requested package and records recovery in `steps.recover_publication`. Requested cleanup runs after installation against a revalidated plan and uses run IDs to determine retention regardless of age.
 
 ---
 

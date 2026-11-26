@@ -20,6 +20,7 @@ from core.analysis.performance_analyzer import (
     is_finite_measurement,
     iter_benchmark_rows,
     read_benchmark_json,
+    requires_variant_evidence,
 )
 from core.benchmark.expectations import (
     NON_OVERRIDABLE_ISSUE_TYPES,
@@ -156,8 +157,11 @@ def _ineligible_reason(bench: dict, expectation: dict, *, accept_regressions: bo
     status = bench.get("status")
     if isinstance(status, str):
         status = status.strip().lower()
-    if "status" not in bench and (bench.get("error") or bench.get("skip_reason")):
-        return "Historical result has an error or skip reason"
+    if "status" not in bench:
+        if requires_variant_evidence(bench):
+            return "Current benchmark result is missing its final status"
+        if bench.get("error") or bench.get("skip_reason"):
+            return "Historical result has an error or skip reason"
 
     if bench.get("required_profiler_failures") or expectation.get("required_profiler_failures"):
         return "Required profiler captures failed"
@@ -207,7 +211,7 @@ def _prepare_entry(
     run_start: dict,
     run_start_source: str,
     validity_override: Optional[str],
-) -> Tuple[ExpectationEntry, Optional[str]]:
+) -> Tuple[ExpectationEntry, Optional[str], List[str]]:
     for key in ("metrics", "metadata", "provenance"):
         if not isinstance(entry_dict.get(key, {}), dict):
             raise ValueError(f"Expected an object in expectation preview {key}")
@@ -219,6 +223,8 @@ def _prepare_entry(
             raise ValueError("Expectation preview needs positive finite baseline and optimized times")
     if bench.get("baseline_time_ms") is not None and bench["baseline_time_ms"] != entry.baseline_time_ms:
         raise ValueError("Expectation preview baseline time disagrees with the benchmark row")
+    if "optimizations" not in bench and requires_variant_evidence(bench):
+        raise ValueError("Current benchmark result is missing its optimization records")
     if "optimizations" in bench:
         optimizations = bench["optimizations"]
         if not isinstance(optimizations, list) or any(not isinstance(opt, dict) for opt in optimizations):
@@ -245,6 +251,7 @@ def _prepare_entry(
     if run_start_source == "run_start":
         profile_values.append((run_start_source, run_start.get("validity_profile")))
     model_key = re.sub(r"^[0-9]+x_", "", provenance.hardware_key)
+    manifest_variants = set()
     for item in manifest.get("manifests", []):
         if item.get("target_label") != target:
             continue
@@ -252,6 +259,9 @@ def _prepare_entry(
         if expected_file and item.get("file") and item["file"] != expected_file:
             continue
         measurement = item["manifest"]
+        variant = item.get("variant")
+        if variant in ("baseline", "optimized"):
+            manifest_variants.add(variant)
         git = measurement.get("git") or {}
         config = measurement.get("config") or {}
         hardware = measurement.get("hardware") or {}
@@ -288,11 +298,13 @@ def _prepare_entry(
     if profile == "portable" and run_start.get("allow_portable_expectations_update") is False:
         if run_start_source == "run_start" or profile_source == "legacy_unbound_run_start":
             raise ValueError("Portable run did not enable expectation updates")
-    provenance.validity_profile = None if profile_source == "user_fallback" else profile
+    provenance.validity_profile = (
+        None if profile_source in {"user_fallback", "legacy_unbound_run_start"} else profile
+    )
     # Only the expectation preview records the measuring host. Keep missing
     # fields unknown when the preview predates measuring-host provenance.
     provenance.execution_environment = provenance.execution_environment or "unknown"
-    return entry, profile_source if profile is not None else None
+    return entry, profile_source if profile is not None else None, sorted(manifest_variants)
 
 
 def refresh_expectations_from_run(
@@ -301,7 +313,7 @@ def refresh_expectations_from_run(
     repo_root: Path,
     targets: Optional[Set[str]] = None,
     validity_profile: Optional[str] = None,
-    accept_regressions: bool = True,
+    accept_regressions: bool = False,
     dry_run: bool = False,
 ) -> Dict[str, object]:
     results = read_benchmark_json(results_json)
@@ -324,7 +336,8 @@ def refresh_expectations_from_run(
     updated_files: Dict[Path, ExpectationsStore] = {}
     records: List[RefreshRecord] = []
 
-    for chapter, bench in rows:
+    for chapter, raw_bench in rows:
+        bench = {**raw_bench, "run_id": run_id}
         example = bench["example"]
         example_type = bench.get("type", "python")
         if not isinstance(example_type, str) or not example_type:
@@ -352,7 +365,7 @@ def refresh_expectations_from_run(
             continue
 
         try:
-            entry, profile_source = _prepare_entry(
+            entry, profile_source, manifest_variants = _prepare_entry(
                 entry_dict,
                 bench=bench,
                 example_type=example_type,
@@ -367,10 +380,20 @@ def refresh_expectations_from_run(
             continue
         if "status" not in bench:
             warnings.append(f"{target}: Benchmark status was unrecorded in the historical result.")
+        if "optimizations" not in bench:
+            warnings.append(f"{target}: Historical result has no optimization records to verify its preview.")
         if entry.provenance.execution_environment == "unknown":
             warnings.append(f"{target}: Measuring-host execution environment was unrecorded.")
 
-        chapter_dir = _chapter_dir(repo_root, chapter)
+        missing_manifests = {"baseline", "optimized"} - set(manifest_variants)
+        if missing_manifests:
+            warnings.append(f"{target}: No matching measurement manifest for {', '.join(sorted(missing_manifests))}.")
+
+        try:
+            chapter_dir = _chapter_dir(repo_root, chapter)
+        except ValueError as exc:
+            records.append(RefreshRecord(target, "", "rejected", str(exc)))
+            continue
         store_key = (chapter_dir, entry.provenance.hardware_key)
         store = stores.get(store_key)
         if store is None:
@@ -397,6 +420,20 @@ def refresh_expectations_from_run(
                 metadata["validity_profile_override"] = validity_profile
             elif profile_source == "legacy_unbound_run_start":
                 metadata["validity_profile_source"] = profile_source
+                metadata["legacy_run_start_validity_profile"] = recorded_profile
+            issues = {issue["issue_type"] for issue in expectation.get("validation_issues", [])}
+            metadata["expectation_refresh"] = {
+                "run_id": run_id,
+                "benchmark_status": bench.get("status"),
+                "preview_status": expectation.get("status"),
+                "accept_regressions": accept_regressions,
+                "rebaselined": accept_regressions and (
+                    update.status == "regressed"
+                    or bench.get("status") in REBASELINE_STATUSES
+                    or bool(issues & {"regression", "tracked_metric_missing"})
+                ),
+                "measurement_manifest_variants": manifest_variants,
+            }
             updated_files[store.path] = store
         records.append(RefreshRecord(
             target,
@@ -420,7 +457,13 @@ def refresh_expectations_from_run(
         "accept_regressions": accept_regressions,
         "run_id": run_id,
         "manifest_run_id_match": bool(manifest),
-        "validity_profile": next(iter(profiles)) if len(profiles) == 1 else recorded_profile,
+        "validity_profile": (
+            next(iter(profiles)) if len(profiles) == 1
+            else recorded_profile if run_start_source == "run_start" else None
+        ),
+        "legacy_run_start_validity_profile": (
+            recorded_profile if run_start_source == "legacy_unbound_run_start" else None
+        ),
         "validity_profile_source": (
             next(iter(profile_sources)) if len(profile_sources) == 1 else run_start_source if recorded_profile else None
         ),
@@ -449,7 +492,16 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--target", action="append", default=[], help="Specific target(s) to refresh")
     parser.add_argument("--targets-file", type=Path, default=None, help="File containing one target per line")
     parser.add_argument("--validity-profile", default=None, help="Record a user-supplied profile when the historical run has no recorded profile")
-    parser.add_argument("--no-accept-regressions", action="store_true", help="Reject downward expectation updates")
+    regression_policy = parser.add_mutually_exclusive_group()
+    regression_policy.add_argument(
+        "--accept-regressions", action="store_true",
+        help="Allow eligible slower measurements and dropped throughput metrics to rebaseline expectations",
+    )
+    regression_policy.add_argument(
+        "--no-accept-regressions", action="store_false", dest="accept_regressions",
+        help="Reject downward expectation updates (default)",
+    )
+    parser.set_defaults(accept_regressions=False)
     parser.add_argument("--dry-run", action="store_true", help="Compute updates without writing files")
     parser.add_argument("--summary-out", type=Path, default=None, help="Optional path to write summary JSON")
     return parser.parse_args()
@@ -463,7 +515,7 @@ def main() -> int:
             repo_root=args.repo_root,
             targets=_load_targets(args.target, args.targets_file),
             validity_profile=args.validity_profile,
-            accept_regressions=not args.no_accept_regressions,
+            accept_regressions=args.accept_regressions,
             dry_run=args.dry_run,
         )
     except (OSError, ValueError) as exc:

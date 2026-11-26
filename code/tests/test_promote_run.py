@@ -59,9 +59,33 @@ def _seed_promotable_run(cluster_root: Path, run_id: str, label: str) -> Path:
     return run_dir
 
 
+def _write_v2_manifest(run_dir: Path, run_id: str) -> dict:
+    files = sorted(
+        str(path.relative_to(run_dir))
+        for path in run_dir.rglob("*")
+        if path.is_file() and path.name != "manifest.json"
+    )
+    manifest = {
+        "manifest_version": 2,
+        "run_id": run_id,
+        "finalized": True,
+        "success": True,
+        "files": files,
+        "summary": {
+            "file_count": len(files),
+            "sha256": {path: hashlib.sha256((run_dir / path).read_bytes()).hexdigest() for path in files},
+        },
+    }
+    _write_json(run_dir / "manifest.json", manifest)
+    return manifest
+
+
 @pytest.mark.parametrize(
     "candidate",
-    ["missing_manifest", "wrong_run_id", "missing_steps", "failed_step", "changed_artifact", "invalid_report"],
+    [
+        "missing_manifest", "wrong_run_id", "missing_steps", "failed_step", "changed_artifact",
+        "missing_inventory", "missing_hashes", "untracked_file", "failed_git_probe", "invalid_report",
+    ],
 )
 def test_failed_promotion_preserves_publication_and_run_history(
     tmp_path: Path, candidate: str
@@ -97,6 +121,17 @@ def test_failed_promotion_preserves_publication_and_run_history(
         })
         with (run_dir / steps_path).open("a", encoding="utf-8") as changed:
             changed.write("\n")
+    elif candidate in {"missing_inventory", "missing_hashes", "untracked_file", "failed_git_probe"}:
+        manifest = _write_v2_manifest(run_dir, run_id)
+        if candidate == "missing_inventory":
+            del manifest["files"]
+        elif candidate == "missing_hashes":
+            del manifest["summary"]["sha256"]
+        elif candidate == "failed_git_probe":
+            manifest["git"] = {"probe_ok": False}
+        else:
+            (run_dir / "raw" / "extra.log").write_text("unbound evidence\n", encoding="utf-8")
+        _write_json(run_dir / "manifest.json", manifest)
 
     command = [
         sys.executable,
@@ -180,18 +215,61 @@ main()
     assert crashed.returncode == 73, crashed.stdout or crashed.stderr
     assert json.loads((current / "manifest.json").read_text()) == {"run_id": run_id}
 
-    (cluster_root / "runs" / "empty").mkdir()
+    abandoned = current.parent / ".promotion-abandoned"
+    abandoned.mkdir()
+    (abandoned / ".owned-stage").touch()
+    (abandoned / "staged-log").write_text("partial copy\n", encoding="utf-8")
+    unrelated = current.parent / ".promotion-owner-work"
+    unrelated.mkdir()
     retried = subprocess.run(
-        [sys.executable, str(script), *options, "--run-id", "empty"],
+        [sys.executable, str(script), "--repo-root", str(tmp_path), "--recover"],
         check=False,
         capture_output=True,
         text=True,
     )
 
-    assert retried.returncode != 0
+    assert retried.returncode == 0, retried.stdout or retried.stderr
     assert json.loads((current / "manifest.json").read_text()) == {"run_id": "prior"}
     assert report.read_text(encoding="utf-8") == "previous report\n"
-    assert not list(current.parent.glob(".promotion-*"))
+    assert list(current.parent.glob(".promotion-*")) == [unrelated]
+
+
+def test_promotion_excludes_only_mutable_legacy_watcher_receipts(tmp_path: Path) -> None:
+    cluster_root = tmp_path / "cluster"
+    run_id = "2026-03-06_localhost_legacy_watcher"
+    run = _seed_promotable_run(cluster_root, run_id, "localhost")
+    legacy_status = f"raw/{run_id}_postrun_promote_watch_status.json"
+    raw_status = run / legacy_status
+    _write_json(raw_status, {"run_id": run_id, "status": "watching"})
+    source_manifest = _write_v2_manifest(run, run_id)
+    source_hash = hashlib.sha256((run / "manifest.json").read_bytes()).hexdigest()
+    _write_json(raw_status, {"run_id": run_id, "status": "promoted"})
+    legacy_log = f"raw/{run_id}_promote.log"
+    (run / legacy_log).write_text("watch finished\n", encoding="utf-8")
+    script = Path(__file__).resolve().parents[1] / "cluster" / "scripts" / "promote_run.py"
+
+    proc = subprocess.run(
+        [
+            sys.executable, str(script), "--repo-root", str(tmp_path), "--run-id", run_id,
+            "--skip-render-localhost-report", "--skip-validate-localhost-report",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert proc.returncode == 0, proc.stdout or proc.stderr
+    published = cluster_root / "published" / "current"
+    manifest = json.loads((published / "manifest.json").read_text())
+    assert manifest["publication_projection"] == {
+        "source_manifest_sha256": source_hash,
+        "excluded_mutable_operational_files": sorted([legacy_status, legacy_log]),
+    }
+    assert set(manifest["files"]) == set(source_manifest["files"]) - {legacy_status}
+    assert not (published / legacy_status).exists()
+    assert not (published / legacy_log).exists()
+    assert json.loads(raw_status.read_text())["status"] == "promoted"
+    assert json.loads((run / "manifest.json").read_text()) == source_manifest
 
 
 def test_promote_run_materializes_published_package(tmp_path: Path) -> None:
@@ -240,7 +318,7 @@ def test_promotion_applies_cleanup_plan_after_installing_package(
     current = cluster_root / "published" / "current"
     _write_json(current / "manifest.json", {"run_id": obsolete_id})
     if report_links_to_old_run:
-        (cluster_root / "field-report.md").write_text(
+        (cluster_root / "custom-report.md").write_text(
             f"[Prior evidence](runs/{obsolete_id}/manifest.json)\n", encoding="utf-8"
         )
     monkeypatch.setenv("AISP_CLUSTER_SUITE_QUEUE_LOCK_PATH", str(tmp_path / "suite.lock"))
@@ -250,7 +328,7 @@ def test_promotion_applies_cleanup_plan_after_installing_package(
         [
             sys.executable, str(script), "--repo-root", str(tmp_path), "--run-id", run_id,
             "--skip-render-localhost-report", "--skip-validate-localhost-report", "--cleanup",
-            "--allow-run-id", keep_id,
+            "--allow-run-id", keep_id, "--publish-report-path", "cluster/custom-report.md",
         ],
         check=False,
         capture_output=True,
@@ -281,15 +359,7 @@ def test_promote_run_renders_published_localhost_package(tmp_path: Path) -> None
     report_relpath = "reports/field-report-localhost.md"
     (run_dir / "reports").mkdir()
     (run_dir / report_relpath).write_text("immutable run-local report\n", encoding="utf-8")
-    inventory = [report_relpath, f"structured/{run_id}_suite_steps.json"]
-    _write_json(run_dir / "manifest.json", {
-        "run_id": run_id,
-        "files": inventory,
-        "summary": {
-            "file_count": len(inventory),
-            "sha256": {path: hashlib.sha256((run_dir / path).read_bytes()).hexdigest() for path in inventory},
-        },
-    })
+    _write_v2_manifest(run_dir, run_id)
     (cluster_root / "docs").mkdir(parents=True, exist_ok=True)
     (cluster_root / "docs" / "advanced-runbook.md").write_text("# runbook\n", encoding="utf-8")
     (cluster_root / "docs" / "field-report-template.md").write_text("# template\n", encoding="utf-8")
@@ -327,6 +397,16 @@ def test_promote_run_renders_published_localhost_package(tmp_path: Path) -> None
     assert (published_reports / "field-report-localhost.md").read_text() == "immutable run-local report\n"
     publication_report = (published_reports / "publication" / "field-report-localhost.md").read_text()
     assert f"../../structured/{run_id}_suite_steps.json" in publication_report
+    published = published_reports.parent
+    manifest = json.loads((published / "manifest.json").read_text())
+    assert "reports/publication/field-report-localhost.md" in manifest["publication_projection"]["rendered_reports"]
+    assert set(manifest["files"]) == {
+        str(path.relative_to(published))
+        for path in published.rglob("*")
+        if path.is_file() and path.name != "manifest.json"
+    }
+    for name, digest in manifest["summary"]["sha256"].items():
+        assert hashlib.sha256((published / name).read_bytes()).hexdigest() == digest
     assert (cluster_root / "published" / "current" / "reports" / "field-report-localhost-notes.md").exists()
     assert (cluster_root / "published" / "current" / "reports" / "field-report.md").exists()
     assert (cluster_root / "published" / "current" / "reports" / "field-report-notes.md").exists()

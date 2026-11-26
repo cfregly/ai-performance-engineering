@@ -11,6 +11,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from collections import Counter
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote, unquote, urlsplit, urlunsplit
@@ -18,13 +19,16 @@ from urllib.parse import quote, unquote, urlsplit, urlunsplit
 
 ARTIFACT_DIRS = ("structured", "raw", "figures", "reports")
 LOCAL_LINK = re.compile(r'(?<=\]\()[^\s)]+|(?<=href=")[^"]+|(?<=src=")[^"]+')
+STAGE_MARKER = ".owned-stage"
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Promote one run-local cluster result tree into the published cluster package."
     )
-    parser.add_argument("--run-id", required=True, help="Run id under cluster/runs/<run_id>.")
+    operation = parser.add_mutually_exclusive_group(required=True)
+    operation.add_argument("--run-id", help="Run id under cluster/runs/<run_id>.")
+    operation.add_argument("--recover", action="store_true", help="Recover an interrupted publication.")
     parser.add_argument("--label", default="localhost", help="Host label for localhost report rendering.")
     parser.add_argument(
         "--repo-root",
@@ -114,18 +118,51 @@ class RollbackError(RuntimeError):
     """Publishing failed and a backup must be retained for recovery."""
 
 
+def _sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as source:
+        for chunk in iter(lambda: source.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _write_projection(
+    manifest_path: Path,
+    manifest: dict,
+    files: list[str],
+    hashes: dict | None,
+    **changes: Any,
+) -> None:
+    projection = manifest.setdefault("publication_projection", {})
+    if not isinstance(projection, dict):
+        raise ValueError("Malformed publication projection in candidate manifest.")
+    projection.setdefault("source_manifest_sha256", _sha256(manifest_path))
+    projection.update(changes)
+    summary = manifest.get("summary") or {}
+    summary["file_count"] = len(files)
+    summary["artifact_counts"] = dict(Counter(Path(name).suffix.lstrip(".") or "no_ext" for name in files))
+    if hashes is not None:
+        summary["sha256"] = hashes
+    manifest.update(files=files, summary=summary)
+    manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+
+
 def _validate_candidate(candidate: Path, run_id: str) -> None:
     for name in (*ARTIFACT_DIRS, "manifest.json"):
         artifact = candidate / name
         if artifact.is_symlink() or any(path.is_symlink() for path in artifact.rglob("*")):
             raise ValueError(f"Candidate must contain actual artifact files under {name}.")
-    manifest = json.loads((candidate / "manifest.json").read_text(encoding="utf-8"))
+    manifest_path = candidate / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     if not isinstance(manifest, dict) or manifest.get("run_id") != run_id:
         raise ValueError(f"Candidate manifest does not identify run {run_id}.")
     if manifest.get("manifest_mode", "run_dir") != "run_dir":
         raise ValueError("Promotion requires a run-local manifest.")
     if manifest.get("success") is False or manifest.get("finalized") is False:
         raise ValueError(f"Candidate manifest records an unsuccessful or unfinished run {run_id}.")
+    git_provenance = manifest.get("git")
+    if isinstance(git_provenance, dict) and git_provenance.get("probe_ok") is False:
+        raise ValueError(f"Candidate manifest records a failed Git provenance probe for {run_id}.")
 
     steps_path = f"structured/{run_id}_suite_steps.json"
     steps = json.loads((candidate / steps_path).read_text(encoding="utf-8"))
@@ -139,8 +176,11 @@ def _validate_candidate(candidate: Path, run_id: str) -> None:
     if any(str(step.get("exit_code")) != "0" for step in latest_steps.values()):
         raise ValueError(f"Candidate suite has unfinished or failed steps for {run_id}.")
 
+    modern = manifest.get("manifest_version") == 2
     files = manifest.get("files")
     if files is None:
+        if modern:
+            raise ValueError("Version 2 candidate manifest needs an artifact inventory.")
         return
     if (
         not isinstance(files, list)
@@ -153,8 +193,18 @@ def _validate_candidate(candidate: Path, run_id: str) -> None:
     if not isinstance(summary, dict) or summary.get("file_count", len(files)) != len(files):
         raise ValueError("Candidate manifest file count does not match its inventory.")
     hashes = summary.get("sha256")
+    if modern and hashes is None:
+        raise ValueError("Version 2 candidate manifest needs artifact hashes.")
     if hashes is not None and (not isinstance(hashes, dict) or set(hashes) != set(files)):
         raise ValueError("Candidate manifest hashes do not match its inventory.")
+    legacy_receipts = {
+        f"raw/{run_id}_postrun_promote_watch_status.json",
+        f"raw/{run_id}_postrun_promote_watch.launch.log",
+        f"raw/{run_id}_promote.log",
+        f"raw/activity/{run_id}_activity.log",
+        f"raw/activity/{run_id}_shell.log",
+    }
+    excluded = set()
     for name in files:
         relative = Path(name)
         path = candidate / relative
@@ -163,16 +213,61 @@ def _validate_candidate(candidate: Path, run_id: str) -> None:
             or relative.parts[0] not in ARTIFACT_DIRS
             or ".." in relative.parts
             or not path.resolve().is_relative_to(candidate)
-            or not path.is_file()
         ):
             raise ValueError(f"Candidate manifest artifact unavailable: {name}")
-        if hashes is not None:
-            digest = hashlib.sha256()
-            with path.open("rb") as source:
-                for chunk in iter(lambda: source.read(1024 * 1024), b""):
-                    digest.update(chunk)
-            if digest.hexdigest() != hashes[name]:
+        if not path.is_file():
+            if name in legacy_receipts:
+                excluded.add(name)
+                continue
+            raise ValueError(f"Candidate manifest artifact unavailable: {name}")
+        if hashes is not None and _sha256(path) != hashes[name]:
+            if name not in legacy_receipts:
                 raise ValueError(f"Candidate manifest hash mismatch: {name}")
+            excluded.add(name)
+
+    if modern:
+        copied_files = {
+            str(path.relative_to(candidate))
+            for name in ARTIFACT_DIRS
+            for path in (candidate / name).rglob("*")
+            if path.is_file()
+        }
+        unlisted = copied_files.difference(files)
+        if unlisted.difference(legacy_receipts):
+            raise ValueError(f"Candidate has unlisted artifacts: {', '.join(sorted(unlisted - legacy_receipts))}")
+        excluded.update(unlisted)
+
+    if excluded:
+        files = [name for name in files if name not in excluded]
+        roles = manifest.get("artifact_roles")
+        if isinstance(roles, dict):
+            manifest["artifact_roles"] = {
+                role: [name for name in members if name not in excluded] if isinstance(members, list) else members
+                for role, members in roles.items()
+            }
+        for name in excluded:
+            path = candidate / name
+            if path.is_file():
+                path.unlink()
+        _write_projection(
+            manifest_path, manifest, files,
+            {name: hashes[name] for name in files} if hashes is not None else None,
+            excluded_mutable_operational_files=sorted(excluded),
+        )
+
+
+def _record_rendered_reports(candidate: Path, reports: list[str]) -> None:
+    manifest_path = candidate / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    files = manifest.get("files")
+    if files is None:
+        return
+    hashes = (manifest.get("summary") or {}).get("sha256")
+    if hashes is not None:
+        hashes.update({name: _sha256(candidate / name) for name in reports})
+    _write_projection(
+        manifest_path, manifest, sorted([*files, *reports]), hashes, rendered_reports=sorted(reports)
+    )
 
 
 def _replace_report(source: Path, destination: Path) -> None:
@@ -229,12 +324,20 @@ def _restore_publication(stage: Path, published: Path) -> None:
         raise RollbackError(f"Publication recovery required in {rollback}: {exc}") from exc
 
 
-def _recover_publications(published: Path) -> None:
+def _recover_publications(published: Path) -> list[str]:
+    recovered = []
     for stage in sorted(published.parent.glob(".promotion-*")):
+        if stage.is_symlink():
+            continue
         journal = stage / "rollback" / "pending.json"
-        if not stage.is_symlink() and journal.is_file() and not journal.is_symlink():
+        if journal.is_file() and not journal.is_symlink():
             _restore_publication(stage, published)
             shutil.rmtree(stage)
+            recovered.append(stage.name)
+        elif not journal.exists() and (stage / STAGE_MARKER).is_file():
+            shutil.rmtree(stage)
+            recovered.append(stage.name)
+    return recovered
 
 
 def _install_publication(candidate: Path, published: Path, reports: dict[Path, Path]) -> None:
@@ -348,6 +451,7 @@ def _promote(
             _write_report_variant(source, staged, destination.parent, cluster_root)
             outputs[destination] = staged
         staged_report, staged_notes = outputs[report], outputs[notes]
+        rendered_reports = []
         for name, source in archive_names.items():
             destination = candidate / "reports" / name
             if destination.exists():
@@ -356,6 +460,8 @@ def _promote(
                     raise ValueError(f"Candidate already contains the generated publication report {name}.")
             final_parent = published / destination.parent.relative_to(candidate)
             _write_report_variant(source, destination, final_parent, cluster_root)
+            rendered_reports.append(str(destination.relative_to(candidate)))
+        _record_rendered_reports(candidate, rendered_reports)
     if not args.skip_validate_localhost_report:
         validate_cmd = [
             "bash", str(_script_root() / "validate_field_report_requirements.sh"),
@@ -408,7 +514,7 @@ def main() -> int:
     args = parse_args()
     repo_root = _repo_root(args)
     cluster_root = repo_root / "cluster"
-    run_dir = cluster_root / "runs" / args.run_id
+    run_dir = cluster_root / "runs" / (args.run_id or "")
     published = cluster_root / "published" / "current"
     report = (repo_root / args.publish_report_path).resolve()
     notes = (repo_root / args.publish_notes_path).resolve()
@@ -417,7 +523,7 @@ def main() -> int:
         "published": False,
         "run_id": args.run_id,
         "label": args.label,
-        "run_dir": str(run_dir),
+        "run_dir": str(run_dir) if args.run_id else None,
         "published_root": str(published),
         **{f"published_{name}_dir": str(published / name) for name in ARTIFACT_DIRS},
         "published_manifest_path": str(published / "manifest.json"),
@@ -426,26 +532,33 @@ def main() -> int:
         "steps": {},
     }
     try:
-        if args.run_id in ("", ".", "..") or Path(args.run_id).name != args.run_id:
-            raise ValueError("Run ID must name one directory under cluster/runs.")
-        if not run_dir.is_dir() or not run_dir.resolve().is_relative_to(cluster_root / "runs"):
-            raise ValueError(f"Missing or invalid run directory: {run_dir}")
+        if not args.recover:
+            if args.run_id in ("", ".", "..") or Path(args.run_id).name != args.run_id:
+                raise ValueError("Run ID must name one directory under cluster/runs.")
+            if not run_dir.is_dir() or not run_dir.resolve().is_relative_to((cluster_root / "runs").resolve()):
+                raise ValueError(f"Missing or invalid run directory: {run_dir}")
         published.parent.mkdir(parents=True, exist_ok=True)
         descriptor = os.open(published.parent, os.O_RDONLY)
         try:
             fcntl.flock(descriptor, fcntl.LOCK_EX)
-            _recover_publications(published)
-            stage = Path(tempfile.mkdtemp(prefix=".promotion-", dir=published.parent))
-            retain_stage = False
-            try:
-                _promote(args, repo_root, run_dir, published, report, notes, stage, summary)
+            recovered = _recover_publications(published)
+            if recovered or args.recover:
+                summary["steps"]["recover_publication"] = {"success": True, "stages": recovered}
+            if args.recover:
                 summary["success"] = True
-            except RollbackError:
-                retain_stage = True
-                raise
-            finally:
-                if not retain_stage:
-                    shutil.rmtree(stage)
+            else:
+                stage = Path(tempfile.mkdtemp(prefix=".promotion-", dir=published.parent))
+                retain_stage = False
+                try:
+                    (stage / STAGE_MARKER).touch()
+                    _promote(args, repo_root, run_dir, published, report, notes, stage, summary)
+                    summary["success"] = True
+                except RollbackError:
+                    retain_stage = True
+                    raise
+                finally:
+                    if not retain_stage:
+                        shutil.rmtree(stage)
         finally:
             os.close(descriptor)
     except (OSError, ValueError, RollbackError) as exc:

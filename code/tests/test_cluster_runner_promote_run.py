@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+import subprocess
 from pathlib import Path
 from typing import Any, Dict
 
@@ -69,3 +71,34 @@ def test_promote_cluster_run_passes_repo_root_to_command(monkeypatch) -> None:
     repo_root_index = captured["cmd"].index("--repo-root") + 1
     assert captured["cmd"][repo_root_index] == str(expected_root)
     assert captured["cwd"] == expected_root
+
+
+def test_promote_reports_launch_failure_without_exception_text(monkeypatch, caplog) -> None:
+    sensitive = "private launch error detail"
+
+    def fail(*args, **kwargs):
+        raise FileNotFoundError(sensitive)
+
+    monkeypatch.setattr(cluster_runner.subprocess, "run", fail)
+    payload = cluster_runner.promote_cluster_run(run_id="sample")
+
+    assert payload["success"] is False
+    assert payload["error_type"] == "FileNotFoundError"
+    assert "executable or working directory was not found" in payload["error"]
+    assert sensitive not in json.dumps(payload)
+    assert "in fail" in caplog.text
+    assert sensitive not in caplog.text
+
+
+def test_field_report_validation_timeout_decodes_partial_output(monkeypatch) -> None:
+    def time_out(cmd, *, timeout, **kwargs):
+        raise subprocess.TimeoutExpired(cmd, timeout, output=b"partial report\xff", stderr=b"validator warning")
+
+    monkeypatch.setattr(cluster_runner.subprocess, "run", time_out)
+    payload = cluster_runner.validate_field_report_requirements()
+
+    assert payload["success"] is False
+    assert payload["error"] == "timeout after 120s"
+    assert payload["stdout"] == "partial report\ufffd"
+    assert payload["stderr"] == "validator warning"
+    json.dumps(payload)

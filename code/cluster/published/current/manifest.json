@@ -104,7 +104,10 @@
         "historical_public_sha256": "366c3ed1ec723fa358224cc8322ddde1436b612bb3a27434c346b349dc020160",
         "updated_text_values": 1
       }
-    }
+    },
+    "source_manifest_entries_selected": 25,
+    "source_manifest_entries_available_but_outside_reader_scope": 95,
+    "reader_files_outside_source_manifest": 4
   },
   "artifact_roles": {
     "fabric_ai_correlation": [

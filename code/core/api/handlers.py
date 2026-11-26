@@ -10,10 +10,18 @@ from core.engine import get_engine
 from core.jobs import JobStore
 
 
+class BenchmarkRequestError(ValueError):
+    """An invalid benchmark argument or explicitly selected input file."""
+
+
+class BenchmarkInputNotFoundError(FileNotFoundError):
+    """An explicitly selected benchmark input file does not exist."""
+
+
 def _require_param(params: Dict[str, Any], name: str) -> Any:
     value = params.get(name)
     if value is None or (isinstance(value, str) and not value.strip()):
-        raise ValueError(f"{name} is required")
+        raise BenchmarkRequestError(f"{name} is required")
     return value
 
 
@@ -30,12 +38,12 @@ def _parse_int_param(
         return default
     try:
         value = int(raw)
-    except (TypeError, ValueError) as exc:
-        raise ValueError(f"{name} must be an integer") from exc
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise BenchmarkRequestError(f"{name} must be an integer") from exc
     if minimum is not None and value < minimum:
-        raise ValueError(f"{name} must be >= {minimum}")
+        raise BenchmarkRequestError(f"{name} must be >= {minimum}")
     if maximum is not None and value > maximum:
-        raise ValueError(f"{name} must be <= {maximum}")
+        raise BenchmarkRequestError(f"{name} must be <= {maximum}")
     return value
 
 
@@ -52,12 +60,12 @@ def _parse_float_param(
         return default
     try:
         value = float(raw)
-    except (TypeError, ValueError) as exc:
-        raise ValueError(f"{name} must be numeric") from exc
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise BenchmarkRequestError(f"{name} must be numeric") from exc
     if minimum is not None and value < minimum:
-        raise ValueError(f"{name} must be >= {minimum}")
+        raise BenchmarkRequestError(f"{name} must be >= {minimum}")
     if maximum is not None and value > maximum:
-        raise ValueError(f"{name} must be <= {maximum}")
+        raise BenchmarkRequestError(f"{name} must be <= {maximum}")
     return value
 
 
@@ -103,16 +111,16 @@ def _parse_bool_param(params: Dict[str, Any], name: str, default: bool = False) 
         return True
     if normalized in {"0", "false", "no", "off"}:
         return False
-    raise ValueError(f"{name} must be boolean")
+    raise BenchmarkRequestError(f"{name} must be boolean")
 
 
 def _parse_path_param(params: Dict[str, Any], name: str) -> Path:
     raw = _require_param(params, name)
     path = Path(str(raw)).expanduser()
     if not path.exists():
-        raise FileNotFoundError(f"{name} not found: {path}")
+        raise BenchmarkInputNotFoundError(f"{name} not found: {path}")
     if not path.is_file():
-        raise ValueError(f"{name} must be a file: {path}")
+        raise BenchmarkRequestError(f"{name} must be a file: {path}")
     return path.resolve()
 
 
@@ -206,7 +214,7 @@ def _sort_benchmarks(
         "optimized_time_ms",
         "status",
     }:
-        raise ValueError(f"Unsupported sort_field: {sort_field}")
+        raise BenchmarkRequestError(f"Unsupported sort_field: {sort_field}")
 
     def _key(item: Dict[str, Any]) -> Tuple:
         value = item.get(sort_field)
@@ -264,55 +272,59 @@ def _to_float(value: Any, name: str, *, allow_none: bool) -> Optional[float]:
     if value is None:
         if allow_none:
             return None
-        raise ValueError(f"{name} is required")
+        raise BenchmarkRequestError(f"{name} is required")
     try:
         return float(value)
     except (TypeError, ValueError) as exc:
-        raise ValueError(f"{name} must be numeric") from exc
+        raise BenchmarkRequestError(f"{name} must be numeric") from exc
 
 
 def _load_run_file(path: Path) -> Dict[str, Any]:
     try:
         with path.open("r") as handle:
             data = json.load(handle)
-    except json.JSONDecodeError as exc:
-        raise ValueError(f"Failed to parse JSON: {path}") from exc
+    except (json.JSONDecodeError, UnicodeError) as exc:
+        raise BenchmarkRequestError(f"Failed to parse JSON: {path}") from exc
+    except OSError as exc:
+        raise BenchmarkRequestError(f"Failed to read run file {path}: {exc.strerror}") from exc
 
+    if not isinstance(data, dict):
+        raise BenchmarkRequestError(f"Expected JSON object in run file: {path}")
     results = data.get("results")
     if not isinstance(results, list):
-        raise ValueError(f"Run file missing results list: {path}")
+        raise BenchmarkRequestError(f"Run file missing results list: {path}")
 
     benchmarks: List[Dict[str, Any]] = []
     for chapter_block in results:
         if not isinstance(chapter_block, dict):
-            raise ValueError(f"Invalid chapter entry in {path}")
+            raise BenchmarkRequestError(f"Invalid chapter entry in {path}")
         chapter = chapter_block.get("chapter")
         if not chapter:
-            raise ValueError(f"Missing chapter in {path}")
+            raise BenchmarkRequestError(f"Missing chapter in {path}")
         bench_list = chapter_block.get("benchmarks")
         if not isinstance(bench_list, list):
-            raise ValueError(f"Missing benchmarks list for {chapter} in {path}")
+            raise BenchmarkRequestError(f"Missing benchmarks list for {chapter} in {path}")
         for bench in bench_list:
             if not isinstance(bench, dict):
-                raise ValueError(f"Invalid benchmark entry in {path}")
+                raise BenchmarkRequestError(f"Invalid benchmark entry in {path}")
             if "example" in bench:
                 name = bench.get("example")
             else:
                 name = bench.get("name")
             if not name:
-                raise ValueError(f"Benchmark missing name in {path}")
+                raise BenchmarkRequestError(f"Benchmark missing name in {path}")
             status_raw = bench.get("status")
             if status_raw is None:
-                raise ValueError(f"Benchmark missing status in {path}")
+                raise BenchmarkRequestError(f"Benchmark missing status in {path}")
             status = _normalize_status(str(status_raw))
             if status is None:
-                raise ValueError(f"Unsupported status '{status_raw}' in {path}")
+                raise BenchmarkRequestError(f"Unsupported status '{status_raw}' in {path}")
             baseline_time = _to_float(
                 bench.get("baseline_time_ms"), "baseline_time_ms", allow_none=True
             )
             speedup = _to_float(bench.get("best_speedup"), "best_speedup", allow_none=False)
             if status == "succeeded" and baseline_time is None:
-                raise ValueError(f"Benchmark {chapter}:{name} missing timing metrics in {path}")
+                raise BenchmarkRequestError(f"Benchmark {chapter}:{name} missing timing metrics in {path}")
             optimized_time = None
             if baseline_time is not None and speedup is not None and speedup > 0:
                 optimized_time = baseline_time / speedup
@@ -342,22 +354,23 @@ def _load_run_file(path: Path) -> Dict[str, Any]:
 
 
 def benchmark_data(params: Dict[str, Any]) -> Dict[str, Any]:
-    data = get_engine().benchmark.data()
-    benchmarks = [_normalize_benchmark_record(b) for b in data.get("benchmarks", [])]
-    diagnostics = [_normalize_benchmark_record(b) for b in data.get("diagnostics", [])]
-    raw_summary = data.get("summary", {}) or {}
-
     page = _parse_int_param(params, "page", 1, minimum=1)
     page_size = _parse_int_param(params, "page_size", 50, minimum=1, maximum=500)
     search = _parse_str_param(params, "search")
     sort_field = _parse_str_param(params, "sort_field") or "speedup"
     sort_dir = (_parse_str_param(params, "sort_dir") or "desc").lower()
     if sort_dir not in {"asc", "desc"}:
-        raise ValueError("sort_dir must be 'asc' or 'desc'")
+        raise BenchmarkRequestError("sort_dir must be 'asc' or 'desc'")
     status_filters = _parse_list_param(params, "status")
     chapter_filters = _parse_list_param(params, "chapter")
     benchmark_name = _parse_str_param(params, "benchmark")
     optimization_goal = _parse_str_param(params, "optimization_goal")
+
+    data = get_engine().benchmark.data()
+    benchmarks = [_normalize_benchmark_record(b) for b in data.get("benchmarks", [])]
+    diagnostics = [_normalize_benchmark_record(b) for b in data.get("diagnostics", [])]
+    outcomes = data.get("latest_outcomes", benchmarks + diagnostics)
+    raw_summary = data.get("summary", {}) or {}
 
     include_diagnostics = any(
         _status_bucket(status) != "succeeded" for status in status_filters or []
@@ -377,7 +390,8 @@ def benchmark_data(params: Dict[str, Any]) -> Dict[str, Any]:
     total_pages = (total + page_size - 1) // page_size if page_size else 1
     return {
         "timestamp": data.get("timestamp"),
-        "summary": _build_summary(benchmarks + diagnostics, raw_summary),
+        "ingest_errors": data.get("ingest_errors", []),
+        "summary": _build_summary(outcomes, raw_summary),
         "benchmarks": paged,
         "pagination": {
             "page": page,
@@ -429,18 +443,10 @@ def benchmark_opportunities(params: Dict[str, Any]) -> Dict[str, Any]:
     bench_root = _parse_str_param(params, "bench_root")
     catalog_path: Optional[Path] = None
     if catalog_file:
-        catalog_path = Path(catalog_file).expanduser()
-        if not catalog_path.exists():
-            raise FileNotFoundError(f"catalog_file not found: {catalog_path}")
-        if not catalog_path.is_file():
-            raise ValueError(f"catalog_file must be a file: {catalog_path}")
+        catalog_path = _parse_path_param(params, "catalog_file")
 
     if data_file:
-        path = Path(data_file).expanduser()
-        if not path.exists():
-            raise FileNotFoundError(f"data_file not found: {path}")
-        if not path.is_file():
-            raise ValueError(f"data_file must be a file: {path}")
+        path = _parse_path_param(params, "data_file")
         discovered_targets = None
         if include_discovered_targets:
             if bench_root:
@@ -515,7 +521,8 @@ def benchmark_overview(_: Dict[str, Any]) -> Dict[str, Any]:
     benchmarks = [_normalize_benchmark_record(b) for b in data.get("benchmarks", [])]
     diagnostics = [_normalize_benchmark_record(b) for b in data.get("diagnostics", [])]
     raw_summary = data.get("summary", {}) or {}
-    summary = _build_summary(benchmarks + diagnostics, raw_summary)
+    outcomes = data.get("latest_outcomes", benchmarks + diagnostics)
+    summary = _build_summary(outcomes, raw_summary)
 
     status_counts = {
         "succeeded": summary["succeeded"],
@@ -531,7 +538,7 @@ def benchmark_overview(_: Dict[str, Any]) -> Dict[str, Any]:
     )[:20]
 
     chapter_stats: Dict[str, Dict[str, Any]] = {}
-    for bench in benchmarks + diagnostics:
+    for bench in outcomes:
         chapter = str(bench.get("chapter", "unknown"))
         entry = chapter_stats.setdefault(
             chapter,
@@ -568,6 +575,7 @@ def benchmark_overview(_: Dict[str, Any]) -> Dict[str, Any]:
 
     return {
         "timestamp": data.get("timestamp"),
+        "ingest_errors": data.get("ingest_errors", []),
         "summary": summary,
         "status_counts": status_counts,
         "top_speedups": top_speedups,

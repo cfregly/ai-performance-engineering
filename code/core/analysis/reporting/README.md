@@ -48,10 +48,12 @@ generator.generate_pdf(data, "custom_report.pdf")
 ```
 
 Benchmark rankings and summary statistics use successful baseline and optimization
-pairs. Historical results that contain only a recorded speedup can also qualify.
-Rejected rows and baseline-only runs appear in **Run Diagnostics**, with their
-recorded status and available source details. A missing or malformed input file
-produces an error.
+pairs. Historical results that contain only a recorded speedup can also qualify,
+with unrecorded times shown as unavailable. Discovered scans select the latest
+qualified result per target and show any later rejection beside it. Rejected rows
+and baseline-only runs appear in **Run Diagnostics**. Missing or malformed
+explicit inputs produce an error. In discovered files, valid rows remain
+available and malformed records appear under **Input Errors**.
 
 ## Report Types
 

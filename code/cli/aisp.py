@@ -1936,6 +1936,8 @@ if typer and cluster_app is not None:
         notes: Optional[Path] = typer.Option(None, "--notes", help="Path to field-report-notes.md"),
         template: Optional[Path] = typer.Option(None, "--template", help="Path to field-report-template.md"),
         runbook: Optional[Path] = typer.Option(None, "--runbook", help="Path to advanced-runbook.md"),
+        published_root: Optional[Path] = typer.Option(None, "--published-root", help="Candidate package used to resolve published/current links"),
+        package_only: bool = typer.Option(False, "--package-only", help="Validate the package without checking for stale run artifacts"),
         allow_run_id: List[str] = typer.Option([], "--allow-run-id", help="Additional run id allowed for hygiene checks", show_default=False),
         timeout_seconds: int = typer.Option(120, "--timeout", help="Validator timeout in seconds"),
     ) -> None:
@@ -1948,6 +1950,8 @@ if typer and cluster_app is not None:
             runbook=str(runbook) if runbook else None,
             canonical_run_id=canonical_run_id,
             allow_run_id=allow_run_id or None,
+            published_root=str(published_root) if published_root else None,
+            package_only=package_only,
             timeout_seconds=timeout_seconds,
         )
         emit_json(result)
@@ -1988,7 +1992,7 @@ if typer and cluster_app is not None:
             help="Override repository root (default: this checkout). Use for tests or alternate trees.",
         ),
         skip_render_localhost_report: bool = typer.Option(False, "--skip-render-localhost-report", help="Skip rendering run-local + published localhost report markdown"),
-        skip_validate_localhost_report: bool = typer.Option(False, "--skip-validate-localhost-report", help="Skip localhost report validation after promotion"),
+        skip_validate_localhost_report: bool = typer.Option(False, "--skip-validate-localhost-report", help="Skip staged localhost report validation before publication"),
         cleanup: bool = typer.Option(False, "--cleanup", help="Run cleanup_run_artifacts.sh after promotion using this run_id as canonical"),
         timeout_seconds: int = typer.Option(300, "--timeout", help="Promotion timeout in seconds"),
     ) -> None:
@@ -2007,7 +2011,7 @@ if typer and cluster_app is not None:
             repo_root=str(repo_root) if repo_root else None,
         )
         emit_json(result)
-        raise typer.Exit(0)
+        raise typer.Exit(0 if result.get("success") else 1)
 
     @cluster_app.command("watch-promote", help="Attach a detached post-run watcher that promotes a completed cluster run")
     def cluster_watch_promote_cmd(
@@ -2024,7 +2028,7 @@ if typer and cluster_app is not None:
             help="Override repository root (default: this checkout). Use for tests or alternate trees.",
         ),
         skip_render_localhost_report: bool = typer.Option(False, "--skip-render-localhost-report", help="Skip rendering run-local + published localhost report markdown"),
-        skip_validate_localhost_report: bool = typer.Option(False, "--skip-validate-localhost-report", help="Skip localhost report validation after promotion"),
+        skip_validate_localhost_report: bool = typer.Option(False, "--skip-validate-localhost-report", help="Skip staged localhost report validation before publication"),
         cleanup: bool = typer.Option(False, "--cleanup", help="Run cleanup_run_artifacts.sh after promotion using this run_id as canonical"),
         poll_interval_seconds: float = typer.Option(30.0, "--poll-interval-seconds", help="How often to check whether the watched PID has exited"),
     ) -> None:

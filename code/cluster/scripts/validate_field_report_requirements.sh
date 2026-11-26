@@ -332,7 +332,7 @@ require_contains "$RUNBOOK" "operator_checks_dashboard" "runbook references oper
 forbid_contains "$REPORT" "## Normal vs Weird Log" "legacy split header absent: ## Normal vs Weird Log"
 forbid_contains "$REPORT" "## Weird / New / Interesting Findings" "legacy split header absent: ## Weird / New / Interesting Findings"
 
-if ! rg -n '(published/current/structured|cluster/published/.*/structured|results/structured|cluster/runs/.*/structured|runs/.*/structured)/.*\.(json|csv|jsonl|txt)' "$REPORT" >/dev/null 2>&1; then
+if ! rg -n '(\.\./structured|published/current/structured|cluster/published/.*/structured|results/structured|cluster/runs/.*/structured|runs/.*/structured)/.*\.(json|csv|jsonl|txt)' "$REPORT" >/dev/null 2>&1; then
   fail "no structured artifact links found in report"
 else
   pass "structured artifact links present"

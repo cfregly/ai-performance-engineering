@@ -72,6 +72,11 @@ The published evidence is a historical reader snapshot. It contains the files li
 | Visual package is present | [published/current/figures/2026-03-17_localhost_fabric_canonical_operator_checks_dashboard.png](published/current/figures/2026-03-17_localhost_fabric_canonical_operator_checks_dashboard.png) | Backed |
 
 ## Repro Entry Point
+
+The one-GPU topology has zero NVLink pairs. The retained overview figure missed the NCCL series, which is available in the structured result and dedicated bandwidth figure.
+
+The example uses the retained inference settings of 64 input tokens, 32 output tokens, and concurrency 1. Use a new run ID and the target cluster's connection settings.
+
 | Step | Command |
 | --- | --- |
-| Re-run localhost canonical package | `python -m cli.aisp cluster fabric-eval --run-id 2026-03-17_localhost_fabric_canonical --hosts localhost --labels localhost --ssh-user $(id -un) --primary-label localhost --nmx-url https://<your-nmx-host> --timeout 7200 --extra-arg --skip-bootstrap-nodes --extra-arg --disable-fp4 --extra-arg --health-suite --extra-arg off --extra-arg --skip-vllm-multinode --extra-arg --model --extra-arg openai-community/gpt2 --extra-arg --tp --extra-arg 1 --extra-arg --isl --extra-arg 128 --extra-arg --osl --extra-arg 64 --extra-arg --concurrency-range --extra-arg '1 2' --extra-arg --vllm-request-rate-range --extra-arg '1 2' --extra-arg --vllm-request-rate-max-concurrency --extra-arg 4 --extra-arg --vllm-request-rate-num-prompts --extra-arg 80 --extra-arg --fio-runtime --extra-arg 15 --extra-arg --nvbandwidth-quick` |
+| Example localhost fabric eval | `python -m cli.aisp cluster fabric-eval --run-id <new_run_id> --hosts localhost --labels localhost --ssh-user $(id -un) --primary-label localhost --nmx-url https://<your-nmx-host> --timeout 7200 --extra-arg --skip-bootstrap-nodes --extra-arg --disable-fp4 --extra-arg --health-suite --extra-arg off --extra-arg --skip-vllm-multinode --extra-arg --model --extra-arg openai-community/gpt2 --extra-arg --tp --extra-arg 1 --extra-arg --isl --extra-arg 64 --extra-arg --osl --extra-arg 32 --extra-arg --concurrency-range --extra-arg 1 --extra-arg --fio-runtime --extra-arg 15 --extra-arg --nvbandwidth-quick` |

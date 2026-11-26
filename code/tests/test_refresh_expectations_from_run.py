@@ -248,11 +248,13 @@ def test_refresh_expectations_from_run_infers_validity_profile_from_run_events(t
         dry_run=False,
     )
 
-    assert summary["validity_profile"] == "strict"
+    assert summary["validity_profile"] is None
+    assert summary["legacy_run_start_validity_profile"] == "strict"
     assert summary["validity_profile_source"] == "legacy_unbound_run_start"
     updated = json.loads((chapter_dir / "expectations_b200.json").read_text(encoding="utf-8"))
     entry = updated["examples"]["gemm_cuda"]
-    assert entry["provenance"]["validity_profile"] == "strict"
+    assert entry["provenance"]["validity_profile"] is None
+    assert entry["metadata"]["legacy_run_start_validity_profile"] == "strict"
     assert entry["metadata"]["validity_profile_source"] == "legacy_unbound_run_start"
 
 
@@ -469,14 +471,20 @@ def test_refresh_allows_documented_rebaselining(tmp_path: Path, status: str) -> 
         row["expectation"].update(status="rejected", validation_issues=[{"issue_type": "regression"}])
     results = _write_preview(tmp_path, row)
 
-    summary = refresh_expectations_from_run(results_json=results, repo_root=tmp_path, accept_regressions=False)
+    summary = refresh_expectations_from_run(results_json=results, repo_root=tmp_path)
+    assert not summary["accept_regressions"]
     assert summary["counts"]["rejected"] == 1
     assert not summary["updated_files"]
     assert expectation_file.read_bytes() == before
 
     summary = refresh_expectations_from_run(results_json=results, repo_root=tmp_path, accept_regressions=True)
     assert summary["counts"]["regressed"] == 1
-    assert json.loads(expectation_file.read_bytes())["examples"]["gemm"]["metrics"]["best_speedup"] == 0.8
+    updated = json.loads(expectation_file.read_bytes())["examples"]["gemm"]
+    assert updated["metrics"]["best_speedup"] == 0.8
+    receipt = updated["metadata"]["expectation_refresh"]
+    assert receipt["accept_regressions"]
+    assert receipt["rebaselined"]
+    assert receipt["benchmark_status"] == status
 
 
 def test_refresh_rebaselines_a_documented_dropped_throughput_metric(tmp_path: Path) -> None:
@@ -589,3 +597,36 @@ def test_refresh_reconciles_hardware_key_with_the_matched_measuring_gpu_model(
     assert (tmp_path / "ch01" / f"expectations_{hardware_key}.json").exists() == applied
     if not applied:
         assert "'h100' disagrees with the measuring GPU model 'NVIDIA B200'" in summary["records"][0]["message"]
+
+
+def test_refresh_marks_measurement_manifests_absent_for_cuda(tmp_path: Path) -> None:
+    row = _preview_row("succeeded")
+    row["type"] = "cuda"
+    row["expectation"]["entry"]["type"] = "cuda"
+    manifest = {"run_id": "measured", "git": {"commit": "runsha"}, "manifests": []}
+    results = _write_preview(tmp_path, row, manifest=manifest)
+
+    summary = refresh_expectations_from_run(results_json=results, repo_root=tmp_path)
+
+    assert summary["manifest_run_id_match"]
+    assert any("No matching measurement manifest" in warning for warning in summary["warnings"])
+    expectations = json.loads((tmp_path / "ch01" / "expectations_b200.json").read_bytes())
+    receipt = expectations["examples"]["gemm_cuda"]["metadata"]["expectation_refresh"]
+    assert receipt["measurement_manifest_variants"] == []
+
+
+def test_refresh_cli_requires_explicit_rebaseline_opt_in(tmp_path: Path) -> None:
+    results = _write_preview(tmp_path, _preview_row("failed_no_speedup", optimize_ms=12.5))
+    args = [
+        sys.executable, "-m", "core.analysis.refresh_expectations_from_run",
+        "--repo-root", str(tmp_path), "--results-json", str(results),
+    ]
+    denied = subprocess.run(args, cwd=TEST_REPO_ROOT, capture_output=True, text=True, check=True)
+    assert json.loads(denied.stdout)["counts"]["rejected"] == 1
+    assert not (tmp_path / "ch01" / "expectations_b200.json").exists()
+
+    allowed = subprocess.run(
+        [*args, "--accept-regressions"], cwd=TEST_REPO_ROOT, capture_output=True, text=True, check=True
+    )
+    assert json.loads(allowed.stdout)["counts"]["applied"] == 1
+    assert (tmp_path / "ch01" / "expectations_b200.json").exists()

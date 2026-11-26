@@ -148,10 +148,20 @@ def _select_single_gpu_visible(existing: Optional[str]) -> str:
     return "0"
 
 
+def _load_cli_benchmark_results(data_file: Optional[Path] = None) -> dict:
+    try:
+        data = load_benchmark_results(data_file)
+    except (OSError, ValueError) as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(1) from exc
+    for diagnostic in data.get("ingest_errors", []):
+        typer.echo(diagnostic["error"], err=True)
+    return data
+
+
 def _get_analyzer(data_file: Optional[Path] = None) -> PerformanceAnalyzer:
     """Shared analysis helper for CLI commands."""
-    loader = (lambda: load_benchmark_results(data_file)) if data_file else load_benchmark_results
-    return PerformanceAnalyzer(loader)
+    return PerformanceAnalyzer(lambda: _load_cli_benchmark_results(data_file))
 
 
 def _discover_target_catalog(bench_root: Optional[Path] = None) -> List[Dict[str, Any]]:
@@ -3404,7 +3414,7 @@ if TYPER_AVAILABLE:
         ),
     ):
         """Show a quick summary of benchmark results."""
-        data = load_benchmark_results(data_file)
+        data = _load_cli_benchmark_results(data_file)
         summary = data.get("summary", {})
         benchmarks = data.get("benchmarks", [])
         payload = {
@@ -3723,11 +3733,13 @@ if TYPER_AVAILABLE:
         - Get specific tool recommendations
         - Plan next optimization steps
         """
-        data = load_benchmark_results(data_file)
+        data = _load_cli_benchmark_results(data_file)
         benchmarks = data.get("benchmarks", [])
+        diagnostics = data.get("diagnostics", [])
+        rows = data.get("latest_outcomes", benchmarks + diagnostics)
 
-        if not benchmarks:
-            typer.echo("❌ No benchmark results found. Run `aisp bench run` first.")
+        if not rows:
+            typer.echo("❌ No benchmark results found. Run `aisp bench run` first.", err=True)
             raise typer.Exit(1)
 
         def _status_bucket(status: object) -> str:
@@ -3745,11 +3757,11 @@ if TYPER_AVAILABLE:
             return normalized or "unknown"
 
         # Analyze
-        total = len(benchmarks)
-        passed = sum(1 for b in benchmarks if _status_bucket(b.get("status")) == "succeeded")
-        failed = sum(1 for b in benchmarks if _status_bucket(b.get("status")) == "failed")
-        skipped = sum(1 for b in benchmarks if _status_bucket(b.get("status")) == "skipped")
-        avg_speedup = sum(b.get("speedup", 1.0) for b in benchmarks) / total if total > 0 else 0
+        total = len(rows)
+        passed = sum(_status_bucket(b.get("status")) == "succeeded" for b in rows)
+        failed = sum(_status_bucket(b.get("status")) == "failed" for b in rows)
+        skipped = sum(_status_bucket(b.get("status")) == "skipped" for b in rows)
+        avg_speedup = sum(b["speedup"] for b in benchmarks) / len(benchmarks) if benchmarks else 0
 
         regressions = sorted(
             [
@@ -3770,7 +3782,7 @@ if TYPER_AVAILABLE:
             reverse=True,
         )[:top_n]
 
-        slow_kernels = [b for b in benchmarks if b.get("baseline_time_ms", 0) > 100]
+        slow_kernels = [b for b in rows if (b.get("baseline_time_ms") or 0) > 100]
 
         # Build recommendations
         recommendations = []
@@ -3798,13 +3810,25 @@ if TYPER_AVAILABLE:
                     "priority": "low",
                 }
             )
-        recommendations.append(
-            {
-                "tool": "aisp bench compare-runs",
-                "reason": "Compare with previous baseline",
-                "priority": "medium",
+        if benchmarks:
+            recommendations.append(
+                {
+                    "tool": "aisp bench compare-runs",
+                    "reason": "Compare with previous baseline",
+                    "priority": "medium",
+                }
+            )
+
+        def format_result(bench: dict) -> dict:
+            baseline = bench.get("baseline_time_ms")
+            result = {
+                "benchmark": f"{bench['chapter']}:{bench['name']}",
+                "speedup": round(bench["speedup"], 2),
+                "baseline_ms": round(baseline, 1) if baseline is not None else None,
             }
-        )
+            if "newer_diagnostic" in bench:
+                result["newer_diagnostic"] = bench["newer_diagnostic"]
+            return result
 
         result = {
             "summary": {
@@ -3812,25 +3836,15 @@ if TYPER_AVAILABLE:
                 "passed": passed,
                 "failed": failed,
                 "skipped": skipped,
+                "unqualified": total - passed - failed - skipped,
+                "qualified": len(benchmarks),
                 "pass_rate": f"{(passed / total) * 100:.1f}%" if total > 0 else "N/A",
                 "avg_speedup": round(avg_speedup, 2),
             },
-            "regressions": [
-                {
-                    "benchmark": f"{b.get('chapter')}:{b.get('name')}",
-                    "speedup": round(b.get("speedup", 0), 2),
-                    "baseline_ms": round(b.get("baseline_time_ms", 0), 1),
-                }
-                for b in regressions
-            ],
-            "improvements": [
-                {
-                    "benchmark": f"{b.get('chapter')}:{b.get('name')}",
-                    "speedup": round(b.get("speedup", 0), 2),
-                    "baseline_ms": round(b.get("baseline_time_ms", 0), 1),
-                }
-                for b in improvements
-            ],
+            "regressions": [format_result(b) for b in regressions],
+            "improvements": [format_result(b) for b in improvements],
+            "diagnostics": diagnostics,
+            "ingest_errors": data.get("ingest_errors", []),
             "recommendations": recommendations,
             "deep_dive_runs": [],
         }
@@ -3916,24 +3930,33 @@ if TYPER_AVAILABLE:
 
         s = result["summary"]
         typer.echo(
-            f"\n📊 Summary: {s['total']} benchmarks | {s['pass_rate']} pass rate | {s['avg_speedup']:.2f}x avg speedup"
+            f"\n📊 Summary: {s['total']} result rows | {s['pass_rate']} pass rate | "
+            f"{s['failed']} failed, {s['skipped']} skipped, {s['unqualified']} other unqualified"
         )
+        if benchmarks:
+            typer.echo(f"   Average qualified speedup: {s['avg_speedup']:.2f}x")
+        else:
+            typer.echo("   No qualified speedup comparisons found.")
+
+        def print_result(row: dict) -> None:
+            baseline = row["baseline_ms"]
+            baseline_label = f"{baseline:.1f}ms baseline" if baseline is not None else "baseline unavailable"
+            typer.echo(f"   • {row['benchmark']}: {row['speedup']:.2f}x ({baseline_label})")
+            if "newer_diagnostic" in row:
+                diagnostic = row["newer_diagnostic"]
+                typer.echo(f"     Newer run: {diagnostic['status']} ({diagnostic['source_file']})")
 
         if result["regressions"]:
             typer.echo(f"\n⚠️  REGRESSIONS ({len(result['regressions'])} found):")
             for r in result["regressions"]:
-                typer.echo(
-                    f"   • {r['benchmark']}: {r['speedup']:.2f}x ({r['baseline_ms']:.1f}ms baseline)"
-                )
-        else:
-            typer.echo("\n✅ No regressions detected!")
+                print_result(r)
+        elif benchmarks:
+            typer.echo("\n✅ No regressions detected among qualified comparisons.")
 
         if result["improvements"]:
             typer.echo(f"\n🚀 TOP IMPROVEMENTS ({len(result['improvements'])} found):")
             for i in result["improvements"]:
-                typer.echo(
-                    f"   • {i['benchmark']}: {i['speedup']:.2f}x ({i['baseline_ms']:.1f}ms baseline)"
-                )
+                print_result(i)
 
         typer.echo(f"\n💡 RECOMMENDED NEXT STEPS:")
         for i, rec in enumerate(result["recommendations"], 1):
@@ -4364,7 +4387,11 @@ if TYPER_AVAILABLE:
 
         input_path = data_file or "benchmark_test_results.json"
         cfg = ReportConfig(title=title, author=author)
-        path = generate_report(input_path, str(output), format=format, config=cfg)
+        try:
+            path = generate_report(input_path, str(output), format=format, config=cfg)
+        except (OSError, ValueError) as exc:
+            typer.echo(str(exc), err=True)
+            raise typer.Exit(1) from exc
         typer.echo(f"✅ Report generated: {path}")
 
     @app.command("verify-report")
@@ -4528,8 +4555,11 @@ if TYPER_AVAILABLE:
         elif fmt == "markdown":
             lines = ["| Benchmark | Speedup | Baseline (ms) | Type |", "|---|---|---|---|"]
             for b in benchmarks:
+                baseline = b.get("baseline_time_ms")
+                baseline_label = f"{baseline:.3f}" if baseline is not None else "n/a"
                 lines.append(
-                    f"| {b.get('chapter')}:{b.get('name')} | {b.get('speedup', 0):.2f}x | {b.get('baseline_time_ms', 0):.3f} | {b.get('type', 'python')} |"
+                    f"| {b.get('chapter')}:{b.get('name')} | {b.get('speedup', 0):.2f}x | "
+                    f"{baseline_label} | {b.get('type', 'python')} |"
                 )
             out_path.write_text("\n".join(lines))
         elif fmt == "csv":
@@ -4539,11 +4569,12 @@ if TYPER_AVAILABLE:
                 writer = csv.writer(f)
                 writer.writerow(["benchmark", "speedup", "baseline_ms", "type"])
                 for b in benchmarks:
+                    baseline = b.get("baseline_time_ms")
                     writer.writerow(
                         [
                             f"{b.get('chapter')}:{b.get('name')}",
                             f"{b.get('speedup', 0):.2f}",
-                            f"{b.get('baseline_time_ms', 0):.3f}",
+                            f"{baseline:.3f}" if baseline is not None else "",
                             b.get("type", "python"),
                         ]
                     )

@@ -41,9 +41,9 @@ class BenchmarkReport:
         generator = ReportGenerator(config)
         
         if format == "pdf":
-            return generator.generate_pdf({"benchmarks": [b.__dict__ for b in self.benchmarks]}, output_path)
+            return generator.generate_pdf(self.benchmarks, output_path)
         else:
-            return generator.generate_html({"benchmarks": [b.__dict__ for b in self.benchmarks]}, output_path)
+            return generator.generate_html(self.benchmarks, output_path)
     
     def summary(self) -> Dict[str, Any]:
         """Get summary statistics."""

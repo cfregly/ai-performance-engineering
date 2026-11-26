@@ -1,17 +1,20 @@
 from __future__ import annotations
 
+import logging
 import socket
 import subprocess
 import threading
 import time
 import json
 import sys
+import traceback
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from core.harness.progress import ProgressEvent, ProgressRecorder
 
 _CLUSTER_PROGRESS_POLL_SECONDS = 2.0
+_LOGGER = logging.getLogger(__name__)
 
 
 def _repo_root() -> Path:
@@ -695,6 +698,10 @@ def _run_cluster_suite_with_progress(
         )
 
 
+def _subprocess_text(output: str | bytes | None) -> str:
+    return output.decode(errors="replace") if isinstance(output, bytes) else output or ""
+
+
 def _run_cmd(cmd: List[str], *, cwd: Optional[Path] = None, timeout_seconds: Optional[int] = None) -> Dict[str, Any]:
     start = time.monotonic()
     try:
@@ -718,19 +725,32 @@ def _run_cmd(cmd: List[str], *, cwd: Optional[Path] = None, timeout_seconds: Opt
         return {
             "command": cmd,
             "returncode": None,
-            "stdout": (exc.stdout or ""),
-            "stderr": (exc.stderr or ""),
+            "stdout": _subprocess_text(exc.stdout),
+            "stderr": _subprocess_text(exc.stderr),
             "error": f"timeout after {timeout_seconds}s",
             "duration_ms": duration_ms,
         }
     except Exception as exc:
         duration_ms = int((time.monotonic() - start) * 1000)
+        error_type = type(exc).__name__
+        _LOGGER.error(
+            "Could not launch cluster command (%s).\n%s",
+            error_type,
+            "".join(traceback.format_tb(exc.__traceback__)),
+        )
+        if isinstance(exc, FileNotFoundError):
+            error = "Could not launch cluster command. The executable or working directory was not found."
+        elif isinstance(exc, PermissionError):
+            error = "Could not launch cluster command. Check permissions on the executable and working directory."
+        else:
+            error = "Could not launch cluster command."
         return {
             "command": cmd,
             "returncode": None,
             "stdout": "",
             "stderr": "",
-            "error": str(exc),
+            "error": error,
+            "error_type": error_type,
             "duration_ms": duration_ms,
         }
 
@@ -1240,6 +1260,8 @@ def validate_field_report_requirements(
     runbook: Optional[str] = None,
     canonical_run_id: Optional[str] = None,
     allow_run_id: Optional[List[str]] = None,
+    published_root: Optional[str] = None,
+    package_only: bool = False,
     timeout_seconds: int = 120,
 ) -> Dict[str, Any]:
     """Run the field-report validator script and return stdout/stderr."""
@@ -1257,6 +1279,10 @@ def validate_field_report_requirements(
         cmd.extend(["--template", str(template)])
     if runbook:
         cmd.extend(["--runbook", str(runbook)])
+    if published_root:
+        cmd.extend(["--published-root", str(published_root)])
+    if package_only:
+        cmd.append("--package-only")
     if canonical_run_id:
         cmd.extend(["--canonical-run-id", str(canonical_run_id)])
     if allow_run_id:

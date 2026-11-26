@@ -26,20 +26,30 @@ def read_benchmark_json(path: Path) -> dict:
     return data
 
 
-def iter_benchmark_rows(data: dict, source: Path) -> Iterator[tuple[str, dict]]:
-    """Validate and iterate the chapter format written by the benchmark runner."""
+def iter_benchmark_rows(
+    data: dict, source: Path, *, errors: Optional[List[dict]] = None
+) -> Iterator[tuple[str, dict]]:
+    """Validate raw chapter records, retaining valid siblings when scanning."""
+    def invalid(message: str) -> None:
+        if errors is None:
+            raise ValueError(message)
+        errors.append({"source_file": str(source), "error": message})
+
     results = data.get("results")
     if not isinstance(results, list):
         raise ValueError(f"Expected 'results' list in benchmark results {source}")
     for index, chapter in enumerate(results):
         if not isinstance(chapter, dict) or not isinstance(chapter.get("chapter"), str):
-            raise ValueError(f"Invalid chapter at results[{index}] in {source}")
+            invalid(f"Invalid chapter at results[{index}] in {source}")
+            continue
         benchmarks = chapter.get("benchmarks")
         if not isinstance(benchmarks, list):
-            raise ValueError(f"Expected 'benchmarks' list for {chapter['chapter']} in {source}")
+            invalid(f"Expected 'benchmarks' list for {chapter['chapter']} in {source}")
+            continue
         for row_index, bench in enumerate(benchmarks):
             if not isinstance(bench, dict) or not isinstance(bench.get("example"), str):
-                raise ValueError(f"Invalid benchmark at results[{index}].benchmarks[{row_index}] in {source}")
+                invalid(f"Invalid benchmark at results[{index}].benchmarks[{row_index}] in {source}")
+                continue
             yield chapter["chapter"], bench
 
 
@@ -60,15 +70,24 @@ def _positive_measurement(value: Any) -> bool:
     return is_finite_measurement(value) and value > 0
 
 
-def _measured_optimizations(bench: dict) -> List[dict]:
+def measured_optimizations(bench: dict) -> List[dict]:
+    """Return successful variants whose recorded speedup agrees with measured timings."""
     baseline_time = bench.get("baseline_time_ms")
     optimizations = bench.get("optimizations")
     if not isinstance(optimizations, list) or not _positive_measurement(baseline_time):
         return []
 
+    legacy_normalized = (
+        "name" in bench
+        and "example" not in bench
+        and not requires_variant_evidence(bench)
+        and has_success_status(bench.get("status"))
+    )
     measured = []
     for opt in optimizations:
-        if not isinstance(opt, dict) or not has_success_status(opt.get("status")):
+        if not isinstance(opt, dict):
+            continue
+        if not has_success_status(opt.get("status")) and not (legacy_normalized and "status" not in opt):
             continue
         time_ms = opt.get("time_ms")
         speedup = opt.get("speedup")
@@ -79,7 +98,19 @@ def _measured_optimizations(bench: dict) -> List[dict]:
     return measured
 
 
+def requires_variant_evidence(bench: dict) -> bool:
+    """Identify current results with a run ID or a harness timing receipt."""
+    return bench.get("run_id") is not None or "baseline_timing_configuration" in bench
+
+
+def _recorded_speedup(bench: dict) -> Any:
+    return bench.get("speedup", bench.get("best_speedup"))
+
+
 def _benchmark_rejection_reason(bench: dict, measured: List[dict]) -> Optional[str]:
+    current = requires_variant_evidence(bench)
+    if current and "status" not in bench:
+        return "Current benchmark result is missing its final status"
     if "status" in bench and not has_success_status(bench["status"]):
         return f"Benchmark status {bench['status']!r} is ineligible"
     if "status" not in bench and (bench.get("error") or bench.get("skip_reason")):
@@ -90,11 +121,11 @@ def _benchmark_rejection_reason(bench: dict, measured: List[dict]) -> Optional[s
     ):
         return "Required profiler captures failed"
 
-    speedup = bench.get("speedup")
+    speedup = _recorded_speedup(bench)
     if not _positive_measurement(speedup):
         return "No positive measured speedup"
     if "optimizations" not in bench:
-        return None
+        return "Current benchmark result is missing its optimization records" if current else None
     if not measured:
         return "No successful optimization with measured timings and speedup"
     best_observed = max(opt["speedup"] for opt in measured)
@@ -103,9 +134,15 @@ def _benchmark_rejection_reason(bench: dict, measured: List[dict]) -> Optional[s
     return None
 
 
+def qualified_speedup(bench: dict) -> Optional[float]:
+    """Return a supported speedup from a raw or normalized benchmark row."""
+    if _benchmark_rejection_reason(bench, measured_optimizations(bench)) is not None:
+        return None
+    return _recorded_speedup(bench)
+
+
 def is_qualified_benchmark(bench: dict) -> bool:
-    """Admit successful measured pairs and compatible legacy speedup-only records."""
-    return _benchmark_rejection_reason(bench, _measured_optimizations(bench)) is None
+    return qualified_speedup(bench) is not None
 
 
 def _story_note(story_metadata: Dict[str, Any]) -> str:
@@ -135,7 +172,9 @@ def _story_note(story_metadata: Dict[str, Any]) -> str:
     return " ".join(part for part in parts if part).strip()
 
 
-def _normalize_benchmark(chapter: str, bench: dict, *, source: Path, run_id: Any) -> dict:
+def _normalize_benchmark(
+    chapter: str, bench: dict, *, source: Path, run_id: Optional[str], timestamp: str
+) -> dict:
     name = bench["example"]
     bench_type = bench.get("type") or "python"
     if not isinstance(bench_type, str):
@@ -157,11 +196,11 @@ def _normalize_benchmark(chapter: str, bench: dict, *, source: Path, run_id: Any
             if value is not None and not is_finite_measurement(value):
                 raise ValueError(f"Invalid optimization {key} for {chapter}:{name} in {source}")
 
-    baseline_time = numbers["baseline_time_ms"] or 0
+    baseline_time = numbers["baseline_time_ms"]
     speedup = numbers["best_speedup"]
     memory_savings = numbers["best_memory_savings_pct"] or 0
     baseline_memory = numbers["baseline_memory_mb"]
-    eligible_optimizations = _measured_optimizations(bench)
+    eligible_optimizations = measured_optimizations(bench)
     best_optimization = max(eligible_optimizations, key=lambda opt: opt["speedup"], default={})
     optimized_memory = min(
         (opt["memory_mb"] for opt in eligible_optimizations if opt.get("memory_mb")),
@@ -207,6 +246,7 @@ def _normalize_benchmark(chapter: str, bench: dict, *, source: Path, run_id: Any
         "chapter_native_targets": pair_story.get("chapter_native_targets"),
         "story_note": _story_note(pair_story),
         "source_file": str(source),
+        "source_timestamp": timestamp,
         "run_id": run_id,
     }
     if "status" in bench:
@@ -220,9 +260,8 @@ def _normalize_benchmark(chapter: str, bench: dict, *, source: Path, run_id: Any
         row["status"] = "succeeded"
         if best_optimization:
             row["optimized_time_ms"] = best_optimization["time_ms"]
-        elif baseline_time > 0:
-            # Legacy summaries did not include variant timings.
-            row["optimized_time_ms"] = baseline_time / speedup
+        else:
+            row["measurement_source"] = "legacy_speedup_only"
     else:
         row["status"] = row.get("status") or "unknown"
         if has_success_status(row["status"]):
@@ -276,17 +315,39 @@ def load_benchmark_data(data_file: Optional[Path] = None, bench_roots: Optional[
                 paths.append(default_path)
 
     selected: Dict[tuple, tuple[float, dict]] = {}
+    latest_rejected: Dict[tuple, tuple[float, dict]] = {}
     diagnostics = []
-    ingest_errors = []
+    ingest_errors: List[dict] = []
     latest = (float("-inf"), "")
     for path in dict.fromkeys(paths):
         try:
             data = read_benchmark_json(path)
             timestamp = _source_timestamp(data, path)
-            rows = [
-                _normalize_benchmark(chapter, bench, source=path, run_id=data.get("run_id"))
-                for chapter, bench in iter_benchmark_rows(data, path)
-            ]
+            run_id = data.get("run_id")
+            if run_id is not None and (not isinstance(run_id, str) or not run_id.strip()):
+                raise ValueError(f"Invalid run_id in benchmark results {path}")
+            for chapter, bench in iter_benchmark_rows(
+                data, path, errors=ingest_errors if data_file is None else None
+            ):
+                try:
+                    row = _normalize_benchmark(
+                        chapter, bench, source=path, run_id=run_id, timestamp=timestamp[1]
+                    )
+                except ValueError as exc:
+                    if data_file is not None:
+                        raise
+                    ingest_errors.append({"source_file": str(path), "error": str(exc)})
+                    continue
+
+                key = (row["chapter"], row["name"], row["type"])
+                if is_qualified_benchmark(row):
+                    destination = selected
+                else:
+                    diagnostics.append(row)
+                    destination = latest_rejected
+                previous = destination.get(key)
+                if previous is None or timestamp[0] >= previous[0]:
+                    destination[key] = (timestamp[0], row)
         except (OSError, ValueError) as exc:
             if data_file is not None:
                 raise
@@ -294,36 +355,42 @@ def load_benchmark_data(data_file: Optional[Path] = None, bench_roots: Optional[
             continue
 
         latest = max(latest, timestamp)
-        for row in rows:
-            if not is_qualified_benchmark(row):
-                diagnostics.append(row)
-                continue
-            key = (row["chapter"], row["name"], row["type"])
-            previous = selected.get(key)
-            if previous is None or timestamp[0] >= previous[0]:
-                selected[key] = (timestamp[0], row)
 
+    latest_outcomes = {key: row for key, (_, row) in selected.items()}
+    for key, (timestamp, rejected) in latest_rejected.items():
+        qualified = selected.get(key)
+        if qualified is None:
+            latest_outcomes[key] = rejected
+        elif timestamp > qualified[0]:
+            latest_outcomes[key] = rejected
+            qualified[1]["newer_diagnostic"] = {
+                name: rejected[name] for name in ("status", "error", "run_id", "source_file", "source_timestamp")
+            }
+
+    outcomes = list(latest_outcomes.values())
     benchmarks = sorted((row for _, row in selected.values()), key=lambda row: row["speedup"], reverse=True)
     speedups = [row["speedup"] for row in benchmarks]
     memory = [row for row in benchmarks if row["optimization_goal"] == "memory"]
-    failed_regression = sum(row["status"] == "failed_regression" for row in diagnostics)
+    failed_regression = sum(row["status"] == "failed_regression" for row in outcomes)
     return {
         "timestamp": latest[1] or time.strftime("%Y-%m-%d %H:%M:%S"),
         "benchmarks": benchmarks,
         "diagnostics": diagnostics,
+        "latest_outcomes": outcomes,
         "ingest_errors": ingest_errors,
         "aggregated": True,
         "source_count": len(benchmarks),
         "summary": {
-            "total_benchmarks": len(benchmarks) + len(diagnostics),
+            "total_benchmarks": len(outcomes),
             "avg_speedup": sum(speedups) / len(speedups) if speedups else 0,
             "max_speedup": max(speedups, default=0),
             "min_speedup": min(speedups, default=0),
-            "successful": len(benchmarks),
-            "failed": sum(row["status"].startswith("failed") for row in diagnostics) - failed_regression,
+            "successful": sum(is_qualified_benchmark(row) for row in outcomes),
+            "failed": sum(row["status"].startswith("failed") for row in outcomes) - failed_regression,
             "failed_regression": failed_regression,
-            "skipped": sum(row["status"].startswith("skipped") for row in diagnostics),
-            "unqualified": len(diagnostics),
+            "skipped": sum(row["status"].startswith("skipped") for row in outcomes),
+            "qualified": len(benchmarks),
+            "diagnostic_rows": len(diagnostics),
             "memory_optimizations": len(memory),
             "speed_optimizations": len(benchmarks) - len(memory),
             "best_memory_savings_pct": max((row["memory_savings_pct"] for row in memory), default=0),
@@ -602,8 +669,10 @@ class PerformanceAnalyzer:
             if opt_mem_gb > max_memory_gb or opt_mem_gb > max_vram_gb:
                 continue
 
-            opt_latency_ms = b.get("optimized_time_ms") or b.get("baseline_time_ms") or 0
-            if opt_latency_ms > max_latency_ms:
+            opt_latency_ms = b.get("optimized_time_ms")
+            if max_latency_ms < 999999 and (
+                not _positive_measurement(opt_latency_ms) or opt_latency_ms > max_latency_ms
+            ):
                 continue
 
             opt_throughput = (b.get("throughput") or b.get("speedup", 1)) * 1000
@@ -701,9 +770,9 @@ class PerformanceAnalyzer:
         for b in benchmarks:
             power_w = b.get("gpu_power") or 0
             speedup = b.get("speedup", 1)
-            time_ms = b.get("optimized_time_ms") or b.get("baseline_time_ms") or 1
+            time_ms = b.get("optimized_time_ms")
 
-            if power_w > 0 and time_ms > 0:
+            if power_w > 0 and _positive_measurement(time_ms):
                 ops_per_watt = speedup / (power_w * time_ms / 1000)
                 efficiency_data.append(
                     {
@@ -805,8 +874,10 @@ class PerformanceAnalyzer:
             if speedup <= 1:
                 continue
 
-            baseline_time_ms = b.get("baseline_time_ms") or 100
-            optimized_time_ms = b.get("optimized_time_ms") or baseline_time_ms
+            baseline_time_ms = b.get("baseline_time_ms")
+            optimized_time_ms = b.get("optimized_time_ms")
+            if not _positive_measurement(baseline_time_ms) or not _positive_measurement(optimized_time_ms):
+                continue
 
             baseline_ops_per_hour = 3600 * 1000 / baseline_time_ms
             optimized_ops_per_hour = 3600 * 1000 / optimized_time_ms

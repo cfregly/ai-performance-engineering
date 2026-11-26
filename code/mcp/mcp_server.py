@@ -325,11 +325,14 @@ _EXPECTATION_OVERRIDES: Dict[str, str] = {
     "benchmark_compare_runs": "Diffs two benchmark JSON files; CPU-bound and quick, writes only if an output is specified.",
     "cluster_promote_run": (
         "Replaces cluster/published/current and writes report files when rendering is enabled. "
-        "With cleanup=true, removes eligible older run artifacts after publication."
+        "Recovers interrupted publications before installing a new package and records recovery under "
+        "steps.recover_publication. With cleanup=true, applies a revalidated cleanup plan after "
+        "publication. Eligibility follows the retained run IDs regardless of age."
     ),
     "cluster_watch_promote": (
         "Starts a detached process and writes watcher logs and status files. "
-        "The watcher can replace the published package and run cleanup after publication."
+        "The watcher recovers interrupted publications before installing a new package. "
+        "It can apply cleanup after publication when requested."
     ),
     "profile_nsys": "Calls Nsight Systems; requires nsys installed and writes .nsys-rep under artifacts/runs/<run_id>/profiles/tools/<tool>/<label>/ by default. Serialized via the MCP queue runner under artifacts/parallel_runs to prevent overlap. Slow/interactive; run status or triage first. Default preset is light; set preset=full for richer traces.",
     "profile_ncu": "Calls Nsight Compute; requires ncu installed and writes .ncu-rep under artifacts/runs/<run_id>/profiles/tools/<tool>/<label>/ by default. Serialized via the MCP queue runner under artifacts/parallel_runs to prevent overlap. Slow/interactive; run status or triage first. Defaults to memory_bound metric set; opt into heavier modes explicitly.",
@@ -515,6 +518,22 @@ TOOLS: Dict[str, ToolDefinition] = {}
 HANDLERS: Dict[str, callable] = {}
 
 
+class _PublicToolError(RuntimeError):
+    """An expected tool failure with a message written for the caller."""
+
+
+def _tool_integer(value: Any, name: str) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError, OverflowError):
+        raise _PublicToolError(f"{name} must be an integer") from None
+
+
+def _cluster_optional_timeout(params: Dict[str, Any]) -> Optional[int]:
+    timeout = params.get("timeout_seconds")
+    return None if timeout is None else _tool_integer(timeout, "timeout_seconds")
+
+
 def _unexpected_tool_error(name: str, exc: Exception) -> Dict[str, Any]:
     """Report an unexpected error without including its message in the MCP result."""
     error_type = type(exc).__name__
@@ -547,6 +566,8 @@ def register_tool(name: str, description: str, schema: Dict[str, Any] = None):
 
             try:
                 return func(call_params)
+            except _PublicToolError as exc:
+                return make_error(str(exc))
             except Exception as exc:
                 return _unexpected_tool_error(name, exc)
 
@@ -1772,7 +1793,7 @@ def _queue_runner_lock(queue_id: str, tool_name: str, queue_label: Optional[str]
         yield
         return
     if not _ensure_queue_artifacts():
-        raise RuntimeError(
+        raise _PublicToolError(
             "Queue runner unavailable: failed to initialize artifacts/parallel_runs."
         )
 
@@ -1795,7 +1816,7 @@ def _queue_runner_lock(queue_id: str, tool_name: str, queue_label: Optional[str]
                     )
                     wait_logged = True
                 if timeout > 0 and (time.monotonic() - started) >= timeout:
-                    raise RuntimeError(
+                    raise _PublicToolError(
                         f"Queue runner lock timeout after {timeout}s "
                         f"(tool={tool_name}, id={queue_id}, label={queue_label})"
                     )
@@ -2040,7 +2061,7 @@ def _run_with_queue(
     job_id: Optional[str] = None,
 ) -> Any:
     if not _ensure_queue_artifacts():
-        raise RuntimeError(
+        raise _PublicToolError(
             "Queue runner unavailable: failed to initialize artifacts/parallel_runs."
         )
     queue_id = job_id or f"{tool_name}-{uuid.uuid4().hex[:8]}"
@@ -4976,6 +4997,21 @@ def tool_system_capabilities(params: Dict[str, Any]) -> Dict[str, Any]:
     return attach_context_if_requested(result, include_context, context_level)
 
 
+def _call_benchmark_handler(
+    handler: Callable[[Dict[str, Any]], Dict[str, Any]], params: Dict[str, Any]
+) -> Dict[str, Any]:
+    from core.api.handlers import BenchmarkInputNotFoundError, BenchmarkRequestError
+
+    include_context, context_level = extract_context_opts(params)
+    try:
+        result = handler(params)
+    except BenchmarkInputNotFoundError as exc:
+        return make_error(str(exc), include_context, context_level, error_type="file_not_found")
+    except BenchmarkRequestError as exc:
+        return make_error(str(exc), include_context, context_level, error_type="value_error")
+    return attach_context_if_requested(result, include_context, context_level)
+
+
 @register_tool(
     "benchmark_data",
     "Tags: benchmark, data, table, pagination, filters. "
@@ -5033,9 +5069,7 @@ def tool_benchmark_data(params: Dict[str, Any]) -> Dict[str, Any]:
     """Fetch benchmark data with filters."""
     from core.api import handlers
 
-    include_context, context_level = extract_context_opts(params)
-    result = handlers.benchmark_data(params)
-    return attach_context_if_requested(result, include_context, context_level)
+    return _call_benchmark_handler(handlers.benchmark_data, params)
 
 
 @register_tool(
@@ -5051,9 +5085,7 @@ def tool_benchmark_overview(params: Dict[str, Any]) -> Dict[str, Any]:
     """Summarize latest benchmark results."""
     from core.api import handlers
 
-    include_context, context_level = extract_context_opts(params)
-    result = handlers.benchmark_overview(params)
-    return attach_context_if_requested(result, include_context, context_level)
+    return _call_benchmark_handler(handlers.benchmark_overview, params)
 
 
 @register_tool(
@@ -5127,9 +5159,7 @@ def tool_benchmark_opportunities(params: Dict[str, Any]) -> Dict[str, Any]:
     """Rank benchmark evidence by next optimization opportunity."""
     from core.api import handlers
 
-    include_context, context_level = extract_context_opts(params)
-    result = handlers.benchmark_opportunities(params)
-    return attach_context_if_requested(result, include_context, context_level)
+    return _call_benchmark_handler(handlers.benchmark_opportunities, params)
 
 
 @register_tool(
@@ -5201,9 +5231,7 @@ def tool_benchmark_compare(params: Dict[str, Any]) -> Dict[str, Any]:
     """Compare two benchmark runs."""
     from core.api import handlers
 
-    include_context, context_level = extract_context_opts(params)
-    result = handlers.benchmark_compare(params)
-    return attach_context_if_requested(result, include_context, context_level)
+    return _call_benchmark_handler(handlers.benchmark_compare, params)
 
 
 @register_tool(
@@ -5613,7 +5641,7 @@ def tool_benchmark_report(params: Dict[str, Any]) -> Dict[str, Any]:
 )
 def tool_benchmark_export(params: Dict[str, Any]) -> BenchmarkExportResult:
     """Export benchmark results without spawning the bench CLI."""
-    from core.analysis.performance_analyzer import PerformanceAnalyzer, load_benchmark_data
+    from core.analysis.performance_analyzer import load_benchmark_data
 
     include_context, context_level = extract_context_opts(params)
     fmt = normalize_param("format", params.get("format"), "csv")
@@ -5634,12 +5662,15 @@ def tool_benchmark_export(params: Dict[str, Any]) -> BenchmarkExportResult:
             context_level,
             data_file=str(data_path),
         )
+    try:
+        data = load_benchmark_data(data_path)
+    except (OSError, ValueError) as exc:
+        if data_path is None:
+            raise
+        return make_error(f"Failed to load benchmark data: {exc}", include_context, context_level)
+    benchmarks = data.get("benchmarks", [])
     output_path = Path(output) if output else Path(f"benchmark_export.{fmt}")
     _ensure_dir(output_path)
-
-    analyzer = PerformanceAnalyzer(lambda: load_benchmark_data(data_path))
-    data = analyzer._load_data() or {}
-    benchmarks = data.get("benchmarks", [])
 
     try:
         if fmt == "json":
@@ -5647,9 +5678,11 @@ def tool_benchmark_export(params: Dict[str, Any]) -> BenchmarkExportResult:
         elif fmt == "markdown":
             lines = ["| Benchmark | Speedup | Baseline (ms) | Type |", "|---|---|---|---|"]
             for b in benchmarks:
+                baseline = b.get("baseline_time_ms")
+                baseline_label = f"{baseline:.3f}" if baseline is not None else "N/A"
                 lines.append(
                     f"| {b.get('chapter')}:{b.get('name')} | {b.get('speedup', 0):.2f}x | "
-                    f"{b.get('baseline_time_ms', 0):.3f} | {b.get('type', 'python')} |"
+                    f"{baseline_label} | {b.get('type', 'python')} |"
                 )
             output_path.write_text("\n".join(lines))
         else:  # csv
@@ -5659,15 +5692,16 @@ def tool_benchmark_export(params: Dict[str, Any]) -> BenchmarkExportResult:
                 writer = csv.writer(f)
                 writer.writerow(["benchmark", "speedup", "baseline_ms", "type"])
                 for b in benchmarks:
+                    baseline = b.get("baseline_time_ms")
                     writer.writerow(
                         [
                             f"{b.get('chapter')}:{b.get('name')}",
                             f"{b.get('speedup', 0):.2f}",
-                            f"{b.get('baseline_time_ms', 0):.3f}",
+                            f"{baseline:.3f}" if baseline is not None else "",
                             b.get("type", "python"),
                         ]
                     )
-    except Exception as exc:
+    except OSError as exc:
         return make_error(
             f"failed to export benchmarks: {exc}",
             include_context,
@@ -5875,7 +5909,11 @@ def tool_benchmark_triage(params: Dict[str, Any]) -> Dict[str, Any]:
 
     # Identify patterns for recommendations
     slow_kernels = sorted(
-        (b for b in [*benchmarks, *diagnostics] if b["baseline_time_ms"] > 100),
+        (
+            b
+            for b in [*benchmarks, *diagnostics]
+            if b["baseline_time_ms"] is not None and b["baseline_time_ms"] > 100
+        ),
         key=lambda b: b["baseline_time_ms"],
         reverse=True,
     )
@@ -9999,26 +10037,23 @@ def tool_cluster_eval_suite(params: Dict[str, Any]) -> Dict[str, Any]:
     from core.cluster import run_cluster_eval_suite
 
     include_context, context_level = extract_context_opts(params)
-    try:
-        result = run_cluster_eval_suite(
-            mode=str(params.get("mode", "smoke")),
-            run_id=params.get("run_id"),
-            hosts=params.get("hosts") if isinstance(params.get("hosts"), list) else None,
-            labels=params.get("labels") if isinstance(params.get("labels"), list) else None,
-            ssh_user=params.get("ssh_user"),
-            ssh_key=params.get("ssh_key"),
-            oob_if=params.get("oob_if"),
-            socket_ifname=params.get("socket_ifname"),
-            nccl_ib_hca=params.get("nccl_ib_hca"),
-            primary_label=params.get("primary_label"),
-            extra_args=params.get("extra_args")
-            if isinstance(params.get("extra_args"), list)
-            else None,
-            timeout_seconds=params.get("timeout_seconds"),
-        )
-        return attach_context_if_requested(result, include_context, context_level)
-    except Exception as e:
-        return make_error(f"cluster eval suite failed: {e}", include_context, context_level)
+    result = run_cluster_eval_suite(
+        mode=str(params.get("mode", "smoke")),
+        run_id=params.get("run_id"),
+        hosts=params.get("hosts") if isinstance(params.get("hosts"), list) else None,
+        labels=params.get("labels") if isinstance(params.get("labels"), list) else None,
+        ssh_user=params.get("ssh_user"),
+        ssh_key=params.get("ssh_key"),
+        oob_if=params.get("oob_if"),
+        socket_ifname=params.get("socket_ifname"),
+        nccl_ib_hca=params.get("nccl_ib_hca"),
+        primary_label=params.get("primary_label"),
+        extra_args=params.get("extra_args")
+        if isinstance(params.get("extra_args"), list)
+        else None,
+        timeout_seconds=_cluster_optional_timeout(params),
+    )
+    return attach_context_if_requested(result, include_context, context_level)
 
 
 @register_tool(
@@ -10114,37 +10149,34 @@ def tool_cluster_common_eval(params: Dict[str, Any]) -> Dict[str, Any]:
     from core.cluster import run_cluster_common_eval
 
     include_context, context_level = extract_context_opts(params)
-    try:
-        result = run_cluster_common_eval(
-            preset=str(params.get("preset", "core-system")),
-            run_id=params.get("run_id"),
-            hosts=params.get("hosts") if isinstance(params.get("hosts"), list) else None,
-            labels=params.get("labels") if isinstance(params.get("labels"), list) else None,
-            ssh_user=params.get("ssh_user"),
-            ssh_key=params.get("ssh_key"),
-            oob_if=params.get("oob_if"),
-            socket_ifname=params.get("socket_ifname"),
-            nccl_ib_hca=params.get("nccl_ib_hca"),
-            nmx_url=params.get("nmx_url"),
-            nmx_token=params.get("nmx_token"),
-            ib_mgmt_host=params.get("ib_mgmt_host"),
-            ib_mgmt_user=params.get("ib_mgmt_user"),
-            ib_mgmt_ssh_key=params.get("ib_mgmt_ssh_key"),
-            cumulus_hosts=params.get("cumulus_hosts")
-            if isinstance(params.get("cumulus_hosts"), list)
-            else None,
-            cumulus_user=params.get("cumulus_user"),
-            cumulus_ssh_key=params.get("cumulus_ssh_key"),
-            primary_label=params.get("primary_label"),
-            coverage_baseline_run_id=params.get("coverage_baseline_run_id"),
-            extra_args=params.get("extra_args")
-            if isinstance(params.get("extra_args"), list)
-            else None,
-            timeout_seconds=params.get("timeout_seconds"),
-        )
-        return attach_context_if_requested(result, include_context, context_level)
-    except Exception as e:
-        return make_error(f"common cluster eval failed: {e}", include_context, context_level)
+    result = run_cluster_common_eval(
+        preset=str(params.get("preset", "core-system")),
+        run_id=params.get("run_id"),
+        hosts=params.get("hosts") if isinstance(params.get("hosts"), list) else None,
+        labels=params.get("labels") if isinstance(params.get("labels"), list) else None,
+        ssh_user=params.get("ssh_user"),
+        ssh_key=params.get("ssh_key"),
+        oob_if=params.get("oob_if"),
+        socket_ifname=params.get("socket_ifname"),
+        nccl_ib_hca=params.get("nccl_ib_hca"),
+        nmx_url=params.get("nmx_url"),
+        nmx_token=params.get("nmx_token"),
+        ib_mgmt_host=params.get("ib_mgmt_host"),
+        ib_mgmt_user=params.get("ib_mgmt_user"),
+        ib_mgmt_ssh_key=params.get("ib_mgmt_ssh_key"),
+        cumulus_hosts=params.get("cumulus_hosts")
+        if isinstance(params.get("cumulus_hosts"), list)
+        else None,
+        cumulus_user=params.get("cumulus_user"),
+        cumulus_ssh_key=params.get("cumulus_ssh_key"),
+        primary_label=params.get("primary_label"),
+        coverage_baseline_run_id=params.get("coverage_baseline_run_id"),
+        extra_args=params.get("extra_args")
+        if isinstance(params.get("extra_args"), list)
+        else None,
+        timeout_seconds=_cluster_optional_timeout(params),
+    )
+    return attach_context_if_requested(result, include_context, context_level)
 
 
 @register_tool(
@@ -10233,37 +10265,34 @@ def tool_cluster_fabric_eval(params: Dict[str, Any]) -> Dict[str, Any]:
     from core.cluster import run_cluster_fabric_eval
 
     include_context, context_level = extract_context_opts(params)
-    try:
-        result = run_cluster_fabric_eval(
-            run_id=params.get("run_id"),
-            hosts=params.get("hosts") if isinstance(params.get("hosts"), list) else None,
-            labels=params.get("labels") if isinstance(params.get("labels"), list) else None,
-            ssh_user=params.get("ssh_user"),
-            ssh_key=params.get("ssh_key"),
-            oob_if=params.get("oob_if"),
-            socket_ifname=params.get("socket_ifname"),
-            nccl_ib_hca=params.get("nccl_ib_hca"),
-            nmx_url=params.get("nmx_url"),
-            nmx_token=params.get("nmx_token"),
-            ib_mgmt_host=params.get("ib_mgmt_host"),
-            ib_mgmt_user=params.get("ib_mgmt_user"),
-            ib_mgmt_ssh_key=params.get("ib_mgmt_ssh_key"),
-            cumulus_hosts=params.get("cumulus_hosts")
-            if isinstance(params.get("cumulus_hosts"), list)
-            else None,
-            cumulus_user=params.get("cumulus_user"),
-            cumulus_ssh_key=params.get("cumulus_ssh_key"),
-            primary_label=params.get("primary_label"),
-            coverage_baseline_run_id=params.get("coverage_baseline_run_id"),
-            extra_args=params.get("extra_args")
-            if isinstance(params.get("extra_args"), list)
-            else None,
-            require_management_plane=bool(params.get("require_management_plane", False)),
-            timeout_seconds=params.get("timeout_seconds"),
-        )
-        return attach_context_if_requested(result, include_context, context_level)
-    except Exception as e:
-        return make_error(f"fabric cluster eval failed: {e}", include_context, context_level)
+    result = run_cluster_fabric_eval(
+        run_id=params.get("run_id"),
+        hosts=params.get("hosts") if isinstance(params.get("hosts"), list) else None,
+        labels=params.get("labels") if isinstance(params.get("labels"), list) else None,
+        ssh_user=params.get("ssh_user"),
+        ssh_key=params.get("ssh_key"),
+        oob_if=params.get("oob_if"),
+        socket_ifname=params.get("socket_ifname"),
+        nccl_ib_hca=params.get("nccl_ib_hca"),
+        nmx_url=params.get("nmx_url"),
+        nmx_token=params.get("nmx_token"),
+        ib_mgmt_host=params.get("ib_mgmt_host"),
+        ib_mgmt_user=params.get("ib_mgmt_user"),
+        ib_mgmt_ssh_key=params.get("ib_mgmt_ssh_key"),
+        cumulus_hosts=params.get("cumulus_hosts")
+        if isinstance(params.get("cumulus_hosts"), list)
+        else None,
+        cumulus_user=params.get("cumulus_user"),
+        cumulus_ssh_key=params.get("cumulus_ssh_key"),
+        primary_label=params.get("primary_label"),
+        coverage_baseline_run_id=params.get("coverage_baseline_run_id"),
+        extra_args=params.get("extra_args")
+        if isinstance(params.get("extra_args"), list)
+        else None,
+        require_management_plane=bool(params.get("require_management_plane", False)),
+        timeout_seconds=_cluster_optional_timeout(params),
+    )
+    return attach_context_if_requested(result, include_context, context_level)
 
 
 @register_tool(
@@ -10309,18 +10338,15 @@ def tool_cluster_nmx_partition_lab(params: Dict[str, Any]) -> Dict[str, Any]:
     from core.cluster import build_cluster_nmx_partition_lab
 
     include_context, context_level = extract_context_opts(params)
-    try:
-        result = build_cluster_nmx_partition_lab(
-            nmx_url=params.get("nmx_url"),
-            nmx_token=params.get("nmx_token"),
-            alpha_name=str(params.get("alpha_name") or "AlphaPartition"),
-            beta_name=str(params.get("beta_name") or "BetaPartition"),
-            alpha_size=int(params.get("alpha_size", 4) or 4),
-            beta_size=int(params.get("beta_size", 4) or 4),
-        )
-        return attach_context_if_requested(result, include_context, context_level)
-    except Exception as e:
-        return make_error(f"nmx partition lab helper failed: {e}", include_context, context_level)
+    result = build_cluster_nmx_partition_lab(
+        nmx_url=params.get("nmx_url"),
+        nmx_token=params.get("nmx_token"),
+        alpha_name=str(params.get("alpha_name") or "AlphaPartition"),
+        beta_name=str(params.get("beta_name") or "BetaPartition"),
+        alpha_size=_tool_integer(params.get("alpha_size") or 4, "alpha_size"),
+        beta_size=_tool_integer(params.get("beta_size") or 4, "beta_size"),
+    )
+    return attach_context_if_requested(result, include_context, context_level)
 
 
 @register_tool(
@@ -10364,28 +10390,26 @@ def tool_cluster_build_canonical_package(params: Dict[str, Any]) -> Dict[str, An
     from core.cluster import build_canonical_package
 
     include_context, context_level = extract_context_opts(params)
-    try:
-        result = build_canonical_package(
-            canonical_run_id=str(params.get("canonical_run_id") or ""),
-            comparison_run_ids=params.get("comparison_run_ids")
-            if isinstance(params.get("comparison_run_ids"), list)
-            else None,
-            historical_run_ids=params.get("historical_run_ids")
-            if isinstance(params.get("historical_run_ids"), list)
-            else None,
-            output_dir=params.get("output_dir"),
-            timeout_seconds=int(params.get("timeout_seconds", 300) or 300),
-        )
-        return attach_context_if_requested(result, include_context, context_level)
-    except Exception as e:
-        return make_error(f"canonical package build failed: {e}", include_context, context_level)
+    result = build_canonical_package(
+        canonical_run_id=str(params.get("canonical_run_id") or ""),
+        comparison_run_ids=params.get("comparison_run_ids")
+        if isinstance(params.get("comparison_run_ids"), list)
+        else None,
+        historical_run_ids=params.get("historical_run_ids")
+        if isinstance(params.get("historical_run_ids"), list)
+        else None,
+        output_dir=params.get("output_dir"),
+        timeout_seconds=_tool_integer(params.get("timeout_seconds") or 300, "timeout_seconds"),
+    )
+    return attach_context_if_requested(result, include_context, context_level)
 
 
 @register_tool(
     "cluster_promote_run",
     "Tags: cluster, publish, promote, canonical, localhost, reports. "
     "Replace the published cluster package with artifacts from a completed run. "
-    "Returns: {success, run_id, published_root, published_structured_dir, published_localhost_report_path, steps}.",
+    "Returns: {success, published, run_id, published_root, published_structured_dir, published_localhost_report_path, steps}. "
+    "`published` is true once the requested package is installed. A later cleanup failure can leave `success` false.",
     {
         "type": "object",
         "properties": with_context_params(
@@ -10399,20 +10423,20 @@ def tool_cluster_build_canonical_package(params: Dict[str, Any]) -> Dict[str, An
                 "allow_run_ids": {
                     "type": "array",
                     "items": {"type": "string"},
-                    "description": "Additional run ids to retain during cleanup/validation hygiene checks",
+                    "description": "Additional run IDs to retain when cleanup is requested",
                 },
                 "publish_report_path": {
                     "type": "string",
-                    "description": "Published localhost report path",
+                    "description": "Published localhost report path relative to the repository root, or an absolute path",
                 },
                 "publish_notes_path": {
                     "type": "string",
-                    "description": "Published localhost notes path",
+                    "description": "Published localhost notes path relative to the repository root, or an absolute path",
                 },
                 "skip_render_localhost_report": {
                     "type": "boolean",
                     "default": False,
-                    "description": "Skip rendering run-local + published localhost report markdown",
+                    "description": "Use existing published localhost Markdown instead of rendering new variants",
                 },
                 "skip_validate_localhost_report": {
                     "type": "boolean",
@@ -10422,7 +10446,7 @@ def tool_cluster_build_canonical_package(params: Dict[str, Any]) -> Dict[str, An
                 "cleanup": {
                     "type": "boolean",
                     "default": False,
-                    "description": "Run cleanup_run_artifacts.sh after promotion using this run_id as canonical",
+                    "description": "Apply a revalidated cleanup plan after publication, retaining the promoted run and allowlist",
                 },
                 "timeout_seconds": {
                     "type": "integer",
@@ -10441,31 +10465,28 @@ def tool_cluster_promote_run(params: Dict[str, Any]) -> Dict[str, Any]:
     from core.cluster import promote_cluster_run
 
     include_context, context_level = extract_context_opts(params)
-    try:
-        run_id = str(params.get("run_id") or "").strip()
-        if not run_id:
-            return make_error("run_id is required", include_context, context_level)
-        rr = params.get("repo_root")
-        repo_root_val = str(rr).strip() if isinstance(rr, str) and rr.strip() else None
-        result = promote_cluster_run(
-            run_id=run_id,
-            label=str(params.get("label") or "localhost"),
-            allow_run_ids=params.get("allow_run_ids")
-            if isinstance(params.get("allow_run_ids"), list)
-            else None,
-            publish_report_path=params.get("publish_report_path"),
-            publish_notes_path=params.get("publish_notes_path"),
-            skip_render_localhost_report=bool(params.get("skip_render_localhost_report", False)),
-            skip_validate_localhost_report=bool(
-                params.get("skip_validate_localhost_report", False)
-            ),
-            cleanup=bool(params.get("cleanup", False)),
-            timeout_seconds=int(params.get("timeout_seconds", 300) or 300),
-            repo_root=repo_root_val,
-        )
-        return attach_context_if_requested(result, include_context, context_level)
-    except Exception as e:
-        return make_error(f"promote run failed: {e}", include_context, context_level)
+    run_id = str(params.get("run_id") or "").strip()
+    if not run_id:
+        return make_error("run_id is required", include_context, context_level)
+    rr = params.get("repo_root")
+    repo_root_val = str(rr).strip() if isinstance(rr, str) and rr.strip() else None
+    result = promote_cluster_run(
+        run_id=run_id,
+        label=str(params.get("label") or "localhost"),
+        allow_run_ids=params.get("allow_run_ids")
+        if isinstance(params.get("allow_run_ids"), list)
+        else None,
+        publish_report_path=params.get("publish_report_path"),
+        publish_notes_path=params.get("publish_notes_path"),
+        skip_render_localhost_report=bool(params.get("skip_render_localhost_report", False)),
+        skip_validate_localhost_report=bool(
+            params.get("skip_validate_localhost_report", False)
+        ),
+        cleanup=bool(params.get("cleanup", False)),
+        timeout_seconds=_tool_integer(params.get("timeout_seconds") or 300, "timeout_seconds"),
+        repo_root=repo_root_val,
+    )
+    return attach_context_if_requested(result, include_context, context_level)
 
 
 @register_tool(
@@ -10492,15 +10513,15 @@ def tool_cluster_promote_run(params: Dict[str, Any]) -> Dict[str, Any]:
                 "allow_run_ids": {
                     "type": "array",
                     "items": {"type": "string"},
-                    "description": "Additional run ids to retain during cleanup/validation hygiene checks",
+                    "description": "Additional run IDs to retain when cleanup is requested",
                 },
                 "publish_report_path": {
                     "type": "string",
-                    "description": "Published localhost report path",
+                    "description": "Published localhost report path relative to the repository root, or an absolute path",
                 },
                 "publish_notes_path": {
                     "type": "string",
-                    "description": "Published localhost notes path",
+                    "description": "Published localhost notes path relative to the repository root, or an absolute path",
                 },
                 "repo_root": {
                     "type": "string",
@@ -10509,7 +10530,7 @@ def tool_cluster_promote_run(params: Dict[str, Any]) -> Dict[str, Any]:
                 "skip_render_localhost_report": {
                     "type": "boolean",
                     "default": False,
-                    "description": "Skip rendering run-local + published localhost report markdown",
+                    "description": "Use existing published localhost Markdown instead of rendering new variants",
                 },
                 "skip_validate_localhost_report": {
                     "type": "boolean",
@@ -10519,7 +10540,7 @@ def tool_cluster_promote_run(params: Dict[str, Any]) -> Dict[str, Any]:
                 "cleanup": {
                     "type": "boolean",
                     "default": False,
-                    "description": "Run cleanup_run_artifacts.sh after promotion using this run_id as canonical",
+                    "description": "Apply a revalidated cleanup plan after publication, retaining the promoted run and allowlist",
                 },
                 "poll_interval_seconds": {
                     "type": "number",
@@ -10534,37 +10555,38 @@ def tool_cluster_watch_promote(params: Dict[str, Any]) -> Dict[str, Any]:
     from core.cluster import watch_cluster_run_for_promotion
 
     include_context, context_level = extract_context_opts(params)
+    run_id = str(params.get("run_id") or "").strip()
+    if not run_id:
+        return make_error("run_id is required", include_context, context_level)
+    pid_raw = params.get("pid")
     try:
-        run_id = str(params.get("run_id") or "").strip()
-        if not run_id:
-            return make_error("run_id is required", include_context, context_level)
-        pid_raw = params.get("pid")
-        try:
-            pid = int(pid_raw)
-        except (TypeError, ValueError):
-            return make_error("pid must be an integer", include_context, context_level)
-        rr = params.get("repo_root")
-        repo_root_val = str(rr).strip() if isinstance(rr, str) and rr.strip() else None
-        result = watch_cluster_run_for_promotion(
-            run_id=run_id,
-            pid=pid,
-            label=str(params.get("label") or "localhost"),
-            allow_run_ids=params.get("allow_run_ids")
-            if isinstance(params.get("allow_run_ids"), list)
-            else None,
-            publish_report_path=params.get("publish_report_path"),
-            publish_notes_path=params.get("publish_notes_path"),
-            skip_render_localhost_report=bool(params.get("skip_render_localhost_report", False)),
-            skip_validate_localhost_report=bool(
-                params.get("skip_validate_localhost_report", False)
-            ),
-            cleanup=bool(params.get("cleanup", False)),
-            poll_interval_seconds=float(params.get("poll_interval_seconds", 30.0) or 30.0),
-            repo_root=repo_root_val,
-        )
-        return attach_context_if_requested(result, include_context, context_level)
-    except Exception as e:
-        return make_error(f"watch promote failed: {e}", include_context, context_level)
+        pid = int(pid_raw)
+    except (TypeError, ValueError, OverflowError):
+        return make_error("pid must be an integer", include_context, context_level)
+    try:
+        poll_interval = float(params.get("poll_interval_seconds", 30.0) or 30.0)
+    except (TypeError, ValueError, OverflowError):
+        return make_error("poll_interval_seconds must be a number", include_context, context_level)
+    rr = params.get("repo_root")
+    repo_root_val = str(rr).strip() if isinstance(rr, str) and rr.strip() else None
+    result = watch_cluster_run_for_promotion(
+        run_id=run_id,
+        pid=pid,
+        label=str(params.get("label") or "localhost"),
+        allow_run_ids=params.get("allow_run_ids")
+        if isinstance(params.get("allow_run_ids"), list)
+        else None,
+        publish_report_path=params.get("publish_report_path"),
+        publish_notes_path=params.get("publish_notes_path"),
+        skip_render_localhost_report=bool(params.get("skip_render_localhost_report", False)),
+        skip_validate_localhost_report=bool(
+            params.get("skip_validate_localhost_report", False)
+        ),
+        cleanup=bool(params.get("cleanup", False)),
+        poll_interval_seconds=poll_interval,
+        repo_root=repo_root_val,
+    )
+    return attach_context_if_requested(result, include_context, context_level)
 
 
 @register_tool(
@@ -10593,6 +10615,15 @@ def tool_cluster_watch_promote(params: Dict[str, Any]) -> Dict[str, Any]:
                     "type": "string",
                     "description": "Path to advanced-runbook.md (default: cluster/docs/advanced-runbook.md)",
                 },
+                "published_root": {
+                    "type": "string",
+                    "description": "Staged package used to resolve the manifest and published artifact links",
+                },
+                "package_only": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "Run package, report identity, and link checks while skipping stale artifact hygiene",
+                },
                 "canonical_run_id": {
                     "type": "string",
                     "description": "Expected canonical run id (optional)",
@@ -10615,20 +10646,25 @@ def tool_cluster_validate_field_report(params: Dict[str, Any]) -> Dict[str, Any]
     from core.cluster import validate_field_report_requirements
 
     include_context, context_level = extract_context_opts(params)
-    try:
-        allow = params.get("allow_run_id") if isinstance(params.get("allow_run_id"), list) else None
-        result = validate_field_report_requirements(
-            report=params.get("report"),
-            notes=params.get("notes"),
-            template=params.get("template"),
-            runbook=params.get("runbook"),
-            canonical_run_id=params.get("canonical_run_id"),
-            allow_run_id=allow,
-            timeout_seconds=int(params.get("timeout_seconds", 120) or 120),
-        )
-        return attach_context_if_requested(result, include_context, context_level)
-    except Exception as e:
-        return make_error(f"field report validation failed: {e}", include_context, context_level)
+    allow = params.get("allow_run_id") if isinstance(params.get("allow_run_id"), list) else None
+    published_root = params.get("published_root")
+    if published_root is not None and not isinstance(published_root, str):
+        return make_error("published_root must be a path string", include_context, context_level)
+    package_only = params.get("package_only", False)
+    if not isinstance(package_only, bool):
+        return make_error("package_only must be a boolean", include_context, context_level)
+    result = validate_field_report_requirements(
+        report=params.get("report"),
+        notes=params.get("notes"),
+        template=params.get("template"),
+        runbook=params.get("runbook"),
+        published_root=published_root,
+        package_only=package_only,
+        canonical_run_id=params.get("canonical_run_id"),
+        allow_run_id=allow,
+        timeout_seconds=_tool_integer(params.get("timeout_seconds") or 120, "timeout_seconds"),
+    )
+    return attach_context_if_requested(result, include_context, context_level)
 
 
 @register_tool(
