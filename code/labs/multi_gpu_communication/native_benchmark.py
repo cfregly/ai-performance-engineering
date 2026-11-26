@@ -3,20 +3,31 @@
 from __future__ import annotations
 
 import argparse
-from dataclasses import replace
 import os
-from pathlib import Path
 import shutil
-import subprocess
 import tempfile
+from dataclasses import replace
+from pathlib import Path
 
 import torch
 
-from core.benchmark.cuda_binary_benchmark import BinaryRunResult, CudaBinaryBenchmark, detect_supported_arch
+from core.benchmark.cuda_binary_benchmark import (
+    BinaryRunResult,
+    CudaBinaryBenchmark,
+    detect_supported_arch,
+)
 from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import BenchmarkConfig
+from core.utils.cooperative_process_artifacts import (
+    require_owned_uncapped_native_config,
+    run_recorded_cooperative_process,
+)
 from labs.multi_gpu_communication.native_common import (
-    LAB_DIR, NativeUnavailable, NativeWorkload, invoke_native, require_unprofiled_native_config,
+    LAB_DIR,
+    NativeUnavailable,
+    NativeWorkload,
+    invoke_native,
+    require_unprofiled_native_config,
 )
 
 
@@ -24,6 +35,7 @@ class NativeJacobiBenchmark(CudaBinaryBenchmark):
     """Use maximum-rank native timing and retain every element of the timed output."""
 
     multi_gpu_required = True
+    supports_uncapped_execution = True
 
     def __init__(self, *, overlapped: bool) -> None:
         super().__init__(
@@ -42,9 +54,13 @@ class NativeJacobiBenchmark(CudaBinaryBenchmark):
         self._input_parameters: torch.Tensor | None = None
         self.register_workload_metadata(requests_per_iteration=1.0)
 
+    def _build_architecture(self) -> str:
+        return detect_supported_arch()
+
     def setup(self) -> None:
-        self.workload.validate()
         config = getattr(self, "_config", None)
+        require_owned_uncapped_native_config(config, launcher_name="Native Jacobi harness execution")
+        self.workload.validate()
         require_unprofiled_native_config(config)
         if shutil.which("nvcc") is None and not Path("/usr/local/cuda/bin/nvcc").is_file():
             raise NativeUnavailable("SKIPPED: The native communication lab requires nvcc")
@@ -52,23 +68,45 @@ class NativeJacobiBenchmark(CudaBinaryBenchmark):
             raise NativeUnavailable("SKIPPED: The native communication lab requires mpicxx and mpirun")
         if self.workload.backend == "nvshmem" and not os.environ.get("NVSHMEM_HOME"):
             raise NativeUnavailable("SKIPPED: Set NVSHMEM_HOME for the explicit native NVSHMEM build")
-        architecture = detect_supported_arch()
-        command = ["make", f"ARCH={architecture}", "NVTX_ENABLED=1", "WITH_NCCL=1",
-                   f"WITH_NVSHMEM={int(self.workload.backend == 'nvshmem')}", "jacobi_native"]
-        completed = subprocess.run(command, cwd=LAB_DIR, capture_output=True, text=True, check=False)
-        if completed.returncode != 0:
-            raise RuntimeError(f"Native build failed\n{completed.stdout}\n{completed.stderr}")
-        self.exec_path = LAB_DIR / "jacobi_native"
+        architecture = self._build_architecture()
         configured_output = getattr(config, "profiling_output_dir", None)
-        artifact_root = Path(configured_output) if configured_output else LAB_DIR.parents[1] / "artifacts" / "multi_gpu_communication"
+        artifact_root = (
+            Path(configured_output)
+            if configured_output
+            else LAB_DIR.parents[1] / "artifacts" / "multi_gpu_communication"
+        )
         artifact_root.mkdir(parents=True, exist_ok=True)
-        self._directory = Path(tempfile.mkdtemp(prefix=f"{self.workload.schedule}_", dir=artifact_root))
+        self._directory = Path(
+            tempfile.mkdtemp(prefix=f"{self.workload.schedule}_", dir=artifact_root)
+        )
+        command = [
+            "make",
+            "-C",
+            str(LAB_DIR),
+            f"ARCH={architecture}",
+            "NVTX_ENABLED=1",
+            "WITH_NCCL=1",
+            f"WITH_NVSHMEM={int(self.workload.backend == 'nvshmem')}",
+            "jacobi_native",
+        ]
+        completed = run_recorded_cooperative_process(
+            command,
+            output_prefix=self._directory / "native_build",
+        )
+        if completed["returncode"] != 0:
+            raise RuntimeError(
+                f"Native build failed\n{completed['stdout']}\n{completed['stderr']}"
+            )
+        self.exec_path = LAB_DIR / "jacobi_native"
         self._input_parameters = torch.tensor(
             [self.workload.nx, self.workload.ny, self.workload.iterations, self.workload.ranks],
             dtype=torch.int64,
         )
 
     def _run_once(self) -> BinaryRunResult:
+        require_owned_uncapped_native_config(
+            getattr(self, "_config", None), launcher_name="Native Jacobi harness execution"
+        )
         if self._directory is None or self.exec_path is None:
             raise RuntimeError("setup() must complete before running native Jacobi")
         self._invocations += 1

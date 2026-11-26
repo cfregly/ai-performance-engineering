@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import io
 import json
 import sys
@@ -111,13 +110,37 @@ def test_mcp_tool_exception_does_not_expose_internal_details(
 
 
 def test_handle_message_rejects_non_object_without_crashing() -> None:
-    response = asyncio.run(mcp_server.MCPServer().handle_message([]))  # type: ignore[arg-type]
+    response = mcp_server.MCPServer().handle_message([])  # type: ignore[arg-type]
 
     assert response == {
         "jsonrpc": "2.0",
         "id": None,
         "error": {"code": -32600, "message": "Invalid Request: message must be an object"},
     }
+
+
+def test_mcp_protocol_round_trip() -> None:
+    server = mcp_server.MCPServer()
+    init = server.handle_message({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}})
+    assert init and init["result"]["protocolVersion"] == "2024-11-05"
+
+    tool_list = server.handle_message({"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}})
+    assert tool_list and "tools" in tool_list["result"]
+
+    sample_tool = "status"
+    call = server.handle_message({
+        "jsonrpc": "2.0", "id": 3, "method": "tools/call",
+        "params": {"name": sample_tool, "arguments": {}},
+    })
+    assert call
+    entry = call["result"]["content"][0]
+    if entry["type"] == "text":
+        payload = json.loads(entry["text"])
+    elif entry["type"] == "application/json":
+        payload = entry["json"]
+    else:
+        raise AssertionError(f"Unexpected content type: {entry['type']}")
+    assert payload["tool"] == sample_tool
 
 
 @pytest.mark.parametrize(
@@ -133,7 +156,7 @@ def test_handle_message_rejects_non_object_without_crashing() -> None:
     ],
 )
 def test_handle_message_rejects_invalid_mcp_params(message: dict[str, Any]) -> None:
-    response = asyncio.run(mcp_server.MCPServer().handle_message(message))
+    response = mcp_server.MCPServer().handle_message(message)
 
     assert response is not None
     assert response["error"]["code"] == -32602
@@ -146,7 +169,7 @@ def test_stdio_emits_parse_error_without_echoing_input(
     secret = "malformed-secret-value"
     monkeypatch.setattr(sys, "stdin", io.StringIO(f'{{"secret":"{secret}"\n'))
 
-    asyncio.run(mcp_server.MCPServer().run_stdio())
+    mcp_server.MCPServer().run_stdio()
 
     captured = capsys.readouterr()
     response = json.loads(captured.out)

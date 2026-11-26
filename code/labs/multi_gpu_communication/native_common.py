@@ -8,9 +8,9 @@ import json
 import math
 from pathlib import Path
 import shutil
-import subprocess
 from typing import Any
 
+from core.utils.cooperative_process_artifacts import run_recorded_cooperative_process
 
 LAB_DIR = Path(__file__).resolve().parent
 SCHEMA = "multi_gpu_communication.v1"
@@ -157,22 +157,29 @@ def invoke_native(
     executable = shutil.which(launcher)
     if executable is None:
         raise NativeUnavailable(f"SKIPPED: MPI launcher {launcher!r} is unavailable")
-    paths = [json_out] + ([dump_output.resolve()] if dump_output is not None else [])
+    paths = [json_out, *[json_out.with_name(json_out.name + suffix) for suffix in (
+        ".stdout.log", ".stderr.log", ".execution.json",
+    )]] + ([dump_output.resolve()] if dump_output is not None else [])
+    if len(set(paths)) != len(paths):
+        raise ValueError("Native outputs and launcher diagnostics must use different paths")
     for path in paths:
-        if path.exists():
+        if path.exists() or path.is_symlink():
             raise FileExistsError(f"Refusing to reuse an existing native artifact: {path}")
         path.parent.mkdir(parents=True, exist_ok=True)
     command = [executable, *launcher_args, "-np", str(workload.ranks), str(binary),
                *arguments, "--json-out", str(json_out)]
     if dump_output is not None:
         command.extend(["--dump-output", str(dump_output.resolve())])
-    completed = subprocess.run(command, capture_output=True, text=True, check=False)
-    if completed.returncode != 0:
-        lines = (completed.stdout + "\n" + completed.stderr).splitlines()
+    completed = run_recorded_cooperative_process(command, output_prefix=json_out)
+    if completed["returncode"] != 0:
+        lines = (completed["stdout"] + "\n" + completed["stderr"]).splitlines()
         skip = next((line[line.index("SKIPPED:"):] for line in lines if "SKIPPED:" in line), None)
         if skip is not None:
             raise NativeUnavailable(skip)
-        raise RuntimeError(f"Native run failed with exit {completed.returncode}\n{completed.stdout}\n{completed.stderr}")
+        raise RuntimeError(
+            f"Native run failed with exit {completed['returncode']}\n"
+            f"{completed['stdout']}\n{completed['stderr']}"
+        )
     if not json_out.is_file():
         raise RuntimeError("The native process exited without its requested result artifact")
     result = json.loads(json_out.read_text())
@@ -185,6 +192,7 @@ def invoke_native(
     result["build"] = build
     result["binary_sha256"] = binary_hash
     result["command"] = command
-    result["process_exit_code"] = completed.returncode
+    result["process_exit_code"] = completed["returncode"]
+    result["execution_path"] = completed["artifact_paths"]["execution"]
     json_out.write_text(json.dumps(result, indent=2) + "\n")
     return result

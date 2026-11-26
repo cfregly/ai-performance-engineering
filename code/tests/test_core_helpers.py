@@ -475,6 +475,7 @@ def test_profile_nsys_full_uses_supported_cuda_trace_categories(tmp_path: Path, 
         command=[sys.executable, "-c", "print('ok')"],
         output_name="full_trace",
         preset="full",
+        timeout_seconds=30,
     )
 
     assert result == tmp_path / "full_trace.nsys-rep"

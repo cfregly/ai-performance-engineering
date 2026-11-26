@@ -52,6 +52,10 @@ from core.analysis.performance_analyzer import (
     load_benchmark_data as load_benchmark_results,
 )
 from core.plugins.loader import load_plugin_apps
+from core.utils.execution_timeouts import (
+    validate_execution_timeout_mode,
+    validate_execution_timeout_seconds,
+)
 from core.utils.warning_filters import (
     suppress_known_cuda_capability_warnings,
     warn_optional_component_unavailable,
@@ -371,6 +375,28 @@ def _apply_suite_timeout(seconds: Optional[int]):
     else:
         signal.alarm(int(seconds))
     return _restore
+
+
+def _validate_execution_suite_timeout(
+    execution_timeout_seconds: Optional[int], suite_timeout: Optional[int],
+) -> None:
+    """Require an explicitly disabled suite alarm for uncapped execution."""
+    if execution_timeout_seconds == 0 and suite_timeout != 0:
+        raise ValueError(
+            "execution_timeout_seconds=0 requires suite_timeout=0 "
+            "(--suite-timeout 0) so the suite cannot abandon its owned worker."
+        )
+
+
+def _validate_execution_watchdog(execution_timeout_seconds: Optional[int]) -> None:
+    """Reject a timing watchdog that can forcibly stop uncapped execution."""
+    if execution_timeout_seconds == 0 and os.environ.get(
+        "AISP_STALE_WATCH_TIMING", "0"
+    ).strip().lower() in {"1", "true", "yes", "on"}:
+        raise ValueError(
+            "execution_timeout_seconds=0 is incompatible with AISP_STALE_WATCH_TIMING. "
+            "Unset AISP_STALE_WATCH_TIMING to keep timing execution uncapped."
+        )
 
 
 def _read_progress_payload_for_heartbeat(
@@ -781,6 +807,7 @@ def _execute_benchmarks(
     profile_type: str = "minimal",
     suite_timeout: Optional[int] = 14400,
     timeout_multiplier: float = 3.0,
+    execution_timeout_seconds: Optional[int] = None,
     validity_profile: str = "strict",
     allow_foreign_gpu_processes: bool = False,
     allow_portable_expectations_update: bool = False,
@@ -831,6 +858,12 @@ def _execute_benchmarks(
     enforce_external_assets: Optional[bool] = None,
 ) -> Dict[str, Any]:
     """Execute selected benchmarks with optional profiling."""
+    execution_timeout_seconds = validate_execution_timeout_seconds(execution_timeout_seconds)
+    validate_execution_timeout_mode(
+        execution_timeout_seconds, execution_mode="subprocess", launch_via=launch_via,
+    )
+    _validate_execution_suite_timeout(execution_timeout_seconds, suite_timeout)
+    _validate_execution_watchdog(execution_timeout_seconds)
     validity_profile = _validate_validity_profile(validity_profile)
     portable_mode = validity_profile == "portable"
     allow_virtualization = portable_mode
@@ -1154,6 +1187,7 @@ def _execute_benchmarks(
             ncu_metric_set=ncu_metric_set,
             ncu_replay_mode=ncu_replay_mode,
             timeout_multiplier=timeout_multiplier,
+            execution_timeout_seconds=execution_timeout_seconds,
             nsys_timeout_seconds=nsys_timeout_seconds,
             ncu_timeout_seconds=ncu_timeout_seconds,
             validity_profile=validity_profile,
@@ -1501,6 +1535,7 @@ def _execute_benchmarks(
                 profile_type=profile_type if enable_profiling else "none",
                 profile_output_root=artifact_manager.profiles_dir,
                 timeout_multiplier=timeout_multiplier,
+                execution_timeout_seconds=execution_timeout_seconds,
                 reproducible=reproducible,
                 cold_start=cold_start,
                 force_synchronize=force_synchronize,
@@ -1729,6 +1764,12 @@ if TYPER_AVAILABLE:
             3.0,
             "--timeout-multiplier",
             help="Multiply all benchmark timeouts by this factor (e.g., 2.0 = double all timeouts)",
+        ),
+        execution_timeout_seconds: Optional[int] = Option(
+            None,
+            "--execution-timeout-seconds",
+            min=0,
+            help="Override setup, warmup and measurement deadlines with exact seconds. Omit to inherit defaults. Use 0 for uncapped owned subprocess execution, which requires --suite-timeout 0 and AISP_STALE_WATCH_TIMING disabled. Profiler deadlines are unchanged.",
         ),
         validity_profile: str = Option(
             "strict",
@@ -1999,6 +2040,15 @@ if TYPER_AVAILABLE:
         # Click/Typer shuffles positional args.
         combined_targets = list(dict.fromkeys(combined_targets))
         effective_timeout = timeout_seconds if timeout_seconds is not None else suite_timeout
+        try:
+            execution_timeout_seconds = validate_execution_timeout_seconds(execution_timeout_seconds)
+            validate_execution_timeout_mode(
+                execution_timeout_seconds, execution_mode="subprocess", launch_via=launch_via,
+            )
+            _validate_execution_suite_timeout(execution_timeout_seconds, effective_timeout)
+            _validate_execution_watchdog(execution_timeout_seconds)
+        except ValueError as exc:
+            raise typer.BadParameter(str(exc)) from exc
         # Set verification enforcement phase
         if verify_phase:
             os.environ["VERIFY_ENFORCEMENT_PHASE"] = verify_phase.lower()
@@ -2012,6 +2062,7 @@ if TYPER_AVAILABLE:
                 "profile_type": profile_type,
                 "output_format": output_format,
                 "suite_timeout": effective_timeout,
+                "execution_timeout_seconds": execution_timeout_seconds,
                 "verify_phase": verify_phase,
                 "single_gpu": single_gpu,
                 "validity_profile": validity_profile,
@@ -2033,6 +2084,7 @@ if TYPER_AVAILABLE:
             profile_type=profile_type,
             suite_timeout=effective_timeout,
             timeout_multiplier=timeout_multiplier,
+            execution_timeout_seconds=execution_timeout_seconds,
             validity_profile=validity_profile,
             allow_foreign_gpu_processes=allow_foreign_gpu_processes,
             allow_portable_expectations_update=allow_portable_expectations_update,
@@ -4852,22 +4904,41 @@ if TYPER_AVAILABLE:
             typer.echo(f"\n📊 Coverage: {coverage:.1f}%")
 
 
-def main():
+def main() -> int:
     """Entry point for CLI."""
     if not TYPER_AVAILABLE:
         print("ERROR: typer is required for CLI. Install with: pip install typer")
-        sys.exit(1)
+        return 1
 
     if app is None:
         print("ERROR: CLI not available")
-        sys.exit(1)
+        return 1
 
-    app()
+    from core.utils.cooperative_subprocess import (
+        cleanup_incomplete_receipt_from_error,
+        consume_cleanup_event_nonce,
+        emit_cleanup_incomplete_event,
+        operator_interrupt_from_error,
+    )
+    cleanup_event_nonce = consume_cleanup_event_nonce()
+
+    try:
+        app()
+    except BaseException as exc:
+        receipt = cleanup_incomplete_receipt_from_error(exc)
+        if receipt is not None:
+            emit_cleanup_incomplete_event(receipt, nonce=cleanup_event_nonce)
+            return 130 if operator_interrupt_from_error(exc) else 1
+        if isinstance(exc, SystemExit):
+            if exc.code is None:
+                return 0
+            if isinstance(exc.code, int):
+                return exc.code
+            typer.echo(str(exc.code), err=True)
+            return 1
+        raise
+    return 0
 
 
 if __name__ == "__main__":
-    main()
-
-
-if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

@@ -17,6 +17,7 @@ import torch
 import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
 
+from core.harness import benchmark_harness as harness_module
 from core.harness.benchmark_harness import BenchmarkConfig, BenchmarkHarness, LaunchVia
 from labs.train_distributed.training_utils.zero2_torchrun_benchmark import (
     Zero2TorchrunBenchmark,
@@ -545,17 +546,14 @@ def test_harness_invokes_only_the_explicit_zero2_result_callback(tmp_path, monke
         observed.update(kwargs)
 
     benchmark.consume_zero2_child_results = callback
-    real_popen = subprocess.Popen
+    real_run_owned_process = harness_module.run_owned_process
 
-    def observing_popen(command, **kwargs):
+    def observing_run_owned_process(command, **kwargs):
         observed["command"] = command
         observed["env"] = kwargs["env"]
-        return real_popen(command, **kwargs)
+        return real_run_owned_process(command, **kwargs)
 
-    monkeypatch.setattr(
-        "core.harness.benchmark_harness.subprocess.Popen",
-        observing_popen,
-    )
+    monkeypatch.setattr(harness_module, "run_owned_process", observing_run_owned_process)
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as rendezvous_socket:
         rendezvous_socket.bind(("127.0.0.1", 0))
         rendezvous_endpoint = f"127.0.0.1:{rendezvous_socket.getsockname()[1]}"

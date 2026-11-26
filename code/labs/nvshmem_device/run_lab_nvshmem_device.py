@@ -2,22 +2,23 @@
 from __future__ import annotations
 
 import argparse
-from array import array
-from dataclasses import dataclass
 import hashlib
 import json
 import math
-from pathlib import Path
+import os
 import shutil
 import struct
-import subprocess
 import sys
 import tempfile
+from array import array
+from dataclasses import dataclass
+from pathlib import Path
 from typing import Iterator
 
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
+from core.utils.cooperative_process_artifacts import run_recorded_cooperative_process
 
 LAB_DIR = Path(__file__).resolve().parent
 SCHEMA = "nvshmem_device.v1"
@@ -223,6 +224,39 @@ def validate_build_receipt(binary: Path, directory: Path = LAB_DIR) -> dict:
     return receipt
 
 
+def nvshmem_child_environment() -> tuple[dict[str, str], Path]:
+    """Select the build's NVSHMEM library directory for one child process tree."""
+    if "NVSHMEM_LIBDIR" in os.environ:
+        configured = os.environ["NVSHMEM_LIBDIR"]
+        if not configured:
+            raise RuntimeError("NVSHMEM_LIBDIR must not be empty")
+        runtime_libdir = Path(configured)
+    else:
+        home = os.environ.get("NVSHMEM_HOME")
+        if home is None:
+            raise NativeUnavailable(
+                "SKIPPED: Set NVSHMEM_LIBDIR or NVSHMEM_HOME for the NVSHMEM runtime libraries"
+            )
+        if not home:
+            raise RuntimeError("NVSHMEM_HOME must not be empty")
+        runtime_libdir = Path(home) / "lib"
+    if not runtime_libdir.is_absolute():
+        # The Makefile runs from LAB_DIR, so resolve relative build inputs there too.
+        runtime_libdir = LAB_DIR / runtime_libdir
+    runtime_libdir = Path(os.path.abspath(runtime_libdir))
+    if not runtime_libdir.is_dir():
+        raise RuntimeError(f"NVSHMEM runtime library directory does not exist: {runtime_libdir}")
+
+    child_env = dict(os.environ)
+    inherited = child_env.get("LD_LIBRARY_PATH")
+    child_env["LD_LIBRARY_PATH"] = (
+        str(runtime_libdir)
+        if not inherited
+        else str(runtime_libdir) + os.pathsep + inherited
+    )
+    return child_env, runtime_libdir
+
+
 def invoke_native(workload: NativeWorkload, *, binary: Path, json_out: Path, dump_output: Path,
                   launcher: str = "mpirun", launcher_args: tuple[str, ...] = ()) -> dict:
     """Launch real MPI and retain native evidence plus independent full-output checks."""
@@ -231,9 +265,13 @@ def invoke_native(workload: NativeWorkload, *, binary: Path, json_out: Path, dum
     native_json = json_out.with_name(json_out.name + ".native.json")
     stdout_path = json_out.with_name(json_out.name + ".stdout.log")
     stderr_path = json_out.with_name(json_out.name + ".stderr.log")
-    outputs = (json_out, dump_output, native_json, stdout_path, stderr_path)
+    execution_path = json_out.with_name(json_out.name + ".execution.json")
+    outputs = (json_out, dump_output, native_json, stdout_path, stderr_path, execution_path)
     if len(set(outputs)) != len(outputs):
-        raise ValueError("JSON, raw result, logs, and complete-output artifacts must use different paths")
+        raise ValueError(
+            "Final JSON, native JSON, full output, stream logs, and execution receipt "
+            "must use different paths"
+        )
     for path in outputs:
         if path.exists() or path.is_symlink():
             raise FileExistsError(f"Refusing to reuse an existing artifact: {path}")
@@ -243,21 +281,20 @@ def invoke_native(workload: NativeWorkload, *, binary: Path, json_out: Path, dum
     executable = shutil.which(launcher)
     if executable is None:
         raise NativeUnavailable(f"SKIPPED: MPI launcher {launcher!r} is unavailable")
+    child_env, runtime_libdir = nvshmem_child_environment()
     for path in outputs:
         path.parent.mkdir(parents=True, exist_ok=True)
     command = [executable, *launcher_args, "-np", str(workload.ranks), str(binary), *arguments,
                "--json-out", str(native_json), "--dump-output", str(dump_output)]
-    completed = subprocess.run(command, capture_output=True, text=True, check=False)
-    with stdout_path.open("x") as stream:
-        stream.write(completed.stdout)
-    with stderr_path.open("x") as stream:
-        stream.write(completed.stderr)
-    if completed.returncode != 0:
-        diagnostic = next((line[line.index("SKIPPED:"):] for line in (completed.stdout + "\n" + completed.stderr).splitlines()
+    completed = run_recorded_cooperative_process(
+        command, output_prefix=json_out, env=child_env,
+    )
+    if completed["returncode"] != 0:
+        diagnostic = next((line[line.index("SKIPPED:"):] for line in (completed["stdout"] + "\n" + completed["stderr"]).splitlines()
                            if "SKIPPED:" in line), None)
         if diagnostic is not None:
             raise NativeUnavailable(diagnostic)
-        raise RuntimeError(f"Native MPI run failed with exit {completed.returncode}. See {stdout_path} and {stderr_path}")
+        raise RuntimeError(f"Native MPI run failed with exit {completed['returncode']}. See {stdout_path} and {stderr_path}")
     if source_hashes() != snapshot or sha256(binary) != binary_hash:
         raise RuntimeError("Native source or binary changed during execution")
     if not native_json.is_file():
@@ -268,9 +305,11 @@ def invoke_native(workload: NativeWorkload, *, binary: Path, json_out: Path, dum
     result.update({"python_verification": independent, "build": build,
                    "source_sha256": snapshot, "binary_sha256": binary_hash,
                    "runner_sha256": sha256(Path(__file__)), "command": command,
+                   "nvshmem_runtime_libdir": str(runtime_libdir),
                    "native_result_path": str(native_json), "output_path": str(dump_output),
                    "stdout_path": str(stdout_path), "stderr_path": str(stderr_path),
-                   "process_exit_code": completed.returncode})
+                   "process_exit_code": completed["returncode"],
+                   "execution_path": completed["artifact_paths"]["execution"]})
     with json_out.open("x") as stream:
         json.dump(result, stream, indent=2)
         stream.write("\n")

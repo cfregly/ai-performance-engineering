@@ -443,7 +443,7 @@ def test_runner_rejects_backend_missing_from_build(
 
 @pytest.fixture(scope="module")
 def native_controls():
-    # Load the real stdlib control module without importing the Torch harness.
+    # Load the native control module without importing the Torch harness.
     module_name = "_test_multi_gpu_communication_native_controls"
     specification = importlib.util.spec_from_file_location(module_name, LAB_ROOT / "native_common.py")
     assert specification is not None and specification.loader is not None

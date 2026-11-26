@@ -774,6 +774,7 @@ def test_nsys_capture_command_uses_cuda_profiler_api_range_only_when_requested(
         output_name="ranged",
         capture_range_cuda_profiler_api=True,
         cuda_graph_trace="node",
+        timeout_seconds=30,
     ) is not None
     assert "--capture-range=cudaProfilerApi" in commands[-1]
     assert "--capture-range-end=stop" in commands[-1]
@@ -782,6 +783,7 @@ def test_nsys_capture_command_uses_cuda_profiler_api_range_only_when_requested(
     assert automation.profile_nsys(
         command=[sys.executable, "workload.py"],
         output_name="unranged",
+        timeout_seconds=30,
     ) is not None
     assert "--capture-range=cudaProfilerApi" not in commands[-1]
     assert "--capture-range-end=stop" not in commands[-1]
@@ -831,6 +833,7 @@ def test_nsys_capture_retries_preserve_api_and_graph_contract(
         preset=preset,
         capture_range_cuda_profiler_api=True,
         cuda_graph_trace="node",
+        timeout_seconds=30,
     )
 
     assert report is not None
@@ -1326,6 +1329,42 @@ def test_run_profile_subprocess_captures_output_and_writes_logs(tmp_path: Path) 
     assert result.stdout_log.read_text() == "stdout-line\n"
     assert result.stderr_log.read_text() == "stderr-line\n"
     assert json.loads(log_base.with_suffix(".command.json").read_text())["command"][0] == sys.executable
+
+
+@pytest.mark.skipif(
+    os.name != "posix" or not hasattr(os, "waitid"),
+    reason="requires POSIX waitid with WNOWAIT",
+)
+def test_run_profile_subprocess_uncapped_retains_exact_ownership_receipt(
+    tmp_path: Path,
+) -> None:
+    log_base = tmp_path / "uncapped"
+
+    result = _run_profile_subprocess(
+        command=[
+            sys.executable,
+            "-c",
+            "import sys; print('stdout-line'); sys.stderr.write('stderr-line\\n')",
+        ],
+        cwd=tmp_path,
+        env=os.environ.copy(),
+        timeout_seconds=None,
+        log_base=log_base,
+        terminate_reason="uncapped",
+        capture_output=True,
+        timeout_collect_error_message="unused timeout path",
+        wait_error_message="communicate failed",
+    )
+
+    assert result.process.returncode == 0
+    assert result.timed_out is False
+    assert result.failure_warning is None
+    assert result.stdout_log.read_text() == "stdout-line\n"
+    assert result.stderr_log.read_text() == "stderr-line\n"
+    receipt = json.loads(log_base.with_suffix(".command.json").read_text())
+    assert receipt["timeout_seconds"] is None
+    assert receipt["cancelled"] is False
+    assert receipt["execution"]["completion_scope"] == "process_group_quiescent"
 
 
 def test_run_profile_subprocess_streams_output_to_logs(tmp_path: Path) -> None:

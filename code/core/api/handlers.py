@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Tuple
 
 from core.engine import get_engine
 from core.jobs import JobStore
@@ -660,7 +660,11 @@ def benchmark_compare(params: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-def benchmark_e2e_sweep(params: Dict[str, Any]) -> Dict[str, Any]:
+def benchmark_e2e_sweep(
+    params: Dict[str, Any],
+    *,
+    queue_job: Callable[..., Dict[str, Any]] | None = None,
+) -> Dict[str, Any]:
     from core.benchmark.e2e_sweep import (
         attach_benchmark_e2e_status_hints,
         build_benchmark_e2e_progress_surface_hint,
@@ -720,7 +724,8 @@ def benchmark_e2e_sweep(params: Dict[str, Any]) -> Dict[str, Any]:
         kwargs["run_id"] = resolved_run_id
         run_dir = e2e_run_dir(resolved_run_id)
         status_actions = build_benchmark_e2e_status_actions(resolved_run_id)
-        ticket = JobStore.get().queue_job(
+        enqueue = queue_job or JobStore.get().queue_job
+        ticket = enqueue(
             "benchmark_e2e_sweep",
             lambda: run_benchmark_e2e_sweep(**kwargs),
             arguments=params,

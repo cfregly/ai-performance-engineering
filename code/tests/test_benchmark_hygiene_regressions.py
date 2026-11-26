@@ -5,6 +5,7 @@ import inspect
 import importlib
 import json
 import math
+import os
 import re
 import signal
 import subprocess
@@ -28,10 +29,15 @@ from core.benchmark.verification import coerce_input_signature
 from core.harness.benchmark_harness import BaseBenchmark, _cleanup_process_group
 from core.harness.run_benchmarks import (
     INFORMATIONAL_BENCHMARKS,
+    _CoarseExitCleanupState,
+    _apply_coarse_exit_cleanup,
     _collect_current_run_benchmark_orphan_pids,
     _collect_stale_benchmark_orphan_pids,
+    _handle_coarse_process_cleanup_at_exit,
     _reap_benchmark_process_leftovers,
     _reap_run_descendants,
+    _run_completion_exit_code,
+    _select_coarse_exit_cleanup_policy,
 )
 from labs.flexattention.baseline_flex_attention import BaselineFlexAttentionBenchmark
 from labs.flexattention.optimized_flex_attention import OptimizedFlexAttentionBenchmark
@@ -25181,9 +25187,283 @@ def test_run_benchmarks_reaps_current_run_descendants() -> None:
                 process.wait(timeout=2)
 
 
+def _spawn_sleeping_cpu_child() -> subprocess.Popen[bytes]:
+    process = subprocess.Popen(
+        [sys.executable, "-c", "import time; time.sleep(60)"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+    )
+    time.sleep(0.2)
+    assert process.poll() is None
+    return process
+
+
+def _stop_test_cpu_child(process: subprocess.Popen[bytes]) -> None:
+    if process.poll() is not None:
+        return
+    process.terminate()
+    try:
+        process.wait(timeout=2)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.wait(timeout=2)
+
+
+def _write_test_proc_snapshot(
+    root: Path,
+    process: subprocess.Popen[bytes],
+    *,
+    run_id: str,
+) -> Path:
+    proc_root = root / "proc"
+    process_dir = proc_root / str(process.pid)
+    process_dir.mkdir(parents=True)
+    stat_tail = [
+        "S",
+        str(os.getpid()),
+        str(process.pid),
+        str(process.pid),
+        *("0" for _ in range(15)),
+        "12345",
+    ]
+    (process_dir / "stat").write_text(
+        f"{process.pid} (python) {' '.join(stat_tail)}\n",
+        encoding="utf-8",
+    )
+    (process_dir / "cmdline").write_bytes(
+        b"\0".join(
+            (
+                str(sys.executable).encode("utf-8"),
+                b"-c",
+                b"import time; time.sleep(60)",
+            )
+        )
+        + b"\0"
+    )
+    (process_dir / "environ").write_bytes(
+        (
+            f"AISP_BENCHMARK_OWNER_RUN_ID={run_id}\0"
+            f"AISP_BENCHMARK_OWNER_PID={os.getpid()}\0"
+        ).encode()
+    )
+    return proc_root
+
+
+@pytest.mark.parametrize(
+    "reason",
+    ("target_resolution_failure", "preflight_failure", "run_end"),
+)
+def test_uncapped_coarse_cleanup_retains_hold_without_signaling_survivors(
+    tmp_path: Path,
+    reason: str,
+) -> None:
+    process = _spawn_sleeping_cpu_child()
+    run_id = "uncapped-unit-test"
+    proc_root = _write_test_proc_snapshot(tmp_path, process, run_id=run_id)
+    receipt_path = tmp_path / f"{reason}.json"
+    state = _CoarseExitCleanupState(
+        policy=_select_coarse_exit_cleanup_policy(0),
+        receipt_path=receipt_path,
+        run_id=run_id,
+        owner_pid=os.getpid(),
+    )
+    try:
+        receipt = _apply_coarse_exit_cleanup(
+            reason,
+            state=state,
+            proc_root=proc_root,
+        )
+
+        assert receipt is not None
+        assert process.poll() is None
+        assert receipt["receipt_type"] == "standalone_coarse_exit_cleanup"
+        assert receipt["schema_version"] == 1
+        assert receipt["completion_scope"] == "cleanup_incomplete"
+        assert receipt["disposition"] == "hold"
+        assert receipt["reason"] == reason
+        assert receipt["execution_timeout_seconds"] == 0
+        assert receipt["cleanup_policy"] == "audit_only"
+        identity = next(
+            survivor
+            for survivor in receipt["survivors"]
+            if survivor["pid"] == process.pid
+        )
+        assert identity["parent_pid"] == os.getpid()
+        assert identity["start_time_ticks"] is not None
+        assert "time.sleep(60)" in identity["command"]
+        assert identity["owner_run_id"] == run_id
+        assert identity["owner_pid"] == str(os.getpid())
+        assert json.loads(receipt_path.read_text(encoding="utf-8")) == receipt
+        assert _run_completion_exit_code(
+            total_failed=0,
+            cleanup_incomplete=receipt,
+        ) == 1
+    finally:
+        _stop_test_cpu_child(process)
+
+
+def test_uncapped_atexit_uses_selector_policy_without_signaling(
+    tmp_path: Path,
+) -> None:
+    process = _spawn_sleeping_cpu_child()
+    run_id = "uncapped-atexit-selector-unit-test"
+    proc_root = _write_test_proc_snapshot(tmp_path, process, run_id=run_id)
+    state = _CoarseExitCleanupState(
+        policy=_select_coarse_exit_cleanup_policy(0),
+        receipt_path=tmp_path / "atexit-selector-cleanup-incomplete.json",
+        run_id=run_id,
+        owner_pid=os.getpid(),
+    )
+    try:
+        _handle_coarse_process_cleanup_at_exit(state, proc_root=proc_root)
+
+        assert process.poll() is None
+        assert state.receipt is not None
+        assert state.receipt["reason"] == "run_exit"
+        assert state.receipt["cleanup_policy"] == "audit_only"
+        assert state.receipt_path.is_file()
+    finally:
+        _stop_test_cpu_child(process)
+
+
+def test_uncapped_atexit_preserves_normal_end_receipt(
+    tmp_path: Path,
+) -> None:
+    process = _spawn_sleeping_cpu_child()
+    run_id = "uncapped-atexit-unit-test"
+    proc_root = _write_test_proc_snapshot(tmp_path, process, run_id=run_id)
+    receipt_path = tmp_path / "atexit-cleanup-incomplete.json"
+    state = _CoarseExitCleanupState(
+        policy=_select_coarse_exit_cleanup_policy(0),
+        receipt_path=receipt_path,
+        run_id=run_id,
+        owner_pid=os.getpid(),
+    )
+    try:
+        first_receipt = _apply_coarse_exit_cleanup(
+            "run_end",
+            state=state,
+            proc_root=proc_root,
+        )
+
+        assert process.poll() is None
+        assert first_receipt is not None
+        assert state.receipt is first_receipt
+        assert state.receipt["reason"] == "run_end"
+        first_contents = receipt_path.read_bytes()
+        first_stat = receipt_path.stat()
+
+        _handle_coarse_process_cleanup_at_exit(state, proc_root=proc_root)
+
+        assert process.poll() is None
+        assert state.receipt is first_receipt
+        assert state.receipt["reason"] == "run_end"
+        assert receipt_path.read_bytes() == first_contents
+        assert receipt_path.stat().st_ino == first_stat.st_ino
+        assert receipt_path.stat().st_mtime_ns == first_stat.st_mtime_ns
+    finally:
+        _stop_test_cpu_child(process)
+
+
+def test_uncapped_coarse_cleanup_holds_when_process_table_is_unavailable(
+    tmp_path: Path,
+) -> None:
+    state = _CoarseExitCleanupState(
+        policy=_select_coarse_exit_cleanup_policy(0),
+        receipt_path=tmp_path / "unverifiable-cleanup.json",
+        run_id="uncapped-unverifiable-unit-test",
+        owner_pid=os.getpid(),
+    )
+
+    receipt = _apply_coarse_exit_cleanup(
+        "run_end",
+        state=state,
+        proc_root=tmp_path / "missing-procfs",
+    )
+
+    assert receipt is not None
+    assert receipt["completion_scope"] == "cleanup_incomplete"
+    assert receipt["disposition"] == "hold"
+    assert receipt["observation_status"] == "cleanup_unverifiable"
+    assert receipt["survivor_count"] is None
+    assert receipt["survivors"] == []
+    assert receipt["observation_error"]["type"] == "RuntimeError"
+    assert json.loads(state.receipt_path.read_text(encoding="utf-8")) == receipt
+    assert _run_completion_exit_code(total_failed=0, cleanup_incomplete=receipt) == 1
+
+
+def test_uncapped_coarse_cleanup_does_not_hold_for_terminated_zombie(tmp_path: Path) -> None:
+    proc_root = tmp_path / "proc"
+    zombie_pid = 54321
+    process_dir = proc_root / str(zombie_pid)
+    process_dir.mkdir(parents=True)
+    stat_tail = [
+        "Z",
+        str(os.getpid()),
+        str(zombie_pid),
+        str(zombie_pid),
+        *("0" for _ in range(15)),
+        "12345",
+    ]
+    (process_dir / "stat").write_text(
+        f"{zombie_pid} (python) {' '.join(stat_tail)}\n",
+        encoding="utf-8",
+    )
+    state = _CoarseExitCleanupState(
+        policy=_select_coarse_exit_cleanup_policy(0),
+        receipt_path=tmp_path / "zombie-cleanup.json",
+        run_id="uncapped-zombie-unit-test",
+        owner_pid=os.getpid(),
+    )
+
+    receipt = _apply_coarse_exit_cleanup("run_end", state=state, proc_root=proc_root)
+
+    assert receipt is None
+    assert state.receipt is None
+    assert not state.receipt_path.exists()
+    assert _run_completion_exit_code(total_failed=0, cleanup_incomplete=receipt) == 0
+
+
+@pytest.mark.parametrize("execution_timeout_seconds", (None, 30))
+def test_finite_and_default_atexit_policy_force_reaps_descendants(
+    tmp_path: Path,
+    execution_timeout_seconds: int | None,
+) -> None:
+    process = _spawn_sleeping_cpu_child()
+    run_id = "finite-atexit-unit-test"
+    proc_root = _write_test_proc_snapshot(tmp_path, process, run_id=run_id)
+    state = _CoarseExitCleanupState(
+        policy=_select_coarse_exit_cleanup_policy(execution_timeout_seconds),
+        receipt_path=tmp_path / "unexpected-cleanup-incomplete.json",
+        run_id=run_id,
+        owner_pid=os.getpid(),
+    )
+    try:
+        _handle_coarse_process_cleanup_at_exit(
+            state,
+            proc_root=proc_root,
+            grace_seconds=0.0,
+        )
+
+        deadline = time.time() + 5.0
+        while process.poll() is None and time.time() < deadline:
+            time.sleep(0.05)
+
+        assert process.poll() is not None
+        assert state.receipt is None
+        assert not state.receipt_path.exists()
+        assert _run_completion_exit_code(
+            total_failed=0,
+            cleanup_incomplete=None,
+        ) == 0
+    finally:
+        _stop_test_cpu_child(process)
+
+
 def test_benchmark_leftover_cleanup_does_not_kill_unmarked_current_descendants() -> None:
     process = subprocess.Popen(
-        ["python", "-c", "import time; time.sleep(60)"],
+        [sys.executable, "-c", "import time; time.sleep(60)"],
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
         start_new_session=True,

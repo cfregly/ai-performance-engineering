@@ -40,8 +40,13 @@ signal.pause()
 """
 
 
-@pytest.mark.skipif(os.name != "posix", reason="requires POSIX signals and process groups")
-@pytest.mark.parametrize("owner", ["captured_profiler", "streamed_profiler", "nsys", "isolated"])
+@pytest.mark.skipif(
+    sys.platform != "linux" or not hasattr(os, "waitid"),
+    reason="requires Linux process-group and waitid semantics",
+)
+@pytest.mark.parametrize(
+    "owner", ["captured_profiler", "streamed_profiler", "nsys", "ncu", "isolated"]
+)
 def test_keyboard_interrupt_reaps_owned_child_and_retains_logs(tmp_path: Path, owner: str) -> None:
     child = tmp_path / "waiting_child.py"
     child.write_text(textwrap.dedent(WAITING_CHILD), encoding="utf-8")
@@ -65,8 +70,8 @@ _run_profile_subprocess(
         stdout_log = artifacts / "capture.stdout.log"
         stderr_log = artifacts / "capture.stderr.log"
         receipt = artifacts / "capture.command.json"
-    elif owner == "nsys":
-        executable = tmp_path / "nsys"
+    elif owner in {"nsys", "ncu"}:
+        executable = tmp_path / owner
         executable.write_text(
             f"#!{sys.executable}\n"
             "import runpy, sys\n"
@@ -78,13 +83,24 @@ _run_profile_subprocess(
         )
         executable.chmod(0o755)
         environment["PATH"] = str(tmp_path) + os.pathsep + environment.get("PATH", "")
-        invocation = """
+        if owner == "nsys":
+            invocation = """
 from core.profiling.nsight_automation import NsightAutomation
 automation = NsightAutomation(artifacts)
 automation.profile_nsys(
     command=[sys.executable, "-c", "raise AssertionError('capture must be cancelled')"],
     output_name="capture", trace_cuda=False, trace_nvtx=False, trace_osrt=False,
     timeout_seconds=None, sanitize_python_startup=False,
+)
+"""
+        else:
+            invocation = """
+from core.profiling.nsight_automation import NsightAutomation
+automation = NsightAutomation(artifacts)
+automation.profile_ncu(
+    command=[sys.executable, "-c", "raise AssertionError('capture must be cancelled')"],
+    output_name="capture", metric_set="minimal", timeout_seconds=None,
+    sanitize_python_startup=False,
 )
 """
         stdout_log = artifacts / "capture.stdout.log"
@@ -113,7 +129,11 @@ spec = importlib.util.spec_from_file_location("cancellation_benchmark", {str(fix
 module = importlib.util.module_from_spec(spec)
 sys.modules[spec.name] = module
 spec.loader.exec_module(module)
-config = BenchmarkConfig(device=torch.device("cpu"), subprocess_stderr_dir=str(artifacts))
+config = BenchmarkConfig(
+    device=torch.device("cpu"),
+    execution_timeout_seconds=0,
+    subprocess_stderr_dir=str(artifacts),
+)
 harness = BenchmarkHarness(config=config)
 harness._benchmark_with_subprocess(module.CancellationBenchmark(), config)
 """
@@ -165,9 +185,23 @@ harness._benchmark_with_subprocess(module.CancellationBenchmark(), config)
                 assert "owned child stderr stopped" in stderr_log.read_text()
                 if receipt is not None:
                     record = json.loads(receipt.read_text())
-                    assert record["status"] == "cancelled"
                     assert record.get("command") or record.get("cmd")
+                    if owner == "captured_profiler":
+                        assert record["cancelled"] is True
+                        assert record["timeout_seconds"] is None
+                        assert record["cancellation"]["signal_forwarded"] is True
+                        assert record["cancellation"]["status"] == "cleanup_completed"
+                    else:
+                        assert record["status"] == "cancelled"
+                    if owner in {"nsys", "ncu"}:
+                        cooperative = record["cooperative_process"]
+                        assert cooperative["timeout_seconds"] is None
+                        assert cooperative["cancellation"]["signal_forwarded"] is True
+                        assert cooperative["cancellation"]["status"] == "cleanup_completed"
+                        assert record["finalize_signals"] == ["SIGINT"]
+                        assert record["graceful_finalize_completed"] is True
                 assert not list(artifacts.glob("*.nsys-rep"))
+                assert not list(artifacts.glob("*.ncu-rep"))
             finally:
                 if child_pid is not None:
                     with contextlib.suppress(ProcessLookupError):

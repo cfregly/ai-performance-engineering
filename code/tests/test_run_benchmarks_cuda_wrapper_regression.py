@@ -1,3 +1,4 @@
+import errno
 import importlib.util
 import subprocess
 import sys
@@ -363,3 +364,45 @@ def test_cuda_binary_subprocess_capture_propagates_owner_markers(tmp_path, monke
 
     assert result.returncode == 0
     assert result.stdout.splitlines() == ["owner-run-123", "4242"]
+
+
+def test_cuda_binary_subprocess_capture_preserves_real_launch_enoent(tmp_path):
+    missing_executable = tmp_path / "missing-cuda-tool"
+
+    with pytest.raises(FileNotFoundError) as caught:
+        _run_subprocess_capture(
+            [str(missing_executable), "--version"],
+            cwd=tmp_path,
+            timeout=5,
+        )
+
+    assert caught.value.errno == errno.ENOENT
+    assert caught.value.filename == str(missing_executable)
+
+
+def test_cuda_binary_subprocess_capture_keeps_permission_failure_distinct(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setattr(
+        cuda_binary_benchmark,
+        "run_owned_process",
+        lambda *args, **kwargs: {
+            "returncode": -1,
+            "stdout": "",
+            "stderr": "Permission denied",
+            "timeout_hit": False,
+            "error": "Permission denied",
+            "error_type": "PermissionError",
+            "errno": errno.EACCES,
+        },
+    )
+
+    result = _run_subprocess_capture(
+        [str(tmp_path / "non-executable-cuda-tool")],
+        cwd=tmp_path,
+        timeout=5,
+    )
+
+    assert result.returncode == -1
+    assert result.stderr == "Permission denied"

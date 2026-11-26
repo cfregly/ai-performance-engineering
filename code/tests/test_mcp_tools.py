@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import json
 import shutil
 import subprocess
@@ -962,31 +961,6 @@ def test_emit_stdio_json_logs_transport_warning(server: mcp_server.MCPServer, ca
     captured = capsys.readouterr()
     assert emitted is False
     assert "Failed to emit test payload: stdout boom" in captured.err
-
-
-def test_mcp_protocol_round_trip(server: mcp_server.MCPServer):
-    async def _exercise():
-        init = await server.handle_message({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}})
-        assert init and init["result"]["protocolVersion"] == "2024-11-05"
-
-        tool_list = await server.handle_message({"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}})
-        assert tool_list and "tools" in tool_list["result"]
-
-        sample_tool = "status"
-        call = await server.handle_message(
-            {"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {"name": sample_tool, "arguments": {}}}
-        )
-        assert call
-        entry = call["result"]["content"][0]
-        if entry["type"] == "text":
-            payload = json.loads(entry["text"])
-        elif entry["type"] == "application/json":
-            payload = entry["json"]
-        else:
-            raise AssertionError(f"Unexpected content type: {entry['type']}")
-        assert payload["tool"] == sample_tool
-
-    asyncio.run(_exercise())
 
 
 @pytest.mark.parametrize("case", SLOW_TOOL_CASES, ids=_case_ids(SLOW_TOOL_CASES))

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import errno
 import importlib
 import importlib.util
 import json
@@ -537,7 +538,7 @@ def test_zero2_harness_rejects_verification_only_override_before_spawn(monkeypat
         launches.append(args)
         raise AssertionError("reserved override reached subprocess launch")
 
-    monkeypatch.setattr("core.harness.benchmark_harness.subprocess.Popen", forbidden_spawn)
+    monkeypatch.setattr("core.harness.benchmark_harness.run_owned_process", forbidden_spawn)
     with pytest.raises(RuntimeError, match="reserved control '--verification-only'"):
         BenchmarkHarness(config=config)._benchmark_with_torchrun(benchmark, config)
     assert not launches
@@ -606,7 +607,7 @@ def test_declared_spec_error_propagates_before_spawn(monkeypatch, error):
         launches.append(args)
         raise AssertionError("unexpected spawn after declared spec error")
 
-    monkeypatch.setattr("core.harness.benchmark_harness.subprocess.Popen", forbidden_spawn)
+    monkeypatch.setattr("core.harness.benchmark_harness.run_owned_process", forbidden_spawn)
     with pytest.raises(type(error)) as caught:
         try:
             harness._benchmark_with_torchrun(BrokenSpec(), config)
@@ -629,7 +630,7 @@ def test_generic_torchrun_harness_rejects_before_spawn(tmp_path, monkeypatch):
         launches.append(args)
         raise AssertionError("unverified generic training must not launch")
 
-    monkeypatch.setattr("core.harness.benchmark_harness.subprocess.Popen", forbidden_spawn)
+    monkeypatch.setattr("core.harness.benchmark_harness.run_owned_process", forbidden_spawn)
     with pytest.raises(RuntimeError, match=REASON):
         harness._benchmark_with_torchrun(benchmark, config)
     assert not launches
@@ -646,7 +647,7 @@ def test_noncallable_declared_spec_cannot_select_fallback(value, monkeypatch):
         launches.append(args)
         raise AssertionError("noncallable spec must not launch")
 
-    monkeypatch.setattr("core.harness.benchmark_harness.subprocess.Popen", forbidden_spawn)
+    monkeypatch.setattr("core.harness.benchmark_harness.run_owned_process", forbidden_spawn)
     with pytest.raises(TypeError, match="callable get_torchrun_spec"):
         harness._benchmark_with_torchrun(benchmark, config)
     assert not launches
@@ -664,14 +665,101 @@ def test_explicit_none_spec_selects_fallback_script_before_launcher_error(monkey
 
     def unavailable_launcher(command, **kwargs):
         launches.append(command)
-        raise OSError("LOCAL019 launcher unavailable control")
+        return {
+            "returncode": -1,
+            "stdout": "",
+            "stderr": "LOCAL019 launcher unavailable control",
+            "timeout_hit": False,
+            "error": "LOCAL019 launcher unavailable control",
+            "error_type": "FileNotFoundError",
+            "errno": errno.ENOENT,
+        }
 
-    monkeypatch.setattr("core.harness.benchmark_harness.subprocess.Popen", unavailable_launcher)
-    with pytest.raises(OSError, match="LOCAL019 launcher unavailable control"):
+    monkeypatch.setattr("core.harness.benchmark_harness.run_owned_process", unavailable_launcher)
+    with pytest.raises(RuntimeError, match="torchrun launcher executable not found"):
         harness._benchmark_with_torchrun(DefaultSpec(), config)
     assert len(launches) == 1
     command = launches[0]
     assert command[command.index("--aisp-target-script") + 1] == str(Path(__file__).resolve())
+
+
+def test_torchrun_preserves_real_launch_enoent_as_an_explicit_skip(tmp_path, monkeypatch):
+    class DefaultSpec(BaseBenchmark):
+        def get_torchrun_spec(self, config=None):
+            return None
+
+    missing_executable = tmp_path / "missing-python"
+    monkeypatch.setattr("core.harness.benchmark_harness.sys.executable", str(missing_executable))
+    harness, config = cpu_harness()
+
+    with pytest.raises(RuntimeError) as caught:
+        harness._benchmark_with_torchrun(DefaultSpec(), config)
+
+    assert str(caught.value) == (
+        f"SKIPPED: torchrun launcher executable not found: {missing_executable}"
+    )
+
+
+def test_torchrun_does_not_misclassify_permission_failure_as_enoent(monkeypatch):
+    class DefaultSpec(BaseBenchmark):
+        def get_torchrun_spec(self, config=None):
+            return None
+
+    def permission_failure(command, **kwargs):
+        return {
+            "returncode": -1,
+            "stdout": "",
+            "stderr": "Permission denied",
+            "timeout_hit": False,
+            "error": "Permission denied",
+            "error_type": "PermissionError",
+            "errno": errno.EACCES,
+        }
+
+    monkeypatch.setattr(
+        "core.harness.benchmark_harness.run_owned_process",
+        permission_failure,
+    )
+    harness, config = cpu_harness()
+
+    result = harness._benchmark_with_torchrun(DefaultSpec(), config)
+
+    assert "torchrun exited with code -1" in result.errors
+    assert not any("launcher executable not found" in error for error in result.errors)
+
+
+def test_torchrun_timeout_retains_captured_streams(tmp_path, monkeypatch):
+    class DefaultSpec(BaseBenchmark):
+        def get_torchrun_spec(self, config=None):
+            return None
+
+    stdout = "torchrun stdout before timeout\n"
+    stderr = "torchrun stderr before timeout\n"
+
+    def timed_out_process(command, **kwargs):
+        return {
+            "returncode": 124,
+            "stdout": stdout,
+            "stderr": stderr,
+            "timeout_hit": True,
+        }
+
+    monkeypatch.setattr(
+        "core.harness.benchmark_harness.run_owned_process",
+        timed_out_process,
+    )
+    monkeypatch.setenv("AISP_CAPTURE_SUBPROCESS_STDOUT", "1")
+    monkeypatch.setenv("AISP_CAPTURE_SUBPROCESS_STDERR", "1")
+    harness, config = cpu_harness()
+    config.subprocess_stderr_dir = str(tmp_path)
+
+    result = harness._benchmark_with_torchrun(DefaultSpec(), config)
+
+    assert any("Torchrun launch exceeded timeout" in error for error in result.errors)
+    assert result.timeout_stage == "measurement"
+    assert result.timeout_limit_seconds == 60
+    assert (tmp_path / "torchrun_DefaultSpec_subprocess.stdout.log").read_text() == stdout
+    assert (tmp_path / "torchrun_DefaultSpec_subprocess.stderr.log").read_text() == stderr
 
 
 def test_real_direct_child_wrapper_still_executes_cpu_script(tmp_path):
