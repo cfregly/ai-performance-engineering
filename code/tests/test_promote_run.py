@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -311,6 +312,7 @@ def test_field_report_validator_fails_when_hygiene_check_cannot_read_report(tmp_
         check=False,
         capture_output=True,
         text=True,
+        env={**os.environ, "LC_ALL": "C", "PYTHONUTF8": "1"},
     )
 
     assert result.returncode == 1, result.stdout + result.stderr
