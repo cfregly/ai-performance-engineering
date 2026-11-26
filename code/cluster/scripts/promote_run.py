@@ -132,9 +132,12 @@ def _validate_candidate(candidate: Path, run_id: str) -> None:
     if (
         not isinstance(steps, list)
         or not steps
-        or not all(isinstance(step, dict) and step.get("name") for step in steps)
+        or not all(isinstance(step, dict) and isinstance(step.get("name"), str) and step["name"] for step in steps)
     ):
         raise ValueError(f"Candidate has no valid suite step records for {run_id}.")
+    latest_steps = {step["name"]: step for step in steps}
+    if any(str(step.get("exit_code")) != "0" for step in latest_steps.values()):
+        raise ValueError(f"Candidate suite has unfinished or failed steps for {run_id}.")
 
     files = manifest.get("files")
     if files is None:

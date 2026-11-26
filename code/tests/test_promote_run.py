@@ -60,7 +60,8 @@ def _seed_promotable_run(cluster_root: Path, run_id: str, label: str) -> Path:
 
 
 @pytest.mark.parametrize(
-    "candidate", ["missing_manifest", "wrong_run_id", "missing_steps", "changed_artifact", "invalid_report"]
+    "candidate",
+    ["missing_manifest", "wrong_run_id", "missing_steps", "failed_step", "changed_artifact", "invalid_report"],
 )
 def test_failed_promotion_preserves_publication_and_run_history(
     tmp_path: Path, candidate: str
@@ -81,6 +82,11 @@ def test_failed_promotion_preserves_publication_and_run_history(
         _write_json(run_dir / "manifest.json", {"run_id": prior_id})
     elif candidate == "missing_steps":
         (run_dir / "structured" / f"{run_id}_suite_steps.json").unlink()
+    elif candidate == "failed_step":
+        _write_json(run_dir / "structured" / f"{run_id}_suite_steps.json", [
+            {"name": "discovery", "exit_code": 0},
+            {"name": "discovery", "exit_code": 1},
+        ])
     elif candidate == "changed_artifact":
         steps_path = f"structured/{run_id}_suite_steps.json"
         original_hash = hashlib.sha256((run_dir / steps_path).read_bytes()).hexdigest()
