@@ -90,7 +90,7 @@ Use `cluster/archive/runs/<run_id>/` for independently retained historical basel
 
 ## Current Published State
 
-The published field report covers `2026-03-17_localhost_fabric_canonical`, a historical single-GPU localhost canary. The [snapshot manifest](published/current/manifest.json) lists the structured evidence and figures linked by the report and notes. Private identifiers and selected operator output were removed. Of 180 original inventory entries, 25 are in this snapshot, 95 from the historical publication are outside its reader scope, and 60 raw logs were unavailable. Four additional linked files bring the snapshot to 29. Operator activity logs stay under the run's `progress/activity/` directory.
+The published field report covers `2026-03-17_localhost_fabric_canonical`, a historical single-GPU localhost canary. The [snapshot manifest](published/current/manifest.json) lists the structured evidence and figures linked by the report and notes. Private identifiers and selected operator output were removed. Of 180 original inventory entries, 25 are in this snapshot, 95 from the historical publication are outside its reader scope, and 60 raw logs were unavailable. Four additional linked files bring the snapshot to 29. Five retained files already differed from the source-run hashes in the historical publication, including the vLLM and GEMM CSVs. Operator activity logs stay under the run's `progress/activity/` directory.
 
 ## Promotion Rules
 When a run should become the new published package:

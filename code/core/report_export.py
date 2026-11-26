@@ -5,7 +5,10 @@ Shared HTML report generator for performance summaries.
 from __future__ import annotations
 
 from datetime import datetime
+from html import escape
 from typing import Any, Dict
+
+from core.profile_artifacts import newer_benchmark_result_label
 
 
 def generate_html_report(
@@ -54,8 +57,13 @@ def generate_html_report(
         optimized = b.get("optimized_time_ms")
         baseline_label = f"{baseline:.2f} ms" if baseline is not None else "n/a"
         optimized_label = f"{optimized:.2f} ms" if optimized is not None else "n/a"
+        newer = newer_benchmark_result_label(b)
+        name = escape(str(b.get("name", "Unknown"))[:40])
+        if newer:
+            badge = "warning"
+            name += f"<br><small>Newer result: {escape(newer)}</small>"
         html_parts.append(
-            f"<tr><td>{b.get('name','Unknown')[:40]}</td><td>{baseline_label}</td>"
+            f"<tr><td>{name}</td><td>{baseline_label}</td>"
             f"<td>{optimized_label}</td><td><span class='badge badge-{badge}'>{speedup:.2f}x</span></td></tr>"
         )
 

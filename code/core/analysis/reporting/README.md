@@ -55,6 +55,11 @@ and baseline-only runs appear in **Run Diagnostics**. Missing or malformed
 explicit inputs produce an error. In discovered files, valid rows remain
 available and malformed records appear under **Input Errors**.
 
+`aisp bench compare-runs` ranks speedup changes for targets with qualified
+measurements in both input runs. Rejected targets appear in the run diagnostics.
+CSV, Markdown and HTML exports identify when a newer run rejected a result from
+an earlier measurement.
+
 ## Report Types
 
 ### BenchmarkReport

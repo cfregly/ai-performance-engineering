@@ -534,13 +534,23 @@ def _cluster_optional_timeout(params: Dict[str, Any]) -> Optional[int]:
     return None if timeout is None else _tool_integer(timeout, "timeout_seconds")
 
 
-def _unexpected_tool_error(name: str, exc: Exception) -> Dict[str, Any]:
-    """Report an unexpected error without including its message in the MCP result."""
+def _log_unexpected_error(operation: str, exc: Exception) -> str:
     error_type = type(exc).__name__
-    print(f"MCP tool {name} failed with {error_type}.", file=sys.stderr)
+    print(f"{operation} failed with {error_type}.", file=sys.stderr)
     if os.environ.get("AISP_MCP_DEBUG"):
         traceback.print_tb(exc.__traceback__, file=sys.stderr)
+    return error_type
+
+
+def _unexpected_tool_error(name: str, exc: Exception) -> Dict[str, Any]:
+    """Report an unexpected error without including its message in the MCP result."""
+    error_type = _log_unexpected_error(f"MCP tool {name}", exc)
     return {"error": "Tool execution failed.", "error_type": error_type, "success": False}
+
+
+def _unavailable_context(exc: Exception) -> Dict[str, str]:
+    _log_unexpected_error("MCP context snapshot", exc)
+    return {"context_error": "Context snapshot failed."}
 
 
 def register_tool(name: str, description: str, schema: Dict[str, Any] = None):
@@ -643,11 +653,9 @@ def attach_context_if_requested(result: Any, include_context: bool, context_leve
 
     try:
         context = get_cached_context(context_level)
-    except Exception as e:
-        # Preserve the original result and surface the context error
-        if isinstance(result, dict):
-            return {**result, "context_error": str(e)}
-        return {"result": result, "context_error": str(e)}
+    except Exception as exc:
+        original = result if isinstance(result, dict) else {"result": result}
+        return {**original, **_unavailable_context(exc)}
 
     if isinstance(result, dict):
         # Avoid clobbering any existing 'context' key
@@ -2205,8 +2213,8 @@ def _context_snapshot() -> Dict[str, Any]:
             "full": _trim_value(ctx_full),
             "full_age_seconds": int(full_age),
         }
-    except Exception as e:
-        return {"context_error": f"context snapshot failed: {e}"}
+    except Exception as exc:
+        return _unavailable_context(exc)
 
 
 def _default_next_steps(tool_name: str, status_is_error: bool) -> List[str]:
@@ -5202,7 +5210,7 @@ def tool_benchmark_trends(params: Dict[str, Any]) -> Dict[str, Any]:
     "benchmark_compare",
     "Tags: benchmark, compare, diff, regression, improvement. "
     "Compare two benchmark run JSON files (baseline vs candidate). "
-    "Returns: {regressions, improvements, unchanged, summary}. "
+    "Returns qualified speedup deltas and status transitions, with rejected results in diagnostics. "
     "USE when: Diffing results from two runs. "
     'Example: "Compare two benchmark result files". ⚡ FAST (~1s).',
     {
@@ -5610,7 +5618,8 @@ def tool_benchmark_report(params: Dict[str, Any]) -> Dict[str, Any]:
     "benchmark_export",
     "Tags: export, csv, markdown, json, data, share, spreadsheet. "
     "Export benchmark results to CSV/Markdown/JSON format for further analysis. "
-    "Returns: {output_path, format, benchmarks_written, success}. "
+    "CSV and Markdown identify any newer rejected attempt alongside the retained qualified measurement. "
+    "Returns: {output, format, benchmarks_written, success}. "
     "USE when: Importing results into spreadsheets, documentation, or other tools. "
     'Example: "Export benchmarks to CSV" or "Convert results to markdown table". '
     "REQUIRES: Run run_benchmarks first to generate benchmark_test_results.json. ⚡ FAST (~2s). WORKFLOW: run_benchmarks → benchmark_export. NOT FOR: Reports (use benchmark_report).",
@@ -5676,13 +5685,23 @@ def tool_benchmark_export(params: Dict[str, Any]) -> BenchmarkExportResult:
         if fmt == "json":
             output_path.write_text(json.dumps(data, indent=2))
         elif fmt == "markdown":
-            lines = ["| Benchmark | Speedup | Baseline (ms) | Type |", "|---|---|---|---|"]
+            lines = [
+                "| Benchmark | Speedup | Baseline (ms) | Type | Newer diagnostic |",
+                "|---|---|---|---|---|",
+            ]
             for b in benchmarks:
                 baseline = b.get("baseline_time_ms")
                 baseline_label = f"{baseline:.3f}" if baseline is not None else "N/A"
+                newer = b.get("newer_diagnostic") or {}
+                newer_label = " · ".join(
+                    str(newer[field])
+                    for field in ("status", "run_id", "source_timestamp")
+                    if newer.get(field)
+                )
+                newer_label = " ".join(newer_label.split()).replace("|", "\\|")
                 lines.append(
                     f"| {b.get('chapter')}:{b.get('name')} | {b.get('speedup', 0):.2f}x | "
-                    f"{baseline_label} | {b.get('type', 'python')} |"
+                    f"{baseline_label} | {b.get('type', 'python')} | {newer_label} |"
                 )
             output_path.write_text("\n".join(lines))
         else:  # csv
@@ -5690,15 +5709,17 @@ def tool_benchmark_export(params: Dict[str, Any]) -> BenchmarkExportResult:
 
             with output_path.open("w", newline="") as f:
                 writer = csv.writer(f)
-                writer.writerow(["benchmark", "speedup", "baseline_ms", "type"])
+                writer.writerow(["benchmark", "speedup", "baseline_ms", "type", "newer_diagnostic"])
                 for b in benchmarks:
                     baseline = b.get("baseline_time_ms")
+                    newer = b.get("newer_diagnostic")
                     writer.writerow(
                         [
                             f"{b.get('chapter')}:{b.get('name')}",
                             f"{b.get('speedup', 0):.2f}",
                             f"{baseline:.3f}" if baseline is not None else "",
                             b.get("type", "python"),
+                            json.dumps(newer) if newer else "",
                         ]
                     )
     except OSError as exc:
@@ -5722,7 +5743,7 @@ def tool_benchmark_export(params: Dict[str, Any]) -> BenchmarkExportResult:
     "benchmark_compare_runs",
     "Tags: compare, diff, regression, improvement, delta, a-b-test, before-after. "
     "Compare two benchmark runs showing speedup deltas, regressions, and improvements. "
-    "Returns: {regressions: [...], improvements: [...], unchanged: [...], summary}. "
+    "Returns CLI output with qualified regressions and improvements and a separate Run diagnostics section. "
     "⚡ FAST (~1s). USE when: Comparing before/after optimization, detecting regressions. "
     'Example: "Compare baseline vs optimized" or "Show top 10 regressions". '
     "REQUIRES: Two benchmark_test_results.json files from separate runs. "
@@ -5824,7 +5845,11 @@ def tool_benchmark_compare_runs(params: Dict[str, Any]) -> Dict[str, Any]:
 )
 def tool_benchmark_triage(params: Dict[str, Any]) -> Dict[str, Any]:
     """Analyze benchmark results and provide actionable recommendations."""
-    from core.analysis.performance_analyzer import PerformanceAnalyzer, load_benchmark_data
+    from core.analysis.performance_analyzer import (
+        PerformanceAnalyzer,
+        is_qualified_benchmark,
+        load_benchmark_data,
+    )
 
     include_context, context_level = extract_context_opts(params)
     data_file = params.get("data_file")
@@ -5884,16 +5909,18 @@ def tool_benchmark_triage(params: Dict[str, Any]) -> Dict[str, Any]:
             return normalized
         return normalized or "unknown"
 
+    latest = data.get("latest_outcomes", benchmarks + diagnostics)
+    latest_diagnostics = [row for row in latest if not is_qualified_benchmark(row)]
     status_counts_raw: Dict[str, int] = {}
-    for b in diagnostics:
+    for b in latest_diagnostics:
         raw = str(b.get("status", "unknown")).strip().lower() or "unknown"
         status_counts_raw[raw] = status_counts_raw.get(raw, 0) + 1
 
     # Analyze results
-    passed = len(benchmarks)
-    total = passed + len(diagnostics)
-    failed = sum(1 for b in diagnostics if _status_bucket(b.get("status")) == "failed")
-    skipped = sum(1 for b in diagnostics if _status_bucket(b.get("status")) == "skipped")
+    total = len(latest)
+    passed = total - len(latest_diagnostics)
+    failed = sum(1 for b in latest_diagnostics if _status_bucket(b.get("status")) == "failed")
+    skipped = sum(1 for b in latest_diagnostics if _status_bucket(b.get("status")) == "skipped")
 
     # Find regressions and improvements
     regressions = sorted(
@@ -5911,7 +5938,7 @@ def tool_benchmark_triage(params: Dict[str, Any]) -> Dict[str, Any]:
     slow_kernels = sorted(
         (
             b
-            for b in [*benchmarks, *diagnostics]
+            for b in latest
             if b["baseline_time_ms"] is not None and b["baseline_time_ms"] > 100
         ),
         key=lambda b: b["baseline_time_ms"],
@@ -10409,7 +10436,8 @@ def tool_cluster_build_canonical_package(params: Dict[str, Any]) -> Dict[str, An
     "Tags: cluster, publish, promote, canonical, localhost, reports. "
     "Replace the published cluster package with artifacts from a completed run. "
     "Returns: {success, published, run_id, published_root, published_structured_dir, published_localhost_report_path, steps}. "
-    "`published` is true once the requested package is installed. A later cleanup failure can leave `success` false.",
+    "`published` is true once the requested package is installed. A later cleanup failure can leave `success` false. "
+    "After a timeout, `published` is null because the final state is unknown.",
     {
         "type": "object",
         "properties": with_context_params(

@@ -4544,6 +4544,8 @@ if TYPER_AVAILABLE:
         output: Optional[Path] = Option(None, "--output", "-o", help="Output file path"),
     ):
         """Export benchmark results to csv/markdown/json."""
+        from core.profile_artifacts import newer_benchmark_result_label
+
         analyzer = _get_analyzer(data_file)
         data = analyzer._load_data()  # type: ignore[attr-defined]  # lightweight export
         fmt = format.lower()
@@ -4553,13 +4555,14 @@ if TYPER_AVAILABLE:
         if fmt == "json":
             out_path.write_text(json.dumps(data, indent=2))
         elif fmt == "markdown":
-            lines = ["| Benchmark | Speedup | Baseline (ms) | Type |", "|---|---|---|---|"]
+            lines = ["| Benchmark | Speedup | Baseline (ms) | Type | Newer Result |", "|---|---|---|---|---|"]
             for b in benchmarks:
                 baseline = b.get("baseline_time_ms")
                 baseline_label = f"{baseline:.3f}" if baseline is not None else "n/a"
+                newer = newer_benchmark_result_label(b).replace("|", r"\|").replace("\n", " ")
                 lines.append(
                     f"| {b.get('chapter')}:{b.get('name')} | {b.get('speedup', 0):.2f}x | "
-                    f"{baseline_label} | {b.get('type', 'python')} |"
+                    f"{baseline_label} | {b.get('type', 'python')} | {newer} |"
                 )
             out_path.write_text("\n".join(lines))
         elif fmt == "csv":
@@ -4567,7 +4570,7 @@ if TYPER_AVAILABLE:
 
             with out_path.open("w", newline="") as f:
                 writer = csv.writer(f)
-                writer.writerow(["benchmark", "speedup", "baseline_ms", "type"])
+                writer.writerow(["benchmark", "speedup", "baseline_ms", "type", "newer_result"])
                 for b in benchmarks:
                     baseline = b.get("baseline_time_ms")
                     writer.writerow(
@@ -4576,6 +4579,7 @@ if TYPER_AVAILABLE:
                             f"{b.get('speedup', 0):.2f}",
                             f"{baseline:.3f}" if baseline is not None else "",
                             b.get("type", "python"),
+                            newer_benchmark_result_label(b),
                         ]
                     )
         else:
@@ -4593,49 +4597,36 @@ if TYPER_AVAILABLE:
         ),
         top: int = Option(10, "--top", "-n", help="Top regressions/improvements to show"),
     ):
-        """Diff two benchmark JSON files and show speedup deltas."""
+        """Compare qualified speedups from two benchmark JSON files."""
+        from core.api.handlers import compare_benchmark_files
 
-        def _load(path: Path) -> dict:
-            with open(path) as f:
-                return json.load(f)
+        try:
+            comparison = compare_benchmark_files(baseline, candidate, top=top)
+        except (OSError, ValueError) as exc:
+            typer.echo(str(exc), err=True)
+            raise typer.Exit(1) from exc
 
-        base = _load(baseline)
-        cand = _load(candidate)
+        for heading, rows in (
+            ("🚨 Regressions", comparison["regressions"]),
+            ("✅ Improvements", comparison["improvements"]),
+        ):
+            typer.echo(f"\n{heading}")
+            for row in rows:
+                label = row["key"] if row["type"] == "python" else f"{row['key']} ({row['type']})"
+                typer.echo(
+                    f"  {label}: {row['baseline_speedup']:.2f}x → {row['candidate_speedup']:.2f}x "
+                    f"(Δ {row['delta']:+.2f})"
+                )
 
-        def _flatten(blob: dict) -> dict:
-            flat = {}
-            for chapter in blob.get("results", []):
-                chap = chapter.get("chapter", "unknown")
-                for bench in chapter.get("benchmarks", []):
-                    key = f"{chap}:{bench.get('example', bench.get('name', 'unknown'))}"
-                    flat[key] = bench
-            return flat
+        diagnostics = comparison["diagnostics"]
+        if any(diagnostics.values()):
+            typer.echo("\nRun diagnostics")
+            for side, rows in diagnostics.items():
+                for row in rows:
+                    detail = f" ({row['error']})" if row["error"] else ""
+                    typer.echo(f"  {side} {row['key']} ({row['type']}): {row['status']}{detail}")
 
-        bflat = _flatten(base)
-        cflat = _flatten(cand)
-        deltas = []
-        for key, c in cflat.items():
-            b = bflat.get(key)
-            if not b:
-                continue
-            delta = (c.get("best_speedup", 0) or 0) - (b.get("best_speedup", 0) or 0)
-            deltas.append(
-                (key, delta, b.get("best_speedup", 0) or 0, c.get("best_speedup", 0) or 0)
-            )
-
-        deltas.sort(key=lambda x: x[1])
-        regressions = [d for d in deltas if d[1] < 0][:top]
-        improvements = sorted([d for d in deltas if d[1] > 0], key=lambda x: -x[1])[:top]
-
-        typer.echo("\n🚨 Regressions")
-        for name, delta, b, c in regressions:
-            typer.echo(f"  {name}: {b:.2f}x → {c:.2f}x (Δ {delta:.2f})")
-
-        typer.echo("\n✅ Improvements")
-        for name, delta, b, c in improvements:
-            typer.echo(f"  {name}: {b:.2f}x → {c:.2f}x (Δ +{delta:.2f})")
-
-        typer.echo("\nℹ️ Use --top to adjust output; full data available in JSON files.")
+        typer.echo("\nℹ️ Use --top to adjust ranked output. The JSON inputs retain all recorded values.")
 
     @app.command("tui")
     def tui(

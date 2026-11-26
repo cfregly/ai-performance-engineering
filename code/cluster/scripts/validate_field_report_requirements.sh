@@ -344,7 +344,7 @@ import os
 import re
 import sys
 from pathlib import Path
-from urllib.parse import unquote
+from urllib.parse import unquote, urlsplit
 
 root, published, report_base, notes_base = map(Path, sys.argv[1:5])
 report, notes, template, runbook = map(Path, sys.argv[5:])
@@ -355,24 +355,25 @@ def is_placeholder(target: str) -> bool:
     return any(x in target for x in ("<RUN_ID>", "<run_id>", "<hosts>", "<label>", "${", "{RUN_ID}", "<"))
 
 def iter_links(text: str):
-    # Markdown: [text](target)
-    for m in re.finditer(r"\[[^\]]+\]\(([^)]+)\)", text):
-        yield m.group(1).strip()
-    # HTML: href="..." and src="..."
-    for m in re.finditer(r'(?:href|src)=\"([^\"]+)\"', text):
-        yield m.group(1).strip()
+    link_pattern = re.compile(
+        r'''(?:\]\(\s*|^[ \t]*\[[^\]\n]+\]:[ \t]+)(?:<([^>\n]+)>|([^\s)<>]+))'''
+        r'''|\b(?:href|src)\s*=\s*["']([^"']+)["']''',
+        re.MULTILINE | re.IGNORECASE,
+    )
+    for angle_link, markdown_link, html_link in link_pattern.findall(text):
+        yield angle_link or markdown_link or html_link
 
 missing = []
 for path, base in files:
     text = path.read_text(encoding="utf-8", errors="replace")
     for raw in iter_links(text):
-        if not raw or raw.startswith("#") or "://" in raw or raw.startswith("mailto:"):
+        url = urlsplit(raw)
+        if url.scheme or url.netloc or not url.path:
             continue
-        # Strip anchors and any optional markdown title.
-        target = raw.split()[0].split("#", 1)[0]
-        if not target or is_placeholder(target):
+        if is_placeholder(url.path):
             continue
-        tpath = Path(unquote(target))
+        target = unquote(url.path)
+        tpath = Path(target)
         resolved = Path(os.path.abspath(base / tpath))
         if resolved.is_relative_to(published_destination):
             resolved = published / resolved.relative_to(published_destination)

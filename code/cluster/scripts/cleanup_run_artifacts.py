@@ -28,6 +28,7 @@ RAW = Path("cluster/results/raw")
 FIGURES = Path("cluster/docs/figures")
 BASES = (RUNS, STRUCTURED, RAW, FIGURES)
 PUBLISHED = Path("cluster/published/current")
+REPORT_REGISTRY = PUBLISHED.parent / ".report-paths.json"
 REPORTS = (
     "field-report.md",
     "field-report-notes.md",
@@ -163,20 +164,43 @@ def _tree_digest(inventory: dict[Path, list[int]]) -> str:
     return digest.hexdigest()
 
 
-def _published_reports(root: Path, targets: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _published_reports(
+    root: Path, targets: list[dict[str, Any]], published: dict[str, Any] | None
+) -> list[dict[str, Any]]:
     paths = [root / "cluster" / name for name in REPORTS]
     published_reports = _directory(root, PUBLISHED / "reports")
     if published_reports is not None:
         paths.extend(sorted(published_reports.rglob("*.md")))
     deletion_paths = [root / target["path"] for target in targets]
     reports = []
-    for report in paths:
+    try:
+        registry_bytes, identity = _read_regular(root / REPORT_REGISTRY)
+    except FileNotFoundError:
+        pass
+    else:
+        registry = json.loads(registry_bytes)
+        if (
+            not isinstance(registry, dict)
+            or not published
+            or registry.get("run_id") != published["run_id"]
+            or not isinstance(registry.get("reports"), list)
+            or not all(isinstance(name, str) and Path(name).is_absolute() for name in registry["reports"])
+        ):
+            raise ValueError("Local report paths do not match the published run.")
+        reports.append({
+            "path": str(REPORT_REGISTRY),
+            "identity": identity,
+            "sha256": hashlib.sha256(registry_bytes).hexdigest(),
+        })
+        paths.extend(Path(name) for name in registry["reports"])
+    for report in dict.fromkeys(paths):
         try:
             content, identity = _read_regular(report)
         except FileNotFoundError:
             continue
+        report_name = report.relative_to(root) if report.is_relative_to(root) else report
         reports.append({
-            "path": str(report.relative_to(root)),
+            "path": str(report_name),
             "identity": identity,
             "sha256": hashlib.sha256(content).hexdigest(),
         })
@@ -188,7 +212,7 @@ def _published_reports(root: Path, targets: list[dict[str, Any]]) -> list[dict[s
             lexical = Path(os.path.abspath(asset))
             resolved = asset.resolve()
             if any(lexical.is_relative_to(path) or resolved.is_relative_to(path) for path in deletion_paths):
-                raise ValueError(f"Cleanup would remove evidence linked by {report.relative_to(root)}: {link.path}")
+                raise ValueError(f"Cleanup would remove evidence linked by {report_name}: {link.path}")
     return reports
 
 
@@ -243,7 +267,7 @@ def _plan(root: Path, canonical: str, allow: set[str]) -> dict[str, Any]:
                         "identity": _identity(info),
                         "tree_sha256": _tree_digest(inventory),
                     })
-    reports = _published_reports(root, targets)
+    reports = _published_reports(root, targets, published)
     root_info = root.stat()
     return {
         "version": 2,
@@ -269,6 +293,23 @@ def _queue_lock_path(root: Path) -> Path:
     if not lock_path.is_absolute():
         lock_path = root / "cluster" / lock_path
     return Path(os.path.abspath(lock_path))
+
+
+@contextmanager
+def _publication_lock(root: Path, inherited: int | None):
+    directory = root / PUBLISHED.parent
+    directory.mkdir(parents=True, exist_ok=True)
+    with _open_directory(directory) as descriptor:
+        if inherited is None:
+            fcntl.flock(descriptor, fcntl.LOCK_EX)
+        else:
+            opened = os.fstat(descriptor)
+            supplied = os.fstat(inherited)
+            if (opened.st_dev, opened.st_ino) != (supplied.st_dev, supplied.st_ino):
+                raise ValueError("Inherited publication lock identifies a different directory.")
+            # Promotion owns this open file description until it finishes.
+            fcntl.flock(inherited, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        yield
 
 
 @contextmanager
@@ -356,7 +397,7 @@ def _apply(root: Path, plan: dict[str, Any], verbose: bool) -> None:
                 raise ValueError(f"Cleanup target changed at {path}")
             checked_targets.append((path, fd, inventory))
 
-        if _published_reports(root, plan["targets"]) != plan["published_reports"]:
+        if _published_reports(root, plan["targets"], plan["published_manifest"]) != plan["published_reports"]:
             raise ValueError("Published Markdown changed during cleanup. Preview a new plan")
         if _manifest(root, PUBLISHED / "manifest.json") != plan["published_manifest"]:
             raise ValueError("Published manifest changed during cleanup. Preview a new plan")
@@ -390,6 +431,7 @@ def main() -> int:
         "--allow-run-id", action="append", default=[], help="Additional run ID to retain."
     )
     parser.add_argument("--plan-file", type=Path, help="Export a new plan or read it with --apply.")
+    parser.add_argument("--publication-lock-fd", type=int, help=argparse.SUPPRESS)
     parser.add_argument(
         "--apply", action="store_true", help="Remove only paths in the accepted plan."
     )
@@ -403,23 +445,24 @@ def main() -> int:
         root = args.repo_root.resolve(strict=True)
         canonical = validate_run_id(args.canonical_run_id)
         allow = {validate_run_id(run_id) for run_id in args.allow_run_id}
-        if args.apply:
-            reviewed = json.loads(_read_regular(args.plan_file)[0])
-            with _queue_lock(_queue_lock_path(root)):
+        with _publication_lock(root, args.publication_lock_fd):
+            if args.apply:
+                reviewed = json.loads(_read_regular(args.plan_file)[0])
+                with _queue_lock(_queue_lock_path(root)):
+                    current = _plan(root, canonical, allow)
+                    _require_same_plan(reviewed, current)
+                    _print_plan(root, current)
+                    _apply(root, current, args.verbose)
+                print(f"Deleted {len(current['targets'])} stale artifact paths.")
+            else:
                 current = _plan(root, canonical, allow)
-                _require_same_plan(reviewed, current)
                 _print_plan(root, current)
-                _apply(root, current, args.verbose)
-            print(f"Deleted {len(current['targets'])} stale artifact paths.")
-        else:
-            current = _plan(root, canonical, allow)
-            _print_plan(root, current)
-            if args.plan_file is not None:
-                with args.plan_file.open("x", encoding="utf-8") as stream:
-                    json.dump(current, stream, indent=2)
-                    stream.write("\n")
-                print(f"Plan saved to {args.plan_file}")
-            print("Dry run. Use --apply with a saved --plan-file after checking the listed paths.")
+                if args.plan_file is not None:
+                    with args.plan_file.open("x", encoding="utf-8") as stream:
+                        json.dump(current, stream, indent=2)
+                        stream.write("\n")
+                    print(f"Plan saved to {args.plan_file}")
+                print("Dry run. Use --apply with a saved --plan-file after checking the listed paths.")
     except (OSError, ValueError) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 1

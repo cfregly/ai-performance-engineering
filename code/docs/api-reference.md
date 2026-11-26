@@ -205,7 +205,7 @@ These are repo helpers for cluster evaluations under `cluster/` (field report wo
 | `run_cluster_common_eval(...)` | Run a preset cluster evaluation bundle | `aisp cluster common-eval` | `cluster_common_eval` |
 | `run_cluster_fabric_eval(...)` | Run the canonical fabric evaluation bundle | `aisp cluster fabric-eval` | `cluster_fabric_eval` |
 | `build_canonical_package(...)` | Build a canonical comparison/history package | `aisp cluster build-canonical-package` | `cluster_build_canonical_package` |
-| `promote_cluster_run(...)` | Validate the candidate and replace `cluster/published/current` with its artifacts. `published: true` records that the package was installed. A later failure during requested cleanup can leave `success: false`. | `aisp cluster promote-run` (optional `--repo-root` for alternate trees) | `cluster_promote_run` |
+| `promote_cluster_run(...)` | Validate the candidate and replace `cluster/published/current` with its artifacts. `published: true` records that the package was installed. A later failure during requested cleanup can leave `success: false`. A timeout leaves `published: null` because the final state is unknown. | `aisp cluster promote-run` (optional `--repo-root` for alternate trees) | `cluster_promote_run` |
 | `watch_cluster_run_for_promotion(...)` | Start a detached watcher that logs its progress and promotes the run after the watched process exits and validation succeeds. | `aisp cluster watch-promote` (optional `--repo-root`) | `cluster_watch_promote` |
 | `validate_field_report_requirements(...)` | Validate report content, links, manifest identity, and artifact hygiene. Use `published_root` to check a staged package. Use `package_only` to skip hygiene checks. | `aisp cluster validate-field-report` | `cluster_validate_field_report` |
 
@@ -333,9 +333,11 @@ Benchmark execution, history tracking, and result comparison.
 | `data()` | Load benchmark results (filtered/paged) | - | `benchmark_data` |
 | `overview()` | Summary of latest results | - | `benchmark_overview` |
 | `trends()` | Performance trends over time | - | `benchmark_trends` |
-| `compare(params)` | Compare two benchmark runs | - | `benchmark_compare` |
-| `compare_runs(baseline, candidate)` | Compare two benchmark runs (bench CLI diff) | `aisp bench compare-runs` | `benchmark_compare_runs` |
+| `compare(params)` | Compare qualified results from two benchmark runs and return rejected results as diagnostics | - | `benchmark_compare` |
+| `compare_runs(baseline, candidate)` | Show deltas for qualified results and list rejected results in the CLI diagnostics | `aisp bench compare-runs` | `benchmark_compare_runs` |
 | `speed_test()` | Quick speed tests (diagnostic) | `aisp benchmark speed` | `hw_speed` |
+
+In `benchmark_export`, CSV and Markdown retain the last qualified measurement and identify any newer rejected attempt in the diagnostic column. CSV encodes the diagnostic as JSON. Markdown shows its status, run ID, and timestamp.
 
 **Explore workflow:** `aisp bench explore` / `benchmark_explore` copies a `baseline_*.py` (or a `baseline_*.cu` with auto-generated wrapper), runs minimal profiling with LLM patch variants, compares utilization deltas, and triggers deep_dive when minimal results are inconclusive.
 

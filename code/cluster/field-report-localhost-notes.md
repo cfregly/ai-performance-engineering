@@ -1,6 +1,6 @@
 # Cluster Case Study Field Notes (Localhost Package)
 
-Last updated: 2026-03-24. Canonical run: `2026-03-17_localhost_fabric_canonical`.
+Historical reader snapshot. Canonical run: `2026-03-17_localhost_fabric_canonical`.
 
 ## Table of Contents
 1. [Scope](#scope)
@@ -68,7 +68,7 @@ The published evidence is a historical reader snapshot. It contains the files li
 | --- | --- | --- |
 | Localhost suite is clean | [published/current/structured/2026-03-17_localhost_fabric_canonical_suite_steps.json](published/current/structured/2026-03-17_localhost_fabric_canonical_suite_steps.json) | Backed |
 | Fabric coverage is included | [published/current/structured/2026-03-17_localhost_fabric_canonical_fabric_scorecard.json](published/current/structured/2026-03-17_localhost_fabric_canonical_fabric_scorecard.json) | Backed |
-| Operator checks are included | [published/current/structured/2026-03-17_localhost_fabric_canonical_localhost_quick_friction.json](published/current/structured/2026-03-17_localhost_fabric_canonical_localhost_quick_friction.json), [published/current/structured/2026-03-17_localhost_fabric_canonical_localhost_monitoring_expectations.json](published/current/structured/2026-03-17_localhost_fabric_canonical_localhost_monitoring_expectations.json), [published/current/structured/2026-03-17_localhost_fabric_canonical_operator_checks_dashboard.json](published/current/structured/2026-03-17_localhost_fabric_canonical_operator_checks_dashboard.json) | Backed |
+| Post-suite operator attachments cover the selected `torch_import` check and monitoring | [published/current/structured/2026-03-17_localhost_fabric_canonical_localhost_quick_friction.json](published/current/structured/2026-03-17_localhost_fabric_canonical_localhost_quick_friction.json), [published/current/structured/2026-03-17_localhost_fabric_canonical_localhost_monitoring_expectations.json](published/current/structured/2026-03-17_localhost_fabric_canonical_localhost_monitoring_expectations.json), [published/current/structured/2026-03-17_localhost_fabric_canonical_operator_checks_dashboard.json](published/current/structured/2026-03-17_localhost_fabric_canonical_operator_checks_dashboard.json) | Backed |
 | Visual package is present | [published/current/figures/2026-03-17_localhost_fabric_canonical_operator_checks_dashboard.png](published/current/figures/2026-03-17_localhost_fabric_canonical_operator_checks_dashboard.png) | Backed |
 
 ## Repro Entry Point

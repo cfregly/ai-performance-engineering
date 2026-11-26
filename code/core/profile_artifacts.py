@@ -46,12 +46,23 @@ def _read_json_object(path: Path, *, label: str) -> Tuple[Dict[str, Any] | None,
 def _csv_time(value: Any) -> str:
     return f"{value:.4f}" if value is not None else ""
 
+
+def newer_benchmark_result_label(row: Dict[str, Any]) -> str:
+    """Describe a more recent unqualified outcome beside a historical measurement."""
+    newer = row.get("newer_diagnostic")
+    if not isinstance(newer, dict) or not newer.get("status"):
+        return ""
+    details = [newer.get("run_id") or newer.get("source_file"), newer.get("source_timestamp")]
+    source = ", ".join(str(value) for value in details if value)
+    return f"{newer['status']} ({source})" if source else str(newer["status"])
+
+
 def export_benchmarks_csv(data: Dict[str, Any]) -> str:
     """Export benchmark results to CSV format."""
     benchmarks = data.get("benchmarks", [])
 
     lines = [
-        "Benchmark,Baseline Time (ms),Optimized Time (ms),Speedup,Chapter/Lab,Status,Pair Role,Chapter Alignment,Story Note"
+        "Benchmark,Baseline Time (ms),Optimized Time (ms),Speedup,Chapter/Lab,Status,Pair Role,Chapter Alignment,Story Note,Newer Result"
     ]
 
     for b in benchmarks:
@@ -60,14 +71,18 @@ def export_benchmarks_csv(data: Dict[str, Any]) -> str:
         optimized = _csv_time(b.get("optimized_time_ms"))
         speedup = b.get("speedup", 1.0)
         chapter = b.get("chapter", "")
-        status = "✓ Optimized" if speedup > 1.1 else "⚠ Needs Work"
+        newer = newer_benchmark_result_label(b).replace('"', '""')
+        if newer:
+            status = "Earlier qualified result"
+        else:
+            status = "✓ Optimized" if speedup > 1.1 else "⚠ Needs Work"
         pair_role = b.get("pair_role", "") or ""
         chapter_alignment = b.get("chapter_alignment", "") or ""
         story_note = str(b.get("story_note", "") or "").replace('"', '""')
 
         lines.append(
             f'"{name}",{baseline},{optimized},{speedup:.2f},"{chapter}","{status}",'
-            f'"{pair_role}","{chapter_alignment}","{story_note}"'
+            f'"{pair_role}","{chapter_alignment}","{story_note}","{newer}"'
         )
 
     return "\n".join(lines)
@@ -80,7 +95,7 @@ def export_detailed_csv(data: Dict[str, Any]) -> str:
     lines = [
         "Benchmark,Chapter,Baseline Time (ms),Optimized Time (ms),Speedup,"
         "Baseline Memory (MB),Optimized Memory (MB),Memory Reduction (%),"
-        "Techniques Applied,LLM Patches,Patch Success Rate,Pair Role,Chapter Alignment,Story Note"
+        "Techniques Applied,LLM Patches,Patch Success Rate,Pair Role,Chapter Alignment,Story Note,Newer Result"
     ]
 
     for b in benchmarks:
@@ -101,11 +116,12 @@ def export_detailed_csv(data: Dict[str, Any]) -> str:
         pair_role = b.get("pair_role", "") or ""
         chapter_alignment = b.get("chapter_alignment", "") or ""
         story_note = str(b.get("story_note", "") or "").replace('"', '""')
+        newer = newer_benchmark_result_label(b).replace('"', '""')
 
         lines.append(
             f'"{name}","{chapter}",{baseline},{optimized},{speedup:.2f},'
             f"{baseline_mem:.2f},{optimized_mem:.2f},{mem_reduction:.1f},"
-            f'"{techniques_str}",{llm_patches},{patch_success:.0f},"{pair_role}","{chapter_alignment}","{story_note}"'
+            f'"{techniques_str}",{llm_patches},{patch_success:.0f},"{pair_role}","{chapter_alignment}","{story_note}","{newer}"'
         )
 
     return "\n".join(lines)

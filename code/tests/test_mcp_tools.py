@@ -1086,7 +1086,7 @@ def test_slow_tools_opt_in_execution(server: mcp_server.MCPServer, case: ToolCas
 def test_benchmark_export_runs_inprocess(server: mcp_server.MCPServer, tmp_path: Path):
     # Ensure a minimal benchmark file exists for the export tool.
     data_file = tmp_path / "benchmark_test_results.json"
-    data_file.write_text(json.dumps({"benchmarks": []}), encoding="utf-8")
+    data_file.write_text(json.dumps({"results": []}), encoding="utf-8")
     output_path = tmp_path / "export.json"
     params = {"data_file": str(data_file), "format": "json", "output": str(output_path)}
     result = server.call_tool("benchmark_export", params)

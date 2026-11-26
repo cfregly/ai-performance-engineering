@@ -18,7 +18,11 @@ from urllib.parse import quote, unquote, urlsplit, urlunsplit
 
 
 ARTIFACT_DIRS = ("structured", "raw", "figures", "reports")
-LOCAL_LINK = re.compile(r'(?<=\]\()[^\s)]+|(?<=href=")[^"]+|(?<=src=")[^"]+')
+LOCAL_LINK = re.compile(
+    r'''(?:\]\(\s*|^[ \t]*\[[^\]\n]+\]:[ \t]+)(?:<([^>\n]+)>|([^\s)<>]+))'''
+    r'''|\b(?:href|src)\s*=\s*["']([^"']+)["']''',
+    re.MULTILINE | re.IGNORECASE,
+)
 STAGE_MARKER = ".owned-stage"
 
 
@@ -103,8 +107,8 @@ def _sync_children(src_dir: Path, dst_dir: Path) -> list[str]:
     return copied
 
 
-def _run_subprocess(cmd: list[str], *, cwd: Path) -> dict[str, Any]:
-    proc = subprocess.run(cmd, cwd=str(cwd), capture_output=True, text=True, check=False)
+def _run_subprocess(cmd: list[str], *, cwd: Path, pass_fds: tuple[int, ...] = ()) -> dict[str, Any]:
+    proc = subprocess.run(cmd, cwd=str(cwd), capture_output=True, text=True, check=False, pass_fds=pass_fds)
     return {
         "command": cmd,
         "returncode": proc.returncode,
@@ -176,7 +180,10 @@ def _validate_candidate(candidate: Path, run_id: str) -> None:
     if any(str(step.get("exit_code")) != "0" for step in latest_steps.values()):
         raise ValueError(f"Candidate suite has unfinished or failed steps for {run_id}.")
 
-    modern = manifest.get("manifest_version") == 2
+    version = manifest.get("manifest_version")
+    if version is not None and (type(version) is not int or version not in (1, 2)):
+        raise ValueError(f"Unsupported candidate manifest version: {version}")
+    modern = version == 2
     files = manifest.get("files")
     if files is None:
         if modern:
@@ -287,12 +294,16 @@ def _write_report_variant(
         return
 
     def rebase(match: re.Match[str]) -> str:
-        link = match.group()
+        group = match.lastindex
+        assert group is not None
+        link = match[group]
         target = urlsplit(link)
         if target.scheme or target.netloc or not target.path or target.path.startswith("/") or "<" in link:
-            return link
+            return match.group()
         relative = os.path.relpath(cluster_root / unquote(target.path), final_parent)
-        return urlunsplit(("", "", quote(relative, safe="/"), target.query, target.fragment))
+        rebound = urlunsplit(("", "", quote(relative, safe="/"), target.query, target.fragment))
+        start, end = match.span(group)
+        return match.string[match.start():start] + rebound + match.string[end:match.end()]
 
     content = LOCAL_LINK.sub(rebase, source.read_text(encoding="utf-8"))
     staged.write_text(content, encoding="utf-8")
@@ -374,12 +385,14 @@ def _protect_report_links(plan: Path, repo_root: Path, reports: set[Path]) -> No
     for report in sorted(reports):
         if not report.is_file():
             continue
-        for match in LOCAL_LINK.finditer(report.read_text(encoding="utf-8")):
-            link = urlsplit(match.group())
+        for angle_link, markdown_link, html_link in LOCAL_LINK.findall(report.read_text(encoding="utf-8")):
+            link = urlsplit(angle_link or markdown_link or html_link)
             if link.scheme or link.netloc or not link.path:
                 continue
-            asset = (report.parent / unquote(link.path)).resolve()
-            if any(asset.is_relative_to(target) for target in targets):
+            asset = report.parent / unquote(link.path)
+            lexical = Path(os.path.abspath(asset))
+            resolved = asset.resolve()
+            if any(lexical.is_relative_to(target) or resolved.is_relative_to(target) for target in targets):
                 raise ValueError(f"Cleanup would remove evidence linked by {report.name}: {asset}")
 
 
@@ -392,6 +405,7 @@ def _promote(
     notes: Path,
     stage: Path,
     summary: dict[str, Any],
+    publication_fd: int,
 ) -> None:
     cluster_root = repo_root / "cluster"
     candidate = stage / "candidate"
@@ -478,7 +492,15 @@ def _promote(
         if not steps["validate_localhost_report"]["success"]:
             raise ValueError("Candidate report validation failed.")
 
-    _install_publication(candidate, published, outputs)
+    registry = published.parent / ".report-paths.json"
+    if report == registry or notes == registry:
+        raise ValueError("Choose report and notes destinations outside the local publication registry.")
+    staged_registry = stage / "report-paths.json"
+    staged_registry.write_text(
+        json.dumps({"run_id": args.run_id, "reports": sorted({str(report), str(notes)})}),
+        encoding="utf-8",
+    )
+    _install_publication(candidate, published, {**outputs, registry: staged_registry})
     steps["publish_package_sync"] = {"success": True, **copied, "manifest": True}
     summary["published"] = True
     if outputs and args.label == "localhost":
@@ -495,17 +517,20 @@ def _promote(
             "--repo-root", str(repo_root),
             "--canonical-run-id", args.run_id,
             "--plan-file", str(plan),
+            "--publication-lock-fd", str(publication_fd),
         ]
         for run_id in args.allow_run_id:
             if run_id:
                 cleanup_cmd.extend(["--allow-run-id", run_id])
-        steps["cleanup_plan"] = _run_subprocess(cleanup_cmd, cwd=repo_root)
+        steps["cleanup_plan"] = _run_subprocess(cleanup_cmd, cwd=repo_root, pass_fds=(publication_fd,))
         if not steps["cleanup_plan"]["success"]:
             raise ValueError("Publication succeeded. Cleanup planning failed.")
         _protect_report_links(
             plan, repo_root, {report, notes, cluster_root / "field-report.md", cluster_root / "field-report-notes.md"}
         )
-        steps["cleanup"] = _run_subprocess([*cleanup_cmd, "--apply"], cwd=repo_root)
+        steps["cleanup"] = _run_subprocess(
+            [*cleanup_cmd, "--apply"], cwd=repo_root, pass_fds=(publication_fd,)
+        )
         if not steps["cleanup"]["success"]:
             raise ValueError("Publication succeeded. Cleanup did not complete.")
 
@@ -551,7 +576,7 @@ def main() -> int:
                 retain_stage = False
                 try:
                     (stage / STAGE_MARKER).touch()
-                    _promote(args, repo_root, run_dir, published, report, notes, stage, summary)
+                    _promote(args, repo_root, run_dir, published, report, notes, stage, summary, descriptor)
                     summary["success"] = True
                 except RollbackError:
                     retain_stage = True

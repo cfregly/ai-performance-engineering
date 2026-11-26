@@ -107,7 +107,22 @@
     },
     "source_manifest_entries_selected": 25,
     "source_manifest_entries_available_but_outside_reader_scope": 95,
-    "reader_files_outside_source_manifest": 4
+    "reader_files_outside_source_manifest": 4,
+    "reader_paths_outside_source_manifest": [
+      "figures/2026-03-17_localhost_fabric_canonical_operator_checks_dashboard.png",
+      "structured/2026-03-17_localhost_fabric_canonical_localhost_monitoring_expectations.json",
+      "structured/2026-03-17_localhost_fabric_canonical_localhost_quick_friction.json",
+      "structured/2026-03-17_localhost_fabric_canonical_operator_checks_dashboard.json"
+    ],
+    "source_manifest_entries_absent_by_type": {
+      "raw_log": 60
+    },
+    "post_suite_operator_attachment_paths": [
+      "figures/2026-03-17_localhost_fabric_canonical_operator_checks_dashboard.png",
+      "structured/2026-03-17_localhost_fabric_canonical_localhost_monitoring_expectations.json",
+      "structured/2026-03-17_localhost_fabric_canonical_localhost_quick_friction.json",
+      "structured/2026-03-17_localhost_fabric_canonical_operator_checks_dashboard.json"
+    ]
   },
   "artifact_roles": {
     "fabric_ai_correlation": [

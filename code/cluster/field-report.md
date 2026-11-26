@@ -1,6 +1,6 @@
 # Cluster Perf Field Report (Localhost, 1 Node)
 
-Last updated: 2026-03-24. Canonical run: `2026-03-17_localhost_fabric_canonical`.
+Historical reader snapshot. Canonical run: `2026-03-17_localhost_fabric_canonical`.
 
 ## Table of Contents
 1. [TL;DR](#tldr)
@@ -31,7 +31,7 @@ Last updated: 2026-03-24. Canonical run: `2026-03-17_localhost_fabric_canonical`
 | Suite status | `41/41` steps green; `validate_required_artifacts=0` |
 | Networking headline | Recorded single-GPU NCCL peak algbw `2263.5 GB/s` (67108864 bytes); connectivity probe `84.867 GB/s` payload algbw |
 | Inference headline | vLLM total throughput `484.494 tok/s` (c=1) -> `484.494 tok/s` (c=1); p99 TTFT `77.573 ms` -> `77.573 ms` |
-| Operator checks | quick_friction `ok` (pass=1, failed=0, expected=0, unexpected=0), monitoring_expectations `ok` |
+| Post-suite operator checks | quick_friction `ok` (pass=1, failed=0, expected=0, unexpected=0), monitoring_expectations `ok` |
 | Fabric scorecard | Stored category `full_stack_verified`. The topology has zero NVLink pairs. |
 | Key weird/new | Single-node NCCL env sweep can show `busbw=0.0` by definition (rank=1), while algbw is still strong. |
 
@@ -49,17 +49,17 @@ Last updated: 2026-03-24. Canonical run: `2026-03-17_localhost_fabric_canonical`
 | Fabric scorecard | [published/current/structured/2026-03-17_localhost_fabric_canonical_fabric_scorecard.json](published/current/structured/2026-03-17_localhost_fabric_canonical_fabric_scorecard.json) |
 
 ## Fabric Evaluation
-| Family | Present | Completeness | Mgmt plane | Link health | Routing | AI workload impact |
+| Family | Present | Stored completeness | Mgmt plane | Stored link health | Stored routing | Retained evidence |
 | --- | --- | --- | --- | --- | --- | --- |
-| `nvlink` | `True` | `full_stack_verified` | `True` | `runtime_verified` | `pass` | The stored NCCL run records 2263.5 GB/s algbw on one GPU. There is no peer NVLink path in its topology. |
+| `nvlink` | `True` | `full_stack_verified` | `True` | `runtime_verified` | `pass` | The stored NCCL run records 2263.5 GB/s algbw on one GPU. Its recorded topology has zero NVLink peer links. |
 | `infiniband` | `False` | `not_present` | `False` | `n/a` | `n/a` | No direct AI workload finding. |
 | `spectrum-x` | `False` | `not_present` | `False` | `n/a` | `n/a` | No direct AI workload finding. |
 
 | Fabric summary | Value |
 | --- | --- |
 | Management planes configured | `1` |
-| Runtime-verified families | `1` |
-| Full-stack-verified families | `1` |
+| Scorecard runtime-verified families | `1` |
+| Scorecard full-stack-verified families | `1` |
 | Catalog entries | `555` |
 
 | NMX Topology Scenario | Value |
@@ -145,7 +145,7 @@ Last updated: 2026-03-24. Canonical run: `2026-03-17_localhost_fabric_canonical`
 | Runtime interpretation | Collect multi-node NCCL, all-to-all, and torchrun connectivity artifacts before drawing Spectrum-X / RoCE conclusions. |
 
 Cross-fabric interpretation:
-- The stored NCCL run records 2263.5 GB/s algbw on one GPU. There is no peer NVLink path in its topology.
+- The stored NCCL run records 2263.5 GB/s algbw on one GPU. Its recorded topology has zero NVLink peer links.
 - vLLM throughput ranges from 484.5 to 484.5 tok/s across 1 concurrency points.
 
 Data: [published/current/structured/2026-03-17_localhost_fabric_canonical_fabric_command_catalog.json](published/current/structured/2026-03-17_localhost_fabric_canonical_fabric_command_catalog.json), [published/current/structured/2026-03-17_localhost_fabric_canonical_fabric_capability_matrix.json](published/current/structured/2026-03-17_localhost_fabric_canonical_fabric_capability_matrix.json), [published/current/structured/2026-03-17_localhost_fabric_canonical_fabric_verification.json](published/current/structured/2026-03-17_localhost_fabric_canonical_fabric_verification.json), [published/current/structured/2026-03-17_localhost_fabric_canonical_fabric_ai_correlation.json](published/current/structured/2026-03-17_localhost_fabric_canonical_fabric_ai_correlation.json), [published/current/structured/2026-03-17_localhost_fabric_canonical_fabric_scorecard.json](published/current/structured/2026-03-17_localhost_fabric_canonical_fabric_scorecard.json)
@@ -197,8 +197,8 @@ Data: [published/current/structured/2026-03-17_localhost_fabric_canonical_suite_
 | NVLink topology parsing | topology summary generated | parser now handles single-GPU header formats robustly | keeps topology evidence reproducible on localhost | [published/current/structured/2026-03-17_localhost_fabric_canonical_localhost_meta_nvlink_topology.json](published/current/structured/2026-03-17_localhost_fabric_canonical_localhost_meta_nvlink_topology.json) |
 | Fabric control-plane coverage | fabric scorecard generated | management-plane completeness drops to structured `not_configured`, never a silent skip | makes NVLink / IB / Spectrum-X coverage auditable | [published/current/structured/2026-03-17_localhost_fabric_canonical_fabric_scorecard.json](published/current/structured/2026-03-17_localhost_fabric_canonical_fabric_scorecard.json) |
 | NCCL env sweep | all profiles `ok` | `busbw=0.0` in rank-1 mode looks odd but is expected | prevents false network conclusions on 1-GPU runs | [published/current/structured/2026-03-17_localhost_fabric_canonical_nccl_env_sensitivity.json](published/current/structured/2026-03-17_localhost_fabric_canonical_nccl_env_sensitivity.json) |
-| Operator friction | full quick-friction battery executed | expected failures captured explicitly (`none` if present) | preserves operator visibility without false-red localhost status | [published/current/structured/2026-03-17_localhost_fabric_canonical_localhost_quick_friction.json](published/current/structured/2026-03-17_localhost_fabric_canonical_localhost_quick_friction.json) |
-| Monitoring mode | gpu/system checks run | control-plane checks can be `not_applicable` without kubeconfig | clarifies expected non-K8s behavior | [published/current/structured/2026-03-17_localhost_fabric_canonical_localhost_monitoring_expectations.json](published/current/structured/2026-03-17_localhost_fabric_canonical_localhost_monitoring_expectations.json) |
+| Operator friction | post-suite quick-friction ran the selected `torch_import` check | expected failures captured explicitly (`none` if present) | preserves operator visibility without false-red localhost status | [published/current/structured/2026-03-17_localhost_fabric_canonical_localhost_quick_friction.json](published/current/structured/2026-03-17_localhost_fabric_canonical_localhost_quick_friction.json) |
+| Monitoring mode | post-suite GPU and system checks | control-plane checks can be `not_applicable` without kubeconfig | clarifies expected non-K8s behavior | [published/current/structured/2026-03-17_localhost_fabric_canonical_localhost_monitoring_expectations.json](published/current/structured/2026-03-17_localhost_fabric_canonical_localhost_monitoring_expectations.json) |
 
 ### Deep-Dive Findings
 | Finding | Baseline anchor | Reinforcement insight | Evidence |
@@ -220,7 +220,7 @@ Data: [published/current/structured/2026-03-17_localhost_fabric_canonical_prefli
 | Connectivity probe payload algbw | `84.867 GB/s` |
 | Connectivity barrier mean | `0.0717 ms` |
 
-Interpretation: single-node communication path is healthy; rank-1 `busbw` should not be interpreted as fabric bottleneck evidence.
+Rank-1 results describe the recorded local workload. Peer fabric bandwidth requires a multi-rank transfer.
 
 <p><a href="published/current/figures/2026-03-17_localhost_fabric_canonical_node1_nccl_bw_vs_msg.png"><img src="published/current/figures/2026-03-17_localhost_fabric_canonical_node1_nccl_bw_vs_msg.png" alt="NCCL bandwidth localhost" width="920"/></a></p>
 <p><a href="published/current/figures/2026-03-17_localhost_fabric_canonical_node1_nccl_scaling_efficiency.png"><img src="published/current/figures/2026-03-17_localhost_fabric_canonical_node1_nccl_scaling_efficiency.png" alt="NCCL scaling localhost" width="920"/></a></p>
@@ -259,7 +259,7 @@ Data: [published/current/structured/2026-03-17_localhost_fabric_canonical_localh
 | Area | Prior state | Current state |
 | --- | --- | --- |
 | Package type | environment-focused localhost output possible | full template-style localhost field report package rendered from artifacts |
-| Drift risk | hand-updated markdown could diverge from metrics | report is generated directly from structured artifacts for this RUN_ID |
+| Drift risk | hand-updated markdown could diverge from metrics | reader snapshot retains the report's linked structured evidence |
 | Operator checks | could appear as degraded without expected-failure context | expected vs unexpected failure classification is explicit in artifacts |
 | Cleanup hygiene | superseded localhost runs could remain unless manually deleted | cleanup script supports canonical-run retention and stale artifact pruning |
 
@@ -299,7 +299,7 @@ The example uses the retained inference settings of 64 input tokens, 32 output t
 
 The retained overview figure missed the NCCL series. The structured NCCL file and dedicated bandwidth figure record the benchmark result.
 
-The published evidence is a historical reader snapshot. It contains the files linked from this report and its notes. Public labels replace private identifiers, and selected operator output was removed. The manifest records which published files differ from the historical publication.
+The published evidence is a historical reader snapshot. It contains the files linked from this report and its notes. Public labels replace private identifiers, and selected operator output was removed. The manifest separates files redacted for this snapshot from five variants already present in the historical publication. The retained vLLM and GEMM tables use those historical variants.
 
 | Artifact class | Links |
 | --- | --- |

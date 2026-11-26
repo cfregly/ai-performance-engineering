@@ -200,7 +200,7 @@ def test_watch_run_records_promotion_timeout(tmp_path: Path, monkeypatch: pytest
     def promote(cmd: list[str], *, timeout: int, **kwargs: object) -> subprocess.CompletedProcess[str]:
         raise subprocess.TimeoutExpired(cmd, timeout, output=b"", stderr=b"partial diagnostic")
 
-    monkeypatch.setattr(watcher.subprocess, "run", promote)
+    monkeypatch.setattr(watcher, "run_promotion_process", promote)
     assert watcher.main() == 1
     status = json.loads(status_path.read_text())
     log = json.loads(promotion_log.read_text())
@@ -209,6 +209,25 @@ def test_watch_run_records_promotion_timeout(tmp_path: Path, monkeypatch: pytest
     assert status["published"] is None
     assert "timed out" in status["error"]
     assert log["stderr"] == "partial diagnostic"
+
+
+@pytest.mark.parametrize("contents", ['[{"name":', '{"name": "discovery"}', '[{"exit_code": 0}]'])
+def test_watch_run_records_invalid_ledger(tmp_path, monkeypatch, contents):
+    run_id = "2026-03-07_invalid_ledger"
+    run_dir = _seed_canonical_run(tmp_path / "cluster", run_id, "localhost")
+    status_path, _, promotion_log = watcher.watcher_receipt_paths(run_dir)
+    (run_dir / "structured" / f"{run_id}_suite_steps.json").write_text(contents, encoding="utf-8")
+    monkeypatch.setattr(sys, "argv", [
+        "watch_run_for_promotion.py", "--repo-root", str(tmp_path), "--run-id", run_id, "--pid", "999999",
+    ])
+    monkeypatch.setattr(watcher, "_process_alive", lambda pid: False)
+
+    assert watcher.main() == 1
+    status = json.loads(status_path.read_text())
+    assert status["status"] == "run_failed"
+    assert status["failed_steps"] == ["suite_steps_invalid"]
+    assert "Unable to read suite steps" in status["error"]
+    assert not promotion_log.exists()
 
 
 def test_watcher_accepts_external_runs_directory_without_following_selected_run_symlinks(tmp_path: Path) -> None:

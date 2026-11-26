@@ -39,7 +39,7 @@ def iter_benchmark_rows(
     if not isinstance(results, list):
         raise ValueError(f"Expected 'results' list in benchmark results {source}")
     for index, chapter in enumerate(results):
-        if not isinstance(chapter, dict) or not isinstance(chapter.get("chapter"), str):
+        if not isinstance(chapter, dict) or not isinstance(chapter.get("chapter"), str) or not chapter["chapter"].strip():
             invalid(f"Invalid chapter at results[{index}] in {source}")
             continue
         benchmarks = chapter.get("benchmarks")
@@ -47,7 +47,15 @@ def iter_benchmark_rows(
             invalid(f"Expected 'benchmarks' list for {chapter['chapter']} in {source}")
             continue
         for row_index, bench in enumerate(benchmarks):
-            if not isinstance(bench, dict) or not isinstance(bench.get("example"), str):
+            if (
+                isinstance(bench, dict)
+                and "example" not in bench
+                and isinstance(bench.get("name"), str)
+                and data.get("run_id") is None
+                and not requires_variant_evidence(bench)
+            ):
+                bench = {**bench, "example": bench["name"]}
+            if not isinstance(bench, dict) or not isinstance(bench.get("example"), str) or not bench["example"].strip():
                 invalid(f"Invalid benchmark at results[{index}].benchmarks[{row_index}] in {source}")
                 continue
             yield chapter["chapter"], bench

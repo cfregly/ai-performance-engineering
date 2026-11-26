@@ -11,6 +11,7 @@ import traceback
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from cluster.scripts.promotion_process import run_promotion_process
 from core.harness.progress import ProgressEvent, ProgressRecorder
 
 _CLUSTER_PROGRESS_POLL_SECONDS = 2.0
@@ -702,16 +703,20 @@ def _subprocess_text(output: str | bytes | None) -> str:
     return output.decode(errors="replace") if isinstance(output, bytes) else output or ""
 
 
-def _run_cmd(cmd: List[str], *, cwd: Optional[Path] = None, timeout_seconds: Optional[int] = None) -> Dict[str, Any]:
+def _run_cmd(
+    cmd: List[str],
+    *,
+    cwd: Optional[Path] = None,
+    timeout_seconds: Optional[int] = None,
+    promotion: bool = False,
+) -> Dict[str, Any]:
     start = time.monotonic()
+    timeout = timeout_seconds if timeout_seconds and timeout_seconds > 0 else None
     try:
-        proc = subprocess.run(
-            cmd,
-            cwd=str(cwd) if cwd else None,
-            capture_output=True,
-            text=True,
-            timeout=timeout_seconds if timeout_seconds and timeout_seconds > 0 else None,
-        )
+        if promotion:
+            proc = run_promotion_process(cmd, cwd=cwd, timeout=timeout)
+        else:
+            proc = subprocess.run(cmd, cwd=str(cwd) if cwd else None, capture_output=True, text=True, timeout=timeout)
         duration_ms = int((time.monotonic() - start) * 1000)
         return {
             "command": cmd,
@@ -729,6 +734,7 @@ def _run_cmd(cmd: List[str], *, cwd: Optional[Path] = None, timeout_seconds: Opt
             "stderr": _subprocess_text(exc.stderr),
             "error": f"timeout after {timeout_seconds}s",
             "duration_ms": duration_ms,
+            **({"timed_out": True, "published": None} if promotion else {}),
         }
     except Exception as exc:
         duration_ms = int((time.monotonic() - start) * 1000)
@@ -1413,7 +1419,7 @@ def promote_cluster_run(
     if cleanup:
         cmd.append("--cleanup")
 
-    result = _run_cmd(cmd, cwd=root, timeout_seconds=int(timeout_seconds))
+    result = _run_cmd(cmd, cwd=root, timeout_seconds=int(timeout_seconds), promotion=True)
     success = result.get("returncode") == 0
     payload: Dict[str, Any] = {
         "success": bool(success),
@@ -1432,6 +1438,8 @@ def promote_cluster_run(
         "allow_run_ids": allow,
         **result,
     }
+    if result.get("timed_out"):
+        return payload
     stdout = result.get("stdout") or ""
     try:
         parsed = json.loads(stdout)

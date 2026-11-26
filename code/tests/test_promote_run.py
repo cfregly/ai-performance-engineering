@@ -84,7 +84,8 @@ def _write_v2_manifest(run_dir: Path, run_id: str) -> dict:
     "candidate",
     [
         "missing_manifest", "wrong_run_id", "missing_steps", "failed_step", "changed_artifact",
-        "missing_inventory", "missing_hashes", "untracked_file", "failed_git_probe", "invalid_report",
+        "missing_inventory", "missing_hashes", "untracked_file", "failed_git_probe",
+        "unsupported_version", "invalid_report",
     ],
 )
 def test_failed_promotion_preserves_publication_and_run_history(
@@ -121,7 +122,7 @@ def test_failed_promotion_preserves_publication_and_run_history(
         })
         with (run_dir / steps_path).open("a", encoding="utf-8") as changed:
             changed.write("\n")
-    elif candidate in {"missing_inventory", "missing_hashes", "untracked_file", "failed_git_probe"}:
+    elif candidate in {"missing_inventory", "missing_hashes", "untracked_file", "failed_git_probe", "unsupported_version"}:
         manifest = _write_v2_manifest(run_dir, run_id)
         if candidate == "missing_inventory":
             del manifest["files"]
@@ -129,6 +130,8 @@ def test_failed_promotion_preserves_publication_and_run_history(
             del manifest["summary"]["sha256"]
         elif candidate == "failed_git_probe":
             manifest["git"] = {"probe_ok": False}
+        elif candidate == "unsupported_version":
+            manifest["manifest_version"] = 3
         else:
             (run_dir / "raw" / "extra.log").write_text("unbound evidence\n", encoding="utf-8")
         _write_json(run_dir / "manifest.json", manifest)
@@ -304,9 +307,11 @@ def test_promote_run_materializes_published_package(tmp_path: Path) -> None:
     assert (cluster_root / "published" / "current" / "figures" / f"{run_id}_cluster_story_dashboard.png").exists()
 
 
-@pytest.mark.parametrize("report_links_to_old_run", [False, True])
+@pytest.mark.parametrize(
+    "old_run_link", [None, "[Prior evidence]({path})", "<img src='{path}'>", "[Prior][asset]\n\n[asset]: <{path}>"]
+)
 def test_promotion_applies_cleanup_plan_after_installing_package(
-    tmp_path: Path, monkeypatch, report_links_to_old_run: bool
+    tmp_path: Path, monkeypatch, old_run_link: str | None
 ) -> None:
     cluster_root = tmp_path / "cluster"
     run_id = "2026-03-06_localhost_current"
@@ -317,9 +322,9 @@ def test_promotion_applies_cleanup_plan_after_installing_package(
     accepted_run = _seed_promotable_run(cluster_root, run_id, "localhost")
     current = cluster_root / "published" / "current"
     _write_json(current / "manifest.json", {"run_id": obsolete_id})
-    if report_links_to_old_run:
+    if old_run_link:
         (cluster_root / "custom-report.md").write_text(
-            f"[Prior evidence](runs/{obsolete_id}/manifest.json)\n", encoding="utf-8"
+            old_run_link.format(path=f"runs/{obsolete_id}/manifest.json") + "\n", encoding="utf-8"
         )
     monkeypatch.setenv("AISP_CLUSTER_SUITE_QUEUE_LOCK_PATH", str(tmp_path / "suite.lock"))
     script = Path(__file__).resolve().parents[1] / "cluster" / "scripts" / "promote_run.py"
@@ -335,17 +340,32 @@ def test_promotion_applies_cleanup_plan_after_installing_package(
         text=True,
     )
 
-    assert proc.returncode == int(report_links_to_old_run), proc.stdout or proc.stderr
+    assert proc.returncode == int(bool(old_run_link)), proc.stdout or proc.stderr
     payload = json.loads(proc.stdout)
     assert payload["published"] is True
-    assert payload["steps"]["cleanup_plan"]["success"]
+    assert payload["steps"]["cleanup_plan"]["success"] is not bool(old_run_link)
     assert json.loads((current / "manifest.json").read_text())["run_id"] == run_id
     assert accepted_run.is_dir()
     assert kept_run.is_dir()
-    if report_links_to_old_run:
-        assert "Cleanup would remove evidence linked" in payload["error"]
+    if old_run_link:
+        assert "Cleanup would remove evidence linked" in payload["steps"]["cleanup_plan"]["stderr"]
         assert "cleanup" not in payload["steps"]
         assert obsolete_run.exists()
+        registry = current.parent / ".report-paths.json"
+        assert str(cluster_root / "custom-report.md") in json.loads(registry.read_text())["reports"]
+        cleanup = script.with_name("cleanup_run_artifacts.sh")
+        preview = subprocess.run(
+            [
+                "bash", str(cleanup), "--repo-root", str(tmp_path), "--canonical-run-id", run_id,
+                "--allow-run-id", keep_id, "--plan-file", str(tmp_path / "standalone-plan.json"),
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        assert preview.returncode == 1
+        assert "custom-report.md" in preview.stderr
+        assert not (tmp_path / "standalone-plan.json").exists()
     else:
         assert payload["steps"]["cleanup"]["success"]
         assert not obsolete_run.exists()

@@ -76,6 +76,14 @@ def test_benchmark_triage_counts_diagnostics_without_ranking_them(
     }
     if not has_qualified_result:
         data["results"][0]["benchmarks"].pop(0)
+    else:
+        data["results"][0]["benchmarks"].insert(0, {
+            "example": "ok_case",
+            "best_speedup": 80.0,
+            "baseline_time_ms": 10.0,
+            "status": "failed_verification",
+            "optimizations": [],
+        })
     data_path = tmp_path / "benchmark_test_results.json"
     data_path.write_text(json.dumps(data), encoding="utf-8")
 

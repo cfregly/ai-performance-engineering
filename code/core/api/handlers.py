@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
+from core.analysis.performance_analyzer import load_benchmark_data
 from core.engine import get_engine
 from core.jobs import JobStore
 
@@ -268,88 +269,46 @@ def _paginate(items: Sequence[Dict[str, Any]], page: int, page_size: int) -> Lis
     return list(items[start:end])
 
 
-def _to_float(value: Any, name: str, *, allow_none: bool) -> Optional[float]:
-    if value is None:
-        if allow_none:
-            return None
-        raise BenchmarkRequestError(f"{name} is required")
-    try:
-        return float(value)
-    except (TypeError, ValueError) as exc:
-        raise BenchmarkRequestError(f"{name} must be numeric") from exc
-
-
 def _load_run_file(path: Path) -> Dict[str, Any]:
     try:
-        with path.open("r") as handle:
-            data = json.load(handle)
-    except (json.JSONDecodeError, UnicodeError) as exc:
-        raise BenchmarkRequestError(f"Failed to parse JSON: {path}") from exc
-    except OSError as exc:
-        raise BenchmarkRequestError(f"Failed to read run file {path}: {exc.strerror}") from exc
+        data = load_benchmark_data(data_file=path)
+    except FileNotFoundError as exc:
+        raise BenchmarkInputNotFoundError(str(exc)) from exc
+    except ValueError as exc:
+        if isinstance(exc.__cause__, (json.JSONDecodeError, UnicodeError)):
+            raise BenchmarkRequestError(f"Failed to parse JSON: {path}") from exc
+        raise BenchmarkRequestError(str(exc)) from exc
 
-    if not isinstance(data, dict):
-        raise BenchmarkRequestError(f"Expected JSON object in run file: {path}")
-    results = data.get("results")
-    if not isinstance(results, list):
-        raise BenchmarkRequestError(f"Run file missing results list: {path}")
+    def comparison_record(row: dict) -> dict:
+        admitted = row["status"] == "succeeded"
+        record = {
+            "key": f"{row['chapter']}:{row['name']}",
+            "chapter": row["chapter"],
+            "name": row["name"],
+            "type": row["type"],
+            "status": row["status"],
+            "baseline_time_ms": row["baseline_time_ms"],
+            "optimized_time_ms": row["optimized_time_ms"],
+            "speedup": row["speedup"] if admitted else None,
+            "optimization_goal": row["optimization_goal"],
+            "baseline_memory_mb": row["baseline_memory_mb"],
+            "optimized_memory_mb": row["optimized_memory_mb"],
+            "memory_savings_pct": row["memory_savings_pct"],
+            "error": row["error"],
+        }
+        if not admitted:
+            record["recorded_speedup"] = row["speedup"]
+            record["source_file"] = row["source_file"]
+            record["run_id"] = row["run_id"]
+        return record
 
-    benchmarks: List[Dict[str, Any]] = []
-    for chapter_block in results:
-        if not isinstance(chapter_block, dict):
-            raise BenchmarkRequestError(f"Invalid chapter entry in {path}")
-        chapter = chapter_block.get("chapter")
-        if not chapter:
-            raise BenchmarkRequestError(f"Missing chapter in {path}")
-        bench_list = chapter_block.get("benchmarks")
-        if not isinstance(bench_list, list):
-            raise BenchmarkRequestError(f"Missing benchmarks list for {chapter} in {path}")
-        for bench in bench_list:
-            if not isinstance(bench, dict):
-                raise BenchmarkRequestError(f"Invalid benchmark entry in {path}")
-            if "example" in bench:
-                name = bench.get("example")
-            else:
-                name = bench.get("name")
-            if not name:
-                raise BenchmarkRequestError(f"Benchmark missing name in {path}")
-            status_raw = bench.get("status")
-            if status_raw is None:
-                raise BenchmarkRequestError(f"Benchmark missing status in {path}")
-            status = _normalize_status(str(status_raw))
-            if status is None:
-                raise BenchmarkRequestError(f"Unsupported status '{status_raw}' in {path}")
-            baseline_time = _to_float(
-                bench.get("baseline_time_ms"), "baseline_time_ms", allow_none=True
-            )
-            speedup = _to_float(bench.get("best_speedup"), "best_speedup", allow_none=False)
-            if status == "succeeded" and baseline_time is None:
-                raise BenchmarkRequestError(f"Benchmark {chapter}:{name} missing timing metrics in {path}")
-            optimized_time = None
-            if baseline_time is not None and speedup is not None and speedup > 0:
-                optimized_time = baseline_time / speedup
-            record = {
-                "key": f"{chapter}:{name}",
-                "chapter": chapter,
-                "name": name,
-                "status": status,
-                "baseline_time_ms": baseline_time,
-                "optimized_time_ms": optimized_time,
-                "speedup": speedup,
-                "optimization_goal": bench.get("optimization_goal"),
-                "baseline_memory_mb": bench.get("baseline_memory_mb"),
-                "optimized_memory_mb": bench.get("optimized_memory_mb"),
-                "memory_savings_pct": bench.get("memory_savings_pct"),
-                "error": bench.get("error"),
-            }
-            benchmarks.append(record)
-
-    summary = _build_summary(benchmarks, {})
+    outcomes = [comparison_record(row) for row in data["latest_outcomes"]]
     return {
         "path": str(path),
-        "timestamp": data.get("timestamp"),
-        "benchmarks": benchmarks,
-        "summary": summary,
+        "timestamp": data["timestamp"],
+        "outcomes": outcomes,
+        "diagnostics": [comparison_record(row) for row in data["diagnostics"]],
+        "summary": _build_summary(outcomes, {}),
     }
 
 
@@ -595,12 +554,16 @@ def benchmark_compare(params: Dict[str, Any]) -> Dict[str, Any]:
     baseline_path = _parse_path_param(params, "baseline")
     candidate_path = _parse_path_param(params, "candidate")
     top = _parse_int_param(params, "top", 10, minimum=1, maximum=100)
+    return compare_benchmark_files(baseline_path, candidate_path, top=top)
 
+
+def compare_benchmark_files(baseline_path: Path, candidate_path: Path, *, top: int) -> Dict[str, Any]:
+    """Compare qualified results and report all rejected rows by input file."""
     baseline = _load_run_file(baseline_path)
     candidate = _load_run_file(candidate_path)
 
-    base_map = {b["key"]: b for b in baseline["benchmarks"]}
-    cand_map = {b["key"]: b for b in candidate["benchmarks"]}
+    base_map = {(b["chapter"], b["name"], b["type"]): b for b in baseline["outcomes"]}
+    cand_map = {(b["chapter"], b["name"], b["type"]): b for b in candidate["outcomes"]}
 
     common_keys = sorted(set(base_map.keys()) & set(cand_map.keys()))
     added_keys = sorted(set(cand_map.keys()) - set(base_map.keys()))
@@ -611,21 +574,23 @@ def benchmark_compare(params: Dict[str, Any]) -> Dict[str, Any]:
     for key in common_keys:
         base = base_map[key]
         cand = cand_map[key]
-        base_speedup = float(base.get("speedup") or 0)
-        cand_speedup = float(cand.get("speedup") or 0)
-        delta = cand_speedup - base_speedup
-        delta_pct = None
-        if base_speedup > 0:
-            delta_pct = (delta / base_speedup) * 100.0
         status_changed = base["status"] != cand["status"]
         if status_changed:
             transition = f"{base['status']}->{cand['status']}"
             status_transitions[transition] = status_transitions.get(transition, 0) + 1
+
+        base_speedup = base["speedup"]
+        cand_speedup = cand["speedup"]
+        if base_speedup is None or cand_speedup is None:
+            continue
+        delta = cand_speedup - base_speedup
+        delta_pct = (delta / base_speedup) * 100.0
         deltas.append(
             {
-                "key": key,
+                "key": base["key"],
                 "chapter": base["chapter"],
                 "name": base["name"],
+                "type": base["type"],
                 "baseline_speedup": base_speedup,
                 "candidate_speedup": cand_speedup,
                 "delta": delta,
@@ -661,6 +626,7 @@ def benchmark_compare(params: Dict[str, Any]) -> Dict[str, Any]:
         },
         "overlap": {
             "common": len(common_keys),
+            "comparable": len(deltas),
             "added": len(added),
             "removed": len(removed),
             "baseline_total": len(base_map),
@@ -672,6 +638,7 @@ def benchmark_compare(params: Dict[str, Any]) -> Dict[str, Any]:
         "added_benchmarks": added,
         "removed_benchmarks": removed,
         "status_transitions": status_transitions,
+        "diagnostics": {"baseline": baseline["diagnostics"], "candidate": candidate["diagnostics"]},
     }
 
 

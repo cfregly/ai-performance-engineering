@@ -4,11 +4,24 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 import shutil
+import stat
+import tempfile
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List
+from urllib.parse import quote, unquote, urlsplit, urlunsplit
+
+
+PUBLISHED_PATH = Path("published/current")
+READER_REPORTS = ("field-report-localhost.md", "field-report-localhost-notes.md")
+REPORT_LINK = re.compile(
+    r'''(?:\]\(\s*|^\s*\[[^\]\n]+\]:[ \t]+)(?:<([^>\n]+)>|([^\s)<>]+))'''
+    r'''|\b(?:href|src)\s*=\s*["']([^"']+)["']''',
+    re.MULTILINE | re.IGNORECASE,
+)
 
 
 @dataclass(frozen=True)
@@ -108,6 +121,8 @@ def find_markdown_references(root: Path, run_id: str) -> List[Dict[str, object]]
 
 
 def _check_published_snapshot(snapshot: Path, run_id: str) -> bool:
+    if snapshot.is_symlink():
+        raise ValueError("Published snapshot must be a real directory.")
     manifest_path = snapshot / "manifest.json"
     if not manifest_path.is_file():
         return False
@@ -150,9 +165,12 @@ def copy_run_family(
     live_run_dir = published_snapshot or root / "cluster" / "runs" / run_id
     if live_run_dir.exists():
         dst_run_dir = out_dir / "runs" / run_id
-        copy_path(live_run_dir, dst_run_dir)
-        if published_snapshot and not _check_published_snapshot(dst_run_dir, run_id):
-            raise ValueError("Published snapshot changed during packaging.")
+        if published_snapshot:
+            shutil.copytree(live_run_dir, dst_run_dir, symlinks=True)
+            if not _check_published_snapshot(dst_run_dir, run_id):
+                raise ValueError("Published snapshot changed during packaging.")
+        else:
+            copy_path(live_run_dir, dst_run_dir)
         counts = {
             category: sum(1 for path in (dst_run_dir / category).rglob("*") if path.is_file()) if (dst_run_dir / category).exists() else 0
             for category in ("structured", "raw", "figures", "reports")
@@ -198,6 +216,27 @@ def copy_if_present(root: Path, out_dir: Path, rel_path: str) -> bool:
     dst = out_dir / Path(rel_path).name
     copy_path(src, dst)
     return True
+
+
+def _write_snapshot_report(report: Path, out_dir: Path, run_id: str) -> None:
+    def rebase(match: re.Match[str]) -> str:
+        group = match.lastindex
+        assert group is not None
+        link = urlsplit(match[group])
+        if link.scheme or link.netloc or not link.path:
+            return match[0]
+        target = Path(unquote(link.path))
+        if target.is_relative_to(PUBLISHED_PATH):
+            target = Path("runs") / run_id / target.relative_to(PUBLISHED_PATH)
+        resolved = (out_dir / target).resolve()
+        if not resolved.is_relative_to(out_dir) or not resolved.exists():
+            raise ValueError(f"Snapshot report {report.name} links to unavailable package evidence: {link.path}")
+        rewritten = urlunsplit(("", "", quote(target.as_posix(), safe="/"), link.query, link.fragment))
+        offset_start, offset_end = (value - match.start() for value in match.span(group))
+        return match[0][:offset_start] + rewritten + match[0][offset_end:]
+
+    content = report.read_text(encoding="utf-8")
+    (out_dir / report.name).write_text(REPORT_LINK.sub(rebase, content), encoding="utf-8")
 
 
 def write_package_readme(
@@ -393,7 +432,22 @@ def main() -> int:
             raise SystemExit(str(exc)) from exc
         published_snapshot = candidate
 
-    out_dir.mkdir(parents=True, exist_ok=True)
+    out_dir.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        with tempfile.TemporaryDirectory(prefix=".canonical-package-", dir=out_dir.parent) as scratch:
+            stage = Path(scratch) / "package"
+            _materialize_package(args, repo_root, stage, published_snapshot)
+            if out_dir.is_dir():
+                stage.chmod(stat.S_IMODE(out_dir.stat().st_mode))
+            stage.rename(out_dir)
+    except (OSError, ValueError) as exc:
+        raise SystemExit(str(exc)) from exc
+    return 0
+
+
+def _materialize_package(
+    args: argparse.Namespace, repo_root: Path, out_dir: Path, published_snapshot: Path | None
+) -> None:
     (out_dir / "runs").mkdir(parents=True, exist_ok=True)
 
     selections: List[RunSelection] = [RunSelection(args.canonical_run_id, "canonical")]
@@ -410,11 +464,7 @@ def main() -> int:
         copied_runs.append(entry)
 
     copied_reports: List[str] = []
-    for rel_path in (
-        "cluster/field-report-localhost.md",
-        "cluster/field-report-localhost-notes.md",
-        "cluster/docs/advanced-runbook.md",
-    ):
+    for rel_path in (*(f"cluster/{name}" for name in READER_REPORTS), "cluster/docs/advanced-runbook.md"):
         if copy_if_present(repo_root, out_dir, rel_path):
             copied_reports.append(Path(rel_path).name)
 
@@ -442,7 +492,10 @@ def main() -> int:
         copied_reports,
         historical_refs,
     )
-    return 0
+    if published_snapshot:
+        for name in READER_REPORTS:
+            if name in copied_reports:
+                _write_snapshot_report(out_dir / name, out_dir, args.canonical_run_id)
 
 
 if __name__ == "__main__":

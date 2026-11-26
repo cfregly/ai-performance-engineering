@@ -11,6 +11,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+if __package__:
+    from .promotion_process import run_promotion_process
+else:
+    from promotion_process import run_promotion_process
+
 
 DEFAULT_REQUIRED_STEPS = [
     "bootstrap_nodes",
@@ -191,19 +196,26 @@ def _resolve_required_files(run_dir: Path, run_id: str, configured: list[str]) -
 
 def _evaluate_run(run_dir: Path, run_id: str, required_steps: list[str], required_files: list[Path]) -> dict[str, Any]:
     steps_path = run_dir / "structured" / f"{run_id}_suite_steps.json"
-    if not steps_path.exists():
+    missing_files = [str(path) for path in required_files if not path.exists()]
+    try:
+        steps = json.loads(steps_path.read_text(encoding="utf-8"))
+        if not isinstance(steps, list) or any(
+            not isinstance(step, dict) or not isinstance(step.get("name"), str) or not step["name"] for step in steps
+        ):
+            raise ValueError("Expected a list of named suite steps.")
+    except (OSError, ValueError) as exc:
+        failure = "suite_steps_missing" if isinstance(exc, FileNotFoundError) else "suite_steps_invalid"
         return {
             "ok": False,
-            "failed_steps": ["suite_steps_missing"],
+            "failed_steps": [failure],
             "missing_steps": required_steps,
-            "missing_files": [str(path) for path in required_files if not path.exists()],
+            "missing_files": missing_files,
+            "error": f"Unable to read suite steps. {exc}",
         }
 
-    steps = json.loads(steps_path.read_text(encoding="utf-8"))
     status_by_name = {step["name"]: step.get("exit_code") for step in steps}
-    failed_steps = [name for name, exit_code in status_by_name.items() if exit_code != 0]
+    failed_steps = [name for name, exit_code in status_by_name.items() if type(exit_code) is not int or exit_code != 0]
     missing_steps = [name for name in required_steps if name not in status_by_name]
-    missing_files = [str(path) for path in required_files if not path.exists()]
     return {
         "ok": not failed_steps and not missing_steps and not missing_files,
         "failed_steps": failed_steps,
@@ -239,12 +251,9 @@ def _run_promote(args: argparse.Namespace, repo_root: Path) -> dict[str, Any]:
             cmd.extend(["--allow-run-id", run_id])
 
     try:
-        proc = subprocess.run(
+        proc = run_promotion_process(
             cmd,
-            cwd=str(repo_root),
-            capture_output=True,
-            text=True,
-            check=False,
+            cwd=repo_root,
             timeout=args.timeout_seconds if args.timeout_seconds and args.timeout_seconds > 0 else None,
         )
     except subprocess.TimeoutExpired as exc:

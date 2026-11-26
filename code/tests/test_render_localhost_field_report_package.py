@@ -329,7 +329,7 @@ def test_render_localhost_report_includes_fabric_section_when_present(tmp_path: 
     notes = module.render_notes(args)
 
     assert "## Fabric Evaluation" in report
-    assert "Fabric headline" in report
+    assert "Fabric scorecard | Stored status" in report
     assert "NVLink runtime evidence peaks at 2400.0 GB/s algbw" in report
     assert "NMX Topology Scenario" in report
     assert "InfiniBand Scenario" in report

@@ -379,7 +379,7 @@ def render_report(args: argparse.Namespace, *, target: str = "run_local") -> str
         operator_summary = "not run in this preset"
     lines.append(f"| Operator checks | {operator_summary} |")
     lines.append(
-        f"| Fabric headline | status `{(fabric_score or {}).get('status', 'not_run')}`, completeness `{(fabric_score or {}).get('completeness', 'not_run')}`, full-stack families `{fabric_summary.get('full_stack_verified_families', 0)}` |"
+        f"| Fabric scorecard | Stored status `{(fabric_score or {}).get('status', 'not_run')}`, completeness `{(fabric_score or {}).get('completeness', 'not_run')}`, full-stack families `{fabric_summary.get('full_stack_verified_families', 0)}` |"
     )
     lines.append("| Key weird/new | Single-node NCCL env sweep can show `busbw=0.0` by definition (rank=1), while algbw is still strong. |")
     lines.append("")
@@ -617,7 +617,7 @@ def render_report(args: argparse.Namespace, *, target: str = "run_local") -> str
     lines.append(f"| NVLink topology parsing | topology summary generated | parser now handles single-GPU header formats robustly | keeps topology evidence reproducible on localhost | {md_link(nvlink_rel)} |")
     lines.append(f"| Fabric control-plane coverage | {('fabric scorecard generated' if fabric_score else 'not run in this preset')} | management-plane completeness drops to structured `not_configured`, never a silent skip | makes NVLink / IB / Spectrum-X coverage auditable | {md_link(fabric_score_rel) if fabric_score else md_link(suite_rel)} |")
     lines.append(f"| NCCL env sweep | all profiles `ok` | `busbw=0.0` in rank-1 mode looks odd but is expected | prevents false network conclusions on 1-GPU runs | {md_link(nccl_env_rel)} |")
-    lines.append(f"| Operator friction | {'full quick-friction battery executed' if quick else 'not run in this preset'} | expected failures captured explicitly (`{','.join(qf['expected_failed']) or 'none'}` if present) | preserves operator visibility without false-red localhost status | {md_link(quick_rel) if quick else md_link(suite_rel)} |")
+    lines.append(f"| Operator friction | {'Outcomes for the selected quick-friction checks' if quick else 'not run in this preset'} | expected failures captured explicitly (`{','.join(qf['expected_failed']) or 'none'}` if present) | preserves operator visibility without false-red localhost status | {md_link(quick_rel) if quick else md_link(suite_rel)} |")
     lines.append(f"| Monitoring mode | {'gpu/system checks run' if mon else 'not run in this preset'} | control-plane checks can be `not_applicable` without kubeconfig | clarifies expected non-K8s behavior | {md_link(mon_rel) if mon else md_link(suite_rel)} |")
     lines.append("")
     lines.append("### Deep-Dive Findings")
@@ -646,7 +646,10 @@ def render_report(args: argparse.Namespace, *, target: str = "run_local") -> str
     lines.append(f"| Connectivity probe payload algbw | `{fmt_float(payload_algbw, 3)} GB/s` |")
     lines.append(f"| Connectivity barrier mean | `{fmt_float(barrier_mean_ms, 4)} ms` |")
     lines.append("")
-    lines.append("Interpretation: single-node communication path is healthy; rank-1 `busbw` should not be interpreted as fabric bottleneck evidence.")
+    if gpu_count == 1 or (conn or {}).get("world_size") == 1:
+        lines.append("Rank-1 results describe the recorded local workload. Peer fabric bandwidth requires a multi-rank transfer.")
+    else:
+        lines.append("The retained results cover the recorded single-host topology and benchmark configuration.")
     lines.append("")
     lines.append(f"<p><a href=\"{nccl_fig_rel}\"><img src=\"{nccl_fig_rel}\" alt=\"NCCL bandwidth localhost\" width=\"920\"/></a></p>")
     lines.append(f"<p><a href=\"{nccl_scale_fig_rel}\"><img src=\"{nccl_scale_fig_rel}\" alt=\"NCCL scaling localhost\" width=\"920\"/></a></p>")
