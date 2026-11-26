@@ -298,6 +298,26 @@ def test_field_report_validator_rejects_a_malformed_url_and_checks_other_links(t
     assert "target=missing.json" in result.stdout
 
 
+def test_field_report_validator_fails_when_hygiene_check_cannot_read_report(tmp_path: Path) -> None:
+    cluster = Path(__file__).resolve().parents[1] / "cluster"
+    report = tmp_path / "field-report.md"
+    report.write_bytes((cluster / "field-report.md").read_bytes() + b"\n\xff\n")
+
+    result = subprocess.run(
+        [
+            "bash", str(cluster / "scripts/validate_field_report_requirements.sh"),
+            "--report", str(report), "--report-link-base", str(cluster),
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert "Package validation: failures=0" in result.stdout
+    assert "FAIL: stale-artifact hygiene check failed" in result.stdout
+
+
 def test_promote_run_materializes_published_package(tmp_path: Path) -> None:
     repo_root = tmp_path / "repo"
     cluster_root = repo_root / "cluster"

@@ -463,7 +463,13 @@ if [[ "$PACKAGE_ONLY" -eq 1 ]]; then
 elif [[ -z "$effective_canonical_run_id" ]]; then
   fail "cannot run stale-artifact hygiene check without canonical run id"
 else
-  stale_output="$(python3 - "$ROOT_DIR" "$REPORT" "$NOTES" "$effective_canonical_run_id" "${ALLOW_RUN_IDS[@]}" <<'PY'
+  hygiene_args=("$ROOT_DIR" "$REPORT" "$NOTES" "$effective_canonical_run_id")
+  # Bash 3.2 rejects expansion of an empty array under nounset.
+  if [[ "${#ALLOW_RUN_IDS[@]}" -gt 0 ]]; then
+    hygiene_args+=("${ALLOW_RUN_IDS[@]}")
+  fi
+  stale_rc=0
+  stale_output="$(python3 - "${hygiene_args[@]}" <<'PY'
 import pathlib
 import json
 import re
@@ -472,8 +478,8 @@ import sys
 root = pathlib.Path(sys.argv[1])
 report_path = pathlib.Path(sys.argv[2])
 notes_path = pathlib.Path(sys.argv[3])
-report = report_path.read_text()
-notes = notes_path.read_text()
+report = report_path.read_text(encoding="utf-8")
+notes = notes_path.read_text(encoding="utf-8")
 canonical = sys.argv[4]
 allow = set(sys.argv[5:])
 
@@ -574,13 +580,14 @@ if stale:
 print("STALE none")
 PY
 )" || stale_rc=$?
-  stale_rc="${stale_rc:-0}"
   if [[ "$stale_rc" -eq 0 ]]; then
     pass "stale-artifact hygiene check passed (${stale_output})"
-  else
+  elif [[ "$stale_rc" -eq 2 && -n "$stale_output" ]]; then
     while IFS= read -r line; do
       [[ -n "$line" ]] && fail "stale artifacts detected: ${line}"
     done <<< "$stale_output"
+  else
+    fail "stale-artifact hygiene check failed (exit ${stale_rc})"
   fi
 fi
 
