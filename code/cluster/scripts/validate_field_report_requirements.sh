@@ -141,36 +141,26 @@ require_file() {
 has_header() {
   local file="$1"
   local header="$2"
-  rg -n --fixed-strings "${header}" "${file}" >/dev/null 2>&1
+  grep -Fq -- "$header" "$file"
 }
 
-section_body() {
+section_contains() {
   local file="$1"
   local header="$2"
-  awk -v header="$header" '
+  local pattern="$3"
+  awk -v header="$header" -v pattern="$pattern" '
     $0 == header {in_section=1; next}
     in_section && /^## / {exit}
-    in_section {print}
+    in_section && $0 ~ pattern {found=1; exit}
+    END {exit !found}
   ' "$file"
-}
-
-section_has_table() {
-  local file="$1"
-  local header="$2"
-  section_body "$file" "$header" | rg -q '^\| .*\|'
-}
-
-section_has_visual() {
-  local file="$1"
-  local header="$2"
-  section_body "$file" "$header" | rg -q '<img '
 }
 
 require_contains() {
   local file="$1"
   local needle="$2"
   local desc="$3"
-  if rg -F -- "$needle" "$file" >/dev/null 2>&1; then
+  if grep -Fq -- "$needle" "$file"; then
     pass "$desc"
   else
     fail "$desc"
@@ -181,7 +171,7 @@ forbid_contains() {
   local file="$1"
   local needle="$2"
   local desc="$3"
-  if rg -F -- "$needle" "$file" >/dev/null 2>&1; then
+  if grep -Fq -- "$needle" "$file"; then
     fail "$desc"
   else
     pass "$desc"
@@ -203,7 +193,7 @@ check_table_forward_section() {
     fail "table-forward check cannot run; missing header: ${header}"
     return
   fi
-  if section_has_table "$REPORT" "$header"; then
+  if section_contains "$REPORT" "$header" '^[|] .*[|]'; then
     pass "table-forward content present: ${header}"
   else
     fail "section is not table-forward: ${header}"
@@ -288,7 +278,7 @@ visual_sections=(
 
 for header in "${visual_sections[@]}"; do
   if has_header "$REPORT" "$header"; then
-    if section_has_visual "$REPORT" "$header"; then
+    if section_contains "$REPORT" "$header" '<img '; then
       pass "visual present in section: ${header}"
     else
       fail "missing visual in section: ${header}"
@@ -332,14 +322,15 @@ require_contains "$RUNBOOK" "operator_checks_dashboard" "runbook references oper
 forbid_contains "$REPORT" "## Normal vs Weird Log" "legacy split header absent: ## Normal vs Weird Log"
 forbid_contains "$REPORT" "## Weird / New / Interesting Findings" "legacy split header absent: ## Weird / New / Interesting Findings"
 
-if ! rg -n '(\.\./structured|published/current/structured|cluster/published/.*/structured|results/structured|cluster/runs/.*/structured|runs/.*/structured)/.*\.(json|csv|jsonl|txt)' "$REPORT" >/dev/null 2>&1; then
+if ! grep -Eq '(\.\./structured|published/current/structured|cluster/published/.*/structured|results/structured|cluster/runs/.*/structured|runs/.*/structured)/.*\.(json|csv|jsonl|txt)' "$REPORT"; then
   fail "no structured artifact links found in report"
 else
   pass "structured artifact links present"
 fi
 
 # Validate local markdown links (report+notes+template+runbook) point to existing artifacts.
-link_check_out="$(python3 - "$ROOT_DIR" "$PUBLISHED_ROOT" "$REPORT_LINK_BASE" "$NOTES_LINK_BASE" "$REPORT" "$NOTES" "$TEMPLATE" "$RUNBOOK" <<'PY'
+check_local_links() {
+  python3 - "$@" <<'PY'
 import os
 import re
 import sys
@@ -391,7 +382,8 @@ if missing:
 
 print("LINKS ok")
 PY
-)" || link_rc=$?
+}
+link_check_out="$(check_local_links "$ROOT_DIR" "$PUBLISHED_ROOT" "$REPORT_LINK_BASE" "$NOTES_LINK_BASE" "$REPORT" "$NOTES" "$TEMPLATE" "$RUNBOOK")" || link_rc=$?
 link_rc="${link_rc:-0}"
 if [[ "$link_rc" -eq 0 ]]; then
   pass "local link check passed (${link_check_out})"
@@ -592,7 +584,7 @@ PY
   fi
 fi
 
-if rg -n 'TODO|TBD|FIXME' "$REPORT" >/dev/null 2>&1; then
+if grep -Eq 'TODO|TBD|FIXME' "$REPORT"; then
   warn "report contains TODO/TBD/FIXME placeholders"
 else
   pass "no TODO/TBD/FIXME placeholders found"

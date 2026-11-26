@@ -17,11 +17,9 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import unquote, urlsplit
 
+from core.benchmark.artifact_manager import validate_run_id
+
 CODE_ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(CODE_ROOT))
-
-from core.benchmark.artifact_manager import validate_run_id  # noqa: E402
-
 RUNS = Path("cluster/runs")
 STRUCTURED = Path("cluster/results/structured")
 RAW = Path("cluster/results/raw")

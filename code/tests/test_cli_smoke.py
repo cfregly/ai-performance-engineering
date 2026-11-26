@@ -181,7 +181,9 @@ def test_cluster_validate_field_report_accepts_candidate_package(tmp_path):
     ])
     assert result.returncode == 0, result.stderr
     payload = json.loads(result.stdout)
-    assert payload["success"] is True, payload
+    assert payload["success"] is True, (
+        f"{payload.get('error')}\n{payload.get('stdout', '')}{payload.get('stderr', '')}"
+    )
     assert "Stale-artifact hygiene: not requested" in payload["stdout"]
 
     (candidate / "manifest.json").unlink()
