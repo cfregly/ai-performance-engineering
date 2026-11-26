@@ -5,6 +5,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from cluster.scripts.write_manifest import build_manifest_payload
+
 
 def _write_json(path: Path, payload: object) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -75,7 +77,22 @@ def test_watch_run_for_promotion_publishes_completed_run(tmp_path: Path) -> None
     repo_root = tmp_path / "repo"
     cluster_root = repo_root / "cluster"
     run_id = "2026-03-07_localhost_modern_profile_r99_full20b"
-    _seed_canonical_run(cluster_root, run_id, "localhost")
+    run_dir = _seed_canonical_run(cluster_root, run_id, "localhost")
+    status_filename = f"{run_id}_postrun_promote_watch_status.json"
+    legacy_status = run_dir / "raw" / status_filename
+    _write_json(legacy_status, {"status": "waiting"})
+    legacy_contents = legacy_status.read_bytes()
+    manifest, manifest_path = build_manifest_payload(
+        cluster_root=cluster_root,
+        run_id=run_id,
+        run_dir=run_dir,
+        include_figures=True,
+        hosts=["localhost"],
+        labels=["localhost"],
+        finalize=True,
+    )
+    _write_json(manifest_path, manifest)
+    assert f"raw/{status_filename}" in manifest["summary"]["sha256"]
 
     script = Path(__file__).resolve().parents[1] / "cluster" / "scripts" / "watch_run_for_promotion.py"
     proc = subprocess.run(
@@ -99,12 +116,12 @@ def test_watch_run_for_promotion_publishes_completed_run(tmp_path: Path) -> None
     )
     assert proc.returncode == 0, proc.stderr or proc.stdout
 
-    watch_status = json.loads(
-        (cluster_root / "runs" / run_id / "raw" / f"{run_id}_postrun_promote_watch_status.json").read_text(encoding="utf-8")
-    )
+    watch_status = json.loads((run_dir / "progress" / status_filename).read_text(encoding="utf-8"))
     assert watch_status["status"] == "published"
-    assert (cluster_root / "published" / "current" / "manifest.json").exists()
-    assert (cluster_root / "runs" / run_id / "raw" / f"{run_id}_promote.log").exists()
+    assert (cluster_root / "published/current/manifest.json").read_bytes() == manifest_path.read_bytes()
+    assert (run_dir / "progress" / f"{run_id}_promote.log").is_file()
+    assert legacy_status.read_bytes() == legacy_contents
+    assert not (run_dir / "raw" / f"{run_id}_promote.log").exists()
 
 
 def test_watch_run_for_promotion_marks_failed_run_without_promoting(tmp_path: Path) -> None:
@@ -144,7 +161,7 @@ def test_watch_run_for_promotion_marks_failed_run_without_promoting(tmp_path: Pa
     assert proc.returncode == 1
 
     watch_status = json.loads(
-        (cluster_root / "runs" / run_id / "raw" / f"{run_id}_postrun_promote_watch_status.json").read_text(encoding="utf-8")
+        (cluster_root / "runs" / run_id / "progress" / f"{run_id}_postrun_promote_watch_status.json").read_text(encoding="utf-8")
     )
     assert watch_status["status"] == "run_failed"
     assert "fp4_checks" in watch_status["failed_steps"]

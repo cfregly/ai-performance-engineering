@@ -78,7 +78,7 @@ Options:
   --quick-friction-hf-local-dir-base <path>  Base temp dir for HF download check (default: /tmp)
   --quick-friction-allow-failed-checks <csv>  Classify these quick-friction check failures as expected (default: auto for localhost, none otherwise)
 
-  --render-localhost-report      Force rendering run-local localhost reports plus published `cluster/field-report-localhost.md` + notes when localhost package is detected
+  --render-localhost-report      Force rendering the run-local localhost report and notes
   --skip-render-localhost-report Disable localhost field-report package rendering
 
   --run-monitoring-expectations      Run monitoring expectations snapshot on all nodes (default: on)
@@ -3745,9 +3745,7 @@ if [[ "$RENDER_LOCALHOST_REPORT" -eq 1 ]]; then
     --root "${ROOT_DIR}" \
     --run-dir "${RUN_DIR}" \
     --report "${REPORTS_DIR}/field-report-localhost.md" \
-    --notes "${REPORTS_DIR}/field-report-localhost-notes.md" \
-    --publish-report "${ROOT_DIR}/field-report-localhost.md" \
-    --publish-notes "${ROOT_DIR}/field-report-localhost-notes.md"
+    --notes "${REPORTS_DIR}/field-report-localhost-notes.md"
 fi
 
 # Rewrite the canonical manifest after every recorded suite step and report

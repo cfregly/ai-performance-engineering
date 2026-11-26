@@ -1434,6 +1434,8 @@ def watch_cluster_run_for_promotion(
     repo_root: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Attach a detached watcher that promotes a completed run once required artifacts are present."""
+    from cluster.scripts.watch_run_for_promotion import watcher_receipt_paths, watcher_run_dir
+
     run_id_value = (run_id or "").strip()
     if not run_id_value:
         return {"success": False, "error": "run_id is required"}
@@ -1441,22 +1443,21 @@ def watch_cluster_run_for_promotion(
         return {"success": False, "error": "pid must be a positive integer"}
 
     root = Path(repo_root).resolve() if repo_root else _repo_root()
-    cluster_root = root / "cluster"
     script = _watch_run_for_promotion_script()
-    run_dir = cluster_root / "runs" / run_id_value
     if not script.exists():
         return {"success": False, "error": f"Missing script: {script}"}
-    if not run_dir.exists():
-        return {"success": False, "error": f"Missing run dir: {run_dir}"}
+    try:
+        run_dir = watcher_run_dir(root, run_id_value)
+        watch_status_path, launch_log_path, _ = watcher_receipt_paths(run_dir)
+    except ValueError as exc:
+        return {"success": False, "error": str(exc)}
 
     publish_report_value = (publish_report_path or "cluster/field-report-localhost.md").strip()
     publish_notes_value = (publish_notes_path or "cluster/field-report-localhost-notes.md").strip()
     allow = [rid.strip() for rid in (allow_run_ids or []) if isinstance(rid, str) and rid.strip()]
 
-    raw_dir = run_dir / "raw"
-    raw_dir.mkdir(parents=True, exist_ok=True)
-    launch_log_path = raw_dir / f"{run_id_value}_postrun_promote_watch.launch.log"
-    watch_status_path = raw_dir / f"{run_id_value}_postrun_promote_watch_status.json"
+    launch_log_path.parent.mkdir(parents=True, exist_ok=True)
+    legacy_status_path = run_dir / "raw" / watch_status_path.name
 
     cmd: List[str] = [
         sys.executable,
@@ -1502,5 +1503,10 @@ def watch_cluster_run_for_promotion(
         "watch_command": cmd,
         "watch_status_path": str(watch_status_path),
         "launch_log_path": str(launch_log_path),
+        **(
+            {"legacy_watch_status_path": str(legacy_status_path)}
+            if legacy_status_path.is_file()
+            else {}
+        ),
         **_cluster_run_layout(run_id_value, repo_root=root),
     }

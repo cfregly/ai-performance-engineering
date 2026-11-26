@@ -212,15 +212,16 @@ def write_package_readme(
             "",
             "## Cleanup Recommendation",
             "",
-            "Use the keep-list in this package with a dry-run first:",
+            "Preview cleanup with the keep-list from this package.",
             "",
             "```bash",
             "cluster/scripts/cleanup_run_artifacts.sh \\",
             f"  --canonical-run-id {canonical_run_id} \\",
             *[f"  --allow-run-id {run_id} \\" for run_id in [*comparison_run_ids, *historical_run_ids]],
+            "  --plan-file ./cluster-cleanup-plan.json",
             "```",
             "",
-            "Add `--apply` only after verifying that any historical multi-node runs you care about are either materialized here or intentionally archived elsewhere.",
+            "Review the listed paths and verify retained history is available. Rerun the same command with `--apply` to execute the saved plan.",
             "",
         ]
     )
@@ -328,6 +329,16 @@ def main() -> int:
 
     if out_dir.exists() and any(out_dir.iterdir()):
         raise SystemExit(f"output directory already exists and is not empty: {out_dir}")
+
+    canonical_artifacts = gather_run_artifacts(repo_root, args.canonical_run_id)
+    flat_manifest_name = f"{args.canonical_run_id}_manifest.json"
+    if not any(
+        path.name != flat_manifest_name
+        and (path.is_file() or any(child.is_file() for child in path.rglob("*")))
+        for paths in canonical_artifacts.values()
+        for path in paths
+    ):
+        raise SystemExit(f"No canonical artifacts for run {args.canonical_run_id}.")
 
     out_dir.mkdir(parents=True, exist_ok=True)
     (out_dir / "runs").mkdir(parents=True, exist_ok=True)

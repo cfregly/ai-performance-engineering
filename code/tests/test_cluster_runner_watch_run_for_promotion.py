@@ -13,6 +13,8 @@ def test_watch_cluster_run_for_promotion_launches_detached_watcher(monkeypatch, 
     run_dir = cluster_root / "runs" / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
     (run_dir / "raw").mkdir(parents=True, exist_ok=True)
+    legacy_status = run_dir / "raw" / f"{run_id}_postrun_promote_watch_status.json"
+    legacy_status.write_text('{"status": "published"}\n', encoding="utf-8")
 
     monkeypatch.setattr(cluster_runner, "_repo_root", lambda: repo_root)
     monkeypatch.setattr(cluster_runner, "_cluster_root", lambda: cluster_root)
@@ -56,4 +58,9 @@ def test_watch_cluster_run_for_promotion_launches_detached_watcher(monkeypatch, 
     assert str(repo_root.resolve()) in captured["cmd"]
     assert captured["cwd"] == str(repo_root)
     assert captured["start_new_session"] is True
-    assert captured["stdout_name"].endswith(f"{run_id}_postrun_promote_watch.launch.log")
+    launch_log = run_dir / "progress" / f"{run_id}_postrun_promote_watch.launch.log"
+    assert captured["stdout_name"] == str(launch_log)
+    assert result["launch_log_path"] == str(launch_log)
+    assert result["watch_status_path"] == str(run_dir / "progress" / legacy_status.name)
+    assert result["legacy_watch_status_path"] == str(legacy_status)
+    assert legacy_status.read_text(encoding="utf-8") == '{"status": "published"}\n'

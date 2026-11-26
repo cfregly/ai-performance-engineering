@@ -6,6 +6,29 @@ import sys
 from pathlib import Path
 
 
+def test_empty_canonical_run_leaves_package_destination_absent(tmp_path: Path) -> None:
+    run_id = "2026-03-06_localhost_empty"
+    run_dir = tmp_path / "cluster" / "runs" / run_id
+    run_dir.mkdir(parents=True)
+    (run_dir / "manifest.json").write_text(json.dumps({"run_id": run_id}), encoding="utf-8")
+    output = tmp_path / "package"
+    script = Path(__file__).resolve().parents[1] / "cluster" / "scripts" / "build_canonical_package.py"
+
+    proc = subprocess.run(
+        [
+            sys.executable, str(script), "--repo-root", str(tmp_path),
+            "--canonical-run-id", run_id, "--output-dir", str(output),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert proc.returncode != 0
+    assert "No canonical artifacts" in proc.stderr
+    assert not output.exists()
+
+
 def test_build_canonical_package_materializes_live_runs_and_tracks_missing_historical(tmp_path: Path) -> None:
     repo_root = tmp_path / "repo"
     cluster_root = repo_root / "cluster"

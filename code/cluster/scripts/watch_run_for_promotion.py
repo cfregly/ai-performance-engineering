@@ -59,7 +59,10 @@ DEFAULT_REQUIRED_FILES = [
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Wait for a live cluster run to exit, verify canonical artifacts, then promote it."
+        description=(
+            "Wait for a cluster run to exit, verify its artifacts, and promote it. "
+            "Watcher receipts are written to the run's progress directory."
+        )
     )
     parser.add_argument("--run-id", required=True, help="Run id under cluster/runs/<run_id>.")
     parser.add_argument("--pid", required=True, type=int, help="PID to wait on before evaluation.")
@@ -83,7 +86,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--skip-validate-localhost-report",
         action="store_true",
-        help="Skip localhost report validation after promotion.",
+        help="Skip staged localhost report validation before publication.",
     )
     parser.add_argument(
         "--cleanup",
@@ -120,13 +123,41 @@ def parse_args() -> argparse.Namespace:
         default=600,
         help="Promotion subprocess timeout.",
     )
-    return parser.parse_args()
+    args = parser.parse_args()
+    if args.pid <= 0:
+        parser.error("--pid must be a positive integer")
+    return args
 
 
 def _repo_root(args: argparse.Namespace) -> Path:
     if args.repo_root:
         return Path(args.repo_root).resolve()
     return Path(__file__).resolve().parents[2]
+
+
+def watcher_run_dir(repo_root: Path, run_id: str) -> Path:
+    if run_id in ("", ".", "..") or Path(run_id).name != run_id:
+        raise ValueError("Run ID must name one directory under cluster/runs.")
+    runs = repo_root / "cluster" / "runs"
+    run_dir = runs / run_id
+    if not run_dir.is_dir() or run_dir.resolve() != run_dir:
+        raise ValueError(f"Missing or invalid run directory: {run_dir}")
+    return run_dir
+
+
+def watcher_receipt_paths(run_dir: Path) -> tuple[Path, Path, Path]:
+    """Return mutable watcher receipts outside the run's manifest inventory."""
+    progress = run_dir / "progress"
+    run_id = run_dir.name
+    paths = (
+        progress / f"{run_id}_postrun_promote_watch_status.json",
+        progress / f"{run_id}_postrun_promote_watch.launch.log",
+        progress / f"{run_id}_promote.log",
+    )
+    for path in (progress, *paths):
+        if path.is_symlink():
+            raise ValueError(f"Watcher receipts require a real path at {path}")
+    return paths
 
 
 def _iso_now() -> str:
@@ -227,13 +258,11 @@ def _run_promote(args: argparse.Namespace, repo_root: Path) -> dict[str, Any]:
 def main() -> int:
     args = parse_args()
     repo_root = _repo_root(args)
-    run_dir = repo_root / "cluster" / "runs" / args.run_id
-    raw_dir = run_dir / "raw"
-    status_path = raw_dir / f"{args.run_id}_postrun_promote_watch_status.json"
-    promote_log_path = raw_dir / f"{args.run_id}_promote.log"
-
-    if not run_dir.exists():
-        raise SystemExit(f"missing run dir: {run_dir}")
+    try:
+        run_dir = watcher_run_dir(repo_root, args.run_id)
+        status_path, _, promote_log_path = watcher_receipt_paths(run_dir)
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from exc
 
     required_steps = args.required_step or list(DEFAULT_REQUIRED_STEPS)
     required_files = _resolve_required_files(run_dir, args.run_id, args.required_file)

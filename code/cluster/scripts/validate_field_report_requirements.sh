@@ -8,6 +8,10 @@ TEMPLATE="${ROOT_DIR}/cluster/docs/field-report-template.md"
 RUNBOOK="${ROOT_DIR}/cluster/docs/advanced-runbook.md"
 CANONICAL_RUN_ID=""
 ALLOW_RUN_IDS=()
+PUBLISHED_ROOT=""
+REPORT_LINK_BASE=""
+NOTES_LINK_BASE=""
+PACKAGE_ONLY=0
 
 usage() {
   cat <<'USAGE'
@@ -19,6 +23,10 @@ Options:
   --notes <path>           Path to field-report-notes.md (default: cluster/field-report-notes.md)
   --template <path>        Path to field-report-template.md (default: cluster/docs/field-report-template.md)
   --runbook <path>         Path to advanced-runbook.md (default: cluster/docs/advanced-runbook.md)
+  --published-root <path>  Candidate package used to resolve published/current links
+  --report-link-base <path>  Final directory of a staged report
+  --notes-link-base <path>   Final directory of staged notes
+  --package-only          Validate the package without checking stale run artifacts
   --canonical-run-id <id>  Expected canonical run id (optional)
   --allow-run-id <id>      Additional run id to keep during stale-artifact cleanup checks (repeatable)
   -h, --help               Show this help
@@ -50,6 +58,22 @@ while [[ $# -gt 0 ]]; do
     --runbook)
       RUNBOOK="$2"
       shift 2
+      ;;
+    --published-root)
+      PUBLISHED_ROOT="$2"
+      shift 2
+      ;;
+    --report-link-base)
+      REPORT_LINK_BASE="$2"
+      shift 2
+      ;;
+    --notes-link-base)
+      NOTES_LINK_BASE="$2"
+      shift 2
+      ;;
+    --package-only)
+      PACKAGE_ONLY=1
+      shift
       ;;
     --canonical-run-id)
       CANONICAL_RUN_ID="$2"
@@ -84,6 +108,9 @@ fi
 if [[ "$RUNBOOK" != /* ]]; then
   RUNBOOK="${ROOT_DIR}/${RUNBOOK}"
 fi
+PUBLISHED_ROOT="${PUBLISHED_ROOT:-${ROOT_DIR}/cluster/published/current}"
+REPORT_LINK_BASE="${REPORT_LINK_BASE:-$(dirname "$REPORT")}"
+NOTES_LINK_BASE="${NOTES_LINK_BASE:-$(dirname "$NOTES")}"
 
 failures=0
 warns=0
@@ -312,12 +339,17 @@ else
 fi
 
 # Validate local markdown links (report+notes+template+runbook) point to existing artifacts.
-link_check_out="$(python3 - "$REPORT" "$NOTES" "$TEMPLATE" "$RUNBOOK" <<'PY'
+link_check_out="$(python3 - "$ROOT_DIR" "$PUBLISHED_ROOT" "$REPORT_LINK_BASE" "$NOTES_LINK_BASE" "$REPORT" "$NOTES" "$TEMPLATE" "$RUNBOOK" <<'PY'
+import os
 import re
 import sys
 from pathlib import Path
+from urllib.parse import unquote
 
-files = [Path(p) for p in sys.argv[1:]]
+root, published, report_base, notes_base = map(Path, sys.argv[1:5])
+report, notes, template, runbook = map(Path, sys.argv[5:])
+published_destination = root.resolve() / "cluster" / "published" / "current"
+files = ((report, report_base), (notes, notes_base), (template, template.parent), (runbook, runbook.parent))
 
 def is_placeholder(target: str) -> bool:
     return any(x in target for x in ("<RUN_ID>", "<run_id>", "<hosts>", "<label>", "${", "{RUN_ID}", "<"))
@@ -331,8 +363,7 @@ def iter_links(text: str):
         yield m.group(1).strip()
 
 missing = []
-for path in files:
-    base = path.parent
+for path, base in files:
     text = path.read_text(encoding="utf-8", errors="replace")
     for raw in iter_links(text):
         if not raw or raw.startswith("#") or "://" in raw or raw.startswith("mailto:"):
@@ -341,8 +372,10 @@ for path in files:
         target = raw.split()[0].split("#", 1)[0]
         if not target or is_placeholder(target):
             continue
-        tpath = Path(target)
-        resolved = tpath if tpath.is_absolute() else (base / tpath)
+        tpath = Path(unquote(target))
+        resolved = Path(os.path.abspath(base / tpath))
+        if resolved.is_relative_to(published_destination):
+            resolved = published / resolved.relative_to(published_destination)
         if not resolved.exists():
             missing.append((str(path), target, str(resolved)))
 
@@ -395,6 +428,28 @@ if [[ -n "$CANONICAL_RUN_ID" ]]; then
   fi
 fi
 
+published_run_id="$(python3 - "$PUBLISHED_ROOT/manifest.json" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+try:
+    manifest = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+    run_id = manifest.get("run_id") if isinstance(manifest, dict) else None
+    if not isinstance(run_id, str) or not run_id:
+        raise ValueError("missing run ID")
+    print(run_id)
+except (OSError, ValueError) as exc:
+    print(f"Invalid published manifest: {exc}", file=sys.stderr)
+    sys.exit(1)
+PY
+)" || published_run_id=""
+if [[ -n "$published_run_id" && "$published_run_id" == "$report_run_id" && "$published_run_id" == "$notes_run_id" ]]; then
+  pass "published manifest, report, and notes identify the same run (${published_run_id})"
+else
+  fail "published manifest, report, and notes must identify one run (manifest=${published_run_id:-missing}, report=${report_run_id:-missing}, notes=${notes_run_id:-missing})"
+fi
+
 # Stale artifact hygiene:
 # For any run id discovered via *_manifest.json (except canonical and allowlisted),
 # fail if artifacts remain while that run id is not linked by report/notes markdown links.
@@ -403,7 +458,10 @@ if [[ -n "$CANONICAL_RUN_ID" ]]; then
   effective_canonical_run_id="$CANONICAL_RUN_ID"
 fi
 
-if [[ -z "$effective_canonical_run_id" ]]; then
+echo "Package validation: failures=${failures}"
+if [[ "$PACKAGE_ONLY" -eq 1 ]]; then
+  echo "Stale-artifact hygiene: not requested"
+elif [[ -z "$effective_canonical_run_id" ]]; then
   fail "cannot run stale-artifact hygiene check without canonical run id"
 else
   stale_output="$(python3 - "$ROOT_DIR" "$REPORT" "$NOTES" "$effective_canonical_run_id" "${ALLOW_RUN_IDS[@]}" <<'PY'
