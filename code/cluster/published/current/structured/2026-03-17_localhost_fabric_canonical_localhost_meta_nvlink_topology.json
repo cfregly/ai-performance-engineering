@@ -1,0 +1,22 @@
+{
+  "figure": "/home/operator/ai-performance-engineering/code/cluster/runs/2026-03-17_localhost_fabric_canonical/figures/2026-03-17_localhost_fabric_canonical_localhost_meta_nvlink_topology.png",
+  "label": "localhost",
+  "meta_path": "/home/operator/ai-performance-engineering/code/cluster/runs/2026-03-17_localhost_fabric_canonical/structured/2026-03-17_localhost_fabric_canonical_localhost_meta.json",
+  "run_ref": "2026-03-17_localhost_fabric_canonical_localhost",
+  "summary": {
+    "gpu_count": 1,
+    "gpu_labels": [
+      "GPU0"
+    ],
+    "gpu_matrix": {
+      "GPU0": {
+        "GPU0": "X"
+      }
+    },
+    "link_pair_counts": {},
+    "nvlink_pair_count": 0,
+    "nvlink_width_max": null,
+    "nvlink_width_mean": null,
+    "nvlink_width_min": null
+  }
+}

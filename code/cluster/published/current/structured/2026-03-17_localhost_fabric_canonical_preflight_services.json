@@ -13,7 +13,7 @@
       "dcgm_active_before": "active",
       "dcgm_started_by_preflight": false,
       "dcgmi": {
-        "discovery_list_path": "results/structured/mcp_cluster_smoke_test_dcgmi_discovery_localhost.txt",
+        "discovery_list_path": "results/structured/2026-03-17_localhost_fabric_canonical_dcgmi_discovery_localhost.txt",
         "discovery_list_rc": 0
       },
       "host": "localhost",
@@ -33,7 +33,7 @@
       }
     }
   ],
-  "run_id": "mcp_cluster_smoke_test",
-  "ssh_user": "ubuntu",
-  "timestamp_utc": "2026-03-25T06:30:02Z"
+  "run_id": "2026-03-17_localhost_fabric_canonical",
+  "ssh_user": "[redacted for publication]",
+  "timestamp_utc": "2026-03-17T02:48:48Z"
 }

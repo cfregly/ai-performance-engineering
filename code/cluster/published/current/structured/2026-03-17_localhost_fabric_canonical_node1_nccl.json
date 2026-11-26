@@ -1,0 +1,125 @@
+{
+  "app_clocks": [
+    {
+      "clocks": {
+        "applications_mem_mhz": 3996,
+        "applications_sm_mhz": 1965,
+        "current_mem_mhz": 3996,
+        "current_sm_mhz": 1155
+      },
+      "global_rank": 0,
+      "local_rank": 0,
+      "lock": {
+        "locked": true,
+        "theoretical_mem_gbps": 7672.32,
+        "theoretical_tflops_fp16": 595.5993599999999
+      },
+      "node": "host-01",
+      "physical_gpu": 0
+    }
+  ],
+  "command": "mpirun --hostfile /home/operator/ai-performance-engineering/code/cluster/runs/2026-03-17_localhost_fabric_canonical/raw/2026-03-17_localhost_fabric_canonical_node1_localhost_hosts.txt --map-by ppr:1:node --bind-to none --mca routed direct -np 1 -x NCCL_DEBUG=INFO -x NCCL_DEBUG_SUBSYS=INIT -x PATH=/home/operator/.local/bin:/home/operator/.local/bin:/usr/local/cuda-13.0/bin:/home/operator/.codex/tmp/arg0/codex-arg05sgwG7:/home/operator/.cursor-server/bin/linux-x64/224838f96445be37e3db643a163a817c15b36060/bin/remote-cli:/home/operator/.local/bin:/home/operator/.local/bin:/home/operator/.local/bin:/usr/local/cuda/bin:/usr/local/cuda-13.0/bin:/home/operator/.cursor-server/bin/linux-x64/224838f96445be37e3db643a163a817c15b36060/bin/remote-cli:/home/operator/.local/bin:/home/operator/.local/bin:/usr/local/cuda-13.0/bin:/usr/local/cuda-13.0/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin:/home/operator/.cursor-server/extensions/openai.chatgpt-26.311.21342-linux-x64/bin/linux-x86_64 -x LD_LIBRARY_PATH=/home/operator/ai-performance-engineering/code/cluster/env/venv/lib/python3.12/site-packages/torch/lib:/usr/local/lib/python3.12/dist-packages/torch/lib:/home/operator/.local/lib/python3.12/site-packages/torch/lib:/usr/local/lib/python3.12/dist-packages/nvidia/cu13/lib:/usr/local/lib/python3.12/dist-packages/nvidia/cudnn/lib:/usr/local/lib/python3.12/dist-packages/nvidia/cusparselt/lib:/usr/local/lib/python3.12/dist-packages/nvidia/nccl/lib:/usr/local/lib/python3.12/dist-packages/nvidia/nvshmem/lib:/home/operator/.local/lib/python3.12/site-packages/nvidia/cu13/lib:/home/operator/.local/lib/python3.12/site-packages/nvidia/cublas/lib:/home/operator/.local/lib/python3.12/site-packages/nvidia/cuda_cupti/lib:/home/operator/.local/lib/python3.12/site-packages/nvidia/cuda_nvrtc/lib:/home/operator/.local/lib/python3.12/site-packages/nvidia/cuda_runtime/lib:/home/operator/.local/lib/python3.12/site-packages/nvidia/cudnn/lib:/home/operator/.local/lib/python3.12/site-packages/nvidia/cufft/lib:/home/operator/.local/lib/python3.12/site-packages/nvidia/cufile/lib:/home/operator/.local/lib/python3.12/site-packages/nvidia/curand/lib:/home/operator/.local/lib/python3.12/site-packages/nvidia/cusolver/lib:/home/operator/.local/lib/python3.12/site-packages/nvidia/cusparse/lib:/home/operator/.local/lib/python3.12/site-packages/nvidia/cusparselt/lib:/home/operator/.local/lib/python3.12/site-packages/nvidia/nccl/lib:/home/operator/.local/lib/python3.12/site-packages/nvidia/nvjitlink/lib:/home/operator/.local/lib/python3.12/site-packages/nvidia/nvshmem/lib:/home/operator/.local/lib/python3.12/site-packages/nvidia/nvtx/lib:/usr/local/cuda-13.0/lib64:/usr/local/cuda-13.0/lib64/stubs -x REQUIRE_CLOCK_LOCK=1 /home/operator/ai-performance-engineering/code/cluster/env/venv/bin/python /home/operator/ai-performance-engineering/code/cluster/scripts/nccl_lock_wrapper.py -- /home/operator/ai-performance-engineering/code/cluster/tools/nccl-tests/build/all_reduce_perf -b 1M -e 64M -f 2 -g 1 -w 5 -n 20 ",
+  "gpus_per_node": 1,
+  "hosts": [
+    "localhost"
+  ],
+  "log_summary": {
+    "collnet": {
+      "lines": [
+        "host-01:3921023:3921023 [0] NCCL INFO 64 coll channels, 64 collnet channels, 0 nvls channels, 64 p2p channels, 64 p2p channels per peer"
+      ],
+      "seen": true
+    },
+    "errors": {
+      "lines": [],
+      "nvls_init_failure": false
+    },
+    "mnnvl": {
+      "mnnvl": 0,
+      "nNodes": 1
+    },
+    "nvls": {
+      "channels": 0,
+      "comm_lines": 0
+    },
+    "sharp": {
+      "lines": [],
+      "seen": false
+    }
+  },
+  "raw_log": "/home/operator/ai-performance-engineering/code/cluster/runs/2026-03-17_localhost_fabric_canonical/raw/2026-03-17_localhost_fabric_canonical_node1_localhost_nccl_all_reduce.log",
+  "results": [
+    {
+      "algbw_gbps": 145.62,
+      "busbw_gbps": 0.0,
+      "count": 262144,
+      "dtype": "float",
+      "redop": "sum",
+      "root": -1,
+      "size_bytes": 1048576,
+      "time_us": 7.2
+    },
+    {
+      "algbw_gbps": 379.52,
+      "busbw_gbps": 0.0,
+      "count": 524288,
+      "dtype": "float",
+      "redop": "sum",
+      "root": -1,
+      "size_bytes": 2097152,
+      "time_us": 5.53
+    },
+    {
+      "algbw_gbps": 532.52,
+      "busbw_gbps": 0.0,
+      "count": 1048576,
+      "dtype": "float",
+      "redop": "sum",
+      "root": -1,
+      "size_bytes": 4194304,
+      "time_us": 7.88
+    },
+    {
+      "algbw_gbps": 992.73,
+      "busbw_gbps": 0.0,
+      "count": 2097152,
+      "dtype": "float",
+      "redop": "sum",
+      "root": -1,
+      "size_bytes": 8388608,
+      "time_us": 8.45
+    },
+    {
+      "algbw_gbps": 1422.6,
+      "busbw_gbps": 0.0,
+      "count": 4194304,
+      "dtype": "float",
+      "redop": "sum",
+      "root": -1,
+      "size_bytes": 16777216,
+      "time_us": 11.79
+    },
+    {
+      "algbw_gbps": 1924.4,
+      "busbw_gbps": 0.0,
+      "count": 8388608,
+      "dtype": "float",
+      "redop": "sum",
+      "root": -1,
+      "size_bytes": 33554432,
+      "time_us": 17.44
+    },
+    {
+      "algbw_gbps": 2263.5,
+      "busbw_gbps": 0.0,
+      "count": 16777216,
+      "dtype": "float",
+      "redop": "sum",
+      "root": -1,
+      "size_bytes": 67108864,
+      "time_us": 29.65
+    }
+  ],
+  "run_id": "2026-03-17_localhost_fabric_canonical_node1",
+  "total_ranks": 1
+}

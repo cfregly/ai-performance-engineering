@@ -1,0 +1,25 @@
+{
+  "collection_mode": "artifact_correlation",
+  "completeness": "present_unverified",
+  "evidence_refs": [
+    "structured/2026-03-17_localhost_fabric_canonical_node1_nccl.json",
+    "structured/2026-03-17_localhost_fabric_canonical_nccl_env_sensitivity.json",
+    "structured/2026-03-17_localhost_fabric_canonical_localhost_vllm_serve_sweep.csv"
+  ],
+  "fabric_family": "all",
+  "findings": [
+    "NVLink/NVSwitch runtime evidence peaks at 2263.5 GB/s algbw on the single-node NCCL path.",
+    "vLLM throughput ranges from 484.5 to 484.5 tok/s across 1 concurrency points."
+  ],
+  "recommendations": [],
+  "run_id": "2026-03-17_localhost_fabric_canonical",
+  "schema_version": "2026-03-16",
+  "status": "ok",
+  "summary": {
+    "multi_node_nccl_peak_algbw_gbps": 0.0,
+    "multi_to_single_nccl_ratio": 0.0,
+    "single_node_nccl_peak_algbw_gbps": 2263.5,
+    "vllm_p99_ttft_max_ms": 77.573,
+    "vllm_total_tok_s_mean": 484.494
+  }
+}

@@ -1,0 +1,32 @@
+{
+  "debug_templates": {
+    "py_spy_dump_by_pid": "/home/operator/ai-performance-engineering/code/cluster/env/venv/bin/py-spy dump -n -p <PID>",
+    "py_spy_dump_python_children": "pgrep -P $(pgrep -o python) | xargs -I {} /home/operator/ai-performance-engineering/code/cluster/env/venv/bin/py-spy dump --pid {}",
+    "strace_attach": "strace --pid <PID>",
+    "strace_follow_forks": "strace -f -o /tmp/strace.log python -m torch.distributed.run --nproc_per_node=<N> --nnodes=<M> <script.py>"
+  },
+  "host": "host-01",
+  "process_snapshots": {
+    "pgrep_match": "[redacted for publication]",
+    "ps_top120": "[redacted for publication]"
+  },
+  "run_id": "2026-03-17_localhost_fabric_canonical",
+  "status": "ok",
+  "test": "hang_triage_readiness",
+  "timestamp_utc": "2026-03-17T02:48:52Z",
+  "tools": {
+    "ptrace_scope": "1",
+    "py_spy": {
+      "available": true,
+      "error": null,
+      "path": "/home/operator/ai-performance-engineering/code/cluster/env/venv/bin/py-spy",
+      "version": "py-spy 0.4.1"
+    },
+    "strace": {
+      "available": true,
+      "error": null,
+      "path": "/usr/bin/strace",
+      "version": "strace -- version 6.8"
+    }
+  }
+}

@@ -1,0 +1,51 @@
+{
+  "allowed_failed_checks": [],
+  "checks": [
+    {
+      "command": "/usr/bin/python3 -c 'import torch; print(torch.__version__)'",
+      "details": {
+        "python_executable": "/usr/bin/python3"
+      },
+      "duration_sec": 1.504456,
+      "exit_code": 0,
+      "name": "torch_import",
+      "status": "ok",
+      "stderr_excerpt": "",
+      "stdout_excerpt": "2.9.1+cu130\n",
+      "timed_out": false
+    }
+  ],
+  "config": {
+    "allow_failed_checks": [],
+    "hf_local_dir_base": "/tmp",
+    "hf_model": "openai-community/gpt2",
+    "ngc_image": "nvcr.io/nvidia/pytorch:24.05-py3",
+    "timeout_sec": 120,
+    "torch_index_url": "https://download.pytorch.org/whl/cu124",
+    "torch_version": "2.5.1"
+  },
+  "expected_failed_checks": [],
+  "failed_checks": [],
+  "host": "host-01",
+  "passed_checks": [
+    "torch_import"
+  ],
+  "run_id": "2026-03-17_localhost_fabric_canonical",
+  "selected_checks": [
+    "torch_import"
+  ],
+  "status": "ok",
+  "test": "quick_friction",
+  "timestamp_utc": "2026-03-17T03:00:36Z",
+  "tool_paths": {
+    "curl": "/usr/bin/curl",
+    "docker": "/usr/bin/docker",
+    "hf": "/usr/local/bin/hf",
+    "huggingface_cli": "/usr/local/bin/huggingface-cli",
+    "python3": "/usr/bin/python3",
+    "speedtest": "/usr/bin/speedtest-cli",
+    "uv": null,
+    "whois": "/usr/bin/whois"
+  },
+  "unexpected_failed_checks": []
+}

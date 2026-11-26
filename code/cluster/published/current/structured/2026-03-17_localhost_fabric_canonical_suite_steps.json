@@ -1,0 +1,330 @@
+[
+  {
+    "name": "preflight_services",
+    "start_time": "2026-03-17T02:48:48+00:00",
+    "end_time": "2026-03-17T02:48:48+00:00",
+    "exit_code": 0,
+    "log_path": "/home/operator/ai-performance-engineering/code/cluster/runs/2026-03-17_localhost_fabric_canonical/raw/2026-03-17_localhost_fabric_canonical_suite/preflight_services.log",
+    "command": "/home/operator/ai-performance-engineering/code/cluster/scripts/preflight_cluster_services.sh --run-id 2026-03-17_localhost_fabric_canonical --hosts localhost --ssh-user operator-01"
+  },
+  {
+    "name": "discovery",
+    "start_time": "2026-03-17T02:48:48+00:00",
+    "end_time": "2026-03-17T02:48:51+00:00",
+    "exit_code": 0,
+    "log_path": "/home/operator/ai-performance-engineering/code/cluster/runs/2026-03-17_localhost_fabric_canonical/raw/2026-03-17_localhost_fabric_canonical_suite/discovery.log",
+    "command": "/home/operator/ai-performance-engineering/code/cluster/scripts/collect_discovery_and_tcp_sysctl.sh --run-id 2026-03-17_localhost_fabric_canonical --hosts localhost --ssh-user operator-01 --labels localhost"
+  },
+  {
+    "name": "hang_triage_bundle",
+    "start_time": "2026-03-17T02:48:52+00:00",
+    "end_time": "2026-03-17T02:48:52+00:00",
+    "exit_code": 0,
+    "log_path": "/home/operator/ai-performance-engineering/code/cluster/runs/2026-03-17_localhost_fabric_canonical/raw/2026-03-17_localhost_fabric_canonical_suite/hang_triage_bundle.log",
+    "command": "/home/operator/ai-performance-engineering/code/cluster/scripts/collect_hang_triage_bundle.sh --run-id 2026-03-17_localhost_fabric_canonical --hosts localhost --ssh-user operator-01 --labels localhost"
+  },
+  {
+    "name": "connectivity_probe",
+    "start_time": "2026-03-17T02:48:52+00:00",
+    "end_time": "2026-03-17T02:49:01+00:00",
+    "exit_code": 0,
+    "log_path": "/home/operator/ai-performance-engineering/code/cluster/runs/2026-03-17_localhost_fabric_canonical/raw/2026-03-17_localhost_fabric_canonical_suite/connectivity_probe.log",
+    "command": "/home/operator/ai-performance-engineering/code/cluster/scripts/run_torchrun_connectivity_probe.sh --run-id 2026-03-17_localhost_fabric_canonical --hosts localhost --ssh-user operator-01 --gpus-per-node 1 --master-port 29504 --barrier-iters 5 --payload-bytes 8388608 --timeout-sec 120"
+  },
+  {
+    "name": "nccl_single_node",
+    "start_time": "2026-03-17T02:49:01+00:00",
+    "end_time": "2026-03-17T02:49:11+00:00",
+    "exit_code": 0,
+    "log_path": "/home/operator/ai-performance-engineering/code/cluster/runs/2026-03-17_localhost_fabric_canonical/raw/2026-03-17_localhost_fabric_canonical_suite/nccl_single_node.log",
+    "command": "/home/operator/ai-performance-engineering/code/cluster/scripts/run_nccl_all_reduce.sh --run-id 2026-03-17_localhost_fabric_canonical_node1 --hosts localhost --label localhost"
+  },
+  {
+    "name": "nccl_env_sensitivity",
+    "start_time": "2026-03-17T02:49:11+00:00",
+    "end_time": "2026-03-17T02:50:14+00:00",
+    "exit_code": 0,
+    "log_path": "/home/operator/ai-performance-engineering/code/cluster/runs/2026-03-17_localhost_fabric_canonical/raw/2026-03-17_localhost_fabric_canonical_suite/nccl_env_sensitivity.log",
+    "command": "/home/operator/ai-performance-engineering/code/cluster/scripts/run_nccl_env_sensitivity.sh --run-id 2026-03-17_localhost_fabric_canonical --hosts localhost --gpus-per-node 1 --min-bytes 1M --max-bytes 64M --warmup 5 --iters 20"
+  },
+  {
+    "name": "vllm_serve_sweep",
+    "start_time": "2026-03-17T02:50:14+00:00",
+    "end_time": "2026-03-17T02:51:18+00:00",
+    "exit_code": 0,
+    "log_path": "/home/operator/ai-performance-engineering/code/cluster/runs/2026-03-17_localhost_fabric_canonical/raw/2026-03-17_localhost_fabric_canonical_suite/vllm_serve_sweep.log",
+    "command": "env VLLM_SWEEP_MAX_POINTS_PER_RUN=0 /home/operator/ai-performance-engineering/code/cluster/scripts/repro/run_vllm_serve_sweep_container.sh --run-id 2026-03-17_localhost_fabric_canonical --label localhost --model openai-community/gpt2 --isl 64 --osl 32 --concurrency-range 1 --repeats 1 --port 8888 --tp 1"
+  },
+  {
+    "name": "gemm_sanity",
+    "start_time": "2026-03-17T02:51:18+00:00",
+    "end_time": "2026-03-17T02:51:31+00:00",
+    "exit_code": 0,
+    "log_path": "/home/operator/ai-performance-engineering/code/cluster/runs/2026-03-17_localhost_fabric_canonical/raw/2026-03-17_localhost_fabric_canonical_suite/gemm_sanity.log",
+    "command": "/home/operator/ai-performance-engineering/code/cluster/scripts/run_gemm_sanity_all_nodes.sh --run-id 2026-03-17_localhost_fabric_canonical --hosts localhost --ssh-user operator-01 --labels localhost"
+  },
+  {
+    "name": "gpu_stream_all_nodes",
+    "start_time": "2026-03-17T02:51:31+00:00",
+    "end_time": "2026-03-17T02:51:41+00:00",
+    "exit_code": 0,
+    "log_path": "/home/operator/ai-performance-engineering/code/cluster/runs/2026-03-17_localhost_fabric_canonical/raw/2026-03-17_localhost_fabric_canonical_suite/gpu_stream_all_nodes.log",
+    "command": "/home/operator/ai-performance-engineering/code/cluster/scripts/run_gpu_stream_bench_all_nodes.sh --run-id 2026-03-17_localhost_fabric_canonical --hosts localhost --ssh-user operator-01 --device 0 --size-mb 1024 --iters 40 --warmup 10 --dtype fp32 --labels localhost"
+  },
+  {
+    "name": "allreduce_stability",
+    "start_time": "2026-03-17T02:51:41+00:00",
+    "end_time": "2026-03-17T02:51:56+00:00",
+    "exit_code": 0,
+    "log_path": "/home/operator/ai-performance-engineering/code/cluster/runs/2026-03-17_localhost_fabric_canonical/raw/2026-03-17_localhost_fabric_canonical_suite/allreduce_stability.log",
+    "command": "/home/operator/ai-performance-engineering/code/cluster/scripts/run_allreduce_stability.sh --run-id 2026-03-17_localhost_fabric_canonical --hosts localhost --ssh-user operator-01 --label allreduce_stability --payload-gib 2.0 --iters 5 --warmup 1"
+  },
+  {
+    "name": "allreduce_latency_comp",
+    "start_time": "2026-03-17T02:51:56+00:00",
+    "end_time": "2026-03-17T02:52:11+00:00",
+    "exit_code": 0,
+    "log_path": "/home/operator/ai-performance-engineering/code/cluster/runs/2026-03-17_localhost_fabric_canonical/raw/2026-03-17_localhost_fabric_canonical_suite/allreduce_latency_comp.log",
+    "command": "/home/operator/ai-performance-engineering/code/cluster/scripts/run_allreduce_latency_comp.sh --run-id 2026-03-17_localhost_fabric_canonical --label allreduce_latency_comp --hosts localhost --ssh-user operator-01 --payload-gib 4.0 --chunks 1000 --iters 1 --warmup 1"
+  },
+  {
+    "name": "allgather_control_plane",
+    "start_time": "2026-03-17T02:52:11+00:00",
+    "end_time": "2026-03-17T02:52:27+00:00",
+    "exit_code": 0,
+    "log_path": "/home/operator/ai-performance-engineering/code/cluster/runs/2026-03-17_localhost_fabric_canonical/raw/2026-03-17_localhost_fabric_canonical_suite/allgather_control_plane.log",
+    "command": "/home/operator/ai-performance-engineering/code/cluster/scripts/run_allgather_control_plane.sh --run-id 2026-03-17_localhost_fabric_canonical --label allgather_control_plane --hosts localhost --ssh-user operator-01 --iters 20 --warmup 2"
+  },
+  {
+    "name": "nccl_alltoall_single_node",
+    "start_time": "2026-03-17T02:52:27+00:00",
+    "end_time": "2026-03-17T02:52:38+00:00",
+    "exit_code": 0,
+    "log_path": "/home/operator/ai-performance-engineering/code/cluster/runs/2026-03-17_localhost_fabric_canonical/raw/2026-03-17_localhost_fabric_canonical_suite/nccl_alltoall_single_node.log",
+    "command": "/home/operator/ai-performance-engineering/code/cluster/scripts/run_nccl_all_to_all.sh --run-id 2026-03-17_localhost_fabric_canonical_node1_alltoall --hosts localhost --label localhost --min-bytes 1M --max-bytes 64M --iters 20 --warmup 5"
+  },
+  {
+    "name": "nccl_algo_comparison",
+    "start_time": "2026-03-17T02:52:38+00:00",
+    "end_time": "2026-03-17T02:53:27+00:00",
+    "exit_code": 0,
+    "log_path": "/home/operator/ai-performance-engineering/code/cluster/runs/2026-03-17_localhost_fabric_canonical/raw/2026-03-17_localhost_fabric_canonical_suite/nccl_algo_comparison.log",
+    "command": "/home/operator/ai-performance-engineering/code/cluster/scripts/run_nccl_algo_comparison.sh --run-id 2026-03-17_localhost_fabric_canonical --hosts localhost --algos Ring\\,Tree\\,NVLS\\,auto"
+  },
+  {
+    "name": "train_step_single_node",
+    "start_time": "2026-03-17T02:53:27+00:00",
+    "end_time": "2026-03-17T02:54:01+00:00",
+    "exit_code": 0,
+    "log_path": "/home/operator/ai-performance-engineering/code/cluster/runs/2026-03-17_localhost_fabric_canonical/raw/2026-03-17_localhost_fabric_canonical_suite/train_step_single_node.log",
+    "command": "/home/operator/ai-performance-engineering/code/cluster/scripts/run_torchrun_transformer_train_step.sh --run-id 2026-03-17_localhost_fabric_canonical --ssh-user operator-01 --gpus-per-node 1 --master-port 29510 --steps 1 --warmup-steps 1 --batch-size 2 --seq-len 2048 --hidden 4096 --layers 24 --heads 32 --mlp-ratio 4 --precision bf16 --fsdp 1 --lr 1e-4 --hosts localhost --label localhost_single_node"
+  },
+  {
+    "name": "fio_all_nodes",
+    "start_time": "2026-03-17T02:54:01+00:00",
+    "end_time": "2026-03-17T02:57:55+00:00",
+    "exit_code": 0,
+    "log_path": "/home/operator/ai-performance-engineering/code/cluster/runs/2026-03-17_localhost_fabric_canonical/raw/2026-03-17_localhost_fabric_canonical_suite/fio_all_nodes.log",
+    "command": "/home/operator/ai-performance-engineering/code/cluster/scripts/run_fio_all_nodes.sh --run-id 2026-03-17_localhost_fabric_canonical --hosts localhost --ssh-user operator-01 --test-dir /tmp --file-size 8G --runtime 1 --repeats 3 --labels localhost"
+  },
+  {
+    "name": "nvbandwidth_all_nodes",
+    "start_time": "2026-03-17T02:57:55+00:00",
+    "end_time": "2026-03-17T02:58:24+00:00",
+    "exit_code": 0,
+    "log_path": "/home/operator/ai-performance-engineering/code/cluster/runs/2026-03-17_localhost_fabric_canonical/raw/2026-03-17_localhost_fabric_canonical_suite/nvbandwidth_all_nodes.log",
+    "command": "/home/operator/ai-performance-engineering/code/cluster/scripts/run_nvbandwidth_bundle_all_nodes.sh --run-id 2026-03-17_localhost_fabric_canonical --hosts localhost --ssh-user operator-01 --runtime host --labels localhost --nvbw-bin nvbandwidth"
+  },
+  {
+    "name": "plot_nccl_single_node",
+    "start_time": "2026-03-17T02:58:24+00:00",
+    "end_time": "2026-03-17T02:58:25+00:00",
+    "exit_code": 0,
+    "log_path": "/home/operator/ai-performance-engineering/code/cluster/runs/2026-03-17_localhost_fabric_canonical/raw/2026-03-17_localhost_fabric_canonical_suite/plot_nccl_single_node.log",
+    "command": "python3 /home/operator/ai-performance-engineering/code/cluster/analysis/plot_nccl.py --input /home/operator/ai-performance-engineering/code/cluster/runs/2026-03-17_localhost_fabric_canonical/structured/2026-03-17_localhost_fabric_canonical_node1_nccl.json --out-dir /home/operator/ai-performance-engineering/code/cluster/runs/2026-03-17_localhost_fabric_canonical/figures --run-id 2026-03-17_localhost_fabric_canonical_node1"
+  },
+  {
+    "name": "plot_nccl_alltoall_single_node",
+    "start_time": "2026-03-17T02:58:25+00:00",
+    "end_time": "2026-03-17T02:58:26+00:00",
+    "exit_code": 0,
+    "log_path": "/home/operator/ai-performance-engineering/code/cluster/runs/2026-03-17_localhost_fabric_canonical/raw/2026-03-17_localhost_fabric_canonical_suite/plot_nccl_alltoall_single_node.log",
+    "command": "python3 /home/operator/ai-performance-engineering/code/cluster/analysis/plot_nccl.py --input /home/operator/ai-performance-engineering/code/cluster/runs/2026-03-17_localhost_fabric_canonical/structured/2026-03-17_localhost_fabric_canonical_node1_alltoall_nccl_alltoall.json --out-dir /home/operator/ai-performance-engineering/code/cluster/runs/2026-03-17_localhost_fabric_canonical/figures --run-id 2026-03-17_localhost_fabric_canonical_node1_alltoall"
+  },
+  {
+    "name": "plot_nccl_env_sensitivity",
+    "start_time": "2026-03-17T02:58:26+00:00",
+    "end_time": "2026-03-17T02:58:26+00:00",
+    "exit_code": 0,
+    "log_path": "/home/operator/ai-performance-engineering/code/cluster/runs/2026-03-17_localhost_fabric_canonical/raw/2026-03-17_localhost_fabric_canonical_suite/plot_nccl_env_sensitivity.log",
+    "command": "python3 /home/operator/ai-performance-engineering/code/cluster/analysis/plot_nccl_env_sensitivity.py --input /home/operator/ai-performance-engineering/code/cluster/runs/2026-03-17_localhost_fabric_canonical/structured/2026-03-17_localhost_fabric_canonical_nccl_env_sensitivity.json --output /home/operator/ai-performance-engineering/code/cluster/runs/2026-03-17_localhost_fabric_canonical/figures/2026-03-17_localhost_fabric_canonical_nccl_env_sensitivity.png --title NCCL\\ Env\\ Sensitivity\\ 2026-03-17_localhost_fabric_canonical"
+  },
+  {
+    "name": "plot_vllm_serve",
+    "start_time": "2026-03-17T02:58:26+00:00",
+    "end_time": "2026-03-17T02:58:27+00:00",
+    "exit_code": 0,
+    "log_path": "/home/operator/ai-performance-engineering/code/cluster/runs/2026-03-17_localhost_fabric_canonical/raw/2026-03-17_localhost_fabric_canonical_suite/plot_vllm_serve.log",
+    "command": "python3 /home/operator/ai-performance-engineering/code/cluster/analysis/plot_vllm_serve_sweep.py --input /home/operator/ai-performance-engineering/code/cluster/runs/2026-03-17_localhost_fabric_canonical/structured/2026-03-17_localhost_fabric_canonical_localhost_vllm_serve_sweep.csv --out-dir /home/operator/ai-performance-engineering/code/cluster/runs/2026-03-17_localhost_fabric_canonical/figures --run-id 2026-03-17_localhost_fabric_canonical_localhost"
+  },
+  {
+    "name": "analyze_vllm_slo_goodput",
+    "start_time": "2026-03-17T02:58:27+00:00",
+    "end_time": "2026-03-17T02:58:27+00:00",
+    "exit_code": 0,
+    "log_path": "/home/operator/ai-performance-engineering/code/cluster/runs/2026-03-17_localhost_fabric_canonical/raw/2026-03-17_localhost_fabric_canonical_suite/analyze_vllm_slo_goodput.log",
+    "command": "python3 /home/operator/ai-performance-engineering/code/cluster/analysis/analyze_vllm_slo_goodput.py --input /home/operator/ai-performance-engineering/code/cluster/runs/2026-03-17_localhost_fabric_canonical/structured/2026-03-17_localhost_fabric_canonical_localhost_vllm_serve_sweep.csv --run-id 2026-03-17_localhost_fabric_canonical --label localhost --slo-p99-ttft-ms 2000 --slo-p99-tpot-ms 200 --output-json /home/operator/ai-performance-engineering/code/cluster/runs/2026-03-17_localhost_fabric_canonical/structured/2026-03-17_localhost_fabric_canonical_localhost_vllm_serve_slo_goodput.json --output-csv /home/operator/ai-performance-engineering/code/cluster/runs/2026-03-17_localhost_fabric_canonical/structured/2026-03-17_localhost_fabric_canonical_localhost_vllm_serve_slo_goodput.csv"
+  },
+  {
+    "name": "plot_vllm_slo_goodput",
+    "start_time": "2026-03-17T02:58:27+00:00",
+    "end_time": "2026-03-17T02:58:28+00:00",
+    "exit_code": 0,
+    "log_path": "/home/operator/ai-performance-engineering/code/cluster/runs/2026-03-17_localhost_fabric_canonical/raw/2026-03-17_localhost_fabric_canonical_suite/plot_vllm_slo_goodput.log",
+    "command": "python3 /home/operator/ai-performance-engineering/code/cluster/analysis/plot_vllm_goodput_slo.py --input-json /home/operator/ai-performance-engineering/code/cluster/runs/2026-03-17_localhost_fabric_canonical/structured/2026-03-17_localhost_fabric_canonical_localhost_vllm_serve_slo_goodput.json --out-dir /home/operator/ai-performance-engineering/code/cluster/runs/2026-03-17_localhost_fabric_canonical/figures --run-id 2026-03-17_localhost_fabric_canonical_localhost"
+  },
+  {
+    "name": "plot_gemm_sanity",
+    "start_time": "2026-03-17T02:58:28+00:00",
+    "end_time": "2026-03-17T02:58:29+00:00",
+    "exit_code": 0,
+    "log_path": "/home/operator/ai-performance-engineering/code/cluster/runs/2026-03-17_localhost_fabric_canonical/raw/2026-03-17_localhost_fabric_canonical_suite/plot_gemm_sanity.log",
+    "command": "python3 /home/operator/ai-performance-engineering/code/cluster/analysis/plot_gemm_bar.py --inputs /home/operator/ai-performance-engineering/code/cluster/runs/2026-03-17_localhost_fabric_canonical/structured/2026-03-17_localhost_fabric_canonical_localhost_gemm_gpu_sanity.csv --output /home/operator/ai-performance-engineering/code/cluster/runs/2026-03-17_localhost_fabric_canonical/figures/2026-03-17_localhost_fabric_canonical_gemm_gpu_sanity.png --filter-m 16384"
+  },
+  {
+    "name": "plot_allreduce_stability",
+    "start_time": "2026-03-17T02:58:29+00:00",
+    "end_time": "2026-03-17T02:58:30+00:00",
+    "exit_code": 0,
+    "log_path": "/home/operator/ai-performance-engineering/code/cluster/runs/2026-03-17_localhost_fabric_canonical/raw/2026-03-17_localhost_fabric_canonical_suite/plot_allreduce_stability.log",
+    "command": "python3 /home/operator/ai-performance-engineering/code/cluster/analysis/plot_allreduce_stability.py --input /home/operator/ai-performance-engineering/code/cluster/runs/2026-03-17_localhost_fabric_canonical/structured/2026-03-17_localhost_fabric_canonical_allreduce_stability.json --output /home/operator/ai-performance-engineering/code/cluster/runs/2026-03-17_localhost_fabric_canonical/figures/2026-03-17_localhost_fabric_canonical_allreduce_stability.png"
+  },
+  {
+    "name": "plot_allreduce_latency_comp",
+    "start_time": "2026-03-17T02:58:30+00:00",
+    "end_time": "2026-03-17T02:58:30+00:00",
+    "exit_code": 0,
+    "log_path": "/home/operator/ai-performance-engineering/code/cluster/runs/2026-03-17_localhost_fabric_canonical/raw/2026-03-17_localhost_fabric_canonical_suite/plot_allreduce_latency_comp.log",
+    "command": "python3 /home/operator/ai-performance-engineering/code/cluster/analysis/plot_allreduce_latency_comp.py --input /home/operator/ai-performance-engineering/code/cluster/runs/2026-03-17_localhost_fabric_canonical/structured/2026-03-17_localhost_fabric_canonical_allreduce_latency_comp.json --output /home/operator/ai-performance-engineering/code/cluster/runs/2026-03-17_localhost_fabric_canonical/figures/2026-03-17_localhost_fabric_canonical_allreduce_latency_comp.png"
+  },
+  {
+    "name": "plot_allgather_control_plane",
+    "start_time": "2026-03-17T02:58:30+00:00",
+    "end_time": "2026-03-17T02:58:31+00:00",
+    "exit_code": 0,
+    "log_path": "/home/operator/ai-performance-engineering/code/cluster/runs/2026-03-17_localhost_fabric_canonical/raw/2026-03-17_localhost_fabric_canonical_suite/plot_allgather_control_plane.log",
+    "command": "python3 /home/operator/ai-performance-engineering/code/cluster/analysis/plot_allgather_control_plane.py --input /home/operator/ai-performance-engineering/code/cluster/runs/2026-03-17_localhost_fabric_canonical/structured/2026-03-17_localhost_fabric_canonical_allgather_control_plane.json --output /home/operator/ai-performance-engineering/code/cluster/runs/2026-03-17_localhost_fabric_canonical/figures/2026-03-17_localhost_fabric_canonical_allgather_control_plane.png"
+  },
+  {
+    "name": "plot_nccl_algo_comparison",
+    "start_time": "2026-03-17T02:58:31+00:00",
+    "end_time": "2026-03-17T02:58:32+00:00",
+    "exit_code": 0,
+    "log_path": "/home/operator/ai-performance-engineering/code/cluster/runs/2026-03-17_localhost_fabric_canonical/raw/2026-03-17_localhost_fabric_canonical_suite/plot_nccl_algo_comparison.log",
+    "command": "python3 /home/operator/ai-performance-engineering/code/cluster/analysis/plot_nccl_algo_comparison.py --inputs /home/operator/ai-performance-engineering/code/cluster/runs/2026-03-17_localhost_fabric_canonical/structured/2026-03-17_localhost_fabric_canonical_nccl_algo_auto.json /home/operator/ai-performance-engineering/code/cluster/runs/2026-03-17_localhost_fabric_canonical/structured/2026-03-17_localhost_fabric_canonical_nccl_algo_comparison.json /home/operator/ai-performance-engineering/code/cluster/runs/2026-03-17_localhost_fabric_canonical/structured/2026-03-17_localhost_fabric_canonical_nccl_algo_nvls.json /home/operator/ai-performance-engineering/code/cluster/runs/2026-03-17_localhost_fabric_canonical/structured/2026-03-17_localhost_fabric_canonical_nccl_algo_ring.json /home/operator/ai-performance-engineering/code/cluster/runs/2026-03-17_localhost_fabric_canonical/structured/2026-03-17_localhost_fabric_canonical_nccl_algo_tree.json --output /home/operator/ai-performance-engineering/code/cluster/runs/2026-03-17_localhost_fabric_canonical/figures/2026-03-17_localhost_fabric_canonical_nccl_algo_comparison.png --title NCCL\\ Algorithm\\ Comparison\\ 2026-03-17_localhost_fabric_canonical"
+  },
+  {
+    "name": "plot_fio_2026-03-17_localhost_fabric_canonical_localhost_fio",
+    "start_time": "2026-03-17T02:58:32+00:00",
+    "end_time": "2026-03-17T02:58:32+00:00",
+    "exit_code": 0,
+    "log_path": "/home/operator/ai-performance-engineering/code/cluster/runs/2026-03-17_localhost_fabric_canonical/raw/2026-03-17_localhost_fabric_canonical_suite/plot_fio_2026-03-17_localhost_fabric_canonical_localhost_fio.log",
+    "command": "python3 /home/operator/ai-performance-engineering/code/cluster/analysis/plot_fio.py --input /home/operator/ai-performance-engineering/code/cluster/runs/2026-03-17_localhost_fabric_canonical/structured/2026-03-17_localhost_fabric_canonical_localhost_fio.json --out /home/operator/ai-performance-engineering/code/cluster/runs/2026-03-17_localhost_fabric_canonical/figures/2026-03-17_localhost_fabric_canonical_localhost_fio.png"
+  },
+  {
+    "name": "plot_nvbandwidth_2026-03-17_localhost_fabric_canonical_localhost_nvbandwidth",
+    "start_time": "2026-03-17T02:58:32+00:00",
+    "end_time": "2026-03-17T02:58:33+00:00",
+    "exit_code": 0,
+    "log_path": "/home/operator/ai-performance-engineering/code/cluster/runs/2026-03-17_localhost_fabric_canonical/raw/2026-03-17_localhost_fabric_canonical_suite/plot_nvbandwidth_2026-03-17_localhost_fabric_canonical_localhost_nvbandwidth.log",
+    "command": "python3 /home/operator/ai-performance-engineering/code/cluster/analysis/plot_nvbandwidth_sums.py --input /home/operator/ai-performance-engineering/code/cluster/runs/2026-03-17_localhost_fabric_canonical/structured/2026-03-17_localhost_fabric_canonical_localhost_nvbandwidth_sums.csv --out /home/operator/ai-performance-engineering/code/cluster/runs/2026-03-17_localhost_fabric_canonical/figures/2026-03-17_localhost_fabric_canonical_localhost_nvbandwidth_sums.png --title nvbandwidth\\ SUM\\ metrics\\ 2026-03-17_localhost_fabric_canonical_localhost_nvbandwidth"
+  },
+  {
+    "name": "plot_gpu_stream_2026-03-17_localhost_fabric_canonical_localhost_gpu_stream",
+    "start_time": "2026-03-17T02:58:33+00:00",
+    "end_time": "2026-03-17T02:58:34+00:00",
+    "exit_code": 0,
+    "log_path": "/home/operator/ai-performance-engineering/code/cluster/runs/2026-03-17_localhost_fabric_canonical/raw/2026-03-17_localhost_fabric_canonical_suite/plot_gpu_stream_2026-03-17_localhost_fabric_canonical_localhost_gpu_stream.log",
+    "command": "python3 /home/operator/ai-performance-engineering/code/cluster/analysis/plot_gpu_stream.py --input /home/operator/ai-performance-engineering/code/cluster/runs/2026-03-17_localhost_fabric_canonical/structured/2026-03-17_localhost_fabric_canonical_localhost_gpu_stream.json --out /home/operator/ai-performance-engineering/code/cluster/runs/2026-03-17_localhost_fabric_canonical/figures/2026-03-17_localhost_fabric_canonical_localhost_gpu_stream.png"
+  },
+  {
+    "name": "plot_train_step_single",
+    "start_time": "2026-03-17T02:58:34+00:00",
+    "end_time": "2026-03-17T02:58:34+00:00",
+    "exit_code": 0,
+    "log_path": "/home/operator/ai-performance-engineering/code/cluster/runs/2026-03-17_localhost_fabric_canonical/raw/2026-03-17_localhost_fabric_canonical_suite/plot_train_step_single.log",
+    "command": "python3 /home/operator/ai-performance-engineering/code/cluster/analysis/plot_torchrun_train_step.py --input /home/operator/ai-performance-engineering/code/cluster/runs/2026-03-17_localhost_fabric_canonical/structured/2026-03-17_localhost_fabric_canonical_localhost_single_node_torchrun_train_step.json --out /home/operator/ai-performance-engineering/code/cluster/runs/2026-03-17_localhost_fabric_canonical/figures/2026-03-17_localhost_fabric_canonical_localhost_single_node_torchrun_train_step.png"
+  },
+  {
+    "name": "plot_nvlink_topology_2026-03-17_localhost_fabric_canonical_localhost_meta",
+    "start_time": "2026-03-17T02:58:34+00:00",
+    "end_time": "2026-03-17T02:58:35+00:00",
+    "exit_code": 0,
+    "log_path": "/home/operator/ai-performance-engineering/code/cluster/runs/2026-03-17_localhost_fabric_canonical/raw/2026-03-17_localhost_fabric_canonical_suite/plot_nvlink_topology_2026-03-17_localhost_fabric_canonical_localhost_meta.log",
+    "command": "python3 /home/operator/ai-performance-engineering/code/cluster/analysis/plot_nvlink_topology.py --meta /home/operator/ai-performance-engineering/code/cluster/runs/2026-03-17_localhost_fabric_canonical/structured/2026-03-17_localhost_fabric_canonical_localhost_meta.json --fig-out /home/operator/ai-performance-engineering/code/cluster/runs/2026-03-17_localhost_fabric_canonical/figures/2026-03-17_localhost_fabric_canonical_localhost_meta_nvlink_topology.png --summary-out /home/operator/ai-performance-engineering/code/cluster/runs/2026-03-17_localhost_fabric_canonical/structured/2026-03-17_localhost_fabric_canonical_localhost_meta_nvlink_topology.json"
+  },
+  {
+    "name": "plot_cluster_story_dashboard",
+    "start_time": "2026-03-17T02:58:35+00:00",
+    "end_time": "2026-03-17T02:58:36+00:00",
+    "exit_code": 0,
+    "log_path": "/home/operator/ai-performance-engineering/code/cluster/runs/2026-03-17_localhost_fabric_canonical/raw/2026-03-17_localhost_fabric_canonical_suite/plot_cluster_story_dashboard.log",
+    "command": "python3 /home/operator/ai-performance-engineering/code/cluster/analysis/plot_cluster_story_dashboard.py --run-id 2026-03-17_localhost_fabric_canonical --structured-dir /home/operator/ai-performance-engineering/code/cluster/runs/2026-03-17_localhost_fabric_canonical/structured --node-labels localhost --fig-out /home/operator/ai-performance-engineering/code/cluster/runs/2026-03-17_localhost_fabric_canonical/figures/2026-03-17_localhost_fabric_canonical_cluster_story_dashboard.png --summary-out /home/operator/ai-performance-engineering/code/cluster/runs/2026-03-17_localhost_fabric_canonical/structured/2026-03-17_localhost_fabric_canonical_node_parity_summary.json"
+  },
+  {
+    "name": "build_fabric_eval",
+    "start_time": "2026-03-17T02:58:36+00:00",
+    "end_time": "2026-03-17T03:00:14+00:00",
+    "exit_code": 0,
+    "log_path": "/home/operator/ai-performance-engineering/code/cluster/runs/2026-03-17_localhost_fabric_canonical/raw/2026-03-17_localhost_fabric_canonical_suite/build_fabric_eval.log",
+    "command": "python3 /home/operator/ai-performance-engineering/code/cluster/scripts/build_fabric_eval.py --run-id 2026-03-17_localhost_fabric_canonical --run-dir /home/operator/ai-performance-engineering/code/cluster/runs/2026-03-17_localhost_fabric_canonical --primary-label localhost --labels localhost --ssh-user operator-01 --nmx-url https://nmx-endpoint.invalid"
+  },
+  {
+    "name": "build_cluster_scorecard",
+    "start_time": "2026-03-17T03:00:14+00:00",
+    "end_time": "2026-03-17T03:00:14+00:00",
+    "exit_code": 0,
+    "log_path": "/home/operator/ai-performance-engineering/code/cluster/runs/2026-03-17_localhost_fabric_canonical/raw/2026-03-17_localhost_fabric_canonical_suite/build_cluster_scorecard.log",
+    "command": "python3 /home/operator/ai-performance-engineering/code/cluster/analysis/build_cluster_scorecard.py --run-id 2026-03-17_localhost_fabric_canonical --primary-label localhost --structured-dir /home/operator/ai-performance-engineering/code/cluster/runs/2026-03-17_localhost_fabric_canonical/structured"
+  },
+  {
+    "name": "build_mlperf_alignment",
+    "start_time": "2026-03-17T03:00:15+00:00",
+    "end_time": "2026-03-17T03:00:15+00:00",
+    "exit_code": 0,
+    "log_path": "/home/operator/ai-performance-engineering/code/cluster/runs/2026-03-17_localhost_fabric_canonical/raw/2026-03-17_localhost_fabric_canonical_suite/build_mlperf_alignment.log",
+    "command": "python3 /home/operator/ai-performance-engineering/code/cluster/analysis/build_mlperf_alignment.py --run-id 2026-03-17_localhost_fabric_canonical --structured-dir /home/operator/ai-performance-engineering/code/cluster/runs/2026-03-17_localhost_fabric_canonical/structured"
+  },
+  {
+    "name": "analyze_benchmark_coverage",
+    "start_time": "2026-03-17T03:00:15+00:00",
+    "end_time": "2026-03-17T03:00:15+00:00",
+    "exit_code": 0,
+    "log_path": "/home/operator/ai-performance-engineering/code/cluster/runs/2026-03-17_localhost_fabric_canonical/raw/2026-03-17_localhost_fabric_canonical_suite/analyze_benchmark_coverage.log",
+    "command": "python3 /home/operator/ai-performance-engineering/code/cluster/analysis/analyze_benchmark_coverage.py --run-id 2026-03-17_localhost_fabric_canonical --structured-dir /home/operator/ai-performance-engineering/code/cluster/runs/2026-03-17_localhost_fabric_canonical/structured"
+  },
+  {
+    "name": "validate_required_artifacts",
+    "start_time": "2026-03-17T03:00:15+00:00",
+    "end_time": "2026-03-17T03:00:15+00:00",
+    "exit_code": 0,
+    "log_path": "/home/operator/ai-performance-engineering/code/cluster/runs/2026-03-17_localhost_fabric_canonical/raw/2026-03-17_localhost_fabric_canonical_suite/validate_required_artifacts.log",
+    "command": "validate_required_artifacts"
+  },
+  {
+    "name": "manifest_refresh",
+    "start_time": "2026-03-17T03:00:15+00:00",
+    "end_time": "2026-03-17T03:00:15+00:00",
+    "exit_code": 0,
+    "log_path": "/home/operator/ai-performance-engineering/code/cluster/runs/2026-03-17_localhost_fabric_canonical/raw/2026-03-17_localhost_fabric_canonical_suite/manifest_refresh.log",
+    "command": "python3 /home/operator/ai-performance-engineering/code/cluster/scripts/write_manifest.py --root /home/operator/ai-performance-engineering/code/cluster --run-id 2026-03-17_localhost_fabric_canonical --run-dir /home/operator/ai-performance-engineering/code/cluster/runs/2026-03-17_localhost_fabric_canonical --hosts localhost --include-figures --labels localhost"
+  },
+  {
+    "name": "render_localhost_field_report_package",
+    "start_time": "2026-03-17T03:00:15+00:00",
+    "end_time": "2026-03-17T03:00:15+00:00",
+    "exit_code": 0,
+    "log_path": "/home/operator/ai-performance-engineering/code/cluster/runs/2026-03-17_localhost_fabric_canonical/raw/2026-03-17_localhost_fabric_canonical_suite/render_localhost_field_report_package.log",
+    "command": "python3 /home/operator/ai-performance-engineering/code/cluster/scripts/render_localhost_field_report_package.py --run-id 2026-03-17_localhost_fabric_canonical --label localhost --root /home/operator/ai-performance-engineering/code/cluster --run-dir /home/operator/ai-performance-engineering/code/cluster/runs/2026-03-17_localhost_fabric_canonical --report /home/operator/ai-performance-engineering/code/cluster/runs/2026-03-17_localhost_fabric_canonical/reports/field-report-localhost.md --notes /home/operator/ai-performance-engineering/code/cluster/runs/2026-03-17_localhost_fabric_canonical/reports/field-report-localhost-notes.md --publish-report /home/operator/ai-performance-engineering/code/cluster/field-report-localhost.md --publish-notes /home/operator/ai-performance-engineering/code/cluster/field-report-localhost-notes.md"
+  }
+]

@@ -1,0 +1,59 @@
+{
+  "collection_mode": "capability_discovery",
+  "completeness": "present_unverified",
+  "evidence_refs": [
+    "structured/2026-03-17_localhost_fabric_canonical_localhost_meta.json",
+    "structured/2026-03-17_localhost_fabric_canonical_localhost_meta_nvlink_topology.json"
+  ],
+  "fabric_family": "all",
+  "families": {
+    "infiniband": {
+      "completeness": "not_present",
+      "evidence_refs": [
+        "structured/2026-03-17_localhost_fabric_canonical_localhost_meta.json"
+      ],
+      "hcas": [],
+      "management_plane_configured": false,
+      "management_plane_expected": false,
+      "present": false,
+      "signals": {
+        "ibstat_active": false,
+        "ibv_devinfo_present": false,
+        "rdma_link_present": false
+      }
+    },
+    "nvlink": {
+      "completeness": "present_unverified",
+      "evidence_refs": [
+        "structured/2026-03-17_localhost_fabric_canonical_localhost_meta.json",
+        "structured/2026-03-17_localhost_fabric_canonical_localhost_meta_nvlink_topology.json"
+      ],
+      "gpu_count": 1,
+      "management_plane_configured": true,
+      "management_plane_expected": true,
+      "nvlink_pair_count": 0,
+      "present": true,
+      "signals": {
+        "nvlink_summary_present": true,
+        "topology_contains_nvlink": true
+      }
+    },
+    "spectrum-x": {
+      "completeness": "not_present",
+      "evidence_refs": [
+        "structured/2026-03-17_localhost_fabric_canonical_localhost_meta.json"
+      ],
+      "management_plane_configured": false,
+      "management_plane_expected": false,
+      "present": false,
+      "signals": {
+        "high_speed_eth": false,
+        "rdma_over_ethernet": false
+      }
+    }
+  },
+  "recommendations": [],
+  "run_id": "2026-03-17_localhost_fabric_canonical",
+  "schema_version": "2026-03-16",
+  "status": "ok"
+}

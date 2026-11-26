@@ -160,8 +160,10 @@ After promotion:
 cluster/scripts/cleanup_run_artifacts.sh \
   --canonical-run-id <canonical_run_id> \
   --allow-run-id <baseline_run_id> \
-  --apply
+  --plan-file <unused_path>
 ```
+
+Review the cleanup plan, then rerun the same command with `--apply` to execute it.
 
 Use additional `--allow-run-id` entries only for intentionally retained historical baselines or verification runs.
 

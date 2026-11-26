@@ -13,6 +13,9 @@ Last updated: 2026-03-24. Canonical run: `2026-03-17_localhost_fabric_canonical`
 8. [Repro Entry Point](#repro-entry-point)
 
 ## Scope
+
+The published evidence is a historical reader snapshot. It contains the files linked from this report and its notes. Public labels replace private identifiers, and selected operator output was removed. The manifest records which published files differ from the historical publication.
+
 | Item | Value |
 | --- | --- |
 | Host | `localhost` |

@@ -1,87 +1,215 @@
 {
-  "artifact_roles": {
-    "meta": [
-      "structured/mcp_cluster_smoke_test_ai-book-dev_meta.json",
-      "structured/mcp_cluster_smoke_test_localhost_meta.json"
-    ],
-    "multinode_readiness": [
-      "structured/mcp_cluster_smoke_test_multinode_readiness.json"
-    ],
-    "suite_steps": [
-      "structured/mcp_cluster_smoke_test_suite_steps.json"
-    ]
-  },
-  "artifact_root": "runs/mcp_cluster_smoke_test",
-  "files": [
-    "raw/mcp_cluster_smoke_test_localhost_hang_triage_readiness.log",
-    "raw/mcp_cluster_smoke_test_localhost_monitoring_expectations.log",
-    "raw/mcp_cluster_smoke_test_localhost_quick_friction.log",
-    "raw/mcp_cluster_smoke_test_suite/connectivity_probe.log",
-    "raw/mcp_cluster_smoke_test_suite/discovery.log",
-    "raw/mcp_cluster_smoke_test_suite/hang_triage_bundle.log",
-    "raw/mcp_cluster_smoke_test_suite/monitoring_expectations_all_nodes.log",
-    "raw/mcp_cluster_smoke_test_suite/preflight_services.log",
-    "raw/mcp_cluster_smoke_test_suite/quick_friction_all_nodes.log",
-    "raw/mcp_cluster_smoke_test_torchrun_connectivity_probe_node0.log",
-    "structured/mcp_cluster_smoke_test_ai-book-dev_meta.json",
-    "structured/mcp_cluster_smoke_test_dcgmi_discovery_localhost.txt",
-    "structured/mcp_cluster_smoke_test_localhost_container_runtime.txt",
-    "structured/mcp_cluster_smoke_test_localhost_hang_triage_readiness.json",
-    "structured/mcp_cluster_smoke_test_localhost_meta.json",
-    "structured/mcp_cluster_smoke_test_localhost_monitoring_expectations.json",
-    "structured/mcp_cluster_smoke_test_localhost_quick_friction.json",
-    "structured/mcp_cluster_smoke_test_localhost_software_versions.json",
-    "structured/mcp_cluster_smoke_test_localhost_storage.json",
-    "structured/mcp_cluster_smoke_test_localhost_tcp_sysctl.json",
-    "structured/mcp_cluster_smoke_test_localhost_tcp_sysctl.txt",
-    "structured/mcp_cluster_smoke_test_multinode_readiness.json",
-    "structured/mcp_cluster_smoke_test_preflight_services.json",
-    "structured/mcp_cluster_smoke_test_suite_steps.json",
-    "structured/mcp_cluster_smoke_test_tcp_sysctl_diff.json"
-  ],
-  "manifest_mode": "run_dir",
   "manifest_version": 1,
+  "run_id": "2026-03-17_localhost_fabric_canonical",
+  "artifact_root": "published/current",
+  "manifest_mode": "historical_reader_snapshot",
+  "timestamp_utc": "2026-03-17T03:00:15.572206+00:00",
   "nodes": [
     {
       "host": "localhost",
       "label": "localhost"
     }
   ],
-  "run_id": "mcp_cluster_smoke_test",
-  "summary": {
-    "artifact_counts": {
-      "json": 12,
-      "log": 10,
-      "txt": 3
+  "provenance": {
+    "source_commit": "5ce7cad09f8f5c86fc3f123e10fb2e51edfaee3a",
+    "source_manifest_sha256": "aa49bdde403efd6938187c33a651b304278ced444b35031fb7a5914ab8d392d7",
+    "source_manifest_file_count": 180,
+    "source_manifest_entries_absent_from_historical_public_tree": 60,
+    "scope": "Historical reader snapshot with the structured data and figures linked by the field report and notes.",
+    "limitations": "The source run inventory includes unavailable raw logs. The original run was not repeated.",
+    "historically_published_variants": {
+      "structured/2026-03-17_localhost_fabric_canonical_fabric_command_catalog.json": {
+        "source_manifest_sha256": "c2a8cceda19d3aeb812235c96cfc5837268ac19d61fa69b289c2dff355e4c1ee",
+        "historical_public_sha256": "a6ff5fa07850b6d7ec108c37e155a29ad395b6d1d10579972c65c9d015b692bf"
+      },
+      "structured/2026-03-17_localhost_fabric_canonical_fabric_verification.json": {
+        "source_manifest_sha256": "dbb38b1e835f8667fa4ce7e0c093b2fef15eadb6e03bd5593574c269f69898ea",
+        "historical_public_sha256": "83d779d810da6e5de3841f9f1886a1f76cd81ab97a52896cbf4d381043516d28"
+      },
+      "structured/2026-03-17_localhost_fabric_canonical_localhost_gemm_gpu_sanity.csv": {
+        "source_manifest_sha256": "17b4175b0cc9964aee630ab90f54b85255b5d601144a606b0f9a3da5e1ec6708",
+        "historical_public_sha256": "5297f6b4116c80b897272edfc551acee1324ef2f6125bceb3938c071260ce57d"
+      },
+      "structured/2026-03-17_localhost_fabric_canonical_localhost_vllm_serve_sweep.csv": {
+        "source_manifest_sha256": "83713dc8106d9404d1ce836019189671909861224d7e4a7a495477dfc5ff2763",
+        "historical_public_sha256": "905552db7cf8846914981eee30a6a4fa60de6016194f2dde45bf4c7ed80f0ace"
+      },
+      "structured/2026-03-17_localhost_fabric_canonical_suite_steps.json": {
+        "source_manifest_sha256": "6b2921eded904df56e68b77cb9f4a3217c7516155eb9765209d5806183ab293b",
+        "historical_public_sha256": "beebc69305076931cf8bd37c084b80fd299c322da10974d198f6455b8f519ade"
+      }
     },
-    "file_count": 25,
-    "sha256": {
-      "raw/mcp_cluster_smoke_test_localhost_hang_triage_readiness.log": "4b568e748e792d6494351249dd0b20a8fa0d66b5385356d6850f44e63f6808f8",
-      "raw/mcp_cluster_smoke_test_localhost_monitoring_expectations.log": "5d5355c367152f6438d8d71be4f606cd13f79680789c9bb1dd9932845a0f962c",
-      "raw/mcp_cluster_smoke_test_localhost_quick_friction.log": "f70a3d1fd45d2aa3db866f1920c8044bdd01d15f937cc733c3b23a1f16852dc0",
-      "raw/mcp_cluster_smoke_test_suite/connectivity_probe.log": "bdc0abcbda5a3a4eea1693bed24e8b0f1d26373b35bdda9314f4f8419fe9dc13",
-      "raw/mcp_cluster_smoke_test_suite/discovery.log": "6a366d4975d9c3a1d036e1372c752a90b7e24488e4e80a67a00fb16c95e5abb1",
-      "raw/mcp_cluster_smoke_test_suite/hang_triage_bundle.log": "875ab87ae30ca85cd3f3b6e464cc159272befe2d9dc1059b4cc8f2affdb7069d",
-      "raw/mcp_cluster_smoke_test_suite/monitoring_expectations_all_nodes.log": "6b69338c13c263396f157f537f2a84cde5d5df60bf8a41be2318b3e841887737",
-      "raw/mcp_cluster_smoke_test_suite/preflight_services.log": "1b1adc8ee539fb839ce898a7aeff829a665784f1d651130d69ba17e9928ac412",
-      "raw/mcp_cluster_smoke_test_suite/quick_friction_all_nodes.log": "4b5da8a8c201873caaae3b8a3187b46645c5f8e50e3dbc6e95f6fe0f5fe0fb52",
-      "raw/mcp_cluster_smoke_test_torchrun_connectivity_probe_node0.log": "25a55f80c416a4baffa46fdc3bf5575ad079fb4840e431d37fc724c30f56c8ea",
-      "structured/mcp_cluster_smoke_test_ai-book-dev_meta.json": "503449d1757eacb174c93b69e7ec8c6728958d5bf98b51e0e1d26709ca5f835a",
-      "structured/mcp_cluster_smoke_test_dcgmi_discovery_localhost.txt": "a7f8d2e1c4a5244786804efda7bcf7511c3bb5f089bbd7aeb2671d47491001e0",
-      "structured/mcp_cluster_smoke_test_localhost_container_runtime.txt": "8e3c182cbb875d057ad6f4bd861b5e37a311ad4666864fb4cbae6503ae96b0b6",
-      "structured/mcp_cluster_smoke_test_localhost_hang_triage_readiness.json": "362a7a687d01f718d0a2b96435af0b442e76f3ed2fc38fbdffb89bf9adaf97ea",
-      "structured/mcp_cluster_smoke_test_localhost_meta.json": "94f9beb11314a4536d0467ae9184df632544b1a2e3821ace70cb4f5f32b3089c",
-      "structured/mcp_cluster_smoke_test_localhost_monitoring_expectations.json": "fa1a5e859b2dbc9bc9623e466cb4dba7df4056cee5dd2dc10715f5971682049b",
-      "structured/mcp_cluster_smoke_test_localhost_quick_friction.json": "16487c0ef86ba7cba3a61511813196adc7f1a1779f24f6d0b2e6c120f87af97b",
-      "structured/mcp_cluster_smoke_test_localhost_software_versions.json": "60cfe1b4a1966a3a3ea96b1dce579cc4719bb16c2f8a3ac3e118f6afbc4739ee",
-      "structured/mcp_cluster_smoke_test_localhost_storage.json": "f96861f0d089639238753f6871064ffd782fb377272a4e99384fd8ce26238c93",
-      "structured/mcp_cluster_smoke_test_localhost_tcp_sysctl.json": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
-      "structured/mcp_cluster_smoke_test_localhost_tcp_sysctl.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-      "structured/mcp_cluster_smoke_test_multinode_readiness.json": "c0d580cd28672d70df63c7646e1c22cc719b9380d3a0df525cb169c5680a2c02",
-      "structured/mcp_cluster_smoke_test_preflight_services.json": "721b1f12a1a19c1311d365c674553cd5b259f0c8ac79e606f9376b6740968470",
-      "structured/mcp_cluster_smoke_test_suite_steps.json": "9660846c5ba7287da74036d72cb935f4f163ee535d48350c81e551b9d87239f1",
-      "structured/mcp_cluster_smoke_test_tcp_sysctl_diff.json": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+    "redactions": {
+      "structured/2026-03-17_localhost_fabric_canonical_fabric_command_catalog.json": {
+        "historical_public_sha256": "a6ff5fa07850b6d7ec108c37e155a29ad395b6d1d10579972c65c9d015b692bf",
+        "updated_text_values": 12
+      },
+      "structured/2026-03-17_localhost_fabric_canonical_fabric_verification.json": {
+        "historical_public_sha256": "83d779d810da6e5de3841f9f1886a1f76cd81ab97a52896cbf4d381043516d28",
+        "updated_text_values": 274
+      },
+      "structured/2026-03-17_localhost_fabric_canonical_localhost_fio.json": {
+        "historical_public_sha256": "e66c228d94e950352fffd43e9b0f83c4182b9a03cb692ca4c797fed8adc75fd8",
+        "updated_text_values": 12
+      },
+      "structured/2026-03-17_localhost_fabric_canonical_localhost_hang_triage_readiness.json": {
+        "historical_public_sha256": "eac04a35a6b8cbcc84ac096e02d6014918e91f245d308f9448731f63a41df1e3",
+        "updated_text_values": 6
+      },
+      "structured/2026-03-17_localhost_fabric_canonical_localhost_meta.json": {
+        "historical_public_sha256": "8865248ba448652c73653d92312aae969825131d7f91505568d42b0ad7ff9c9c",
+        "updated_text_values": 78
+      },
+      "structured/2026-03-17_localhost_fabric_canonical_localhost_meta_nvlink_topology.json": {
+        "historical_public_sha256": "87be116ace7c06a7adb60eb76ee5939b36f5816c2094f6fd6a1e2fe67b9371f5",
+        "updated_text_values": 2
+      },
+      "structured/2026-03-17_localhost_fabric_canonical_localhost_monitoring_expectations.json": {
+        "historical_public_sha256": "79cdd2eae347c06a242124facd90b603799b93868f1999a925f006ea5a1f5985",
+        "updated_text_values": 6
+      },
+      "structured/2026-03-17_localhost_fabric_canonical_localhost_quick_friction.json": {
+        "historical_public_sha256": "93e18c83876f377aa208bcbcea1af387a719a449757912b1dff45b22e49b1838",
+        "updated_text_values": 1
+      },
+      "structured/2026-03-17_localhost_fabric_canonical_localhost_vllm_serve_sweep.jsonl": {
+        "historical_public_sha256": "42893633b6263dd7c1e6b9730f73405e4134c9382d6a54da10a41a1f306c5ba7",
+        "updated_text_values": 1
+      },
+      "structured/2026-03-17_localhost_fabric_canonical_nccl_env_sensitivity.json": {
+        "historical_public_sha256": "2d4d3c7c52a3c8bdb54a3a4d122a4928be30bc9e5e76b11b3b41bc66b5f367ab",
+        "updated_text_values": 6
+      },
+      "structured/2026-03-17_localhost_fabric_canonical_node1_nccl.json": {
+        "historical_public_sha256": "379759195e76b1bf101734197bb2e4ff5a5037728d1faeadb081e97d86f786bf",
+        "updated_text_values": 4
+      },
+      "structured/2026-03-17_localhost_fabric_canonical_node_parity_summary.json": {
+        "historical_public_sha256": "65169ed0a164757665a3e12b3e962eac65e94f467d7eedd74bef9e8075a9f5fe",
+        "updated_text_values": 5
+      },
+      "structured/2026-03-17_localhost_fabric_canonical_operator_checks_dashboard.json": {
+        "historical_public_sha256": "e1068c0b28e0df1fe021c47f1e6a409e22aba741a2c642a4f69f21f44008d927",
+        "updated_text_values": 3
+      },
+      "structured/2026-03-17_localhost_fabric_canonical_preflight_services.json": {
+        "historical_public_sha256": "1474abf09a0824251b8272612e7c90e5840b9bb36149ef0db64c8a1d9e7535bd",
+        "updated_text_values": 1
+      },
+      "structured/2026-03-17_localhost_fabric_canonical_suite_steps.json": {
+        "historical_public_sha256": "beebc69305076931cf8bd37c084b80fd299c322da10974d198f6455b8f519ade",
+        "updated_text_values": 81
+      },
+      "structured/2026-03-17_localhost_fabric_canonical_torchrun_connectivity_probe.json": {
+        "historical_public_sha256": "366c3ed1ec723fa358224cc8322ddde1436b612bb3a27434c346b349dc020160",
+        "updated_text_values": 1
+      }
     }
   },
-  "timestamp_utc": "2026-03-25T07:04:28.135005+00:00"
+  "artifact_roles": {
+    "fabric_ai_correlation": [
+      "structured/2026-03-17_localhost_fabric_canonical_fabric_ai_correlation.json"
+    ],
+    "fabric_capability_matrix": [
+      "structured/2026-03-17_localhost_fabric_canonical_fabric_capability_matrix.json"
+    ],
+    "fabric_command_catalog": [
+      "structured/2026-03-17_localhost_fabric_canonical_fabric_command_catalog.json"
+    ],
+    "fabric_scorecard": [
+      "structured/2026-03-17_localhost_fabric_canonical_fabric_scorecard.json"
+    ],
+    "fabric_verification": [
+      "structured/2026-03-17_localhost_fabric_canonical_fabric_verification.json"
+    ],
+    "fio": [
+      "structured/2026-03-17_localhost_fabric_canonical_localhost_fio.json"
+    ],
+    "gemm_sanity": [
+      "structured/2026-03-17_localhost_fabric_canonical_localhost_gemm_gpu_sanity.csv"
+    ],
+    "meta": [
+      "structured/2026-03-17_localhost_fabric_canonical_localhost_meta.json"
+    ],
+    "nccl_allreduce": [
+      "structured/2026-03-17_localhost_fabric_canonical_node1_nccl.json"
+    ],
+    "suite_steps": [
+      "structured/2026-03-17_localhost_fabric_canonical_suite_steps.json"
+    ],
+    "vllm_concurrency_sweep": [
+      "structured/2026-03-17_localhost_fabric_canonical_localhost_vllm_serve_sweep.csv"
+    ]
+  },
+  "files": [
+    "figures/2026-03-17_localhost_fabric_canonical_cluster_story_dashboard.png",
+    "figures/2026-03-17_localhost_fabric_canonical_localhost_meta_nvlink_topology.png",
+    "figures/2026-03-17_localhost_fabric_canonical_localhost_vllm_serve_total_tok_s_vs_concurrency.png",
+    "figures/2026-03-17_localhost_fabric_canonical_localhost_vllm_serve_ttft_vs_concurrency.png",
+    "figures/2026-03-17_localhost_fabric_canonical_nccl_env_sensitivity.png",
+    "figures/2026-03-17_localhost_fabric_canonical_node1_nccl_bw_vs_msg.png",
+    "figures/2026-03-17_localhost_fabric_canonical_node1_nccl_scaling_efficiency.png",
+    "figures/2026-03-17_localhost_fabric_canonical_operator_checks_dashboard.png",
+    "structured/2026-03-17_localhost_fabric_canonical_fabric_ai_correlation.json",
+    "structured/2026-03-17_localhost_fabric_canonical_fabric_capability_matrix.json",
+    "structured/2026-03-17_localhost_fabric_canonical_fabric_command_catalog.json",
+    "structured/2026-03-17_localhost_fabric_canonical_fabric_scorecard.json",
+    "structured/2026-03-17_localhost_fabric_canonical_fabric_verification.json",
+    "structured/2026-03-17_localhost_fabric_canonical_localhost_fio.json",
+    "structured/2026-03-17_localhost_fabric_canonical_localhost_gemm_gpu_sanity.csv",
+    "structured/2026-03-17_localhost_fabric_canonical_localhost_hang_triage_readiness.json",
+    "structured/2026-03-17_localhost_fabric_canonical_localhost_meta.json",
+    "structured/2026-03-17_localhost_fabric_canonical_localhost_meta_nvlink_topology.json",
+    "structured/2026-03-17_localhost_fabric_canonical_localhost_monitoring_expectations.json",
+    "structured/2026-03-17_localhost_fabric_canonical_localhost_quick_friction.json",
+    "structured/2026-03-17_localhost_fabric_canonical_localhost_vllm_serve_sweep.csv",
+    "structured/2026-03-17_localhost_fabric_canonical_localhost_vllm_serve_sweep.jsonl",
+    "structured/2026-03-17_localhost_fabric_canonical_nccl_env_sensitivity.json",
+    "structured/2026-03-17_localhost_fabric_canonical_node1_nccl.json",
+    "structured/2026-03-17_localhost_fabric_canonical_node_parity_summary.json",
+    "structured/2026-03-17_localhost_fabric_canonical_operator_checks_dashboard.json",
+    "structured/2026-03-17_localhost_fabric_canonical_preflight_services.json",
+    "structured/2026-03-17_localhost_fabric_canonical_suite_steps.json",
+    "structured/2026-03-17_localhost_fabric_canonical_torchrun_connectivity_probe.json"
+  ],
+  "summary": {
+    "file_count": 29,
+    "artifact_counts": {
+      "csv": 2,
+      "json": 18,
+      "jsonl": 1,
+      "png": 8
+    },
+    "sha256": {
+      "figures/2026-03-17_localhost_fabric_canonical_cluster_story_dashboard.png": "0130fa3a8fb85ca5d5d5119c594f71e3f01cb825320dbf68a6024f5eb81b6dda",
+      "figures/2026-03-17_localhost_fabric_canonical_localhost_meta_nvlink_topology.png": "1be7224293c8297f19b1e8e6ba5c0c13aee55f59ab14e409e02fa7774edda5bb",
+      "figures/2026-03-17_localhost_fabric_canonical_localhost_vllm_serve_total_tok_s_vs_concurrency.png": "d0b537a05115bfad205511acce5cc61f9cebf15a635f35c51f771687cd1ab0f9",
+      "figures/2026-03-17_localhost_fabric_canonical_localhost_vllm_serve_ttft_vs_concurrency.png": "baabb65d5acfb20ba962ab64a5f3ad51fae04f250e263a92c5d19c21465d8544",
+      "figures/2026-03-17_localhost_fabric_canonical_nccl_env_sensitivity.png": "2afbc5161fc9dbdfdc59725833531359143021bfc69d75f1b2cd4e5d9053b18f",
+      "figures/2026-03-17_localhost_fabric_canonical_node1_nccl_bw_vs_msg.png": "5465db3c1ab3e76f2252673765f2bac0e5f499687f1d8e38bf5c48f611967ef6",
+      "figures/2026-03-17_localhost_fabric_canonical_node1_nccl_scaling_efficiency.png": "3cf6e836934e04e15f91b243e01771af47145be75d658f429a0f6cf3ded861a6",
+      "figures/2026-03-17_localhost_fabric_canonical_operator_checks_dashboard.png": "d0c8f450e010ede7ab9135ad5ae19f3db2c06fce16265ba266f9231b159ebd14",
+      "structured/2026-03-17_localhost_fabric_canonical_fabric_ai_correlation.json": "95587a2ee82f84d3fb5217d5989d4d4f460b524d6829417441047ae1f7a383e6",
+      "structured/2026-03-17_localhost_fabric_canonical_fabric_capability_matrix.json": "4db5e48c03bd9ec8fff0bba52831da0ad8698df90488d8a7605fb3fa3cd9ebd8",
+      "structured/2026-03-17_localhost_fabric_canonical_fabric_command_catalog.json": "cda7b014f7f41f2950394dd0ee67053e703253e60190566ddf3394c7682472ff",
+      "structured/2026-03-17_localhost_fabric_canonical_fabric_scorecard.json": "f02905e8ec1bb119c19e8bf831af626ecbbf279123228241f399c9c26fa54a51",
+      "structured/2026-03-17_localhost_fabric_canonical_fabric_verification.json": "0359805ca93b7eb4866ae47fc44038fe150653668fc3bac84f17eac9dbfa1349",
+      "structured/2026-03-17_localhost_fabric_canonical_localhost_fio.json": "0b43c6c8ca17db8e050651ec062fda2a04bd4c0c76bc86bd0038d1af78b59a56",
+      "structured/2026-03-17_localhost_fabric_canonical_localhost_gemm_gpu_sanity.csv": "5297f6b4116c80b897272edfc551acee1324ef2f6125bceb3938c071260ce57d",
+      "structured/2026-03-17_localhost_fabric_canonical_localhost_hang_triage_readiness.json": "e7dab74aa5f97311e3303d8a2b588c80e298a82bee528ca3c08866107ba2bbdb",
+      "structured/2026-03-17_localhost_fabric_canonical_localhost_meta.json": "267a1edbea00debb6a4a3824425d99905ae4fe9e6364d1261d7f9cd6a50812ef",
+      "structured/2026-03-17_localhost_fabric_canonical_localhost_meta_nvlink_topology.json": "c735ea1792b03dc564a1aa1521949762bc7a8bbaaad40f8d802facf4c6fa37b6",
+      "structured/2026-03-17_localhost_fabric_canonical_localhost_monitoring_expectations.json": "2bf3b53df11761664ef8d1d8c364d8a945cc0e8efae2f532be60ab4756d5ac05",
+      "structured/2026-03-17_localhost_fabric_canonical_localhost_quick_friction.json": "d8db7a58408734d136f1252c850a98ad2f1f7713ef125239f377cfb3c4c03e86",
+      "structured/2026-03-17_localhost_fabric_canonical_localhost_vllm_serve_sweep.csv": "905552db7cf8846914981eee30a6a4fa60de6016194f2dde45bf4c7ed80f0ace",
+      "structured/2026-03-17_localhost_fabric_canonical_localhost_vllm_serve_sweep.jsonl": "598c97f18151f6db9464f32d74d2af0fc6ba81a8c85eb983d956a088a70e4d36",
+      "structured/2026-03-17_localhost_fabric_canonical_nccl_env_sensitivity.json": "e88b41f0e4ccfe1041de543142f31ac0f257c4a7eb6e4fc24cbddf17a244a98e",
+      "structured/2026-03-17_localhost_fabric_canonical_node1_nccl.json": "e241e8f8c8f3c80e50d3d08577eb75718c5e7e864bd1611c1b039e4d306c1ca0",
+      "structured/2026-03-17_localhost_fabric_canonical_node_parity_summary.json": "81f7d81f6c0c7e9ae204f81d1eec8e1bc310c112ea051aaad8420786eff2865b",
+      "structured/2026-03-17_localhost_fabric_canonical_operator_checks_dashboard.json": "013e93231b5bc7c2df5bcf654945c486c1249ec767460e6ad74985281778c2ed",
+      "structured/2026-03-17_localhost_fabric_canonical_preflight_services.json": "6a90601d8ae0625d042a76ba8514b6bf088a4ee10ad8879578ea6cd6f564cf12",
+      "structured/2026-03-17_localhost_fabric_canonical_suite_steps.json": "a8f1b59b39751443a461262296a6b5edde08f2e1e939fb1774612b9044b3c050",
+      "structured/2026-03-17_localhost_fabric_canonical_torchrun_connectivity_probe.json": "d5304a17c2994e68d32f47fecb5aa576c19c3669100de3b0e5b8b074800c0f92"
+    }
+  }
 }

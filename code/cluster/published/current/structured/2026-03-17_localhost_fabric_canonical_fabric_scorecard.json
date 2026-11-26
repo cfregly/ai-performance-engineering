@@ -1,0 +1,57 @@
+{
+  "collection_mode": "scored",
+  "completeness": "full_stack_verified",
+  "evidence_refs": [
+    "structured/2026-03-17_localhost_fabric_canonical_localhost_meta.json",
+    "structured/2026-03-17_localhost_fabric_canonical_localhost_meta_nvlink_topology.json",
+    "structured/2026-03-17_localhost_fabric_canonical_nccl_env_sensitivity.json",
+    "structured/2026-03-17_localhost_fabric_canonical_node1_nccl.json"
+  ],
+  "fabric_family": "all",
+  "families": {
+    "infiniband": {
+      "ai_workload_impact": "No direct AI workload finding.",
+      "completeness": "not_present",
+      "congestion_features_enabled": "n/a",
+      "control_plane_health": "not_present",
+      "link_health": "n/a",
+      "management_plane_configured": false,
+      "present": false,
+      "routing_correctness": "n/a",
+      "topology_correctness": "n/a"
+    },
+    "nvlink": {
+      "ai_workload_impact": "NVLink/NVSwitch runtime evidence peaks at 2263.5 GB/s algbw on the single-node NCCL path.",
+      "completeness": "full_stack_verified",
+      "congestion_features_enabled": "unknown",
+      "control_plane_health": "ok",
+      "link_health": "runtime_verified",
+      "management_plane_configured": true,
+      "present": true,
+      "routing_correctness": "pass",
+      "topology_correctness": "pass"
+    },
+    "spectrum-x": {
+      "ai_workload_impact": "No direct AI workload finding.",
+      "completeness": "not_present",
+      "congestion_features_enabled": "n/a",
+      "control_plane_health": "not_present",
+      "link_health": "n/a",
+      "management_plane_configured": false,
+      "present": false,
+      "routing_correctness": "n/a",
+      "topology_correctness": "n/a"
+    }
+  },
+  "recommendations": [],
+  "run_id": "2026-03-17_localhost_fabric_canonical",
+  "schema_version": "2026-03-16",
+  "status": "ok",
+  "summary": {
+    "ai_findings_count": 2,
+    "configured_management_planes": 1,
+    "full_stack_verified_families": 1,
+    "require_management_plane": false,
+    "runtime_verified_families": 1
+  }
+}

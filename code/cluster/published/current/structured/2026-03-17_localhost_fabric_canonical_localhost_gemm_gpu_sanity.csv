@@ -1,0 +1,2 @@
+label,m,n,k,dtype,iters,avg_ms,p50_ms,p99_ms,avg_tflops,p50_tflops,p99_tflops,physical_gpu,app_sm_mhz,app_mem_mhz,cur_sm_mhz,cur_mem_mhz
+localhost_gpu0,16384,16384,16384,bf16,50,6.910648541525006,6.91216578707099,6.922133732587099,1272.8317710492224,1272.5523798432098,1270.7198910068616,0,1965,3996,1155,3996

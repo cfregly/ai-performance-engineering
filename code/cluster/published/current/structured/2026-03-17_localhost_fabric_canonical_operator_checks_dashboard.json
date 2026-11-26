@@ -1,0 +1,74 @@
+{
+  "run_id": "2026-03-17_localhost_fabric_canonical",
+  "node_labels": [
+    "localhost"
+  ],
+  "sources": {
+    "quick_friction": {
+      "localhost": "/home/operator/ai-performance-engineering/code/cluster/runs/2026-03-17_localhost_fabric_canonical/structured/2026-03-17_localhost_fabric_canonical_localhost_quick_friction.json"
+    },
+    "monitoring_expectations": {
+      "localhost": "/home/operator/ai-performance-engineering/code/cluster/runs/2026-03-17_localhost_fabric_canonical/structured/2026-03-17_localhost_fabric_canonical_localhost_monitoring_expectations.json"
+    }
+  },
+  "quick_friction": {
+    "localhost": {
+      "status": "ok",
+      "failed_checks": [],
+      "speedtest": null,
+      "tool_paths": {
+        "curl": "/usr/bin/curl",
+        "docker": "/usr/bin/docker",
+        "hf": "/usr/local/bin/hf",
+        "huggingface_cli": "/usr/local/bin/huggingface-cli",
+        "python3": "/usr/bin/python3",
+        "speedtest": "/usr/bin/speedtest-cli",
+        "uv": null,
+        "whois": "/usr/bin/whois"
+      }
+    }
+  },
+  "monitoring_expectations": {
+    "localhost": {
+      "status": "ok",
+      "k8s": {
+        "control_plane_enabled": false,
+        "detected": false,
+        "kubeconfig_candidates": [
+          "/home/operator/.kube/config",
+          "/etc/kubernetes/admin.conf",
+          "/etc/rancher/k3s/k3s.yaml",
+          "/var/snap/microk8s/current/credentials/client.config"
+        ],
+        "kubeconfig_present": false,
+        "mode": "skip",
+        "reasons": []
+      },
+      "skipped_checks": [],
+      "effective_checks": [
+        "nvidia_nvlink"
+      ],
+      "categories": {
+        "control_plane": {
+          "checks": [],
+          "ok_checks": [],
+          "status": "not_requested"
+        },
+        "gpu_telemetry": {
+          "checks": [
+            "nvidia_nvlink"
+          ],
+          "ok_checks": [
+            "nvidia_nvlink"
+          ],
+          "status": "ok"
+        },
+        "system_signals": {
+          "checks": [],
+          "ok_checks": [],
+          "status": "not_requested"
+        }
+      }
+    }
+  }
+}

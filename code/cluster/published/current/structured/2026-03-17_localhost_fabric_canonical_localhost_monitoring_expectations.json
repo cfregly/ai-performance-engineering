@@ -1,0 +1,74 @@
+{
+  "categories": {
+    "control_plane": {
+      "checks": [],
+      "ok_checks": [],
+      "status": "not_requested"
+    },
+    "gpu_telemetry": {
+      "checks": [
+        "nvidia_nvlink"
+      ],
+      "ok_checks": [
+        "nvidia_nvlink"
+      ],
+      "status": "ok"
+    },
+    "system_signals": {
+      "checks": [],
+      "ok_checks": [],
+      "status": "not_requested"
+    }
+  },
+  "checks": [
+    {
+      "command": "/usr/bin/nvidia-smi nvlink -s",
+      "details": {},
+      "duration_sec": 0.041432,
+      "exit_code": 0,
+      "name": "nvidia_nvlink",
+      "status": "ok",
+      "stderr_excerpt": "",
+      "stdout_excerpt": "GPU 0: NVIDIA B200 (UUID: <hardware-id>)\n\t Link 0: 53.125 GB/s\n\t Link 1: 53.125 GB/s\n\t Link 2: 53.125 GB/s\n\t Link 3: 53.125 GB/s\n\t Link 4: 53.125 GB/s\n\t Link 5: 53.125 GB/s\n\t Link 6: 53.125 GB/s\n\t Link 7: 53.125 GB/s\n\t Link 8: 53.125 GB/s\n\t Link 9: 53.125 GB/s\n\t Link 10: 53.125 GB/s\n\t Link 11: 53.125 GB/s\n\t Link 12: 53.125 GB/s\n\t Link 13: 53.125 GB/s\n\t Link 14: 53.125 GB/s\n\t Link 15: 53.125 GB/s\n\t Link 16: 53.125 GB/s\n\t Link 17: 53.125 GB/s\n",
+      "timed_out": false
+    }
+  ],
+  "config": {
+    "dmesg_lines": 50,
+    "k8s_mode": "skip",
+    "sample_count": 5,
+    "timeout_sec": 120
+  },
+  "effective_checks": [
+    "nvidia_nvlink"
+  ],
+  "failed_checks": [],
+  "host": "host-01",
+  "k8s": {
+    "control_plane_enabled": false,
+    "detected": false,
+    "kubeconfig_candidates": [
+      "[redacted for publication]",
+      "[redacted for publication]",
+      "[redacted for publication]",
+      "[redacted for publication]"
+    ],
+    "kubeconfig_present": false,
+    "mode": "skip",
+    "reasons": []
+  },
+  "missing_categories": [],
+  "run_id": "2026-03-17_localhost_fabric_canonical",
+  "selected_checks": [
+    "nvidia_nvlink"
+  ],
+  "skipped_checks": [],
+  "status": "ok",
+  "test": "monitoring_expectations",
+  "timestamp_utc": "2026-03-17T03:00:34Z",
+  "tool_paths": {
+    "dcgmi": "/usr/bin/dcgmi",
+    "kubectl": null,
+    "nvidia_smi": "/usr/bin/nvidia-smi"
+  }
+}

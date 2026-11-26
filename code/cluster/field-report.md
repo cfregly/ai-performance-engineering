@@ -65,7 +65,7 @@ Last updated: 2026-03-24. Canonical run: `2026-03-17_localhost_fabric_canonical`
 | NMX Topology Scenario | Value |
 | --- | --- |
 | Chassis | `1` |
-| Chassis serials | 27XYZ27000001 |
+| Chassis serials | chassis-serial-01 |
 | Compute nodes | `18` |
 | GPUs | `72` |
 | Switch ASICs | `18` |
@@ -75,18 +75,18 @@ Last updated: 2026-03-24. Canonical run: `2026-03-17_localhost_fabric_canonical`
 | Node/GPU grouping field | `GpuIDList` |
 | Switch ASIC field | `DeviceID` |
 | Switch tray grouping fields | `LocationInfo.ChassisID, LocationInfo.SlotID, LocationInfo.HostID, LocationInfo.TrayIndex` |
-| Team Alpha candidate nodes | 69b3e7f9de992fd70f8ce5b1 |
-| Team Alpha candidate GPU locations | 1.1.1.1, 1.1.1.2, 1.1.1.3, 1.1.1.4 |
-| Team Beta candidate nodes | 69b3e7f9de992fd70f8ce5b2 |
-| Team Beta candidate GPU locations | 1.2.1.1, 1.2.1.2, 1.2.1.3, 1.2.1.4 |
+| Team Alpha candidate nodes | fabric-node-01 |
+| Team Alpha candidate GPU locations | gpu-location-01, gpu-location-02, gpu-location-03, gpu-location-04 |
+| Team Beta candidate nodes | fabric-node-02 |
+| Team Beta candidate GPU locations | gpu-location-46, gpu-location-05, gpu-location-06, gpu-location-07 |
 | GPU-facing ports | `1296` (`BaseLID all-present=True`) |
 | Switch-facing ports | `1296` (`BaseLID all-present=False`) |
 | Port formula check | `2 * gpu_count(72) * switch_asic_count(18) = 2592` (`matches=True`) |
-| Sample compute-node fields | `{"device_uid": null, "gpu_id_count": 4, "id": "69b3e7f9de992fd70f8ce5b1", "location": {"chassis_id": 1, "chassis_serial_number": "27XYZ27000001", "host_id": 1, "slot_id": 1, "tray_index": 0}, "name": "", "system_uid": null}` |
-| Sample GPU fields | `{"alid_count": 1, "description": "", "device_id": 1, "device_uid": 1001, "domain_uuid": "fc6e8564-7a4c-4cc6-b679-0ec41fece927", "health": "HEALTHY", "id": "69b3e7fade992fd70f8ce5c3", "internal_description": "GB100 Nvidia Technologies 1", "location": {"chassis_id": 1, "chassis_serial_number": "27XYZ27000001", "host_id": 1, "slot_id": 1, "tray_index": 0}, "name": "GPU-1", "partition_id": null, "partition_name": null, "port_count": 18, "system_uid": 1000}` |
-| Sample switch fields | `{"device_id": 1, "domain_uuid": "fc6e8564-7a4c-4cc6-b679-0ec41fece927", "health": "NMX_SWITCH_HEALTH_HEALTHY", "id": "69b3e7fade992fd70f8ce60b", "location": {"chassis_id": 1, "chassis_serial_number": "27XYZ27000001", "host_id": 1, "slot_id": 9, "tray_index": 0}, "port_count": 72}` |
-| Sample switch-tray grouping | `{"location": {"chassis_id": 1, "chassis_serial_number": "27XYZ27000001", "host_id": 1, "slot_id": 9, "tray_index": 0}, "switch_asic_count": 2, "switch_device_ids": ["1", "2"], "switch_ids": ["69b3e7fade992fd70f8ce60b", "69b3e7fade992fd70f8ce60c"], "switch_node_id": "69b3e7fade992fd70f8ce61d", "switch_node_switch_id_list": ["69b3e7fade992fd70f8ce60b", "69b3e7fade992fd70f8ce60c"]}` |
-| Sample chassis fields | `{"domain_uuid": "fc6e8564-7a4c-4cc6-b679-0ec41fece927", "health": "NMX_CHASSIS_HEALTH_HEALTHY", "id": "69b3e7f9de992fd70f8ce5b0", "location": {"chassis_id": null, "chassis_serial_number": null, "host_id": null, "slot_id": null, "tray_index": null}, "name": "NVL72-Chassis-1"}` |
+| Sample compute-node fields | `{"device_uid": null, "gpu_id_count": 4, "id": "fabric-node-01", "location": {"chassis_id": 1, "chassis_serial_number": "chassis-serial-01", "host_id": 1, "slot_id": 1, "tray_index": 0}, "name": "", "system_uid": null}` |
+| Sample GPU fields | `{"alid_count": 1, "description": "", "device_id": 1, "device_uid": 1001, "domain_uuid": "fabric-domain-01", "health": "HEALTHY", "id": "fabric-id-07", "internal_description": "GB100 Nvidia Technologies 1", "location": {"chassis_id": 1, "chassis_serial_number": "chassis-serial-01", "host_id": 1, "slot_id": 1, "tray_index": 0}, "name": "GPU-1", "partition_id": null, "partition_name": null, "port_count": 18, "system_uid": 1000}` |
+| Sample switch fields | `{"device_id": 1, "domain_uuid": "fabric-domain-01", "health": "NMX_SWITCH_HEALTH_HEALTHY", "id": "fabric-id-08", "location": {"chassis_id": 1, "chassis_serial_number": "chassis-serial-01", "host_id": 1, "slot_id": 9, "tray_index": 0}, "port_count": 72}` |
+| Sample switch-tray grouping | `{"location": {"chassis_id": 1, "chassis_serial_number": "chassis-serial-01", "host_id": 1, "slot_id": 9, "tray_index": 0}, "switch_asic_count": 2, "switch_device_ids": ["1", "2"], "switch_ids": ["fabric-id-08", "fabric-id-09"], "switch_node_id": "fabric-id-10", "switch_node_switch_id_list": ["fabric-id-08", "fabric-id-09"]}` |
+| Sample chassis fields | `{"domain_uuid": "fabric-domain-01", "health": "NMX_CHASSIS_HEALTH_HEALTHY", "id": "fabric-id-06", "location": {"chassis_id": null, "chassis_serial_number": null, "host_id": null, "slot_id": null, "tray_index": null}, "name": "NVL72-Chassis-1"}` |
 
 | NMX Partition Scenario | Value |
 | --- | --- |
@@ -94,7 +94,7 @@ Last updated: 2026-03-24. Canonical run: `2026-03-17_localhost_fabric_canonical`
 | Default partition | `none` (`members=0`) |
 | Default partition present | `False` (`members=0`) |
 | Unassigned GPUs | `45` |
-| Unassigned GPU locations (first 8) | 1.1.1.1, 1.1.1.2, 1.1.1.3, 1.1.1.4, 1.2.1.2, 1.2.1.3, 1.2.1.4, 1.3.1.1 |
+| Unassigned GPU locations (first 8) | gpu-location-01, gpu-location-02, gpu-location-03, gpu-location-04, gpu-location-05, gpu-location-06, gpu-location-07, gpu-location-08 |
 | Ready for partition create | `True` |
 | Operation poll path | `<nmx-base>/operations/<operation-id>` |
 | Lab helper entrypoint | `python -m cli.aisp cluster nmx-partition-lab --nmx-url <nmx-base>` |
@@ -293,6 +293,9 @@ Data: [published/current/structured/2026-03-17_localhost_fabric_canonical_localh
 | Validate localhost report package | `cluster/scripts/validate_field_report_requirements.sh --report cluster/field-report-localhost.md --notes cluster/field-report-localhost-notes.md --canonical-run-id 2026-03-17_localhost_fabric_canonical` |
 
 ## Reproducibility Package
+
+The published evidence is a historical reader snapshot. It contains the files linked from this report and its notes. Public labels replace private identifiers, and selected operator output was removed. The manifest records which published files differ from the historical publication.
+
 | Artifact class | Links |
 | --- | --- |
 | Manifest + suite | [published/current/manifest.json](published/current/manifest.json), [published/current/structured/2026-03-17_localhost_fabric_canonical_suite_steps.json](published/current/structured/2026-03-17_localhost_fabric_canonical_suite_steps.json) |
