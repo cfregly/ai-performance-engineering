@@ -152,7 +152,7 @@ def test_compare_keeps_legacy_name_alias_and_speedup_only_rows(tmp_path: Path) -
         {"chapter": "ch01", "benchmarks": [{"name": "legacy", "best_speedup": 2.0}]},
     ])
     _write_run(candidate, "2025-01-02 00:00:00", [
-        {"chapter": "ch01", "benchmarks": [{"example": "legacy", "best_speedup": 1.25}]},
+        {"chapter": "ch01", "benchmarks": [{"example": "legacy", "best_speedup": 1.25, "status": "succeeded"}]},
     ])
 
     result = get_engine().benchmark.compare({"baseline": str(baseline), "candidate": str(candidate)})
@@ -162,3 +162,15 @@ def test_compare_keeps_legacy_name_alias_and_speedup_only_rows(tmp_path: Path) -
     assert regression["delta"] == -0.75
     assert regression["baseline_time_ms"] is None
     assert regression["candidate_optimized_time_ms"] is None
+    assert regression["baseline_measurement_source"] == "legacy_speedup_only"
+    assert regression["candidate_measurement_source"] == "legacy_speedup_only"
+    assert regression["baseline_status_source"] == "legacy_unrecorded"
+    assert regression["candidate_status_source"] is None
+
+    from core.benchmark.bench_commands import app
+
+    cli = CliRunner().invoke(app, ["compare-runs", "--baseline", str(baseline), "--candidate", str(candidate)])
+    assert cli.exit_code == 0, cli.output
+    assert "ch01:legacy: 2.00x → 1.25x (Δ -0.75)" in cli.stdout
+    assert "Baseline (legacy speedup-only record, status unrecorded)" in cli.stdout
+    assert "Candidate (legacy speedup-only record)" in cli.stdout

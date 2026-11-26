@@ -6,6 +6,8 @@ import subprocess
 from pathlib import Path
 from typing import Any, Dict
 
+import pytest
+
 from cluster.scripts import promotion_process
 import core.cluster.runner as cluster_runner
 
@@ -108,7 +110,8 @@ def test_field_report_validation_timeout_decodes_partial_output(monkeypatch) -> 
     json.dumps(payload)
 
 
-def test_promotion_timeout_signals_only_its_owned_process_group(monkeypatch) -> None:
+@pytest.mark.parametrize("interrupted", [False, True])
+def test_promotion_failure_signals_only_its_owned_process_group(monkeypatch, interrupted: bool) -> None:
     events = []
 
     class OwnedProcess:
@@ -122,6 +125,8 @@ def test_promotion_timeout_signals_only_its_owned_process_group(monkeypatch) -> 
             return self
 
         def communicate(self, *, timeout):
+            if interrupted:
+                raise KeyboardInterrupt
             raise subprocess.TimeoutExpired(self.command, timeout, output=b'{"published": true}')
 
         def __exit__(self, *exc):
@@ -130,10 +135,14 @@ def test_promotion_timeout_signals_only_its_owned_process_group(monkeypatch) -> 
     monkeypatch.setattr(promotion_process.subprocess, "Popen", OwnedProcess)
     monkeypatch.setattr(promotion_process.os, "killpg", lambda pid, signum: events.append((pid, signum)))
 
-    payload = cluster_runner.promote_cluster_run(run_id="sample", cleanup=True)
-    assert payload["success"] is False
-    assert payload["error"] == "timeout after 300s"
-    assert payload["timed_out"] is True
-    assert payload["published"] is None
-    assert payload["stdout"] == '{"published": true}'
+    if interrupted:
+        with pytest.raises(KeyboardInterrupt):
+            cluster_runner.promote_cluster_run(run_id="sample", cleanup=True)
+    else:
+        payload = cluster_runner.promote_cluster_run(run_id="sample", cleanup=True)
+        assert payload["success"] is False
+        assert payload["error"] == "timeout after 300s"
+        assert payload["timed_out"] is True
+        assert payload["published"] is None
+        assert payload["stdout"] == '{"published": true}'
     assert events == [(OwnedProcess.pid, signal.SIGKILL), "closed"]

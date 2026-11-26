@@ -275,6 +275,29 @@ def test_promotion_excludes_only_mutable_legacy_watcher_receipts(tmp_path: Path)
     assert json.loads((run / "manifest.json").read_text()) == source_manifest
 
 
+def test_field_report_validator_rejects_a_malformed_url_and_checks_other_links(tmp_path: Path) -> None:
+    cluster = tmp_path / "cluster"
+    docs = cluster / "docs"
+    docs.mkdir(parents=True)
+    report = cluster / "field-report.md"
+    report.write_text("Canonical run: `example`.\n\n[Broken URL](http://[x)\n\n[Missing](missing.json)\n")
+    (cluster / "field-report-notes.md").write_text("Canonical run: `example`.\n")
+    (docs / "field-report-template.md").write_text("# Template\n")
+    (docs / "advanced-runbook.md").write_text("# Runbook\n")
+    _write_json(cluster / "published" / "current" / "manifest.json", {"run_id": "example"})
+    validator = Path(__file__).resolve().parents[1] / "cluster" / "scripts" / "validate_field_report_requirements.sh"
+
+    result = subprocess.run(
+        ["bash", str(validator), "--repo-root", str(tmp_path), "--package-only"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 1
+    assert "target=http://[x resolved=invalid URL" in result.stdout
+    assert "target=missing.json" in result.stdout
+
+
 def test_promote_run_materializes_published_package(tmp_path: Path) -> None:
     repo_root = tmp_path / "repo"
     cluster_root = repo_root / "cluster"

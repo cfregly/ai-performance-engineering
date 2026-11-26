@@ -144,12 +144,17 @@ def test_build_canonical_package_materializes_live_runs_and_tracks_missing_histo
     (comparison_run_dir / "raw" / f"{comparison_run}_suite.log").write_text("log", encoding="utf-8")
 
     (cluster_root / "field-report-localhost.md").write_text(f"Canonical run: `{canonical_run}`\n", encoding="utf-8")
-    (cluster_root / "field-report-localhost-notes.md").write_text(f"Baseline: `{comparison_run}`\n", encoding="utf-8")
+    (cluster_root / "field-report-localhost-notes.md").write_text(
+        f"Baseline: `{comparison_run}`\nHistorical run: `{historical_run}`\n", encoding="utf-8"
+    )
     (cluster_root / "multi_node_harden_and_verify_next_steps.md").write_text("placeholder\n", encoding="utf-8")
     (cluster_root / "field-report.md").write_text(
         f"Historical run: `{historical_run}`\nresults/structured/{historical_run}_manifest.json\n",
         encoding="utf-8",
     )
+    concurrent_stage = cluster_root / f"{builder.PACKAGE_STAGE_PREFIX}other" / "package"
+    concurrent_stage.mkdir(parents=True)
+    (concurrent_stage / "field-report.md").write_text(f"Historical run: `{historical_run}`\n", encoding="utf-8")
 
     script = Path(__file__).resolve().parents[1] / "cluster" / "scripts" / "build_canonical_package.py"
     cmd = [
@@ -177,7 +182,13 @@ def test_build_canonical_package_materializes_live_runs_and_tracks_missing_histo
     assert runs[comparison_run]["present"] is True
     assert runs[comparison_run]["counts"]["raw"] == 1
     assert runs[historical_run]["present"] is False
-    assert manifest["historical_markdown_references"][historical_run]["file_count"] >= 1
+    historical_refs = manifest["historical_markdown_references"][historical_run]
+    assert historical_refs["file_count"] == 2
+    assert [ref["path"] for ref in historical_refs["files"]] == [
+        "cluster/field-report-localhost-notes.md",
+        "cluster/field-report.md",
+    ]
+    assert builder.PACKAGE_STAGE_PREFIX not in (package_root / "historical-multinode-reference.md").read_text()
 
     assert (package_root / "runs" / canonical_run / "manifest.json").exists()
     assert (package_root / "field-report-localhost.md").exists()

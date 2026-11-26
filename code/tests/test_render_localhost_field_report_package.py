@@ -102,6 +102,30 @@ def test_render_localhost_report_handles_missing_operator_checks(tmp_path: Path)
     assert "quick_friction | not run" in notes
 
 
+def test_render_localhost_report_labels_only_recorded_monitoring_categories(tmp_path: Path) -> None:
+    module = _load_renderer_module()
+    run_id = "2026-03-16_localhost_monitoring"
+    label = "localhost"
+    cluster_root = tmp_path / "cluster"
+    _seed_minimal_cluster_root(cluster_root, run_id, label)
+    run_dir = cluster_root / "runs" / run_id
+    _write_json(
+        run_dir / "structured" / f"{run_id}_{label}_monitoring_expectations.json",
+        {
+            "status": "ok",
+            "categories": {
+                "gpu_telemetry": {"status": "ok", "checks": [{"name": "nvidia_nvlink", "status": "ok"}]},
+                "system_signals": {"status": "not_requested", "checks": []},
+            },
+        },
+    )
+    args = Namespace(run_id=run_id, label=label, root=cluster_root, run_dir=run_dir)
+    report = module.render_report(args)
+
+    assert "| Monitoring mode | Recorded categories: gpu_telemetry |" in report
+    assert "system_signals=not_requested" in report
+
+
 def test_render_localhost_report_includes_fabric_section_when_present(tmp_path: Path) -> None:
     module = _load_renderer_module()
     run_id = "2026-03-16_localhost_fabric"

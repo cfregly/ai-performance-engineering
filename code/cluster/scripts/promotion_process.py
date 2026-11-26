@@ -21,7 +21,7 @@ def run_promotion_process(
     ) as process:
         try:
             stdout, stderr = process.communicate(timeout=timeout)
-        except subprocess.TimeoutExpired:
+        except BaseException:
             # The unreaped leader still owns this process group ID.
             try:
                 os.killpg(process.pid, signal.SIGKILL)

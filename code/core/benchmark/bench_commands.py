@@ -4617,6 +4617,14 @@ if TYPER_AVAILABLE:
                     f"  {label}: {row['baseline_speedup']:.2f}x → {row['candidate_speedup']:.2f}x "
                     f"(Δ {row['delta']:+.2f})"
                 )
+                for side in ("baseline", "candidate"):
+                    provenance = []
+                    if row[f"{side}_measurement_source"] == "legacy_speedup_only":
+                        provenance.append("legacy speedup-only record")
+                    if row[f"{side}_status_source"] == "legacy_unrecorded":
+                        provenance.append("status unrecorded")
+                    if provenance:
+                        typer.echo(f"    {side.capitalize()} ({', '.join(provenance)})")
 
         diagnostics = comparison["diagnostics"]
         if any(diagnostics.values()):

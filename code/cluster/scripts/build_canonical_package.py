@@ -17,6 +17,7 @@ from urllib.parse import quote, unquote, urlsplit, urlunsplit
 
 PUBLISHED_PATH = Path("published/current")
 READER_REPORTS = ("field-report-localhost.md", "field-report-localhost-notes.md")
+PACKAGE_STAGE_PREFIX = ".canonical-package-"
 REPORT_LINK = re.compile(
     r'''(?:\]\(\s*|^\s*\[[^\]\n]+\]:[ \t]+)(?:<([^>\n]+)>|([^\s)<>]+))'''
     r'''|\b(?:href|src)\s*=\s*["']([^"']+)["']''',
@@ -107,6 +108,8 @@ def find_markdown_references(root: Path, run_id: str) -> List[Dict[str, object]]
     if not cluster_root.exists():
         return refs
     for path in sorted(cluster_root.rglob("*.md")):
+        if any(part.startswith(PACKAGE_STAGE_PREFIX) for part in path.relative_to(cluster_root).parts[:-1]):
+            continue
         try:
             lines = path.read_text(encoding="utf-8").splitlines()
         except UnicodeDecodeError:
@@ -434,7 +437,7 @@ def main() -> int:
 
     out_dir.parent.mkdir(parents=True, exist_ok=True)
     try:
-        with tempfile.TemporaryDirectory(prefix=".canonical-package-", dir=out_dir.parent) as scratch:
+        with tempfile.TemporaryDirectory(prefix=PACKAGE_STAGE_PREFIX, dir=out_dir.parent) as scratch:
             stage = Path(scratch) / "package"
             _materialize_package(args, repo_root, stage, published_snapshot)
             if out_dir.is_dir():

@@ -367,7 +367,11 @@ missing = []
 for path, base in files:
     text = path.read_text(encoding="utf-8", errors="replace")
     for raw in iter_links(text):
-        url = urlsplit(raw)
+        try:
+            url = urlsplit(raw)
+        except ValueError:
+            missing.append((str(path), raw, "invalid URL"))
+            continue
         if url.scheme or url.netloc or not url.path:
             continue
         if is_placeholder(url.path):
@@ -391,10 +395,12 @@ PY
 link_rc="${link_rc:-0}"
 if [[ "$link_rc" -eq 0 ]]; then
   pass "local link check passed (${link_check_out})"
-else
+elif [[ -n "$link_check_out" ]]; then
   while IFS= read -r line; do
     [[ -n "$line" ]] && fail "local link missing: ${line}"
   done <<< "$link_check_out"
+else
+  fail "local link validator failed (exit ${link_rc})"
 fi
 
 # Canonical run id sync between report and notes.

@@ -618,7 +618,15 @@ def render_report(args: argparse.Namespace, *, target: str = "run_local") -> str
     lines.append(f"| Fabric control-plane coverage | {('fabric scorecard generated' if fabric_score else 'not run in this preset')} | management-plane completeness drops to structured `not_configured`, never a silent skip | makes NVLink / IB / Spectrum-X coverage auditable | {md_link(fabric_score_rel) if fabric_score else md_link(suite_rel)} |")
     lines.append(f"| NCCL env sweep | all profiles `ok` | `busbw=0.0` in rank-1 mode looks odd but is expected | prevents false network conclusions on 1-GPU runs | {md_link(nccl_env_rel)} |")
     lines.append(f"| Operator friction | {'Outcomes for the selected quick-friction checks' if quick else 'not run in this preset'} | expected failures captured explicitly (`{','.join(qf['expected_failed']) or 'none'}` if present) | preserves operator visibility without false-red localhost status | {md_link(quick_rel) if quick else md_link(suite_rel)} |")
-    lines.append(f"| Monitoring mode | {'gpu/system checks run' if mon else 'not run in this preset'} | control-plane checks can be `not_applicable` without kubeconfig | clarifies expected non-K8s behavior | {md_link(mon_rel) if mon else md_link(suite_rel)} |")
+    recorded_categories = [
+        name for name, category in ((mon or {}).get("categories") or {}).items()
+        if isinstance(category, dict) and category.get("checks")
+    ]
+    monitoring_scope = (
+        f"Recorded categories: {', '.join(recorded_categories)}"
+        if recorded_categories else "No check entries recorded"
+    )
+    lines.append(f"| Monitoring mode | {monitoring_scope} | control-plane checks can be `not_applicable` without kubeconfig | clarifies expected non-K8s behavior | {md_link(mon_rel) if mon else md_link(suite_rel)} |")
     lines.append("")
     lines.append("### Deep-Dive Findings")
     lines.append("| Finding | Baseline anchor | Reinforcement insight | Evidence |")
