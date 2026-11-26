@@ -89,25 +89,87 @@ def test_long_credential_redaction_covers_concatenated_text() -> None:
 
 def test_mcp_tool_exception_does_not_expose_internal_details(
     monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
-    secret = "exception-secret-value"
+    detail = "unexpected-internal-detail"
+    monkeypatch.setattr(mcp_server, "TOOLS", {})
+    monkeypatch.setattr(mcp_server, "HANDLERS", {})
+    monkeypatch.setattr(mcp_server, "_context_snapshot", lambda: {})
+    monkeypatch.setenv("AISP_MCP_DEBUG", "1")
 
+    @mcp_server.register_tool("review_exception", "Check the MCP error response.")
     def fail(_arguments: dict[str, Any]) -> dict[str, Any]:
-        raise RuntimeError(secret)
+        raise RuntimeError(detail)
 
-    monkeypatch.setitem(mcp_server.HANDLERS, "review_exception", fail)
+    request = {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "tools/call",
+        "params": {"name": "review_exception", "arguments": {}},
+    }
+    monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(request) + "\n"))
+    asyncio.run(mcp_server.MCPServer().run_stdio())
 
-    result = mcp_server.MCPServer().call_tool("review_exception", {})
-    payload = json.loads(result.content[0]["text"])
-    serialized = json.dumps(payload)
+    captured = capsys.readouterr()
+    response = json.loads(captured.out)
+    assert response["id"] == request["id"]
+    assert response["result"]["isError"] is True
+    payload = json.loads(response["result"]["content"][0]["text"])
 
-    assert secret not in serialized
-    assert "traceback" not in serialized.lower()
+    assert detail not in captured.out
+    assert "traceback" not in captured.out.lower()
     assert payload["result"] == {
         "error": "Tool execution failed.",
         "error_type": "RuntimeError",
         "success": False,
     }
+    assert "MCP tool review_exception failed with RuntimeError." in captured.err
+    assert "in fail" in captured.err
+    assert detail not in captured.err
+
+
+def test_mcp_cluster_promotion_preserves_public_validation_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(mcp_server, "_context_snapshot", lambda: {})
+    response = asyncio.run(
+        mcp_server.MCPServer().handle_message(
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "tools/call",
+                "params": {"name": "cluster_promote_run", "arguments": {}},
+            }
+        )
+    )
+
+    assert response is not None
+    assert response["result"]["isError"] is True
+    payload = json.loads(response["result"]["content"][0]["text"])
+    assert payload["result"] == {
+        "error": "run_id is required",
+        "error_type": "value_error",
+        "success": False,
+    }
+
+
+def test_mcp_tools_list_declares_cluster_promotion_side_effects() -> None:
+    response = asyncio.run(
+        mcp_server.MCPServer().handle_message(
+            {"jsonrpc": "2.0", "id": 1, "method": "tools/list"}
+        )
+    )
+
+    assert response is not None
+    descriptions = {tool["name"]: tool["description"] for tool in response["result"]["tools"]}
+    promotion = descriptions["cluster_promote_run"]
+    watcher = descriptions["cluster_watch_promote"]
+    assert "Replaces cluster/published/current" in promotion
+    assert "removes eligible older run artifacts after publication" in promotion
+    assert "Starts a detached process and writes watcher logs and status files" in watcher
+    assert "can replace the published package and run cleanup after publication" in watcher
+    assert "read-only snapshot" not in promotion
+    assert "read-only snapshot" not in watcher
 
 
 def test_handle_message_rejects_non_object_without_crashing() -> None:

@@ -249,10 +249,10 @@ Generated from `mcp.mcp_server.TOOLS`. Run `python -m scripts.generate_mcp_docs`
 - `cluster_eval_suite`: Run the cluster field-report eval suite, or a fast local smoke run that captures metadata + manifest
 - `cluster_fabric_eval`: Run the canonical AI fabric evaluation bundle with a structured capability matrix, verification ledger, AI-workload correlation, and fabric scorecard
 - `cluster_nmx_partition_lab`: Build a lab-only NVLink/NMX partition workflow guide from live inventory
-- `cluster_promote_run`: Promote one run-local cluster result tree into the published cluster package
+- `cluster_promote_run`: Replace the published cluster package with artifacts from a completed run
 - `cluster_slurm`: Generate SLURM job script for cluster submission with optimal settings
 - `cluster_validate_field_report`: Validate `cluster/field-report.md` and companion notes/template/runbook plus artifact hygiene
-- `cluster_watch_promote`: Attach a detached watcher process that waits for a PID to exit, validates run artifacts, then promotes the run
+- `cluster_watch_promote`: Start a detached watcher to validate and publish a cluster run after its process exits
 - `cost_estimate`: Cloud cost estimation for GPU fleets
 
 ### Tools (8)

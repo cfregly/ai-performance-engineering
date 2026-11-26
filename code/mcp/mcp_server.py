@@ -117,6 +117,7 @@ import sys
 import subprocess
 import time
 import threading
+import traceback
 import uuid
 import re
 import contextlib
@@ -322,6 +323,14 @@ _EXPECTATION_OVERRIDES: Dict[str, str] = {
     "benchmark_report": "Generates a report from existing benchmark JSON; writes PDF/HTML to the chosen output.",
     "benchmark_export": "Exports existing benchmark JSON to csv/markdown/json; writes to the chosen output file.",
     "benchmark_compare_runs": "Diffs two benchmark JSON files; CPU-bound and quick, writes only if an output is specified.",
+    "cluster_promote_run": (
+        "Replaces cluster/published/current and writes report files when rendering is enabled. "
+        "With cleanup=true, removes eligible older run artifacts after publication."
+    ),
+    "cluster_watch_promote": (
+        "Starts a detached process and writes watcher logs and status files. "
+        "The watcher can replace the published package and run cleanup after publication."
+    ),
     "profile_nsys": "Calls Nsight Systems; requires nsys installed and writes .nsys-rep under artifacts/runs/<run_id>/profiles/tools/<tool>/<label>/ by default. Serialized via the MCP queue runner under artifacts/parallel_runs to prevent overlap. Slow/interactive; run status or triage first. Default preset is light; set preset=full for richer traces.",
     "profile_ncu": "Calls Nsight Compute; requires ncu installed and writes .ncu-rep under artifacts/runs/<run_id>/profiles/tools/<tool>/<label>/ by default. Serialized via the MCP queue runner under artifacts/parallel_runs to prevent overlap. Slow/interactive; run status or triage first. Defaults to memory_bound metric set; opt into heavier modes explicitly.",
     "profile_compare": "Generates flame graph comparison + side-by-side Nsight Systems/Compute JSON report; parses NSYS reports and may traverse multiple files; allow extra runtime.",
@@ -506,6 +515,15 @@ TOOLS: Dict[str, ToolDefinition] = {}
 HANDLERS: Dict[str, callable] = {}
 
 
+def _unexpected_tool_error(name: str, exc: Exception) -> Dict[str, Any]:
+    """Report an unexpected error without including its message in the MCP result."""
+    error_type = type(exc).__name__
+    print(f"MCP tool {name} failed with {error_type}.", file=sys.stderr)
+    if os.environ.get("AISP_MCP_DEBUG"):
+        traceback.print_tb(exc.__traceback__, file=sys.stderr)
+    return {"error": "Tool execution failed.", "error_type": error_type, "success": False}
+
+
 def register_tool(name: str, description: str, schema: Dict[str, Any] = None):
     """Decorator to register an MCP tool."""
 
@@ -529,9 +547,8 @@ def register_tool(name: str, description: str, schema: Dict[str, Any] = None):
 
             try:
                 return func(call_params)
-            except Exception as exc:  # pragma: no cover - defensive
-                # Return normalized error with success=False for consistency
-                return {"error": str(exc), "success": False}
+            except Exception as exc:
+                return _unexpected_tool_error(name, exc)
 
         HANDLERS[name] = wrapper
         return func
@@ -5804,11 +5821,12 @@ def tool_benchmark_triage(params: Dict[str, Any]) -> Dict[str, Any]:
 
     try:
         data = load_benchmark_data(data_path)
-    except Exception as exc:
+    except (OSError, ValueError) as exc:
         return make_error(f"Failed to load benchmark data: {exc}", include_context, context_level)
 
     benchmarks = data.get("benchmarks", [])
-    if not benchmarks:
+    diagnostics = data.get("diagnostics", [])
+    if not benchmarks and not diagnostics:
         return make_error(
             "Benchmark file contains no results",
             include_context,
@@ -5826,48 +5844,41 @@ def tool_benchmark_triage(params: Dict[str, Any]) -> Dict[str, Any]:
             normalized = "failed"
         if normalized.startswith("failed_"):
             return "failed"
+        if normalized.startswith("skipped_"):
+            return "skipped"
         if normalized in {"succeeded", "failed", "skipped"}:
             return normalized
         return normalized or "unknown"
 
     status_counts_raw: Dict[str, int] = {}
-    for b in benchmarks:
+    for b in diagnostics:
         raw = str(b.get("status", "unknown")).strip().lower() or "unknown"
         status_counts_raw[raw] = status_counts_raw.get(raw, 0) + 1
 
     # Analyze results
-    total = len(benchmarks)
-    passed = sum(1 for b in benchmarks if _status_bucket(b.get("status")) == "succeeded")
-    failed = sum(1 for b in benchmarks if _status_bucket(b.get("status")) == "failed")
-    skipped = sum(1 for b in benchmarks if _status_bucket(b.get("status")) == "skipped")
+    passed = len(benchmarks)
+    total = passed + len(diagnostics)
+    failed = sum(1 for b in diagnostics if _status_bucket(b.get("status")) == "failed")
+    skipped = sum(1 for b in diagnostics if _status_bucket(b.get("status")) == "skipped")
 
     # Find regressions and improvements
     regressions = sorted(
-        [
-            b
-            for b in benchmarks
-            if _status_bucket(b.get("status")) == "succeeded" and b.get("speedup", 1.0) < 0.95
-        ],
-        key=lambda x: x.get("speedup", 1.0),
+        [b for b in benchmarks if b["speedup"] < 0.95],
+        key=lambda b: b["speedup"],
     )[:10]
 
     improvements = sorted(
-        [
-            b
-            for b in benchmarks
-            if _status_bucket(b.get("status")) == "succeeded" and b.get("speedup", 1.0) > 1.05
-        ],
-        key=lambda x: x.get("speedup", 1.0),
+        [b for b in benchmarks if b["speedup"] > 1.05],
+        key=lambda b: b["speedup"],
         reverse=True,
     )[:10]
 
     # Identify patterns for recommendations
-    slow_kernels = [b for b in benchmarks if b.get("baseline_time_ms", 0) > 100]
-    memory_issues = [
-        b
-        for b in benchmarks
-        if "memory" in b.get("name", "").lower() or "oom" in str(b.get("error", "")).lower()
-    ]
+    slow_kernels = sorted(
+        (b for b in [*benchmarks, *diagnostics] if b["baseline_time_ms"] > 100),
+        key=lambda b: b["baseline_time_ms"],
+        reverse=True,
+    )
     attention_benchmarks = [b for b in benchmarks if "attention" in b.get("name", "").lower()]
 
     # Build recommendations
@@ -5928,14 +5939,14 @@ def tool_benchmark_triage(params: Dict[str, Any]) -> Dict[str, Any]:
             }
         )
 
-    # Always suggest comparison if we have results
-    recommended_tools.append(
-        {
-            "tool": "benchmark_compare_runs",
-            "reason": "Compare with previous baseline for trend analysis",
-            "note": "Save current results as baseline for future comparisons",
-        }
-    )
+    if benchmarks:
+        recommended_tools.append(
+            {
+                "tool": "benchmark_compare_runs",
+                "reason": "Compare with previous baseline for trend analysis",
+                "note": "Save current results as baseline for future comparisons",
+            }
+        )
 
     # Add general optimization recommendations
     recommended_tools.append(
@@ -5944,6 +5955,15 @@ def tool_benchmark_triage(params: Dict[str, Any]) -> Dict[str, Any]:
             "reason": "Get optimization playbook based on your hardware and goals",
         }
     )
+
+    if regressions:
+        priority = "Investigate the qualified regressions."
+    elif failed:
+        priority = "Review the failed benchmark results."
+    elif not benchmarks:
+        priority = "No benchmark results qualified."
+    else:
+        priority = "No qualified regressions found."
 
     result = {
         "success": True,
@@ -5959,9 +5979,7 @@ def tool_benchmark_triage(params: Dict[str, Any]) -> Dict[str, Any]:
                 if k.startswith("failed_") or k == "failed"
             },
             "pass_rate": f"{(passed / total) * 100:.1f}%" if total > 0 else "N/A",
-            "avg_speedup": sum(b.get("speedup", 1.0) for b in benchmarks) / total
-            if total > 0
-            else 0,
+            "avg_speedup": sum(b["speedup"] for b in benchmarks) / passed if passed else 0,
         },
         "regressions": [
             {
@@ -5984,8 +6002,7 @@ def tool_benchmark_triage(params: Dict[str, Any]) -> Dict[str, Any]:
         "optimization_plan": optimization_plan,
         "next_steps_summary": (
             f"Found {len(regressions)} regression(s) and {len(improvements)} improvement(s). "
-            f"{'Focus on fixing regressions first.' if regressions else 'Results look good!'} "
-            f"Use recommended_tools for specific actions."
+            f"{priority} Use recommended_tools for specific actions."
         ),
     }
 
@@ -10367,9 +10384,8 @@ def tool_cluster_build_canonical_package(params: Dict[str, Any]) -> Dict[str, An
 @register_tool(
     "cluster_promote_run",
     "Tags: cluster, publish, promote, canonical, localhost, reports. "
-    "Promote one run-local cluster result tree into the published cluster package. "
-    "Returns: {success, run_id, published_root, published_structured_dir, published_localhost_report_path, steps}. "
-    "⚡ FAST (~1-30s). USE when: A run under `cluster/runs/<run_id>/` should become the published localhost package and materialized published artifact set.",
+    "Replace the published cluster package with artifacts from a completed run. "
+    "Returns: {success, run_id, published_root, published_structured_dir, published_localhost_report_path, steps}.",
     {
         "type": "object",
         "properties": with_context_params(
@@ -10401,7 +10417,7 @@ def tool_cluster_build_canonical_package(params: Dict[str, Any]) -> Dict[str, An
                 "skip_validate_localhost_report": {
                     "type": "boolean",
                     "default": False,
-                    "description": "Skip localhost report validation after promotion",
+                    "description": "Skip staged localhost report validation before publication",
                 },
                 "cleanup": {
                     "type": "boolean",
@@ -10455,7 +10471,7 @@ def tool_cluster_promote_run(params: Dict[str, Any]) -> Dict[str, Any]:
 @register_tool(
     "cluster_watch_promote",
     "Tags: cluster, publish, promote, watch, background, localhost. "
-    "Attach a detached watcher process that waits for a PID to exit, validates run artifacts, then promotes the run. "
+    "Start a detached watcher to validate and publish a cluster run after its process exits. "
     "Returns: {success, run_id, repo_root, watcher_pid, watch_command, watch_status_path, launch_log_path, ...}. "
     "⚡ FAST to launch (~ms); the watcher may run until the watched PID exits. "
     "USE when: a long-running cluster job should auto-promote after exit without blocking the launcher.",
@@ -10498,7 +10514,7 @@ def tool_cluster_promote_run(params: Dict[str, Any]) -> Dict[str, Any]:
                 "skip_validate_localhost_report": {
                     "type": "boolean",
                     "default": False,
-                    "description": "Skip localhost report validation after promotion",
+                    "description": "Skip staged localhost report validation before publication",
                 },
                 "cleanup": {
                     "type": "boolean",
@@ -11391,16 +11407,12 @@ class MCPServer:
             return ToolResult(
                 content=_content_from_payload(payload), is_error=payload.get("status") == "error"
             )
-        except Exception as e:
+        except Exception as exc:
             duration_ms = int((time.time() - start_ts) * 1000)
             payload = _build_enriched_tool_payload(
                 name,
                 arguments,
-                {
-                    "error": "Tool execution failed.",
-                    "error_type": type(e).__name__,
-                    "success": False,
-                },
+                _unexpected_tool_error(name, exc),
                 duration_ms=duration_ms,
                 had_exception=True,
                 server_info=server_info,
