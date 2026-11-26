@@ -1,0 +1,44 @@
+{
+  "generated_at_utc": "2026-03-17T02:58:36.041727Z",
+  "inference": {
+    "concurrency_at_max_throughput": 1,
+    "max_total_token_throughput": 484.494,
+    "p99_ttft_ms_at_max_throughput": 77.573
+  },
+  "inputs": {
+    "iperf3_oob_json": null,
+    "nccl_source_json": null,
+    "node_labels": [
+      "localhost"
+    ],
+    "structured_dir": "/home/operator/ai-performance-engineering/code/cluster/runs/2026-03-17_localhost_fabric_canonical/structured",
+    "vllm_csv": "/home/operator/ai-performance-engineering/code/cluster/runs/2026-03-17_localhost_fabric_canonical/structured/2026-03-17_localhost_fabric_canonical_localhost_vllm_serve_sweep.csv"
+  },
+  "networking": {
+    "nccl_all_reduce_peak_busbw_gbps": null,
+    "oob_tcp_fwd_gbps": null,
+    "oob_tcp_rev_gbps": null
+  },
+  "node2_over_node1_ratios": {},
+  "nodes": [
+    {
+      "fio_seq_read_mb_s": 1136.5902290344238,
+      "gemm": {
+        "max_tflops": 1272.8317710492224,
+        "mean_tflops": 1272.8317710492224,
+        "min_tflops": 1272.8317710492224,
+        "per_gpu_tflops": {
+          "0": 1272.8317710492224
+        }
+      },
+      "label": "localhost",
+      "numa_local_bw_gbps": null,
+      "paths": {
+        "fio_json": "/home/operator/ai-performance-engineering/code/cluster/runs/2026-03-17_localhost_fabric_canonical/structured/2026-03-17_localhost_fabric_canonical_localhost_fio.json",
+        "gemm_csv": "/home/operator/ai-performance-engineering/code/cluster/runs/2026-03-17_localhost_fabric_canonical/structured/2026-03-17_localhost_fabric_canonical_localhost_gemm_gpu_sanity.csv",
+        "numa_json": "/home/operator/ai-performance-engineering/code/cluster/runs/2026-03-17_localhost_fabric_canonical/structured/2026-03-17_localhost_fabric_canonical_localhost_numa_mem_bw.json"
+      }
+    }
+  ],
+  "run_id": "2026-03-17_localhost_fabric_canonical"
+}

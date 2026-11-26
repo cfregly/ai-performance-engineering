@@ -1,0 +1,44 @@
+{
+  "barrier_iters": 5,
+  "created_at_utc": "2026-03-17T02:48:59Z",
+  "failures": [],
+  "payload_bytes": 8388608,
+  "ranks": [
+    {
+      "barrier_ms": [
+        0.226047,
+        0.043405,
+        0.031208,
+        0.029872,
+        0.028058
+      ],
+      "checks": {
+        "scalar_allreduce_expected": 1.0,
+        "scalar_allreduce_observed": 1.0,
+        "scalar_allreduce_ok": true
+      },
+      "gpu": {
+        "compute_capability": "10.0",
+        "logical_index": 0,
+        "memory_gb": 178.351,
+        "name": "NVIDIA B200",
+        "physical_index": 0
+      },
+      "hostname": "host-01",
+      "local_rank": 0,
+      "payload_probe": {
+        "algbw_gbps": 84.867494,
+        "busbw_gbps": 84.867494,
+        "payload_bytes": 8388608,
+        "time_ms": 0.098844
+      },
+      "rank": 0,
+      "status": "ok",
+      "world_size": 1
+    }
+  ],
+  "run_id": "2026-03-17_localhost_fabric_canonical",
+  "status": "ok",
+  "test": "torchrun_connectivity_probe",
+  "world_size": 1
+}

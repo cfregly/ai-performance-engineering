@@ -47,6 +47,19 @@ generator = ReportGenerator(config)
 generator.generate_pdf(data, "custom_report.pdf")
 ```
 
+Benchmark rankings and summary statistics use successful baseline and optimization
+pairs. Historical results that contain only a recorded speedup can also qualify,
+with unrecorded times shown as unavailable. Discovered scans select the latest
+qualified result per target and show any later rejection beside it. Rejected rows
+and baseline-only runs appear in **Run Diagnostics**. Missing or malformed
+explicit inputs produce an error. In discovered files, valid rows remain
+available and malformed records appear under **Input Errors**.
+
+`aisp bench compare-runs` ranks speedup changes for targets with qualified
+measurements in both input runs. Rejected targets appear in the run diagnostics.
+CSV, Markdown and HTML exports identify when a newer run rejected a result from
+an earlier measurement.
+
 ## Report Types
 
 ### BenchmarkReport

@@ -96,9 +96,34 @@ def test_render_localhost_report_handles_missing_operator_checks(tmp_path: Path)
 
     assert "Operator checks | not run in this preset" in report
     assert "operator-friction and monitoring artifacts were not requested in this preset run." in report
-    assert "Run localhost fabric eval" in report
+    assert "Example localhost fabric eval" in report
+    assert "--run-id <new_run_id>" in report
     assert "Operator checks are optional and skipped in this preset" in notes
     assert "quick_friction | not run" in notes
+
+
+def test_render_localhost_report_labels_only_recorded_monitoring_categories(tmp_path: Path) -> None:
+    module = _load_renderer_module()
+    run_id = "2026-03-16_localhost_monitoring"
+    label = "localhost"
+    cluster_root = tmp_path / "cluster"
+    _seed_minimal_cluster_root(cluster_root, run_id, label)
+    run_dir = cluster_root / "runs" / run_id
+    _write_json(
+        run_dir / "structured" / f"{run_id}_{label}_monitoring_expectations.json",
+        {
+            "status": "ok",
+            "categories": {
+                "gpu_telemetry": {"status": "ok", "checks": [{"name": "nvidia_nvlink", "status": "ok"}]},
+                "system_signals": {"status": "not_requested", "checks": []},
+            },
+        },
+    )
+    args = Namespace(run_id=run_id, label=label, root=cluster_root, run_dir=run_dir)
+    report = module.render_report(args)
+
+    assert "| Monitoring mode | Recorded categories: gpu_telemetry |" in report
+    assert "system_signals=not_requested" in report
 
 
 def test_render_localhost_report_includes_fabric_section_when_present(tmp_path: Path) -> None:
@@ -328,7 +353,7 @@ def test_render_localhost_report_includes_fabric_section_when_present(tmp_path: 
     notes = module.render_notes(args)
 
     assert "## Fabric Evaluation" in report
-    assert "Fabric headline" in report
+    assert "Fabric scorecard | Stored status" in report
     assert "NVLink runtime evidence peaks at 2400.0 GB/s algbw" in report
     assert "NMX Topology Scenario" in report
     assert "InfiniBand Scenario" in report

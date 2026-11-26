@@ -5,7 +5,10 @@ Shared HTML report generator for performance summaries.
 from __future__ import annotations
 
 from datetime import datetime
+from html import escape
 from typing import Any, Dict
+
+from core.profile_artifacts import newer_benchmark_result_label
 
 
 def generate_html_report(
@@ -50,9 +53,18 @@ def generate_html_report(
     for b in benchmarks.get("benchmarks", [])[:10]:
         speedup = b.get("speedup", 1.0)
         badge = "success" if speedup >= 1.5 else "warning" if speedup >= 1.1 else "danger"
+        baseline = b.get("baseline_time_ms")
+        optimized = b.get("optimized_time_ms")
+        baseline_label = f"{baseline:.2f} ms" if baseline is not None else "n/a"
+        optimized_label = f"{optimized:.2f} ms" if optimized is not None else "n/a"
+        newer = newer_benchmark_result_label(b)
+        name = escape(str(b.get("name", "Unknown"))[:40])
+        if newer:
+            badge = "warning"
+            name += f"<br><small>Newer result: {escape(newer)}</small>"
         html_parts.append(
-            f"<tr><td>{b.get('name','Unknown')[:40]}</td><td>{b.get('baseline_time_ms',0):.2f} ms</td>"
-            f"<td>{b.get('optimized_time_ms',0):.2f} ms</td><td><span class='badge badge-{badge}'>{speedup:.2f}x</span></td></tr>"
+            f"<tr><td>{name}</td><td>{baseline_label}</td>"
+            f"<td>{optimized_label}</td><td><span class='badge badge-{badge}'>{speedup:.2f}x</span></td></tr>"
         )
 
     html_parts.append("</tbody></table></div>")

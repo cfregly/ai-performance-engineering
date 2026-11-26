@@ -8,6 +8,8 @@ import json
 from pathlib import Path
 from typing import Any, Dict, List
 
+from core.analysis.performance_analyzer import is_finite_measurement
+
 CODE_ROOT = Path(__file__).resolve().parent.parent
 
 
@@ -28,7 +30,7 @@ def load_compile_analysis(code_root: Path = CODE_ROOT, benchmarks: List[Dict[str
     """Aggregate compile analysis from saved reports and benchmark data."""
     compile_data: Dict[str, Any] = {
         "speedup": 0,
-        "compile_time_ms": 0,
+        "compile_time_ms": None,
         "graph_breaks": 0,
         "fusion_ratio": 1.0,
         "recommendations": [],
@@ -75,14 +77,15 @@ def load_compile_analysis(code_root: Path = CODE_ROOT, benchmarks: List[Dict[str
                 ]
             )
 
-            if is_compile and b.get("speedup", 0) > 0:
+            speedup = b.get("speedup")
+            if is_compile and is_finite_measurement(speedup) and speedup > 0:
                 compiled_benchmarks.append(
                     {
                         "name": b.get("name"),
                         "chapter": b.get("chapter"),
-                        "speedup": b.get("speedup", 1.0),
-                        "baseline_time_ms": b.get("baseline_time_ms", 0),
-                        "optimized_time_ms": b.get("optimized_time_ms", 0),
+                        "speedup": speedup,
+                        "baseline_time_ms": b.get("baseline_time_ms"),
+                        "optimized_time_ms": b.get("optimized_time_ms"),
                     }
                 )
 
@@ -93,8 +96,6 @@ def load_compile_analysis(code_root: Path = CODE_ROOT, benchmarks: List[Dict[str
             if speedups:
                 compile_data["speedup"] = sum(speedups) / len(speedups)
                 compile_data["has_real_data"] = True
-                total_baseline_ms = sum(b.get("baseline_time_ms", 0) for b in compiled_benchmarks)
-                compile_data["compile_time_ms"] = total_baseline_ms * 0.1  # rough heuristic
 
                 compile_data["recommendations"] = [
                     f"torch.compile achieved {compile_data['speedup']:.2f}x avg speedup across {len(compiled_benchmarks)} benchmarks",

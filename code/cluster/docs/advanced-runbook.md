@@ -10,11 +10,11 @@ There are only two artifact surfaces that matter:
 
 Current published package:
 - Canonical localhost package: `2026-03-17_localhost_fabric_canonical`
-- Preserved historical localhost baseline: `2026-03-08_localhost_modern_profile_r32_full20b`
+- Historical localhost baseline mentioned in earlier reports: `2026-03-08_localhost_modern_profile_r32_full20b`
 
 Interpretation:
 - `2026-03-17_localhost_fabric_canonical` is what the report package points at.
-- `2026-03-08_localhost_modern_profile_r32_full20b` is preserved only for historical delta work and does not remain in the live publication surfaces.
+- `2026-03-08_localhost_modern_profile_r32_full20b` requires separately retained evidence for historical comparisons. The snapshot in this checkout covers the March 17 run.
 
 ## 1) Routine Single-Node Evaluation
 Use this for the usual "tell me how this system behaves" ask:
@@ -160,8 +160,10 @@ After promotion:
 cluster/scripts/cleanup_run_artifacts.sh \
   --canonical-run-id <canonical_run_id> \
   --allow-run-id <baseline_run_id> \
-  --apply
+  --plan-file <unused_path>
 ```
+
+Review the cleanup plan, then rerun the same command with `--apply` to execute it. Cleanup refuses candidates that contain symlinks or hold evidence linked by the published reports. Use `--allow-run-id` to retain a linked comparison run.
 
 Use additional `--allow-run-id` entries only for intentionally retained historical baselines or verification runs.
 

@@ -5,6 +5,9 @@ clustermax/
 clustermax_from_node2
 clustermax*/
 cluster/Stas*
+cluster/published/.promotion-*/
+cluster/published/.report-paths.json
+cluster/**/.promotion-report-*/
 third_party/TransformerEngine-src/
 third_party/wheels/
 third_party/cutlass/

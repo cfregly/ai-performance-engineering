@@ -1,6 +1,6 @@
 # Cluster Perf Field Report (Localhost, 1 Node)
 
-Last updated: 2026-03-24. Canonical run: `2026-03-17_localhost_fabric_canonical`.
+Historical reader snapshot. Canonical run: `2026-03-17_localhost_fabric_canonical`.
 
 ## Table of Contents
 1. [TL;DR](#tldr)
@@ -29,10 +29,10 @@ Last updated: 2026-03-24. Canonical run: `2026-03-17_localhost_fabric_canonical`
 | Scope | `localhost` only, 1 GPU(s) |
 | Canonical run | `2026-03-17_localhost_fabric_canonical` |
 | Suite status | `41/41` steps green; `validate_required_artifacts=0` |
-| Networking headline | NCCL single-node peak algbw `2263.5 GB/s` (67108864 bytes); connectivity probe `84.867 GB/s` payload algbw |
+| Networking headline | Recorded single-GPU NCCL peak algbw `2263.5 GB/s` (67108864 bytes); connectivity probe `84.867 GB/s` payload algbw |
 | Inference headline | vLLM total throughput `484.494 tok/s` (c=1) -> `484.494 tok/s` (c=1); p99 TTFT `77.573 ms` -> `77.573 ms` |
-| Operator checks | quick_friction `ok` (pass=1, failed=0, expected=0, unexpected=0), monitoring_expectations `ok` |
-| Fabric headline | status `ok`, completeness `full_stack_verified`, full-stack families `1` |
+| Post-suite operator checks | quick_friction `ok` (pass=1, failed=0, expected=0, unexpected=0), monitoring_expectations `ok` |
+| Fabric scorecard | Stored category `full_stack_verified`. The topology has zero NVLink pairs. |
 | Key weird/new | Single-node NCCL env sweep can show `busbw=0.0` by definition (rank=1), while algbw is still strong. |
 
 ## Scope + Canonical Artifacts
@@ -49,23 +49,23 @@ Last updated: 2026-03-24. Canonical run: `2026-03-17_localhost_fabric_canonical`
 | Fabric scorecard | [published/current/structured/2026-03-17_localhost_fabric_canonical_fabric_scorecard.json](published/current/structured/2026-03-17_localhost_fabric_canonical_fabric_scorecard.json) |
 
 ## Fabric Evaluation
-| Family | Present | Completeness | Mgmt plane | Link health | Routing | AI workload impact |
+| Family | Present | Stored completeness | Mgmt plane | Stored link health | Stored routing | Retained evidence |
 | --- | --- | --- | --- | --- | --- | --- |
-| `nvlink` | `True` | `full_stack_verified` | `True` | `runtime_verified` | `pass` | NVLink/NVSwitch runtime evidence peaks at 2263.5 GB/s algbw on the single-node NCCL path. |
+| `nvlink` | `True` | `full_stack_verified` | `True` | `runtime_verified` | `pass` | The stored NCCL run records 2263.5 GB/s algbw on one GPU. Its recorded topology has zero NVLink peer links. |
 | `infiniband` | `False` | `not_present` | `False` | `n/a` | `n/a` | No direct AI workload finding. |
 | `spectrum-x` | `False` | `not_present` | `False` | `n/a` | `n/a` | No direct AI workload finding. |
 
 | Fabric summary | Value |
 | --- | --- |
 | Management planes configured | `1` |
-| Runtime-verified families | `1` |
-| Full-stack-verified families | `1` |
+| Scorecard runtime-verified families | `1` |
+| Scorecard full-stack-verified families | `1` |
 | Catalog entries | `555` |
 
 | NMX Topology Scenario | Value |
 | --- | --- |
 | Chassis | `1` |
-| Chassis serials | 27XYZ27000001 |
+| Chassis serials | chassis-serial-01 |
 | Compute nodes | `18` |
 | GPUs | `72` |
 | Switch ASICs | `18` |
@@ -75,18 +75,18 @@ Last updated: 2026-03-24. Canonical run: `2026-03-17_localhost_fabric_canonical`
 | Node/GPU grouping field | `GpuIDList` |
 | Switch ASIC field | `DeviceID` |
 | Switch tray grouping fields | `LocationInfo.ChassisID, LocationInfo.SlotID, LocationInfo.HostID, LocationInfo.TrayIndex` |
-| Team Alpha candidate nodes | 69b3e7f9de992fd70f8ce5b1 |
-| Team Alpha candidate GPU locations | 1.1.1.1, 1.1.1.2, 1.1.1.3, 1.1.1.4 |
-| Team Beta candidate nodes | 69b3e7f9de992fd70f8ce5b2 |
-| Team Beta candidate GPU locations | 1.2.1.1, 1.2.1.2, 1.2.1.3, 1.2.1.4 |
+| Team Alpha candidate nodes | fabric-node-01 |
+| Team Alpha candidate GPU locations | gpu-location-01, gpu-location-02, gpu-location-03, gpu-location-04 |
+| Team Beta candidate nodes | fabric-node-02 |
+| Team Beta candidate GPU locations | gpu-location-46, gpu-location-05, gpu-location-06, gpu-location-07 |
 | GPU-facing ports | `1296` (`BaseLID all-present=True`) |
 | Switch-facing ports | `1296` (`BaseLID all-present=False`) |
 | Port formula check | `2 * gpu_count(72) * switch_asic_count(18) = 2592` (`matches=True`) |
-| Sample compute-node fields | `{"device_uid": null, "gpu_id_count": 4, "id": "69b3e7f9de992fd70f8ce5b1", "location": {"chassis_id": 1, "chassis_serial_number": "27XYZ27000001", "host_id": 1, "slot_id": 1, "tray_index": 0}, "name": "", "system_uid": null}` |
-| Sample GPU fields | `{"alid_count": 1, "description": "", "device_id": 1, "device_uid": 1001, "domain_uuid": "fc6e8564-7a4c-4cc6-b679-0ec41fece927", "health": "HEALTHY", "id": "69b3e7fade992fd70f8ce5c3", "internal_description": "GB100 Nvidia Technologies 1", "location": {"chassis_id": 1, "chassis_serial_number": "27XYZ27000001", "host_id": 1, "slot_id": 1, "tray_index": 0}, "name": "GPU-1", "partition_id": null, "partition_name": null, "port_count": 18, "system_uid": 1000}` |
-| Sample switch fields | `{"device_id": 1, "domain_uuid": "fc6e8564-7a4c-4cc6-b679-0ec41fece927", "health": "NMX_SWITCH_HEALTH_HEALTHY", "id": "69b3e7fade992fd70f8ce60b", "location": {"chassis_id": 1, "chassis_serial_number": "27XYZ27000001", "host_id": 1, "slot_id": 9, "tray_index": 0}, "port_count": 72}` |
-| Sample switch-tray grouping | `{"location": {"chassis_id": 1, "chassis_serial_number": "27XYZ27000001", "host_id": 1, "slot_id": 9, "tray_index": 0}, "switch_asic_count": 2, "switch_device_ids": ["1", "2"], "switch_ids": ["69b3e7fade992fd70f8ce60b", "69b3e7fade992fd70f8ce60c"], "switch_node_id": "69b3e7fade992fd70f8ce61d", "switch_node_switch_id_list": ["69b3e7fade992fd70f8ce60b", "69b3e7fade992fd70f8ce60c"]}` |
-| Sample chassis fields | `{"domain_uuid": "fc6e8564-7a4c-4cc6-b679-0ec41fece927", "health": "NMX_CHASSIS_HEALTH_HEALTHY", "id": "69b3e7f9de992fd70f8ce5b0", "location": {"chassis_id": null, "chassis_serial_number": null, "host_id": null, "slot_id": null, "tray_index": null}, "name": "NVL72-Chassis-1"}` |
+| Sample compute-node fields | `{"device_uid": null, "gpu_id_count": 4, "id": "fabric-node-01", "location": {"chassis_id": 1, "chassis_serial_number": "chassis-serial-01", "host_id": 1, "slot_id": 1, "tray_index": 0}, "name": "", "system_uid": null}` |
+| Sample GPU fields | `{"alid_count": 1, "description": "", "device_id": 1, "device_uid": 1001, "domain_uuid": "fabric-domain-01", "health": "HEALTHY", "id": "fabric-id-07", "internal_description": "GB100 Nvidia Technologies 1", "location": {"chassis_id": 1, "chassis_serial_number": "chassis-serial-01", "host_id": 1, "slot_id": 1, "tray_index": 0}, "name": "GPU-1", "partition_id": null, "partition_name": null, "port_count": 18, "system_uid": 1000}` |
+| Sample switch fields | `{"device_id": 1, "domain_uuid": "fabric-domain-01", "health": "NMX_SWITCH_HEALTH_HEALTHY", "id": "fabric-id-08", "location": {"chassis_id": 1, "chassis_serial_number": "chassis-serial-01", "host_id": 1, "slot_id": 9, "tray_index": 0}, "port_count": 72}` |
+| Sample switch-tray grouping | `{"location": {"chassis_id": 1, "chassis_serial_number": "chassis-serial-01", "host_id": 1, "slot_id": 9, "tray_index": 0}, "switch_asic_count": 2, "switch_device_ids": ["1", "2"], "switch_ids": ["fabric-id-08", "fabric-id-09"], "switch_node_id": "fabric-id-10", "switch_node_switch_id_list": ["fabric-id-08", "fabric-id-09"]}` |
+| Sample chassis fields | `{"domain_uuid": "fabric-domain-01", "health": "NMX_CHASSIS_HEALTH_HEALTHY", "id": "fabric-id-06", "location": {"chassis_id": null, "chassis_serial_number": null, "host_id": null, "slot_id": null, "tray_index": null}, "name": "NVL72-Chassis-1"}` |
 
 | NMX Partition Scenario | Value |
 | --- | --- |
@@ -94,7 +94,7 @@ Last updated: 2026-03-24. Canonical run: `2026-03-17_localhost_fabric_canonical`
 | Default partition | `none` (`members=0`) |
 | Default partition present | `False` (`members=0`) |
 | Unassigned GPUs | `45` |
-| Unassigned GPU locations (first 8) | 1.1.1.1, 1.1.1.2, 1.1.1.3, 1.1.1.4, 1.2.1.2, 1.2.1.3, 1.2.1.4, 1.3.1.1 |
+| Unassigned GPU locations (first 8) | gpu-location-01, gpu-location-02, gpu-location-03, gpu-location-04, gpu-location-05, gpu-location-06, gpu-location-07, gpu-location-08 |
 | Ready for partition create | `True` |
 | Operation poll path | `<nmx-base>/operations/<operation-id>` |
 | Lab helper entrypoint | `python -m cli.aisp cluster nmx-partition-lab --nmx-url <nmx-base>` |
@@ -145,7 +145,7 @@ Last updated: 2026-03-24. Canonical run: `2026-03-17_localhost_fabric_canonical`
 | Runtime interpretation | Collect multi-node NCCL, all-to-all, and torchrun connectivity artifacts before drawing Spectrum-X / RoCE conclusions. |
 
 Cross-fabric interpretation:
-- NVLink/NVSwitch runtime evidence peaks at 2263.5 GB/s algbw on the single-node NCCL path.
+- The stored NCCL run records 2263.5 GB/s algbw on one GPU. Its recorded topology has zero NVLink peer links.
 - vLLM throughput ranges from 484.5 to 484.5 tok/s across 1 concurrency points.
 
 Data: [published/current/structured/2026-03-17_localhost_fabric_canonical_fabric_command_catalog.json](published/current/structured/2026-03-17_localhost_fabric_canonical_fabric_command_catalog.json), [published/current/structured/2026-03-17_localhost_fabric_canonical_fabric_capability_matrix.json](published/current/structured/2026-03-17_localhost_fabric_canonical_fabric_capability_matrix.json), [published/current/structured/2026-03-17_localhost_fabric_canonical_fabric_verification.json](published/current/structured/2026-03-17_localhost_fabric_canonical_fabric_verification.json), [published/current/structured/2026-03-17_localhost_fabric_canonical_fabric_ai_correlation.json](published/current/structured/2026-03-17_localhost_fabric_canonical_fabric_ai_correlation.json), [published/current/structured/2026-03-17_localhost_fabric_canonical_fabric_scorecard.json](published/current/structured/2026-03-17_localhost_fabric_canonical_fabric_scorecard.json)
@@ -197,8 +197,8 @@ Data: [published/current/structured/2026-03-17_localhost_fabric_canonical_suite_
 | NVLink topology parsing | topology summary generated | parser now handles single-GPU header formats robustly | keeps topology evidence reproducible on localhost | [published/current/structured/2026-03-17_localhost_fabric_canonical_localhost_meta_nvlink_topology.json](published/current/structured/2026-03-17_localhost_fabric_canonical_localhost_meta_nvlink_topology.json) |
 | Fabric control-plane coverage | fabric scorecard generated | management-plane completeness drops to structured `not_configured`, never a silent skip | makes NVLink / IB / Spectrum-X coverage auditable | [published/current/structured/2026-03-17_localhost_fabric_canonical_fabric_scorecard.json](published/current/structured/2026-03-17_localhost_fabric_canonical_fabric_scorecard.json) |
 | NCCL env sweep | all profiles `ok` | `busbw=0.0` in rank-1 mode looks odd but is expected | prevents false network conclusions on 1-GPU runs | [published/current/structured/2026-03-17_localhost_fabric_canonical_nccl_env_sensitivity.json](published/current/structured/2026-03-17_localhost_fabric_canonical_nccl_env_sensitivity.json) |
-| Operator friction | full quick-friction battery executed | expected failures captured explicitly (`none` if present) | preserves operator visibility without false-red localhost status | [published/current/structured/2026-03-17_localhost_fabric_canonical_localhost_quick_friction.json](published/current/structured/2026-03-17_localhost_fabric_canonical_localhost_quick_friction.json) |
-| Monitoring mode | gpu/system checks run | control-plane checks can be `not_applicable` without kubeconfig | clarifies expected non-K8s behavior | [published/current/structured/2026-03-17_localhost_fabric_canonical_localhost_monitoring_expectations.json](published/current/structured/2026-03-17_localhost_fabric_canonical_localhost_monitoring_expectations.json) |
+| Operator friction | post-suite quick-friction ran the selected `torch_import` check | expected failures captured explicitly (`none` if present) | preserves operator visibility without false-red localhost status | [published/current/structured/2026-03-17_localhost_fabric_canonical_localhost_quick_friction.json](published/current/structured/2026-03-17_localhost_fabric_canonical_localhost_quick_friction.json) |
+| Monitoring mode | post-suite GPU telemetry checked `nvidia_nvlink` | control-plane checks can be `not_applicable` without kubeconfig | clarifies expected non-K8s behavior | [published/current/structured/2026-03-17_localhost_fabric_canonical_localhost_monitoring_expectations.json](published/current/structured/2026-03-17_localhost_fabric_canonical_localhost_monitoring_expectations.json) |
 
 ### Deep-Dive Findings
 | Finding | Baseline anchor | Reinforcement insight | Evidence |
@@ -220,7 +220,7 @@ Data: [published/current/structured/2026-03-17_localhost_fabric_canonical_prefli
 | Connectivity probe payload algbw | `84.867 GB/s` |
 | Connectivity barrier mean | `0.0717 ms` |
 
-Interpretation: single-node communication path is healthy; rank-1 `busbw` should not be interpreted as fabric bottleneck evidence.
+Rank-1 results describe the recorded local workload. Peer fabric bandwidth requires a multi-rank transfer.
 
 <p><a href="published/current/figures/2026-03-17_localhost_fabric_canonical_node1_nccl_bw_vs_msg.png"><img src="published/current/figures/2026-03-17_localhost_fabric_canonical_node1_nccl_bw_vs_msg.png" alt="NCCL bandwidth localhost" width="920"/></a></p>
 <p><a href="published/current/figures/2026-03-17_localhost_fabric_canonical_node1_nccl_scaling_efficiency.png"><img src="published/current/figures/2026-03-17_localhost_fabric_canonical_node1_nccl_scaling_efficiency.png" alt="NCCL scaling localhost" width="920"/></a></p>
@@ -259,7 +259,7 @@ Data: [published/current/structured/2026-03-17_localhost_fabric_canonical_localh
 | Area | Prior state | Current state |
 | --- | --- | --- |
 | Package type | environment-focused localhost output possible | full template-style localhost field report package rendered from artifacts |
-| Drift risk | hand-updated markdown could diverge from metrics | report is generated directly from structured artifacts for this RUN_ID |
+| Drift risk | hand-updated markdown could diverge from metrics | reader snapshot retains the report's linked structured evidence |
 | Operator checks | could appear as degraded without expected-failure context | expected vs unexpected failure classification is explicit in artifacts |
 | Cleanup hygiene | superseded localhost runs could remain unless manually deleted | cleanup script supports canonical-run retention and stale artifact pruning |
 
@@ -287,12 +287,20 @@ Data: [published/current/structured/2026-03-17_localhost_fabric_canonical_localh
 | P2 | Run cleanup script with canonical-run retention after each new package | keeps artifact corpus unambiguous for stakeholders |
 
 ## Repro Steps
+
+The example uses the retained inference settings of 64 input tokens, 32 output tokens, and concurrency 1. Use a new run ID and the target cluster's connection settings.
+
 | Step | Command |
 | --- | --- |
-| Run localhost fabric eval | `python -m cli.aisp cluster fabric-eval --run-id 2026-03-17_localhost_fabric_canonical --hosts localhost --labels localhost --ssh-user $(id -un) --primary-label localhost --nmx-url https://<your-nmx-host> --timeout 7200 --extra-arg --skip-bootstrap-nodes --extra-arg --disable-fp4 --extra-arg --health-suite --extra-arg off --extra-arg --skip-vllm-multinode --extra-arg --model --extra-arg openai-community/gpt2 --extra-arg --tp --extra-arg 1 --extra-arg --isl --extra-arg 128 --extra-arg --osl --extra-arg 64 --extra-arg --concurrency-range --extra-arg '1 2' --extra-arg --vllm-request-rate-range --extra-arg '1 2' --extra-arg --vllm-request-rate-max-concurrency --extra-arg 4 --extra-arg --vllm-request-rate-num-prompts --extra-arg 80 --extra-arg --fio-runtime --extra-arg 15 --extra-arg --nvbandwidth-quick` |
+| Example localhost fabric eval | `python -m cli.aisp cluster fabric-eval --run-id <new_run_id> --hosts localhost --labels localhost --ssh-user $(id -un) --primary-label localhost --nmx-url https://<your-nmx-host> --timeout 7200 --extra-arg --skip-bootstrap-nodes --extra-arg --disable-fp4 --extra-arg --health-suite --extra-arg off --extra-arg --skip-vllm-multinode --extra-arg --model --extra-arg openai-community/gpt2 --extra-arg --tp --extra-arg 1 --extra-arg --isl --extra-arg 64 --extra-arg --osl --extra-arg 32 --extra-arg --concurrency-range --extra-arg 1 --extra-arg --fio-runtime --extra-arg 15 --extra-arg --nvbandwidth-quick` |
 | Validate localhost report package | `cluster/scripts/validate_field_report_requirements.sh --report cluster/field-report-localhost.md --notes cluster/field-report-localhost-notes.md --canonical-run-id 2026-03-17_localhost_fabric_canonical` |
 
 ## Reproducibility Package
+
+The retained overview figure missed the NCCL series. The structured NCCL file and dedicated bandwidth figure record the benchmark result.
+
+The published evidence is a historical reader snapshot. It contains the files linked from this report and its notes. Public labels replace private identifiers, and selected operator output was removed. The manifest separates files redacted for this snapshot from five variants already present in the historical publication. The retained vLLM and GEMM tables use those historical variants.
+
 | Artifact class | Links |
 | --- | --- |
 | Manifest + suite | [published/current/manifest.json](published/current/manifest.json), [published/current/structured/2026-03-17_localhost_fabric_canonical_suite_steps.json](published/current/structured/2026-03-17_localhost_fabric_canonical_suite_steps.json) |

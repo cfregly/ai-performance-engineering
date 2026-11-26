@@ -8,6 +8,10 @@ TEMPLATE="${ROOT_DIR}/cluster/docs/field-report-template.md"
 RUNBOOK="${ROOT_DIR}/cluster/docs/advanced-runbook.md"
 CANONICAL_RUN_ID=""
 ALLOW_RUN_IDS=()
+PUBLISHED_ROOT=""
+REPORT_LINK_BASE=""
+NOTES_LINK_BASE=""
+PACKAGE_ONLY=0
 
 usage() {
   cat <<'USAGE'
@@ -19,6 +23,10 @@ Options:
   --notes <path>           Path to field-report-notes.md (default: cluster/field-report-notes.md)
   --template <path>        Path to field-report-template.md (default: cluster/docs/field-report-template.md)
   --runbook <path>         Path to advanced-runbook.md (default: cluster/docs/advanced-runbook.md)
+  --published-root <path>  Candidate package used to resolve published/current links
+  --report-link-base <path>  Final directory of a staged report
+  --notes-link-base <path>   Final directory of staged notes
+  --package-only          Validate the package without checking stale run artifacts
   --canonical-run-id <id>  Expected canonical run id (optional)
   --allow-run-id <id>      Additional run id to keep during stale-artifact cleanup checks (repeatable)
   -h, --help               Show this help
@@ -50,6 +58,22 @@ while [[ $# -gt 0 ]]; do
     --runbook)
       RUNBOOK="$2"
       shift 2
+      ;;
+    --published-root)
+      PUBLISHED_ROOT="$2"
+      shift 2
+      ;;
+    --report-link-base)
+      REPORT_LINK_BASE="$2"
+      shift 2
+      ;;
+    --notes-link-base)
+      NOTES_LINK_BASE="$2"
+      shift 2
+      ;;
+    --package-only)
+      PACKAGE_ONLY=1
+      shift
       ;;
     --canonical-run-id)
       CANONICAL_RUN_ID="$2"
@@ -84,6 +108,9 @@ fi
 if [[ "$RUNBOOK" != /* ]]; then
   RUNBOOK="${ROOT_DIR}/${RUNBOOK}"
 fi
+PUBLISHED_ROOT="${PUBLISHED_ROOT:-${ROOT_DIR}/cluster/published/current}"
+REPORT_LINK_BASE="${REPORT_LINK_BASE:-$(dirname "$REPORT")}"
+NOTES_LINK_BASE="${NOTES_LINK_BASE:-$(dirname "$NOTES")}"
 
 failures=0
 warns=0
@@ -114,36 +141,26 @@ require_file() {
 has_header() {
   local file="$1"
   local header="$2"
-  rg -n --fixed-strings "${header}" "${file}" >/dev/null 2>&1
+  grep -Fq -- "$header" "$file"
 }
 
-section_body() {
+section_contains() {
   local file="$1"
   local header="$2"
-  awk -v header="$header" '
+  local pattern="$3"
+  awk -v header="$header" -v pattern="$pattern" '
     $0 == header {in_section=1; next}
     in_section && /^## / {exit}
-    in_section {print}
+    in_section && $0 ~ pattern {found=1; exit}
+    END {exit !found}
   ' "$file"
-}
-
-section_has_table() {
-  local file="$1"
-  local header="$2"
-  section_body "$file" "$header" | rg -q '^\| .*\|'
-}
-
-section_has_visual() {
-  local file="$1"
-  local header="$2"
-  section_body "$file" "$header" | rg -q '<img '
 }
 
 require_contains() {
   local file="$1"
   local needle="$2"
   local desc="$3"
-  if rg -F -- "$needle" "$file" >/dev/null 2>&1; then
+  if grep -Fq -- "$needle" "$file"; then
     pass "$desc"
   else
     fail "$desc"
@@ -154,7 +171,7 @@ forbid_contains() {
   local file="$1"
   local needle="$2"
   local desc="$3"
-  if rg -F -- "$needle" "$file" >/dev/null 2>&1; then
+  if grep -Fq -- "$needle" "$file"; then
     fail "$desc"
   else
     pass "$desc"
@@ -176,7 +193,7 @@ check_table_forward_section() {
     fail "table-forward check cannot run; missing header: ${header}"
     return
   fi
-  if section_has_table "$REPORT" "$header"; then
+  if section_contains "$REPORT" "$header" '^[|] .*[|]'; then
     pass "table-forward content present: ${header}"
   else
     fail "section is not table-forward: ${header}"
@@ -261,7 +278,7 @@ visual_sections=(
 
 for header in "${visual_sections[@]}"; do
   if has_header "$REPORT" "$header"; then
-    if section_has_visual "$REPORT" "$header"; then
+    if section_contains "$REPORT" "$header" '<img '; then
       pass "visual present in section: ${header}"
     else
       fail "missing visual in section: ${header}"
@@ -305,44 +322,56 @@ require_contains "$RUNBOOK" "operator_checks_dashboard" "runbook references oper
 forbid_contains "$REPORT" "## Normal vs Weird Log" "legacy split header absent: ## Normal vs Weird Log"
 forbid_contains "$REPORT" "## Weird / New / Interesting Findings" "legacy split header absent: ## Weird / New / Interesting Findings"
 
-if ! rg -n '(published/current/structured|cluster/published/.*/structured|results/structured|cluster/runs/.*/structured|runs/.*/structured)/.*\.(json|csv|jsonl|txt)' "$REPORT" >/dev/null 2>&1; then
+if ! grep -Eq '(\.\./structured|published/current/structured|cluster/published/.*/structured|results/structured|cluster/runs/.*/structured|runs/.*/structured)/.*\.(json|csv|jsonl|txt)' "$REPORT"; then
   fail "no structured artifact links found in report"
 else
   pass "structured artifact links present"
 fi
 
 # Validate local markdown links (report+notes+template+runbook) point to existing artifacts.
-link_check_out="$(python3 - "$REPORT" "$NOTES" "$TEMPLATE" "$RUNBOOK" <<'PY'
+check_local_links() {
+  python3 - "$@" <<'PY'
+import os
 import re
 import sys
 from pathlib import Path
+from urllib.parse import unquote, urlsplit
 
-files = [Path(p) for p in sys.argv[1:]]
+root, published, report_base, notes_base = map(Path, sys.argv[1:5])
+report, notes, template, runbook = map(Path, sys.argv[5:])
+published_destination = root.resolve() / "cluster" / "published" / "current"
+files = ((report, report_base), (notes, notes_base), (template, template.parent), (runbook, runbook.parent))
 
 def is_placeholder(target: str) -> bool:
     return any(x in target for x in ("<RUN_ID>", "<run_id>", "<hosts>", "<label>", "${", "{RUN_ID}", "<"))
 
 def iter_links(text: str):
-    # Markdown: [text](target)
-    for m in re.finditer(r"\[[^\]]+\]\(([^)]+)\)", text):
-        yield m.group(1).strip()
-    # HTML: href="..." and src="..."
-    for m in re.finditer(r'(?:href|src)=\"([^\"]+)\"', text):
-        yield m.group(1).strip()
+    link_pattern = re.compile(
+        r'''(?:\]\(\s*|^[ \t]*\[[^\]\n]+\]:[ \t]+)(?:<([^>\n]+)>|([^\s)<>]+))'''
+        r'''|\b(?:href|src)\s*=\s*["']([^"']+)["']''',
+        re.MULTILINE | re.IGNORECASE,
+    )
+    for angle_link, markdown_link, html_link in link_pattern.findall(text):
+        yield angle_link or markdown_link or html_link
 
 missing = []
-for path in files:
-    base = path.parent
+for path, base in files:
     text = path.read_text(encoding="utf-8", errors="replace")
     for raw in iter_links(text):
-        if not raw or raw.startswith("#") or "://" in raw or raw.startswith("mailto:"):
+        try:
+            url = urlsplit(raw)
+        except ValueError:
+            missing.append((str(path), raw, "invalid URL"))
             continue
-        # Strip anchors and any optional markdown title.
-        target = raw.split()[0].split("#", 1)[0]
-        if not target or is_placeholder(target):
+        if url.scheme or url.netloc or not url.path:
             continue
+        if is_placeholder(url.path):
+            continue
+        target = unquote(url.path)
         tpath = Path(target)
-        resolved = tpath if tpath.is_absolute() else (base / tpath)
+        resolved = Path(os.path.abspath(base / tpath))
+        if resolved.is_relative_to(published_destination):
+            resolved = published / resolved.relative_to(published_destination)
         if not resolved.exists():
             missing.append((str(path), target, str(resolved)))
 
@@ -353,14 +382,17 @@ if missing:
 
 print("LINKS ok")
 PY
-)" || link_rc=$?
+}
+link_check_out="$(check_local_links "$ROOT_DIR" "$PUBLISHED_ROOT" "$REPORT_LINK_BASE" "$NOTES_LINK_BASE" "$REPORT" "$NOTES" "$TEMPLATE" "$RUNBOOK")" || link_rc=$?
 link_rc="${link_rc:-0}"
 if [[ "$link_rc" -eq 0 ]]; then
   pass "local link check passed (${link_check_out})"
-else
+elif [[ -n "$link_check_out" ]]; then
   while IFS= read -r line; do
     [[ -n "$line" ]] && fail "local link missing: ${line}"
   done <<< "$link_check_out"
+else
+  fail "local link validator failed (exit ${link_rc})"
 fi
 
 # Canonical run id sync between report and notes.
@@ -395,6 +427,28 @@ if [[ -n "$CANONICAL_RUN_ID" ]]; then
   fi
 fi
 
+published_run_id="$(python3 - "$PUBLISHED_ROOT/manifest.json" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+try:
+    manifest = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+    run_id = manifest.get("run_id") if isinstance(manifest, dict) else None
+    if not isinstance(run_id, str) or not run_id:
+        raise ValueError("missing run ID")
+    print(run_id)
+except (OSError, ValueError) as exc:
+    print(f"Invalid published manifest: {exc}", file=sys.stderr)
+    sys.exit(1)
+PY
+)" || published_run_id=""
+if [[ -n "$published_run_id" && "$published_run_id" == "$report_run_id" && "$published_run_id" == "$notes_run_id" ]]; then
+  pass "published manifest, report, and notes identify the same run (${published_run_id})"
+else
+  fail "published manifest, report, and notes must identify one run (manifest=${published_run_id:-missing}, report=${report_run_id:-missing}, notes=${notes_run_id:-missing})"
+fi
+
 # Stale artifact hygiene:
 # For any run id discovered via *_manifest.json (except canonical and allowlisted),
 # fail if artifacts remain while that run id is not linked by report/notes markdown links.
@@ -403,10 +457,19 @@ if [[ -n "$CANONICAL_RUN_ID" ]]; then
   effective_canonical_run_id="$CANONICAL_RUN_ID"
 fi
 
-if [[ -z "$effective_canonical_run_id" ]]; then
+echo "Package validation: failures=${failures}"
+if [[ "$PACKAGE_ONLY" -eq 1 ]]; then
+  echo "Stale-artifact hygiene: not requested"
+elif [[ -z "$effective_canonical_run_id" ]]; then
   fail "cannot run stale-artifact hygiene check without canonical run id"
 else
-  stale_output="$(python3 - "$ROOT_DIR" "$REPORT" "$NOTES" "$effective_canonical_run_id" "${ALLOW_RUN_IDS[@]}" <<'PY'
+  hygiene_args=("$ROOT_DIR" "$REPORT" "$NOTES" "$effective_canonical_run_id")
+  # Bash 3.2 rejects expansion of an empty array under nounset.
+  if [[ "${#ALLOW_RUN_IDS[@]}" -gt 0 ]]; then
+    hygiene_args+=("${ALLOW_RUN_IDS[@]}")
+  fi
+  stale_rc=0
+  stale_output="$(python3 - "${hygiene_args[@]}" <<'PY'
 import pathlib
 import json
 import re
@@ -415,8 +478,8 @@ import sys
 root = pathlib.Path(sys.argv[1])
 report_path = pathlib.Path(sys.argv[2])
 notes_path = pathlib.Path(sys.argv[3])
-report = report_path.read_text()
-notes = notes_path.read_text()
+report = report_path.read_text(encoding="utf-8")
+notes = notes_path.read_text(encoding="utf-8")
 canonical = sys.argv[4]
 allow = set(sys.argv[5:])
 
@@ -517,17 +580,18 @@ if stale:
 print("STALE none")
 PY
 )" || stale_rc=$?
-  stale_rc="${stale_rc:-0}"
   if [[ "$stale_rc" -eq 0 ]]; then
     pass "stale-artifact hygiene check passed (${stale_output})"
-  else
+  elif [[ "$stale_rc" -eq 2 && -n "$stale_output" ]]; then
     while IFS= read -r line; do
       [[ -n "$line" ]] && fail "stale artifacts detected: ${line}"
     done <<< "$stale_output"
+  else
+    fail "stale-artifact hygiene check failed (exit ${stale_rc})"
   fi
 fi
 
-if rg -n 'TODO|TBD|FIXME' "$REPORT" >/dev/null 2>&1; then
+if grep -Eq 'TODO|TBD|FIXME' "$REPORT"; then
   warn "report contains TODO/TBD/FIXME placeholders"
 else
   pass "no TODO/TBD/FIXME placeholders found"

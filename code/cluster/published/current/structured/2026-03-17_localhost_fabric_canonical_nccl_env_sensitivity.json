@@ -1,0 +1,94 @@
+{
+  "baseline_peak_busbw_gbps": 0.0,
+  "baseline_profile": "baseline_auto",
+  "best_peak_busbw_gbps": 0.0,
+  "best_profile": "baseline_auto",
+  "failure_count": 0,
+  "gpus_per_node": 1,
+  "hosts": [
+    "localhost"
+  ],
+  "profiles": [
+    {
+      "env": {
+        "NCCL_CROSS_NIC": null,
+        "NCCL_IB_QPS_PER_CONNECTION": null,
+        "NCCL_MAX_CTAS": null,
+        "NCCL_MIN_CTAS": null
+      },
+      "output_json": "/home/operator/ai-performance-engineering/code/cluster/runs/2026-03-17_localhost_fabric_canonical/structured/2026-03-17_localhost_fabric_canonical_nccl_env_baseline_auto_nccl.json",
+      "peak_busbw_gbps": 0.0,
+      "profile": "baseline_auto",
+      "speedup_vs_baseline": null,
+      "status": "ok"
+    },
+    {
+      "env": {
+        "NCCL_CROSS_NIC": "0",
+        "NCCL_IB_QPS_PER_CONNECTION": null,
+        "NCCL_MAX_CTAS": null,
+        "NCCL_MIN_CTAS": null
+      },
+      "output_json": "/home/operator/ai-performance-engineering/code/cluster/runs/2026-03-17_localhost_fabric_canonical/structured/2026-03-17_localhost_fabric_canonical_nccl_env_cross_nic_0_nccl.json",
+      "peak_busbw_gbps": 0.0,
+      "profile": "cross_nic_0",
+      "speedup_vs_baseline": null,
+      "status": "ok"
+    },
+    {
+      "env": {
+        "NCCL_CROSS_NIC": "1",
+        "NCCL_IB_QPS_PER_CONNECTION": null,
+        "NCCL_MAX_CTAS": null,
+        "NCCL_MIN_CTAS": null
+      },
+      "output_json": "/home/operator/ai-performance-engineering/code/cluster/runs/2026-03-17_localhost_fabric_canonical/structured/2026-03-17_localhost_fabric_canonical_nccl_env_cross_nic_1_nccl.json",
+      "peak_busbw_gbps": 0.0,
+      "profile": "cross_nic_1",
+      "speedup_vs_baseline": null,
+      "status": "ok"
+    },
+    {
+      "env": {
+        "NCCL_CROSS_NIC": "2",
+        "NCCL_IB_QPS_PER_CONNECTION": null,
+        "NCCL_MAX_CTAS": null,
+        "NCCL_MIN_CTAS": null
+      },
+      "output_json": "/home/operator/ai-performance-engineering/code/cluster/runs/2026-03-17_localhost_fabric_canonical/structured/2026-03-17_localhost_fabric_canonical_nccl_env_cross_nic_2_nccl.json",
+      "peak_busbw_gbps": 0.0,
+      "profile": "cross_nic_2",
+      "speedup_vs_baseline": null,
+      "status": "ok"
+    },
+    {
+      "env": {
+        "NCCL_CROSS_NIC": null,
+        "NCCL_IB_QPS_PER_CONNECTION": "4",
+        "NCCL_MAX_CTAS": null,
+        "NCCL_MIN_CTAS": null
+      },
+      "output_json": "/home/operator/ai-performance-engineering/code/cluster/runs/2026-03-17_localhost_fabric_canonical/structured/2026-03-17_localhost_fabric_canonical_nccl_env_qps_4_nccl.json",
+      "peak_busbw_gbps": 0.0,
+      "profile": "qps_4",
+      "speedup_vs_baseline": null,
+      "status": "ok"
+    },
+    {
+      "env": {
+        "NCCL_CROSS_NIC": null,
+        "NCCL_IB_QPS_PER_CONNECTION": null,
+        "NCCL_MAX_CTAS": "16",
+        "NCCL_MIN_CTAS": "16"
+      },
+      "output_json": "/home/operator/ai-performance-engineering/code/cluster/runs/2026-03-17_localhost_fabric_canonical/structured/2026-03-17_localhost_fabric_canonical_nccl_env_ctas_16_16_nccl.json",
+      "peak_busbw_gbps": 0.0,
+      "profile": "ctas_16_16",
+      "speedup_vs_baseline": null,
+      "status": "ok"
+    }
+  ],
+  "run_id": "2026-03-17_localhost_fabric_canonical",
+  "status": "ok",
+  "test": "nccl_env_sensitivity"
+}

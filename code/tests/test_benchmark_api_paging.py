@@ -19,7 +19,9 @@ def _configure_with_sample_data(tmp_path, monkeypatch):
                         "example": "gemm",
                         "best_speedup": 2.0,
                         "baseline_time_ms": 100.0,
-                        "optimizations": [],
+                        "optimizations": [
+                            {"status": "succeeded", "speedup": 2.0, "time_ms": 50.0}
+                        ],
                         "status": "succeeded",
                     },
                     {
@@ -77,14 +79,22 @@ def test_benchmark_data_pagination_and_filters(tmp_path, monkeypatch):
     result = benchmark_data(
         {"page": 1, "page_size": 1, "sort_field": "speedup", "sort_dir": "desc"}
     )
-    assert result["pagination"]["total"] == 6
+    assert result["pagination"]["total"] == 1
     assert len(result["benchmarks"]) == 1
-    assert result["benchmarks"][0]["name"] == "transfer"
+    assert result["benchmarks"][0]["name"] == "gemm"
     assert result["summary"]["total"] == 6
 
     filtered_payload = benchmark_data({"status": "succeeded"})
     assert filtered_payload["pagination"]["total"] == 1
     assert filtered_payload["benchmarks"][0]["name"] == "gemm"
+
+    failures = benchmark_data({"status": "failed", "page_size": 2})
+    assert failures["pagination"]["total"] == 4
+    assert failures["pagination"]["total_pages"] == 2
+    assert [row["name"] for row in failures["benchmarks"]] == ["transfer", "flat_speed"]
+    assert failures["benchmarks"][0]["source_file"].endswith("benchmark_test_results.json")
+    assert failures["summary"]["max_speedup"] == 2.0
+    assert benchmark_data({"status": ["skipped", "succeeded"]})["pagination"]["total"] == 2
 
 
 def test_benchmark_overview_summary(tmp_path, monkeypatch):
@@ -94,4 +104,6 @@ def test_benchmark_overview_summary(tmp_path, monkeypatch):
     assert overview["status_counts"]["succeeded"] == 1
     assert overview["status_counts"]["failed"] == 4
     assert overview["status_counts"]["skipped"] == 1
-    assert overview["top_speedups"][0]["name"] == "gemm"
+    assert [row["name"] for row in overview["top_speedups"]] == ["gemm"]
+    assert overview["summary"]["avg_speedup"] == 2.0
+    assert overview["chapter_stats"][1]["max_speedup"] == 0.0

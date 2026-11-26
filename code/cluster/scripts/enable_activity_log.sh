@@ -36,7 +36,7 @@ done
 
 if [[ -z "$LOG_FILE" ]]; then
   resolve_cluster_artifact_dirs "$ROOT_DIR" "$RUN_ID"
-  LOG_FILE="${CLUSTER_RAW_DIR_EFFECTIVE}/activity/${RUN_ID}_shell.log"
+  LOG_FILE="${CLUSTER_RUN_DIR_EFFECTIVE}/progress/activity/${RUN_ID}_shell.log"
 fi
 
 mkdir -p "$(dirname "$LOG_FILE")"

@@ -1,0 +1,240 @@
+{
+  "bs_rand": "4K",
+  "bs_seq": "1M",
+  "file_size": "8G",
+  "iodepth": 64,
+  "label": "localhost",
+  "numjobs": 4,
+  "raw": {
+    "rand_read_jsons": [
+      "/home/operator/ai-performance-engineering/code/cluster/runs/2026-03-17_localhost_fabric_canonical/raw/2026-03-17_localhost_fabric_canonical_localhost_fio/rand_read_r1.json",
+      "/home/operator/ai-performance-engineering/code/cluster/runs/2026-03-17_localhost_fabric_canonical/raw/2026-03-17_localhost_fabric_canonical_localhost_fio/rand_read_r2.json",
+      "/home/operator/ai-performance-engineering/code/cluster/runs/2026-03-17_localhost_fabric_canonical/raw/2026-03-17_localhost_fabric_canonical_localhost_fio/rand_read_r3.json"
+    ],
+    "rand_write_jsons": [
+      "/home/operator/ai-performance-engineering/code/cluster/runs/2026-03-17_localhost_fabric_canonical/raw/2026-03-17_localhost_fabric_canonical_localhost_fio/rand_write_r1.json",
+      "/home/operator/ai-performance-engineering/code/cluster/runs/2026-03-17_localhost_fabric_canonical/raw/2026-03-17_localhost_fabric_canonical_localhost_fio/rand_write_r2.json",
+      "/home/operator/ai-performance-engineering/code/cluster/runs/2026-03-17_localhost_fabric_canonical/raw/2026-03-17_localhost_fabric_canonical_localhost_fio/rand_write_r3.json"
+    ],
+    "seq_read_jsons": [
+      "/home/operator/ai-performance-engineering/code/cluster/runs/2026-03-17_localhost_fabric_canonical/raw/2026-03-17_localhost_fabric_canonical_localhost_fio/seq_read_r1.json",
+      "/home/operator/ai-performance-engineering/code/cluster/runs/2026-03-17_localhost_fabric_canonical/raw/2026-03-17_localhost_fabric_canonical_localhost_fio/seq_read_r2.json",
+      "/home/operator/ai-performance-engineering/code/cluster/runs/2026-03-17_localhost_fabric_canonical/raw/2026-03-17_localhost_fabric_canonical_localhost_fio/seq_read_r3.json"
+    ],
+    "seq_write_jsons": [
+      "/home/operator/ai-performance-engineering/code/cluster/runs/2026-03-17_localhost_fabric_canonical/raw/2026-03-17_localhost_fabric_canonical_localhost_fio/seq_write_r1.json",
+      "/home/operator/ai-performance-engineering/code/cluster/runs/2026-03-17_localhost_fabric_canonical/raw/2026-03-17_localhost_fabric_canonical_localhost_fio/seq_write_r2.json",
+      "/home/operator/ai-performance-engineering/code/cluster/runs/2026-03-17_localhost_fabric_canonical/raw/2026-03-17_localhost_fabric_canonical_localhost_fio/seq_write_r3.json"
+    ]
+  },
+  "repeats": 3,
+  "results": {
+    "rand_read": {
+      "bw_mb_s": 263.79455375671387,
+      "iops": 67531.405783,
+      "p99_lat_ms": null,
+      "per_repeat": [
+        {
+          "bw_mb_s": 262.4766788482666,
+          "iops": 67194.029851,
+          "p99_lat_ms": null
+        },
+        {
+          "bw_mb_s": 263.79455375671387,
+          "iops": 67531.405783,
+          "p99_lat_ms": null
+        },
+        {
+          "bw_mb_s": 281.8737516403198,
+          "iops": 72159.680639,
+          "p99_lat_ms": null
+        }
+      ],
+      "repeat_statistics": {
+        "bw_mb_s": {
+          "count": 3,
+          "cv_pct": 3.2851573919947197,
+          "max": 281.8737516403198,
+          "mean": 269.3816614151001,
+          "median": 263.79455375671387,
+          "min": 262.4766788482666,
+          "stdev": 8.849611562656348
+        },
+        "iops": {
+          "count": 3,
+          "cv_pct": 3.285157505284686,
+          "max": 72159.680639,
+          "mean": 68961.70542433333,
+          "median": 67531.405783,
+          "min": 67194.029851,
+          "stdev": 2265.5006415198027
+        },
+        "p99_lat_ms": {
+          "count": 0,
+          "cv_pct": null,
+          "max": null,
+          "mean": null,
+          "median": null,
+          "min": null,
+          "stdev": null
+        }
+      }
+    },
+    "rand_write": {
+      "bw_mb_s": 163.12360858917236,
+      "iops": 41759.643917,
+      "p99_lat_ms": null,
+      "per_repeat": [
+        {
+          "bw_mb_s": 156.68103408813477,
+          "iops": 40110.344828,
+          "p99_lat_ms": null
+        },
+        {
+          "bw_mb_s": 163.12360858917236,
+          "iops": 41759.643917,
+          "p99_lat_ms": null
+        },
+        {
+          "bw_mb_s": 165.33484268188477,
+          "iops": 42325.71996,
+          "p99_lat_ms": null
+        }
+      ],
+      "repeat_statistics": {
+        "bw_mb_s": {
+          "count": 3,
+          "cv_pct": 2.270055272787948,
+          "max": 165.33484268188477,
+          "mean": 161.7131617863973,
+          "median": 163.12360858917236,
+          "min": 156.68103408813477,
+          "stdev": 3.6709781559242165
+        },
+        "iops": {
+          "count": 3,
+          "cv_pct": 2.2700553745407213,
+          "max": 42325.71996,
+          "mean": 41398.56956833333,
+          "median": 41759.643917,
+          "min": 40110.344828,
+          "stdev": 939.7704534689303
+        },
+        "p99_lat_ms": {
+          "count": 0,
+          "cv_pct": null,
+          "max": null,
+          "mean": null,
+          "median": null,
+          "min": null,
+          "stdev": null
+        }
+      }
+    },
+    "seq_read": {
+      "bw_mb_s": 1136.5902290344238,
+      "iops": 1136.590229,
+      "p99_lat_ms": null,
+      "per_repeat": [
+        {
+          "bw_mb_s": 1107.4626865386963,
+          "iops": 1107.462687,
+          "p99_lat_ms": null
+        },
+        {
+          "bw_mb_s": 1136.5902290344238,
+          "iops": 1136.590229,
+          "p99_lat_ms": null
+        },
+        {
+          "bw_mb_s": 1182.8171825408936,
+          "iops": 1182.817183,
+          "p99_lat_ms": null
+        }
+      ],
+      "repeat_statistics": {
+        "bw_mb_s": {
+          "count": 3,
+          "cv_pct": 2.716143324771992,
+          "max": 1182.8171825408936,
+          "mean": 1142.2900327046711,
+          "median": 1136.5902290344238,
+          "min": 1107.4626865386963,
+          "stdev": 31.026234472843733
+        },
+        "iops": {
+          "count": 3,
+          "cv_pct": 2.7161433266435284,
+          "max": 1182.817183,
+          "mean": 1142.290033,
+          "median": 1136.590229,
+          "min": 1107.462687,
+          "stdev": 31.02623450224366
+        },
+        "p99_lat_ms": {
+          "count": 0,
+          "cv_pct": null,
+          "max": null,
+          "mean": null,
+          "median": null,
+          "min": null,
+          "stdev": null
+        }
+      }
+    },
+    "seq_write": {
+      "bw_mb_s": 698.8071565628052,
+      "iops": 698.807157,
+      "p99_lat_ms": null,
+      "per_repeat": [
+        {
+          "bw_mb_s": 721.3930339813232,
+          "iops": 721.393035,
+          "p99_lat_ms": null
+        },
+        {
+          "bw_mb_s": 682.2244281768799,
+          "iops": 682.224429,
+          "p99_lat_ms": null
+        },
+        {
+          "bw_mb_s": 698.8071565628052,
+          "iops": 698.807157,
+          "p99_lat_ms": null
+        }
+      ],
+      "repeat_statistics": {
+        "bw_mb_s": {
+          "count": 3,
+          "cv_pct": 2.2906405601219633,
+          "max": 721.3930339813232,
+          "mean": 700.8082062403361,
+          "median": 698.8071565628052,
+          "min": 682.2244281768799,
+          "stdev": 16.05299702080432
+        },
+        "iops": {
+          "count": 3,
+          "cv_pct": 2.290640571854434,
+          "max": 721.393035,
+          "mean": 700.808207,
+          "median": 698.807157,
+          "min": 682.224429,
+          "stdev": 16.052997120427605
+        },
+        "p99_lat_ms": {
+          "count": 0,
+          "cv_pct": null,
+          "max": null,
+          "mean": null,
+          "median": null,
+          "min": null,
+          "stdev": null
+        }
+      }
+    }
+  },
+  "run_id": "2026-03-17_localhost_fabric_canonical",
+  "runtime_s": 1,
+  "work_dir": "/tmp/aisp_fio_2026-03-17_localhost_fabric_canonical_localhost"
+}

@@ -1,17 +1,21 @@
 from __future__ import annotations
 
+import logging
 import socket
 import subprocess
 import threading
 import time
 import json
 import sys
+import traceback
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from cluster.scripts.promotion_process import run_promotion_process
 from core.harness.progress import ProgressEvent, ProgressRecorder
 
 _CLUSTER_PROGRESS_POLL_SECONDS = 2.0
+_LOGGER = logging.getLogger(__name__)
 
 
 def _repo_root() -> Path:
@@ -695,16 +699,24 @@ def _run_cluster_suite_with_progress(
         )
 
 
-def _run_cmd(cmd: List[str], *, cwd: Optional[Path] = None, timeout_seconds: Optional[int] = None) -> Dict[str, Any]:
+def _subprocess_text(output: str | bytes | None) -> str:
+    return output.decode(errors="replace") if isinstance(output, bytes) else output or ""
+
+
+def _run_cmd(
+    cmd: List[str],
+    *,
+    cwd: Optional[Path] = None,
+    timeout_seconds: Optional[int] = None,
+    promotion: bool = False,
+) -> Dict[str, Any]:
     start = time.monotonic()
+    timeout = timeout_seconds if timeout_seconds and timeout_seconds > 0 else None
     try:
-        proc = subprocess.run(
-            cmd,
-            cwd=str(cwd) if cwd else None,
-            capture_output=True,
-            text=True,
-            timeout=timeout_seconds if timeout_seconds and timeout_seconds > 0 else None,
-        )
+        if promotion:
+            proc = run_promotion_process(cmd, cwd=cwd, timeout=timeout)
+        else:
+            proc = subprocess.run(cmd, cwd=str(cwd) if cwd else None, capture_output=True, text=True, timeout=timeout)
         duration_ms = int((time.monotonic() - start) * 1000)
         return {
             "command": cmd,
@@ -718,19 +730,33 @@ def _run_cmd(cmd: List[str], *, cwd: Optional[Path] = None, timeout_seconds: Opt
         return {
             "command": cmd,
             "returncode": None,
-            "stdout": (exc.stdout or ""),
-            "stderr": (exc.stderr or ""),
+            "stdout": _subprocess_text(exc.stdout),
+            "stderr": _subprocess_text(exc.stderr),
             "error": f"timeout after {timeout_seconds}s",
             "duration_ms": duration_ms,
+            **({"timed_out": True, "published": None} if promotion else {}),
         }
     except Exception as exc:
         duration_ms = int((time.monotonic() - start) * 1000)
+        error_type = type(exc).__name__
+        _LOGGER.error(
+            "Could not launch cluster command (%s).\n%s",
+            error_type,
+            "".join(traceback.format_tb(exc.__traceback__)),
+        )
+        if isinstance(exc, FileNotFoundError):
+            error = "Could not launch cluster command. The executable or working directory was not found."
+        elif isinstance(exc, PermissionError):
+            error = "Could not launch cluster command. Check permissions on the executable and working directory."
+        else:
+            error = "Could not launch cluster command."
         return {
             "command": cmd,
             "returncode": None,
             "stdout": "",
             "stderr": "",
-            "error": str(exc),
+            "error": error,
+            "error_type": error_type,
             "duration_ms": duration_ms,
         }
 
@@ -1240,6 +1266,8 @@ def validate_field_report_requirements(
     runbook: Optional[str] = None,
     canonical_run_id: Optional[str] = None,
     allow_run_id: Optional[List[str]] = None,
+    published_root: Optional[str] = None,
+    package_only: bool = False,
     timeout_seconds: int = 120,
 ) -> Dict[str, Any]:
     """Run the field-report validator script and return stdout/stderr."""
@@ -1257,6 +1285,10 @@ def validate_field_report_requirements(
         cmd.extend(["--template", str(template)])
     if runbook:
         cmd.extend(["--runbook", str(runbook)])
+    if published_root:
+        cmd.extend(["--published-root", str(published_root)])
+    if package_only:
+        cmd.append("--package-only")
     if canonical_run_id:
         cmd.extend(["--canonical-run-id", str(canonical_run_id)])
     if allow_run_id:
@@ -1387,7 +1419,7 @@ def promote_cluster_run(
     if cleanup:
         cmd.append("--cleanup")
 
-    result = _run_cmd(cmd, cwd=root, timeout_seconds=int(timeout_seconds))
+    result = _run_cmd(cmd, cwd=root, timeout_seconds=int(timeout_seconds), promotion=True)
     success = result.get("returncode") == 0
     payload: Dict[str, Any] = {
         "success": bool(success),
@@ -1406,6 +1438,8 @@ def promote_cluster_run(
         "allow_run_ids": allow,
         **result,
     }
+    if result.get("timed_out"):
+        return payload
     stdout = result.get("stdout") or ""
     try:
         parsed = json.loads(stdout)
@@ -1434,6 +1468,8 @@ def watch_cluster_run_for_promotion(
     repo_root: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Attach a detached watcher that promotes a completed run once required artifacts are present."""
+    from cluster.scripts.watch_run_for_promotion import watcher_receipt_paths, watcher_run_dir
+
     run_id_value = (run_id or "").strip()
     if not run_id_value:
         return {"success": False, "error": "run_id is required"}
@@ -1441,22 +1477,21 @@ def watch_cluster_run_for_promotion(
         return {"success": False, "error": "pid must be a positive integer"}
 
     root = Path(repo_root).resolve() if repo_root else _repo_root()
-    cluster_root = root / "cluster"
     script = _watch_run_for_promotion_script()
-    run_dir = cluster_root / "runs" / run_id_value
     if not script.exists():
         return {"success": False, "error": f"Missing script: {script}"}
-    if not run_dir.exists():
-        return {"success": False, "error": f"Missing run dir: {run_dir}"}
+    try:
+        run_dir = watcher_run_dir(root, run_id_value)
+        watch_status_path, launch_log_path, _ = watcher_receipt_paths(run_dir)
+    except ValueError as exc:
+        return {"success": False, "error": str(exc)}
 
     publish_report_value = (publish_report_path or "cluster/field-report-localhost.md").strip()
     publish_notes_value = (publish_notes_path or "cluster/field-report-localhost-notes.md").strip()
     allow = [rid.strip() for rid in (allow_run_ids or []) if isinstance(rid, str) and rid.strip()]
 
-    raw_dir = run_dir / "raw"
-    raw_dir.mkdir(parents=True, exist_ok=True)
-    launch_log_path = raw_dir / f"{run_id_value}_postrun_promote_watch.launch.log"
-    watch_status_path = raw_dir / f"{run_id_value}_postrun_promote_watch_status.json"
+    launch_log_path.parent.mkdir(parents=True, exist_ok=True)
+    legacy_status_path = run_dir / "raw" / watch_status_path.name
 
     cmd: List[str] = [
         sys.executable,
@@ -1502,5 +1537,10 @@ def watch_cluster_run_for_promotion(
         "watch_command": cmd,
         "watch_status_path": str(watch_status_path),
         "launch_log_path": str(launch_log_path),
+        **(
+            {"legacy_watch_status_path": str(legacy_status_path)}
+            if legacy_status_path.is_file()
+            else {}
+        ),
         **_cluster_run_layout(run_id_value, repo_root=root),
     }

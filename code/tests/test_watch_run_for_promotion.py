@@ -5,6 +5,11 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
+from cluster.scripts import watch_run_for_promotion as watcher
+from cluster.scripts import write_manifest
+
 
 def _write_json(path: Path, payload: object) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -71,11 +76,36 @@ def _seed_canonical_run(cluster_root: Path, run_id: str, label: str) -> Path:
     return run_dir
 
 
-def test_watch_run_for_promotion_publishes_completed_run(tmp_path: Path) -> None:
+@pytest.mark.parametrize("cleanup_blocked", [False, True])
+def test_watch_run_for_promotion_publishes_completed_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, cleanup_blocked: bool
+) -> None:
     repo_root = tmp_path / "repo"
     cluster_root = repo_root / "cluster"
     run_id = "2026-03-07_localhost_modern_profile_r99_full20b"
-    _seed_canonical_run(cluster_root, run_id, "localhost")
+    run_dir = _seed_canonical_run(cluster_root, run_id, "localhost")
+    status_filename = f"{run_id}_postrun_promote_watch_status.json"
+    legacy_status = run_dir / "raw" / status_filename
+    _write_json(legacy_status, {"status": "waiting"})
+    legacy_contents = legacy_status.read_bytes()
+    monkeypatch.setattr(write_manifest, "_git_provenance", lambda worktree: {
+        "commit": "a" * 40, "dirty": False, "probe_ok": True, "errors": [],
+    })
+    manifest, manifest_path = write_manifest.build_manifest_payload(
+        cluster_root=cluster_root,
+        run_id=run_id,
+        run_dir=run_dir,
+        include_figures=True,
+        hosts=["localhost"],
+        labels=["localhost"],
+        finalize=True,
+    )
+    _write_json(manifest_path, manifest)
+    assert f"raw/{status_filename}" in manifest["summary"]["sha256"]
+    stale = cluster_root / "runs/2026-03-06_comparison/raw/reference.json"
+    if cleanup_blocked:
+        _write_json(stale, {"retained": True})
+        (cluster_root / "field-report.md").write_text("[Reference](runs/2026-03-06_comparison/raw/reference.json)\n")
 
     script = Path(__file__).resolve().parents[1] / "cluster" / "scripts" / "watch_run_for_promotion.py"
     proc = subprocess.run(
@@ -92,19 +122,25 @@ def test_watch_run_for_promotion_publishes_completed_run(tmp_path: Path) -> None
             "0.01",
             "--skip-render-localhost-report",
             "--skip-validate-localhost-report",
+            *(["--cleanup"] if cleanup_blocked else []),
         ],
         check=False,
         capture_output=True,
         text=True,
     )
-    assert proc.returncode == 0, proc.stderr or proc.stdout
+    assert proc.returncode == (1 if cleanup_blocked else 0), proc.stderr or proc.stdout
 
-    watch_status = json.loads(
-        (cluster_root / "runs" / run_id / "raw" / f"{run_id}_postrun_promote_watch_status.json").read_text(encoding="utf-8")
-    )
+    watch_status = json.loads((run_dir / "progress" / status_filename).read_text(encoding="utf-8"))
     assert watch_status["status"] == "published"
-    assert (cluster_root / "published" / "current" / "manifest.json").exists()
-    assert (cluster_root / "runs" / run_id / "raw" / f"{run_id}_promote.log").exists()
+    assert watch_status["published"] is True
+    assert watch_status["success"] == (not cleanup_blocked)
+    if cleanup_blocked:
+        assert "Cleanup planning failed" in watch_status["error"]
+        assert stale.is_file()
+    assert (cluster_root / "published/current/manifest.json").read_bytes() == manifest_path.read_bytes()
+    assert (run_dir / "progress" / f"{run_id}_promote.log").is_file()
+    assert legacy_status.read_bytes() == legacy_contents
+    assert not (run_dir / "raw" / f"{run_id}_promote.log").exists()
 
 
 def test_watch_run_for_promotion_marks_failed_run_without_promoting(tmp_path: Path) -> None:
@@ -144,8 +180,66 @@ def test_watch_run_for_promotion_marks_failed_run_without_promoting(tmp_path: Pa
     assert proc.returncode == 1
 
     watch_status = json.loads(
-        (cluster_root / "runs" / run_id / "raw" / f"{run_id}_postrun_promote_watch_status.json").read_text(encoding="utf-8")
+        (cluster_root / "runs" / run_id / "progress" / f"{run_id}_postrun_promote_watch_status.json").read_text(encoding="utf-8")
     )
     assert watch_status["status"] == "run_failed"
     assert "fp4_checks" in watch_status["failed_steps"]
     assert not (cluster_root / "published" / "current").exists()
+
+
+def test_watch_run_records_promotion_timeout(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    run_id = "2026-03-07_watcher_outcome"
+    run_dir = _seed_canonical_run(tmp_path / "cluster", run_id, "localhost")
+    status_path, _, promotion_log = watcher.watcher_receipt_paths(run_dir)
+    monkeypatch.setattr(sys, "argv", [
+        "watch_run_for_promotion.py", "--repo-root", str(tmp_path), "--run-id", run_id,
+        "--pid", "999999", "--cleanup",
+    ])
+    monkeypatch.setattr(watcher, "_process_alive", lambda pid: False)
+
+    def promote(cmd: list[str], *, timeout: int, **kwargs: object) -> subprocess.CompletedProcess[str]:
+        raise subprocess.TimeoutExpired(cmd, timeout, output=b"", stderr=b"partial diagnostic")
+
+    monkeypatch.setattr(watcher, "run_promotion_process", promote)
+    assert watcher.main() == 1
+    status = json.loads(status_path.read_text())
+    log = json.loads(promotion_log.read_text())
+    assert status["success"] is False
+    assert status["status"] == "promote_timeout"
+    assert status["published"] is None
+    assert "timed out" in status["error"]
+    assert log["stderr"] == "partial diagnostic"
+
+
+@pytest.mark.parametrize("contents", ['[{"name":', '{"name": "discovery"}', '[{"exit_code": 0}]'])
+def test_watch_run_records_invalid_ledger(tmp_path, monkeypatch, contents):
+    run_id = "2026-03-07_invalid_ledger"
+    run_dir = _seed_canonical_run(tmp_path / "cluster", run_id, "localhost")
+    status_path, _, promotion_log = watcher.watcher_receipt_paths(run_dir)
+    (run_dir / "structured" / f"{run_id}_suite_steps.json").write_text(contents, encoding="utf-8")
+    monkeypatch.setattr(sys, "argv", [
+        "watch_run_for_promotion.py", "--repo-root", str(tmp_path), "--run-id", run_id, "--pid", "999999",
+    ])
+    monkeypatch.setattr(watcher, "_process_alive", lambda pid: False)
+
+    assert watcher.main() == 1
+    status = json.loads(status_path.read_text())
+    assert status["status"] == "run_failed"
+    assert status["failed_steps"] == ["suite_steps_invalid"]
+    assert "Unable to read suite steps" in status["error"]
+    assert not promotion_log.exists()
+
+
+def test_watcher_accepts_external_runs_directory_without_following_selected_run_symlinks(tmp_path: Path) -> None:
+    repo_root = tmp_path / "repo"
+    runs = tmp_path / "dedicated-runs"
+    run_dir = runs / "local-run"
+    run_dir.mkdir(parents=True)
+    cluster = repo_root / "cluster"
+    cluster.mkdir(parents=True)
+    (cluster / "runs").symlink_to(runs, target_is_directory=True)
+    assert watcher.watcher_run_dir(repo_root, run_dir.name) == run_dir.resolve()
+
+    (runs / "escaped-run").symlink_to(tmp_path, target_is_directory=True)
+    with pytest.raises(ValueError, match="Missing or invalid run directory"):
+        watcher.watcher_run_dir(repo_root, "escaped-run")

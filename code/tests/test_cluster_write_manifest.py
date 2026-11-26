@@ -376,6 +376,11 @@ def test_cluster_shell_final_manifest_write_follows_all_recorded_steps() -> None
 
     assert preliminary_index < report_index < final_index < exit_index
     assert script.rfind("run_step ", 0, final_index) == report_index
+    report_command = script[report_index:final_index]
+    assert '--report "${REPORTS_DIR}/field-report-localhost.md"' in report_command
+    assert '--notes "${REPORTS_DIR}/field-report-localhost-notes.md"' in report_command
+    assert "--publish-report" not in report_command
+    assert "--publish-notes" not in report_command
     assert (
         'python3 "${ROOT_DIR}/scripts/write_manifest.py" "${final_manifest_args[@]}"'
         in script[final_index:exit_index]

@@ -534,8 +534,9 @@ def test_w2_133_refresh_from_run_refuses_outlier_skewed_preview(tmp_path: Path) 
 
     assert summary["counts"]["rejected"] == 1
     assert summary["counts"]["applied"] == 0
-    stored = json.loads((chapter_dir / "expectations_b200.json").read_text(encoding="utf-8"))
-    assert stored["examples"] == {}
+    assert "Timing rejected" in summary["records"][0]["message"]
+    assert summary["updated_files"] == []
+    assert not (chapter_dir / "expectations_b200.json").exists()
 
 
 def test_w2_133_markdown_report_lists_refused_expectation_evidence(tmp_path: Path) -> None:

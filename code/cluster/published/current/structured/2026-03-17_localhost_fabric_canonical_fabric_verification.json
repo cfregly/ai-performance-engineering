@@ -1,0 +1,1126 @@
+{
+  "collection_mode": "verification",
+  "completeness": "full_stack_verified",
+  "evidence_refs": [
+    "structured/2026-03-17_localhost_fabric_canonical_localhost_meta.json",
+    "structured/2026-03-17_localhost_fabric_canonical_localhost_meta_nvlink_topology.json",
+    "structured/2026-03-17_localhost_fabric_canonical_nccl_env_sensitivity.json",
+    "structured/2026-03-17_localhost_fabric_canonical_node1_nccl.json"
+  ],
+  "fabric_family": "all",
+  "families": {
+    "infiniband": {
+      "completeness": "not_present",
+      "control_plane": {
+        "checks": [],
+        "status": "not_present"
+      },
+      "evidence_refs": [
+        "structured/2026-03-17_localhost_fabric_canonical_localhost_meta.json"
+      ],
+      "present": false,
+      "runtime": {
+        "evidence": {},
+        "status": "not_present"
+      },
+      "scenario_summary": {
+        "alltoall_peak_algbw_gbps": 0.0,
+        "capacity_and_path_visibility_ready": false,
+        "ibdiagnet_visible": false,
+        "linkinfo_visible": false,
+        "multi_node_nccl_peak_algbw_gbps": 0.0,
+        "multi_to_single_nccl_ratio": 0.0,
+        "routing_and_counter_verification_ready": false,
+        "routing_checks_ok": [],
+        "runtime_correlation_ready": false,
+        "runtime_interpretation": "Collect multi-node NCCL, all-to-all, and torchrun connectivity artifacts before drawing IB routing conclusions.",
+        "saquery_visible": false,
+        "single_node_nccl_peak_algbw_gbps": 0.0,
+        "subnet_discovery_visible": false,
+        "visible_hca_count": 0,
+        "visible_host_count": 0,
+        "visible_switch_count": 0,
+        "world_size": 0
+      }
+    },
+    "nvlink": {
+      "completeness": "full_stack_verified",
+      "control_plane": {
+        "checks": [
+          {
+            "error": "",
+            "http_status": 200,
+            "name": "services",
+            "result_size": 2,
+            "status": "ok",
+            "url": "https://nmx-endpoint.invalid/nmx/v1/services"
+          },
+          {
+            "error": "",
+            "http_status": 200,
+            "name": "compute_nodes",
+            "result_size": 18,
+            "status": "ok",
+            "url": "https://nmx-endpoint.invalid/nmx/v1/compute-nodes"
+          },
+          {
+            "error": "",
+            "http_status": 200,
+            "name": "gpus",
+            "result_size": 72,
+            "status": "ok",
+            "url": "https://nmx-endpoint.invalid/nmx/v1/gpus"
+          },
+          {
+            "error": "",
+            "http_status": 200,
+            "name": "switches",
+            "result_size": 18,
+            "status": "ok",
+            "url": "https://nmx-endpoint.invalid/nmx/v1/switches"
+          },
+          {
+            "error": "",
+            "http_status": 200,
+            "name": "switch_nodes",
+            "result_size": 9,
+            "status": "ok",
+            "url": "https://nmx-endpoint.invalid/nmx/v1/switch-nodes"
+          },
+          {
+            "error": "",
+            "http_status": 200,
+            "name": "chassis",
+            "result_size": 1,
+            "status": "ok",
+            "url": "https://nmx-endpoint.invalid/nmx/v1/chassis"
+          },
+          {
+            "error": "",
+            "http_status": 200,
+            "name": "ports",
+            "result_size": 2592,
+            "status": "ok",
+            "url": "https://nmx-endpoint.invalid/nmx/v1/ports"
+          },
+          {
+            "error": "",
+            "http_status": 200,
+            "name": "partitions",
+            "result_size": 3,
+            "status": "ok",
+            "url": "https://nmx-endpoint.invalid/nmx/v1/partitions"
+          },
+          {
+            "error": "",
+            "http_status": 200,
+            "name": "metrics",
+            "result_size": 5837788,
+            "status": "ok",
+            "url": "https://nmx-endpoint.invalid/nmx/v1/metrics"
+          }
+        ],
+        "nmx": {
+          "api_base": "https://nmx-endpoint.invalid/nmx/v1",
+          "partitions": {
+            "default_partition": null,
+            "partition_count": 3,
+            "partitions": [
+              {
+                "id": "fabric-id-01",
+                "member_count": 0,
+                "member_locations": [],
+                "name": "Test",
+                "partition_id": 2347,
+                "type": "NMX_PARTITION_TYPE_LOCATION_BASED"
+              },
+              {
+                "id": "fabric-id-02",
+                "member_count": 0,
+                "member_locations": [],
+                "name": "Nancy",
+                "partition_id": 2349,
+                "type": "NMX_PARTITION_TYPE_LOCATION_BASED"
+              },
+              {
+                "id": "fabric-id-03",
+                "member_count": 0,
+                "member_locations": [],
+                "name": "Luigi",
+                "partition_id": 2351,
+                "type": "NMX_PARTITION_TYPE_LOCATION_BASED"
+              }
+            ],
+            "scenario_answers": {
+              "create_command": "curl -k -X POST <nmx_api_base>/partitions -H \"Content-Type: application/json\" -d '{\"Name\":\"<partition-name>\",\"DomainUUID\":\"<DomainUUID>\",\"Members\":{\"locations\":[\"<chassis.slot.host.gpu>\"]}}' | jq",
+              "default_partition_member_count": 0,
+              "default_partition_present": false,
+              "delete_command": "curl -k -X DELETE <nmx_api_base>/partitions/<partition-id> | jq",
+              "inspect_command": "curl -k https://nmx-endpoint.invalid/nmx/v1/partitions | jq",
+              "operation_poll_path": "https://nmx-endpoint.invalid/nmx/v1/operations/<operation-id>",
+              "ready_for_new_partition_create": true,
+              "update_command": "curl -k -X PUT <nmx_api_base>/partitions/<partition-id> -H \"Content-Type: application/json\" -d '{\"DomainUUID\":\"<DomainUUID>\",\"Members\":{\"locations\":[\"<chassis.slot.host.gpu>\"]}}' | jq",
+              "update_flow": [
+                "Remove GPUs from the source partition first.",
+                "Poll the returned operationId until status=completed.",
+                "Update the target partition only after the GPUs are free.",
+                "DELETE frees the partition's GPUs back to the unassigned/default pool."
+              ]
+            },
+            "unassigned_gpu_count": 45,
+            "unassigned_gpu_locations": [
+              "gpu-location-01",
+              "gpu-location-02",
+              "gpu-location-03",
+              "gpu-location-04",
+              "gpu-location-05",
+              "gpu-location-06",
+              "gpu-location-07",
+              "gpu-location-08",
+              "gpu-location-09",
+              "gpu-location-10",
+              "gpu-location-11",
+              "gpu-location-12",
+              "gpu-location-13",
+              "gpu-location-14",
+              "gpu-location-15",
+              "gpu-location-16",
+              "gpu-location-17",
+              "gpu-location-18",
+              "gpu-location-19",
+              "gpu-location-20",
+              "gpu-location-21",
+              "gpu-location-22",
+              "gpu-location-23",
+              "gpu-location-24",
+              "gpu-location-25",
+              "gpu-location-26",
+              "gpu-location-27",
+              "gpu-location-28",
+              "gpu-location-29",
+              "gpu-location-30",
+              "gpu-location-31",
+              "gpu-location-32",
+              "gpu-location-33",
+              "gpu-location-34",
+              "gpu-location-35",
+              "gpu-location-36",
+              "gpu-location-37",
+              "gpu-location-38",
+              "gpu-location-39",
+              "gpu-location-40",
+              "gpu-location-41",
+              "gpu-location-42",
+              "gpu-location-43",
+              "gpu-location-44",
+              "gpu-location-45"
+            ]
+          },
+          "services": {
+            "domain_uuids": [
+              "fabric-domain-01"
+            ],
+            "service_count": 2,
+            "service_ids": [
+              "fabric-id-04",
+              "fabric-id-05"
+            ]
+          },
+          "telemetry": {
+            "cable_rx_power_series": 0,
+            "cable_temperature_series": 0,
+            "cable_tx_power_series": 0,
+            "metrics_endpoint": "https://nmx-endpoint.invalid/nmx/v1/metrics",
+            "physical_error_series": 3078,
+            "rx_throughput_series": 3078,
+            "sample_queries": [
+              "curl -sk <nmx_api_base>/metrics | grep \"^switch_temperature\" | head -5",
+              "curl -sk <nmx_api_base>/metrics | grep \"^PortXmitDataExtended\" | head -5",
+              "curl -sk <nmx_api_base>/metrics | grep \"^PortRcvDataExtended\" | head -5",
+              "curl -sk <nmx_api_base>/metrics | grep \"^PortLocalPhysicalErrors\" | head -5",
+              "curl -sk <nmx_api_base>/metrics | grep \"^CableInfoTemperature\" | head -5",
+              "curl -sk <nmx_api_base>/metrics | grep \"^CableInfoRxPower\" | head -5",
+              "curl -sk <nmx_api_base>/metrics | grep \"^CableInfoTxPower\" | head -5"
+            ],
+            "switch_temperature_series": 3078,
+            "tx_throughput_series": 3078
+          },
+          "topology": {
+            "chassis": [
+              {
+                "health": "NMX_CHASSIS_HEALTH_HEALTHY",
+                "id": "fabric-id-06",
+                "location": {
+                  "chassis_id": null,
+                  "chassis_serial_number": null,
+                  "host_id": null,
+                  "slot_id": null,
+                  "tray_index": null
+                },
+                "name": "NVL72-Chassis-1"
+              }
+            ],
+            "chassis_count": 1,
+            "chassis_serial_numbers": [
+              "chassis-serial-01"
+            ],
+            "compute_node_count": 18,
+            "compute_nodes": [
+              {
+                "gpu_count": 4,
+                "gpu_device_ids": [
+                  "1",
+                  "2",
+                  "3",
+                  "4"
+                ],
+                "gpu_locations": [
+                  "gpu-location-01",
+                  "gpu-location-02",
+                  "gpu-location-03",
+                  "gpu-location-04"
+                ],
+                "location": {
+                  "chassis_id": 1,
+                  "chassis_serial_number": "chassis-serial-01",
+                  "host_id": 1,
+                  "slot_id": 1,
+                  "tray_index": 0
+                },
+                "node_name": "fabric-node-01",
+                "system_uid": "fabric-node-01"
+              },
+              {
+                "gpu_count": 4,
+                "gpu_device_ids": [
+                  "1",
+                  "2",
+                  "3",
+                  "4"
+                ],
+                "gpu_locations": [
+                  "gpu-location-46",
+                  "gpu-location-05",
+                  "gpu-location-06",
+                  "gpu-location-07"
+                ],
+                "location": {
+                  "chassis_id": 1,
+                  "chassis_serial_number": "chassis-serial-01",
+                  "host_id": 1,
+                  "slot_id": 2,
+                  "tray_index": 1
+                },
+                "node_name": "fabric-node-02",
+                "system_uid": "fabric-node-02"
+              },
+              {
+                "gpu_count": 4,
+                "gpu_device_ids": [
+                  "1",
+                  "2",
+                  "3",
+                  "4"
+                ],
+                "gpu_locations": [
+                  "gpu-location-08",
+                  "gpu-location-47",
+                  "gpu-location-09",
+                  "gpu-location-10"
+                ],
+                "location": {
+                  "chassis_id": 1,
+                  "chassis_serial_number": "chassis-serial-01",
+                  "host_id": 1,
+                  "slot_id": 3,
+                  "tray_index": 2
+                },
+                "node_name": "fabric-node-03",
+                "system_uid": "fabric-node-03"
+              },
+              {
+                "gpu_count": 4,
+                "gpu_device_ids": [
+                  "1",
+                  "2",
+                  "3",
+                  "4"
+                ],
+                "gpu_locations": [
+                  "gpu-location-11",
+                  "gpu-location-12",
+                  "gpu-location-48",
+                  "gpu-location-13"
+                ],
+                "location": {
+                  "chassis_id": 1,
+                  "chassis_serial_number": "chassis-serial-01",
+                  "host_id": 1,
+                  "slot_id": 4,
+                  "tray_index": 3
+                },
+                "node_name": "fabric-node-04",
+                "system_uid": "fabric-node-04"
+              },
+              {
+                "gpu_count": 4,
+                "gpu_device_ids": [
+                  "1",
+                  "2",
+                  "3",
+                  "4"
+                ],
+                "gpu_locations": [
+                  "gpu-location-14",
+                  "gpu-location-15",
+                  "gpu-location-16",
+                  "gpu-location-49"
+                ],
+                "location": {
+                  "chassis_id": 1,
+                  "chassis_serial_number": "chassis-serial-01",
+                  "host_id": 1,
+                  "slot_id": 5,
+                  "tray_index": 4
+                },
+                "node_name": "fabric-node-05",
+                "system_uid": "fabric-node-05"
+              },
+              {
+                "gpu_count": 4,
+                "gpu_device_ids": [
+                  "1",
+                  "2",
+                  "3",
+                  "4"
+                ],
+                "gpu_locations": [
+                  "gpu-location-17",
+                  "gpu-location-18",
+                  "gpu-location-50",
+                  "gpu-location-19"
+                ],
+                "location": {
+                  "chassis_id": 1,
+                  "chassis_serial_number": "chassis-serial-01",
+                  "host_id": 1,
+                  "slot_id": 6,
+                  "tray_index": 5
+                },
+                "node_name": "fabric-node-06",
+                "system_uid": "fabric-node-06"
+              },
+              {
+                "gpu_count": 4,
+                "gpu_device_ids": [
+                  "1",
+                  "2",
+                  "3",
+                  "4"
+                ],
+                "gpu_locations": [
+                  "gpu-location-20",
+                  "gpu-location-51",
+                  "gpu-location-21",
+                  "gpu-location-22"
+                ],
+                "location": {
+                  "chassis_id": 1,
+                  "chassis_serial_number": "chassis-serial-01",
+                  "host_id": 1,
+                  "slot_id": 7,
+                  "tray_index": 6
+                },
+                "node_name": "fabric-node-07",
+                "system_uid": "fabric-node-07"
+              },
+              {
+                "gpu_count": 4,
+                "gpu_device_ids": [
+                  "1",
+                  "2",
+                  "3",
+                  "4"
+                ],
+                "gpu_locations": [
+                  "gpu-location-52",
+                  "gpu-location-23",
+                  "gpu-location-24",
+                  "gpu-location-25"
+                ],
+                "location": {
+                  "chassis_id": 1,
+                  "chassis_serial_number": "chassis-serial-01",
+                  "host_id": 1,
+                  "slot_id": 8,
+                  "tray_index": 7
+                },
+                "node_name": "fabric-node-08",
+                "system_uid": "fabric-node-08"
+              },
+              {
+                "gpu_count": 4,
+                "gpu_device_ids": [
+                  "1",
+                  "2",
+                  "3",
+                  "4"
+                ],
+                "gpu_locations": [
+                  "gpu-location-53",
+                  "gpu-location-26",
+                  "gpu-location-27",
+                  "gpu-location-54"
+                ],
+                "location": {
+                  "chassis_id": 1,
+                  "chassis_serial_number": "chassis-serial-01",
+                  "host_id": 1,
+                  "slot_id": 18,
+                  "tray_index": 8
+                },
+                "node_name": "fabric-node-09",
+                "system_uid": "fabric-node-09"
+              },
+              {
+                "gpu_count": 4,
+                "gpu_device_ids": [
+                  "1",
+                  "2",
+                  "3",
+                  "4"
+                ],
+                "gpu_locations": [
+                  "gpu-location-55",
+                  "gpu-location-28",
+                  "gpu-location-29",
+                  "gpu-location-56"
+                ],
+                "location": {
+                  "chassis_id": 1,
+                  "chassis_serial_number": "chassis-serial-01",
+                  "host_id": 1,
+                  "slot_id": 19,
+                  "tray_index": 9
+                },
+                "node_name": "fabric-node-10",
+                "system_uid": "fabric-node-10"
+              },
+              {
+                "gpu_count": 4,
+                "gpu_device_ids": [
+                  "1",
+                  "2",
+                  "3",
+                  "4"
+                ],
+                "gpu_locations": [
+                  "gpu-location-57",
+                  "gpu-location-30",
+                  "gpu-location-58",
+                  "gpu-location-31"
+                ],
+                "location": {
+                  "chassis_id": 1,
+                  "chassis_serial_number": "chassis-serial-01",
+                  "host_id": 1,
+                  "slot_id": 20,
+                  "tray_index": 10
+                },
+                "node_name": "fabric-node-11",
+                "system_uid": "fabric-node-11"
+              },
+              {
+                "gpu_count": 4,
+                "gpu_device_ids": [
+                  "1",
+                  "2",
+                  "3",
+                  "4"
+                ],
+                "gpu_locations": [
+                  "gpu-location-59",
+                  "gpu-location-32",
+                  "gpu-location-60",
+                  "gpu-location-33"
+                ],
+                "location": {
+                  "chassis_id": 1,
+                  "chassis_serial_number": "chassis-serial-01",
+                  "host_id": 1,
+                  "slot_id": 21,
+                  "tray_index": 11
+                },
+                "node_name": "fabric-node-12",
+                "system_uid": "fabric-node-12"
+              },
+              {
+                "gpu_count": 4,
+                "gpu_device_ids": [
+                  "1",
+                  "2",
+                  "3",
+                  "4"
+                ],
+                "gpu_locations": [
+                  "gpu-location-61",
+                  "gpu-location-62",
+                  "gpu-location-34",
+                  "gpu-location-35"
+                ],
+                "location": {
+                  "chassis_id": 1,
+                  "chassis_serial_number": "chassis-serial-01",
+                  "host_id": 1,
+                  "slot_id": 22,
+                  "tray_index": 12
+                },
+                "node_name": "fabric-node-13",
+                "system_uid": "fabric-node-13"
+              },
+              {
+                "gpu_count": 4,
+                "gpu_device_ids": [
+                  "1",
+                  "2",
+                  "3",
+                  "4"
+                ],
+                "gpu_locations": [
+                  "gpu-location-63",
+                  "gpu-location-64",
+                  "gpu-location-36",
+                  "gpu-location-37"
+                ],
+                "location": {
+                  "chassis_id": 1,
+                  "chassis_serial_number": "chassis-serial-01",
+                  "host_id": 1,
+                  "slot_id": 23,
+                  "tray_index": 13
+                },
+                "node_name": "fabric-node-14",
+                "system_uid": "fabric-node-14"
+              },
+              {
+                "gpu_count": 4,
+                "gpu_device_ids": [
+                  "1",
+                  "2",
+                  "3",
+                  "4"
+                ],
+                "gpu_locations": [
+                  "gpu-location-65",
+                  "gpu-location-38",
+                  "gpu-location-66",
+                  "gpu-location-39"
+                ],
+                "location": {
+                  "chassis_id": 1,
+                  "chassis_serial_number": "chassis-serial-01",
+                  "host_id": 1,
+                  "slot_id": 24,
+                  "tray_index": 14
+                },
+                "node_name": "fabric-node-15",
+                "system_uid": "fabric-node-15"
+              },
+              {
+                "gpu_count": 4,
+                "gpu_device_ids": [
+                  "1",
+                  "2",
+                  "3",
+                  "4"
+                ],
+                "gpu_locations": [
+                  "gpu-location-67",
+                  "gpu-location-40",
+                  "gpu-location-68",
+                  "gpu-location-41"
+                ],
+                "location": {
+                  "chassis_id": 1,
+                  "chassis_serial_number": "chassis-serial-01",
+                  "host_id": 1,
+                  "slot_id": 25,
+                  "tray_index": 15
+                },
+                "node_name": "fabric-node-16",
+                "system_uid": "fabric-node-16"
+              },
+              {
+                "gpu_count": 4,
+                "gpu_device_ids": [
+                  "1",
+                  "2",
+                  "3",
+                  "4"
+                ],
+                "gpu_locations": [
+                  "gpu-location-69",
+                  "gpu-location-42",
+                  "gpu-location-43",
+                  "gpu-location-70"
+                ],
+                "location": {
+                  "chassis_id": 1,
+                  "chassis_serial_number": "chassis-serial-01",
+                  "host_id": 1,
+                  "slot_id": 26,
+                  "tray_index": 16
+                },
+                "node_name": "fabric-node-17",
+                "system_uid": "fabric-node-17"
+              },
+              {
+                "gpu_count": 4,
+                "gpu_device_ids": [
+                  "1",
+                  "2",
+                  "3",
+                  "4"
+                ],
+                "gpu_locations": [
+                  "gpu-location-71",
+                  "gpu-location-44",
+                  "gpu-location-45",
+                  "gpu-location-72"
+                ],
+                "location": {
+                  "chassis_id": 1,
+                  "chassis_serial_number": "chassis-serial-01",
+                  "host_id": 1,
+                  "slot_id": 27,
+                  "tray_index": 17
+                },
+                "node_name": "fabric-node-18",
+                "system_uid": "fabric-node-18"
+              }
+            ],
+            "gpu_count": 72,
+            "gpu_health_counts": {
+              "HEALTHY": 72
+            },
+            "port_count": 2592,
+            "ports": {
+              "expected_formula": "2 * gpu_count(72) * switch_asic_count(18) = 2592",
+              "expected_total_ports": 2592,
+              "gpu_facing_ports": 1296,
+              "gpu_facing_ports_have_base_lid": true,
+              "gpu_ports_with_base_lid": 1296,
+              "matches_expected_formula": true,
+              "switch_facing_ports": 1296,
+              "switch_facing_ports_have_base_lid": false,
+              "switch_ports_with_base_lid": 0,
+              "total_ports": 2592
+            },
+            "sample_chassis": {
+              "domain_uuid": "fabric-domain-01",
+              "health": "NMX_CHASSIS_HEALTH_HEALTHY",
+              "id": "fabric-id-06",
+              "location": {
+                "chassis_id": null,
+                "chassis_serial_number": null,
+                "host_id": null,
+                "slot_id": null,
+                "tray_index": null
+              },
+              "name": "NVL72-Chassis-1"
+            },
+            "sample_compute_node": {
+              "device_uid": null,
+              "gpu_id_count": 4,
+              "id": "fabric-node-01",
+              "location": {
+                "chassis_id": 1,
+                "chassis_serial_number": "chassis-serial-01",
+                "host_id": 1,
+                "slot_id": 1,
+                "tray_index": 0
+              },
+              "name": "",
+              "system_uid": null
+            },
+            "sample_gpu": {
+              "alid_count": 1,
+              "description": "",
+              "device_id": 1,
+              "device_uid": 1001,
+              "domain_uuid": "fabric-domain-01",
+              "health": "HEALTHY",
+              "id": "fabric-id-07",
+              "internal_description": "GB100 Nvidia Technologies 1",
+              "location": {
+                "chassis_id": 1,
+                "chassis_serial_number": "chassis-serial-01",
+                "host_id": 1,
+                "slot_id": 1,
+                "tray_index": 0
+              },
+              "name": "GPU-1",
+              "partition_id": null,
+              "partition_name": null,
+              "port_count": 18,
+              "system_uid": 1000
+            },
+            "sample_switch": {
+              "device_id": 1,
+              "domain_uuid": "fabric-domain-01",
+              "health": "NMX_SWITCH_HEALTH_HEALTHY",
+              "id": "fabric-id-08",
+              "location": {
+                "chassis_id": 1,
+                "chassis_serial_number": "chassis-serial-01",
+                "host_id": 1,
+                "slot_id": 9,
+                "tray_index": 0
+              },
+              "port_count": 72
+            },
+            "scenario_answers": {
+              "can_support_two_concurrent_4gpu_workloads": true,
+              "node_gpu_grouping_field": "GpuIDList",
+              "port_formula_matches_inventory": true,
+              "sample_switch_tray": {
+                "location": {
+                  "chassis_id": 1,
+                  "chassis_serial_number": "chassis-serial-01",
+                  "host_id": 1,
+                  "slot_id": 9,
+                  "tray_index": 0
+                },
+                "switch_asic_count": 2,
+                "switch_device_ids": [
+                  "1",
+                  "2"
+                ],
+                "switch_ids": [
+                  "fabric-id-08",
+                  "fabric-id-09"
+                ],
+                "switch_node_id": "fabric-id-10",
+                "switch_node_switch_id_list": [
+                  "fabric-id-08",
+                  "fabric-id-09"
+                ]
+              },
+              "switch_asic_distinguishing_field": "DeviceID",
+              "switch_tray_grouping_fields": [
+                "LocationInfo.ChassisID",
+                "LocationInfo.SlotID",
+                "LocationInfo.HostID",
+                "LocationInfo.TrayIndex"
+              ],
+              "team_alpha_candidate": {
+                "gpu_locations": [
+                  "gpu-location-01",
+                  "gpu-location-02",
+                  "gpu-location-03",
+                  "gpu-location-04"
+                ],
+                "nodes": [
+                  {
+                    "gpu_count": 4,
+                    "node": "fabric-node-01",
+                    "system_uid": "fabric-node-01"
+                  }
+                ],
+                "satisfied": true,
+                "selected_gpu_count": 4,
+                "target_gpu_count": 4,
+                "team": "Alpha"
+              },
+              "team_beta_candidate": {
+                "gpu_locations": [
+                  "gpu-location-46",
+                  "gpu-location-05",
+                  "gpu-location-06",
+                  "gpu-location-07"
+                ],
+                "nodes": [
+                  {
+                    "gpu_count": 4,
+                    "node": "fabric-node-02",
+                    "system_uid": "fabric-node-02"
+                  }
+                ],
+                "satisfied": true,
+                "selected_gpu_count": 4,
+                "target_gpu_count": 4,
+                "team": "Beta"
+              }
+            },
+            "switch_asic_count": 18,
+            "switch_health_counts": {
+              "NMX_SWITCH_HEALTH_HEALTHY": 18
+            },
+            "switch_tray_count": 9,
+            "switch_trays": [
+              {
+                "location": {
+                  "chassis_id": 1,
+                  "chassis_serial_number": "chassis-serial-01",
+                  "host_id": 1,
+                  "slot_id": 9,
+                  "tray_index": 0
+                },
+                "switch_asic_count": 2,
+                "switch_device_ids": [
+                  "1",
+                  "2"
+                ],
+                "switch_ids": [
+                  "fabric-id-08",
+                  "fabric-id-09"
+                ],
+                "switch_node_id": "fabric-id-10",
+                "switch_node_switch_id_list": [
+                  "fabric-id-08",
+                  "fabric-id-09"
+                ]
+              },
+              {
+                "location": {
+                  "chassis_id": 1,
+                  "chassis_serial_number": "chassis-serial-01",
+                  "host_id": 1,
+                  "slot_id": 10,
+                  "tray_index": 1
+                },
+                "switch_asic_count": 2,
+                "switch_device_ids": [
+                  "1",
+                  "2"
+                ],
+                "switch_ids": [
+                  "fabric-id-11",
+                  "fabric-id-12"
+                ],
+                "switch_node_id": "fabric-id-13",
+                "switch_node_switch_id_list": [
+                  "fabric-id-11",
+                  "fabric-id-12"
+                ]
+              },
+              {
+                "location": {
+                  "chassis_id": 1,
+                  "chassis_serial_number": "chassis-serial-01",
+                  "host_id": 1,
+                  "slot_id": 11,
+                  "tray_index": 2
+                },
+                "switch_asic_count": 2,
+                "switch_device_ids": [
+                  "1",
+                  "2"
+                ],
+                "switch_ids": [
+                  "fabric-id-14",
+                  "fabric-id-15"
+                ],
+                "switch_node_id": "fabric-id-16",
+                "switch_node_switch_id_list": [
+                  "fabric-id-14",
+                  "fabric-id-15"
+                ]
+              },
+              {
+                "location": {
+                  "chassis_id": 1,
+                  "chassis_serial_number": "chassis-serial-01",
+                  "host_id": 1,
+                  "slot_id": 12,
+                  "tray_index": 3
+                },
+                "switch_asic_count": 2,
+                "switch_device_ids": [
+                  "1",
+                  "2"
+                ],
+                "switch_ids": [
+                  "fabric-id-17",
+                  "fabric-id-18"
+                ],
+                "switch_node_id": "fabric-id-19",
+                "switch_node_switch_id_list": [
+                  "fabric-id-17",
+                  "fabric-id-18"
+                ]
+              },
+              {
+                "location": {
+                  "chassis_id": 1,
+                  "chassis_serial_number": "chassis-serial-01",
+                  "host_id": 1,
+                  "slot_id": 13,
+                  "tray_index": 4
+                },
+                "switch_asic_count": 2,
+                "switch_device_ids": [
+                  "1",
+                  "2"
+                ],
+                "switch_ids": [
+                  "fabric-id-20",
+                  "fabric-id-21"
+                ],
+                "switch_node_id": "fabric-id-22",
+                "switch_node_switch_id_list": [
+                  "fabric-id-20",
+                  "fabric-id-21"
+                ]
+              },
+              {
+                "location": {
+                  "chassis_id": 1,
+                  "chassis_serial_number": "chassis-serial-01",
+                  "host_id": 1,
+                  "slot_id": 14,
+                  "tray_index": 5
+                },
+                "switch_asic_count": 2,
+                "switch_device_ids": [
+                  "1",
+                  "2"
+                ],
+                "switch_ids": [
+                  "fabric-id-23",
+                  "fabric-id-24"
+                ],
+                "switch_node_id": "fabric-id-25",
+                "switch_node_switch_id_list": [
+                  "fabric-id-23",
+                  "fabric-id-24"
+                ]
+              },
+              {
+                "location": {
+                  "chassis_id": 1,
+                  "chassis_serial_number": "chassis-serial-01",
+                  "host_id": 1,
+                  "slot_id": 15,
+                  "tray_index": 6
+                },
+                "switch_asic_count": 2,
+                "switch_device_ids": [
+                  "1",
+                  "2"
+                ],
+                "switch_ids": [
+                  "fabric-id-26",
+                  "fabric-id-27"
+                ],
+                "switch_node_id": "fabric-id-28",
+                "switch_node_switch_id_list": [
+                  "fabric-id-26",
+                  "fabric-id-27"
+                ]
+              },
+              {
+                "location": {
+                  "chassis_id": 1,
+                  "chassis_serial_number": "chassis-serial-01",
+                  "host_id": 1,
+                  "slot_id": 16,
+                  "tray_index": 7
+                },
+                "switch_asic_count": 2,
+                "switch_device_ids": [
+                  "1",
+                  "2"
+                ],
+                "switch_ids": [
+                  "fabric-id-29",
+                  "fabric-id-30"
+                ],
+                "switch_node_id": "fabric-id-31",
+                "switch_node_switch_id_list": [
+                  "fabric-id-29",
+                  "fabric-id-30"
+                ]
+              },
+              {
+                "location": {
+                  "chassis_id": 1,
+                  "chassis_serial_number": "chassis-serial-01",
+                  "host_id": 1,
+                  "slot_id": 17,
+                  "tray_index": 8
+                },
+                "switch_asic_count": 2,
+                "switch_device_ids": [
+                  "1",
+                  "2"
+                ],
+                "switch_ids": [
+                  "fabric-id-32",
+                  "fabric-id-33"
+                ],
+                "switch_node_id": "fabric-id-34",
+                "switch_node_switch_id_list": [
+                  "fabric-id-32",
+                  "fabric-id-33"
+                ]
+              }
+            ]
+          }
+        },
+        "status": "ok"
+      },
+      "evidence_refs": [
+        "structured/2026-03-17_localhost_fabric_canonical_localhost_meta.json",
+        "structured/2026-03-17_localhost_fabric_canonical_localhost_meta_nvlink_topology.json",
+        "structured/2026-03-17_localhost_fabric_canonical_nccl_env_sensitivity.json",
+        "structured/2026-03-17_localhost_fabric_canonical_node1_nccl.json"
+      ],
+      "present": true,
+      "runtime": {
+        "evidence": {
+          "nccl_env_status": "ok",
+          "single_nccl_peak_algbw_gbps": 2263.5,
+          "single_nccl_peak_busbw_gbps": 0.0
+        },
+        "status": "runtime_verified"
+      }
+    },
+    "spectrum-x": {
+      "completeness": "not_present",
+      "control_plane": {
+        "checks": [],
+        "status": "not_present"
+      },
+      "evidence_refs": [
+        "structured/2026-03-17_localhost_fabric_canonical_localhost_meta.json"
+      ],
+      "present": false,
+      "runtime": {
+        "evidence": {},
+        "status": "not_present"
+      },
+      "scenario_summary": {
+        "adaptive_routing_visible": false,
+        "alltoall_peak_algbw_gbps": 0.0,
+        "bgp_neighbor_state_visible": false,
+        "bgp_route_visibility": false,
+        "bgp_summary_visible": false,
+        "fabric_readiness_ready": false,
+        "multi_node_nccl_peak_algbw_gbps": 0.0,
+        "multi_to_single_nccl_ratio": 0.0,
+        "roce_qos_visible": false,
+        "runtime_correlation_ready": false,
+        "runtime_interpretation": "Collect multi-node NCCL, all-to-all, and torchrun connectivity artifacts before drawing Spectrum-X / RoCE conclusions.",
+        "single_node_nccl_peak_algbw_gbps": 0.0,
+        "switch_count_targeted": 0,
+        "switches_targeted": [],
+        "world_size": 0
+      }
+    }
+  },
+  "recommendations": [],
+  "run_id": "2026-03-17_localhost_fabric_canonical",
+  "schema_version": "2026-03-16",
+  "status": "ok"
+}

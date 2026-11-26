@@ -1,9 +1,122 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import subprocess
 import sys
 from pathlib import Path
+
+import pytest
+
+from cluster.scripts import build_canonical_package as builder
+
+
+def test_empty_canonical_run_leaves_package_destination_absent(tmp_path: Path) -> None:
+    run_id = "2026-03-06_localhost_empty"
+    run_dir = tmp_path / "cluster" / "runs" / run_id
+    run_dir.mkdir(parents=True)
+    (run_dir / "manifest.json").write_text(json.dumps({"run_id": run_id}), encoding="utf-8")
+    output = tmp_path / "package"
+    script = Path(__file__).resolve().parents[1] / "cluster" / "scripts" / "build_canonical_package.py"
+
+    proc = subprocess.run(
+        [
+            sys.executable, str(script), "--repo-root", str(tmp_path),
+            "--canonical-run-id", run_id, "--output-dir", str(output),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert proc.returncode != 0
+    assert "No canonical artifacts" in proc.stderr
+    assert not output.exists()
+
+
+def test_package_canonical_reader_snapshot_without_live_run(tmp_path: Path) -> None:
+    run_id = "historical_canary"
+    published = tmp_path / "cluster" / "published" / "current"
+    artifact = published / "structured" / "run summary.json"
+    artifact.parent.mkdir(parents=True)
+    artifact.write_text("{}\n", encoding="utf-8")
+    name = str(artifact.relative_to(published))
+    manifest = {
+        "run_id": run_id,
+        "manifest_mode": "historical_reader_snapshot",
+        "files": [name],
+        "summary": {"file_count": 1, "sha256": {name: hashlib.sha256(artifact.read_bytes()).hexdigest()}},
+    }
+    (published / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    report = tmp_path / "cluster/field-report-localhost.md"
+    notes = tmp_path / "cluster/field-report-localhost-notes.md"
+    report.write_text('[Summary](published/current/structured/run%20summary.json?view=raw#stats)\n', encoding="utf-8")
+    notes.write_text('<a href="published/current/manifest.json">Manifest</a>\n', encoding="utf-8")
+    script = Path(__file__).resolve().parents[1] / "cluster" / "scripts" / "build_canonical_package.py"
+    command = [sys.executable, str(script), "--repo-root", str(tmp_path), "--canonical-run-id", run_id]
+
+    output = tmp_path / "package"
+    proc = subprocess.run([*command, "--output-dir", str(output)], capture_output=True, text=True, check=False)
+    assert proc.returncode == 0, proc.stdout or proc.stderr
+    packaged = output / "runs" / run_id
+    assert (packaged / name).read_bytes() == artifact.read_bytes()
+    assert json.loads((packaged / "manifest.json").read_text()) == manifest
+    assert "published snapshot" in (output / "README.md").read_text()
+    assert (output / report.name).read_text() == f"[Summary](runs/{run_id}/structured/run%20summary.json?view=raw#stats)\n"
+    assert (output / notes.name).read_text() == f'<a href="runs/{run_id}/manifest.json">Manifest</a>\n'
+    assert "published/current" in report.read_text()
+
+    notes.write_text("[Missing](published/current/structured/missing.json)\n", encoding="utf-8")
+    broken = tmp_path / "broken"
+    proc = subprocess.run([*command, "--output-dir", str(broken)], capture_output=True, text=True, check=False)
+    assert proc.returncode != 0
+    assert "links to unavailable package evidence" in proc.stderr
+    assert not broken.exists()
+
+    artifact.write_text('{"changed": true}\n', encoding="utf-8")
+    rejected = tmp_path / "rejected"
+    proc = subprocess.run([*command, "--output-dir", str(rejected)], capture_output=True, text=True, check=False)
+    assert proc.returncode != 0
+    assert "hash mismatch" in proc.stderr
+    assert not rejected.exists()
+
+
+@pytest.mark.parametrize("output_exists", [False, True])
+def test_snapshot_copy_verification_failure_leaves_no_partial_package(tmp_path, monkeypatch, output_exists):
+    run_id = "historical_canary"
+    published = tmp_path / "cluster/published/current"
+    artifact = published / "structured/summary.json"
+    artifact.parent.mkdir(parents=True)
+    artifact.write_bytes(b"{}\n")
+    name = "structured/summary.json"
+    (published / "manifest.json").write_text(json.dumps({
+        "run_id": run_id,
+        "files": [name],
+        "summary": {"file_count": 1, "sha256": {name: hashlib.sha256(artifact.read_bytes()).hexdigest()}},
+    }), encoding="utf-8")
+    output = tmp_path / "package"
+    if output_exists:
+        output.mkdir()
+    copytree = builder.shutil.copytree
+
+    def corrupt_copy(source, destination, *args, **kwargs):
+        copied = copytree(source, destination, *args, **kwargs)
+        if source == published:
+            (Path(copied) / name).write_bytes(b"changed while copying\n")
+        return copied
+
+    monkeypatch.setattr(builder.shutil, "copytree", corrupt_copy)
+    monkeypatch.setattr(sys, "argv", [
+        "build_canonical_package.py", "--repo-root", str(tmp_path),
+        "--canonical-run-id", run_id, "--output-dir", str(output),
+    ])
+    with pytest.raises(SystemExit, match="Published snapshot hash mismatch"):
+        builder.main()
+
+    assert output.exists() is output_exists
+    if output_exists:
+        assert list(output.iterdir()) == []
+    assert list(tmp_path.glob(".canonical-package-*")) == []
 
 
 def test_build_canonical_package_materializes_live_runs_and_tracks_missing_historical(tmp_path: Path) -> None:
@@ -31,12 +144,17 @@ def test_build_canonical_package_materializes_live_runs_and_tracks_missing_histo
     (comparison_run_dir / "raw" / f"{comparison_run}_suite.log").write_text("log", encoding="utf-8")
 
     (cluster_root / "field-report-localhost.md").write_text(f"Canonical run: `{canonical_run}`\n", encoding="utf-8")
-    (cluster_root / "field-report-localhost-notes.md").write_text(f"Baseline: `{comparison_run}`\n", encoding="utf-8")
+    (cluster_root / "field-report-localhost-notes.md").write_text(
+        f"Baseline: `{comparison_run}`\nHistorical run: `{historical_run}`\n", encoding="utf-8"
+    )
     (cluster_root / "multi_node_harden_and_verify_next_steps.md").write_text("placeholder\n", encoding="utf-8")
     (cluster_root / "field-report.md").write_text(
         f"Historical run: `{historical_run}`\nresults/structured/{historical_run}_manifest.json\n",
         encoding="utf-8",
     )
+    concurrent_stage = cluster_root / f"{builder.PACKAGE_STAGE_PREFIX}other" / "package"
+    concurrent_stage.mkdir(parents=True)
+    (concurrent_stage / "field-report.md").write_text(f"Historical run: `{historical_run}`\n", encoding="utf-8")
 
     script = Path(__file__).resolve().parents[1] / "cluster" / "scripts" / "build_canonical_package.py"
     cmd = [
@@ -64,7 +182,13 @@ def test_build_canonical_package_materializes_live_runs_and_tracks_missing_histo
     assert runs[comparison_run]["present"] is True
     assert runs[comparison_run]["counts"]["raw"] == 1
     assert runs[historical_run]["present"] is False
-    assert manifest["historical_markdown_references"][historical_run]["file_count"] >= 1
+    historical_refs = manifest["historical_markdown_references"][historical_run]
+    assert historical_refs["file_count"] == 2
+    assert [ref["path"] for ref in historical_refs["files"]] == [
+        "cluster/field-report-localhost-notes.md",
+        "cluster/field-report.md",
+    ]
+    assert builder.PACKAGE_STAGE_PREFIX not in (package_root / "historical-multinode-reference.md").read_text()
 
     assert (package_root / "runs" / canonical_run / "manifest.json").exists()
     assert (package_root / "field-report-localhost.md").exists()
