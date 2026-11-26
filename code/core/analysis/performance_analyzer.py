@@ -2,29 +2,110 @@ from __future__ import annotations
 
 import json
 import time
+from datetime import datetime
+from math import isfinite
 from pathlib import Path
-from typing import Callable, Dict, Any, Optional, List
+from typing import Any, Callable, Dict, Iterator, List, Optional
 
 # Find the repo root
 CODE_ROOT = Path(__file__).parent.parent.parent
+from core.benchmark.expectations import SPEEDUP_TOLERANCE
 from core.discovery import get_bench_roots
 
 
-def _best_optimization_entry(bench: Dict[str, Any]) -> Dict[str, Any]:
-    """Return the best succeeded optimization entry when available."""
-    optimizations = bench.get("optimizations", [])
-    if not isinstance(optimizations, list):
-        return {}
+def read_benchmark_json(path: Path) -> dict:
+    """Read an explicitly selected local benchmark artifact."""
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError as exc:
+        raise FileNotFoundError(f"Benchmark JSON file not found: {path}") from exc
+    except (OSError, ValueError) as exc:
+        raise ValueError(f"Failed to read benchmark results {path}: {exc}") from exc
+    if not isinstance(data, dict):
+        raise ValueError(f"Expected JSON object in benchmark results {path}")
+    return data
 
-    succeeded = [
-        opt
-        for opt in optimizations
-        if isinstance(opt, dict) and str(opt.get("status", "")).lower() == "succeeded"
-    ]
-    candidates = succeeded or [opt for opt in optimizations if isinstance(opt, dict)]
-    if not candidates:
-        return {}
-    return max(candidates, key=lambda opt: float(opt.get("speedup") or 0.0))
+
+def iter_benchmark_rows(data: dict, source: Path) -> Iterator[tuple[str, dict]]:
+    """Validate and iterate the chapter format written by the benchmark runner."""
+    results = data.get("results")
+    if not isinstance(results, list):
+        raise ValueError(f"Expected 'results' list in benchmark results {source}")
+    for index, chapter in enumerate(results):
+        if not isinstance(chapter, dict) or not isinstance(chapter.get("chapter"), str):
+            raise ValueError(f"Invalid chapter at results[{index}] in {source}")
+        benchmarks = chapter.get("benchmarks")
+        if not isinstance(benchmarks, list):
+            raise ValueError(f"Expected 'benchmarks' list for {chapter['chapter']} in {source}")
+        for row_index, bench in enumerate(benchmarks):
+            if not isinstance(bench, dict) or not isinstance(bench.get("example"), str):
+                raise ValueError(f"Invalid benchmark at results[{index}].benchmarks[{row_index}] in {source}")
+            yield chapter["chapter"], bench
+
+
+def is_finite_measurement(value: Any) -> bool:
+    if not isinstance(value, (int, float)) or isinstance(value, bool):
+        return False
+    try:
+        return isfinite(value)
+    except OverflowError:
+        return False
+
+
+def has_success_status(status: Any) -> bool:
+    return isinstance(status, str) and status.strip().lower() in {"succeeded", "success", "ok"}
+
+
+def _positive_measurement(value: Any) -> bool:
+    return is_finite_measurement(value) and value > 0
+
+
+def _measured_optimizations(bench: dict) -> List[dict]:
+    baseline_time = bench.get("baseline_time_ms")
+    optimizations = bench.get("optimizations")
+    if not isinstance(optimizations, list) or not _positive_measurement(baseline_time):
+        return []
+
+    measured = []
+    for opt in optimizations:
+        if not isinstance(opt, dict) or not has_success_status(opt.get("status")):
+            continue
+        time_ms = opt.get("time_ms")
+        speedup = opt.get("speedup")
+        if not _positive_measurement(time_ms) or not _positive_measurement(speedup):
+            continue
+        if abs(speedup - baseline_time / time_ms) <= SPEEDUP_TOLERANCE:
+            measured.append(opt)
+    return measured
+
+
+def _benchmark_rejection_reason(bench: dict, measured: List[dict]) -> Optional[str]:
+    if "status" in bench and not has_success_status(bench["status"]):
+        return f"Benchmark status {bench['status']!r} is ineligible"
+    if "status" not in bench and (bench.get("error") or bench.get("skip_reason")):
+        return "Historical result has an error or skip reason"
+    expectation = bench.get("expectation")
+    if bench.get("required_profiler_failures") or (
+        isinstance(expectation, dict) and expectation.get("required_profiler_failures")
+    ):
+        return "Required profiler captures failed"
+
+    speedup = bench.get("speedup")
+    if not _positive_measurement(speedup):
+        return "No positive measured speedup"
+    if "optimizations" not in bench:
+        return None
+    if not measured:
+        return "No successful optimization with measured timings and speedup"
+    best_observed = max(opt["speedup"] for opt in measured)
+    if abs(speedup - best_observed) > SPEEDUP_TOLERANCE:
+        return "Recorded best speedup disagrees with the best successful optimization"
+    return None
+
+
+def is_qualified_benchmark(bench: dict) -> bool:
+    """Admit successful measured pairs and compatible legacy speedup-only records."""
+    return _benchmark_rejection_reason(bench, _measured_optimizations(bench)) is None
 
 
 def _story_note(story_metadata: Dict[str, Any]) -> str:
@@ -54,188 +135,200 @@ def _story_note(story_metadata: Dict[str, Any]) -> str:
     return " ".join(part for part in parts if part).strip()
 
 
-def _transform_aggregated_data(all_benchmarks: dict, timestamp: str) -> dict:
-    """Transform aggregated benchmark data to the normalized result format."""
-    benchmarks: List[Dict[str, Any]] = []
-    all_speedups: List[float] = []
-    successful = 0
-    failed = 0
-    failed_regression = 0
-
-    for (chapter, name), bench in all_benchmarks.items():
-        baseline_time = bench.get("baseline_time_ms") or 0
-        best_speedup = bench.get("best_speedup") or 1.0
-        status = bench.get("status", "unknown")
-        bench_type = bench.get("type", "python")
-
-        if status == "succeeded":
-            successful += 1
-        elif "regression" in str(status):
-            failed_regression += 1
-        elif "failed" in str(status):
-            failed += 1
-
-        optimized_time = baseline_time / best_speedup if best_speedup and best_speedup > 0 else baseline_time
-        gpu_metrics = bench.get("baseline_gpu_metrics", {})
-        baseline_story_metadata = bench.get("baseline_story_metadata")
-        if not isinstance(baseline_story_metadata, dict):
-            baseline_story_metadata = {}
-        best_optimization = _best_optimization_entry(bench)
-        best_optimization_story_metadata = best_optimization.get("story_metadata")
-        if not isinstance(best_optimization_story_metadata, dict):
-            best_optimization_story_metadata = {}
-        pair_story_metadata = dict(baseline_story_metadata)
-        for key, value in best_optimization_story_metadata.items():
-            if key not in pair_story_metadata and value is not None:
-                pair_story_metadata[key] = value
-        story_note = _story_note(pair_story_metadata)
-
-        optimizations = []
-        for opt in bench.get("optimizations", []):
-            opt_story_metadata = opt.get("story_metadata")
-            if not isinstance(opt_story_metadata, dict):
-                opt_story_metadata = {}
-            optimizations.append(
-                {
-                    "technique": opt.get("technique", ""),
-                    "speedup": opt.get("speedup", 1.0),
-                    "time_ms": opt.get("time_ms", 0),
-                    "file": opt.get("file", ""),
-                    "story_metadata": opt_story_metadata,
-                    "story_note": _story_note(opt_story_metadata),
-                }
-            )
-
-        baseline_memory_mb = bench.get("baseline_memory_mb")
-        best_memory_savings_pct = bench.get("best_memory_savings_pct", 0)
-        optimization_goal = bench.get("optimization_goal", "speed")
-
-        optimized_memory_mb = None
-        for opt in bench.get("optimizations", []):
-            if opt.get("memory_mb"):
-                if optimized_memory_mb is None or opt.get("memory_mb") < optimized_memory_mb:
-                    optimized_memory_mb = opt.get("memory_mb")
-
-        if optimized_memory_mb is None and baseline_memory_mb and best_memory_savings_pct:
-            optimized_memory_mb = baseline_memory_mb * (1 - best_memory_savings_pct / 100)
-
-        benchmarks.append(
-            {
-                "name": name,
-                "chapter": chapter,
-                "type": bench_type,
-                "baseline_time_ms": baseline_time,
-                "optimized_time_ms": optimized_time,
-                "speedup": best_speedup,
-                "baseline_memory_mb": baseline_memory_mb,
-                "optimized_memory_mb": optimized_memory_mb,
-                "memory_savings_pct": best_memory_savings_pct,
-                "optimization_goal": optimization_goal,
-                "status": status,
-                "gpu_temp": gpu_metrics.get("temperature_gpu_c"),
-                "gpu_power": gpu_metrics.get("power_draw_w"),
-                "gpu_util": gpu_metrics.get("utilization_gpu_pct"),
-                "optimizations": optimizations,
-                "error": bench.get("error"),
-                "p75_ms": bench.get("baseline_p75_ms"),
-                "baseline_story_metadata": baseline_story_metadata,
-                "best_optimization_story_metadata": best_optimization_story_metadata,
-                "story_metadata": pair_story_metadata,
-                "pair_role": pair_story_metadata.get("pair_role"),
-                "chapter_alignment": pair_story_metadata.get("chapter_alignment"),
-                "chapter_native_exemplar": pair_story_metadata.get("chapter_native_exemplar"),
-                "comparison_reason": pair_story_metadata.get("comparison_reason"),
-                "chapter_native_targets": pair_story_metadata.get("chapter_native_targets"),
-                "story_note": story_note,
-            }
-        )
-
-        if best_speedup > 0:
-            all_speedups.append(best_speedup)
-
-    benchmarks.sort(key=lambda x: x["speedup"], reverse=True)
-
-    memory_optimizations = [b for b in benchmarks if b.get("optimization_goal") == "memory"]
-    speed_optimizations = [b for b in benchmarks if b.get("optimization_goal") != "memory"]
-
-    return {
-        "timestamp": timestamp or time.strftime("%Y-%m-%d %H:%M:%S"),
-        "benchmarks": benchmarks,
-        "aggregated": True,
-        "source_count": len(all_benchmarks),
-        "summary": {
-            "total_benchmarks": len(benchmarks),
-            "avg_speedup": sum(all_speedups) / len(all_speedups) if all_speedups else 0,
-            "max_speedup": max(all_speedups) if all_speedups else 0,
-            "min_speedup": min(all_speedups) if all_speedups else 0,
-            "successful": successful,
-            "failed": failed,
-            "failed_regression": failed_regression,
-            "memory_optimizations": len(memory_optimizations),
-            "speed_optimizations": len(speed_optimizations),
-            "best_memory_savings_pct": max(
-                (b.get("memory_savings_pct", 0) for b in memory_optimizations), default=0
-            ),
-        },
+def _normalize_benchmark(chapter: str, bench: dict, *, source: Path, run_id: Any) -> dict:
+    name = bench["example"]
+    bench_type = bench.get("type") or "python"
+    if not isinstance(bench_type, str):
+        raise ValueError(f"Invalid type for {chapter}:{name} in {source}")
+    numbers = {
+        key: bench.get(key)
+        for key in ("baseline_time_ms", "best_speedup", "baseline_memory_mb", "best_memory_savings_pct")
     }
+    for key, value in numbers.items():
+        if value is not None and not is_finite_measurement(value):
+            raise ValueError(f"Invalid {key} for {chapter}:{name} in {source}")
+
+    optimizations = bench.get("optimizations", [])
+    if not isinstance(optimizations, list) or any(not isinstance(opt, dict) for opt in optimizations):
+        raise ValueError(f"Expected optimization objects for {chapter}:{name} in {source}")
+    for opt in optimizations:
+        for key in ("speedup", "time_ms", "memory_mb"):
+            value = opt.get(key)
+            if value is not None and not is_finite_measurement(value):
+                raise ValueError(f"Invalid optimization {key} for {chapter}:{name} in {source}")
+
+    baseline_time = numbers["baseline_time_ms"] or 0
+    speedup = numbers["best_speedup"]
+    memory_savings = numbers["best_memory_savings_pct"] or 0
+    baseline_memory = numbers["baseline_memory_mb"]
+    eligible_optimizations = _measured_optimizations(bench)
+    best_optimization = max(eligible_optimizations, key=lambda opt: opt["speedup"], default={})
+    optimized_memory = min(
+        (opt["memory_mb"] for opt in eligible_optimizations if opt.get("memory_mb")),
+        default=None,
+    )
+    if optimized_memory is None and baseline_memory and memory_savings:
+        optimized_memory = baseline_memory * (1 - memory_savings / 100)
+
+    baseline_story = bench.get("baseline_story_metadata")
+    if not isinstance(baseline_story, dict):
+        baseline_story = {}
+    optimized_story = best_optimization.get("story_metadata")
+    if not isinstance(optimized_story, dict):
+        optimized_story = {}
+    pair_story = {**{k: v for k, v in optimized_story.items() if v is not None}, **baseline_story}
+    gpu_metrics = bench.get("baseline_gpu_metrics") or {}
+    if not isinstance(gpu_metrics, dict):
+        raise ValueError(f"Invalid baseline_gpu_metrics for {chapter}:{name} in {source}")
+
+    row = {
+        "name": name,
+        "chapter": chapter,
+        "type": bench_type,
+        "baseline_time_ms": baseline_time,
+        "optimized_time_ms": None,
+        "speedup": speedup,
+        "baseline_memory_mb": baseline_memory,
+        "optimized_memory_mb": optimized_memory,
+        "memory_savings_pct": memory_savings,
+        "optimization_goal": bench.get("optimization_goal", "speed"),
+        "gpu_temp": gpu_metrics.get("temperature_gpu_c"),
+        "gpu_power": gpu_metrics.get("power_draw_w"),
+        "gpu_util": gpu_metrics.get("utilization_gpu_pct"),
+        "error": bench.get("error"),
+        "p75_ms": bench.get("baseline_p75_ms"),
+        "baseline_story_metadata": baseline_story,
+        "best_optimization_story_metadata": optimized_story,
+        "story_metadata": pair_story,
+        "pair_role": pair_story.get("pair_role"),
+        "chapter_alignment": pair_story.get("chapter_alignment"),
+        "chapter_native_exemplar": pair_story.get("chapter_native_exemplar"),
+        "comparison_reason": pair_story.get("comparison_reason"),
+        "chapter_native_targets": pair_story.get("chapter_native_targets"),
+        "story_note": _story_note(pair_story),
+        "source_file": str(source),
+        "run_id": run_id,
+    }
+    if "status" in bench:
+        if not isinstance(bench["status"], str):
+            raise ValueError(f"Invalid status for {chapter}:{name} in {source}")
+        row["status"] = bench["status"].strip().lower()
+    reason = _benchmark_rejection_reason({**bench, **row}, eligible_optimizations)
+    if reason is None:
+        if "status" not in row:
+            row["status_source"] = "legacy_unrecorded"
+        row["status"] = "succeeded"
+        if best_optimization:
+            row["optimized_time_ms"] = best_optimization["time_ms"]
+        elif baseline_time > 0:
+            # Legacy summaries did not include variant timings.
+            row["optimized_time_ms"] = baseline_time / speedup
+    else:
+        row["status"] = row.get("status") or "unknown"
+        if has_success_status(row["status"]):
+            row["status"] = "unqualified"
+        row["error"] = row["error"] or reason
+
+    if "optimizations" in bench:
+        row["optimizations"] = []
+        for opt in optimizations:
+            opt_story = opt.get("story_metadata")
+            if not isinstance(opt_story, dict):
+                opt_story = {}
+            row["optimizations"].append({
+                "technique": opt.get("technique", ""),
+                "speedup": opt.get("speedup"),
+                "time_ms": opt.get("time_ms"),
+                "file": opt.get("file", ""),
+                "status": opt.get("status"),
+                "story_metadata": opt_story,
+                "story_note": _story_note(opt_story),
+            })
+    return row
+
+
+def _source_timestamp(data: dict, path: Path) -> tuple[float, str]:
+    timestamp = data.get("timestamp")
+    if timestamp is None or timestamp == "":
+        modified = path.stat().st_mtime
+        return modified, datetime.fromtimestamp(modified).isoformat()
+    if not isinstance(timestamp, str):
+        raise ValueError(f"Invalid timestamp in benchmark results {path}")
+    try:
+        iso_timestamp = f"{timestamp[:-1]}+00:00" if timestamp.endswith("Z") else timestamp
+        return datetime.fromisoformat(iso_timestamp).timestamp(), timestamp
+    except ValueError as exc:
+        raise ValueError(f"Invalid timestamp in benchmark results {path}: {timestamp!r}") from exc
 
 
 def load_benchmark_data(data_file: Optional[Path] = None, bench_roots: Optional[List[Path]] = None) -> dict:
-    """Load benchmark results from disk (single file or aggregated artifacts)."""
-    all_benchmarks: Dict[tuple, Dict[str, Any]] = {}
-    latest_timestamp: Optional[str] = None
-    bench_roots = bench_roots or get_bench_roots(repo_root=CODE_ROOT)
-
-    def _ingest_result_file(path: Path) -> None:
-        nonlocal latest_timestamp
-        with open(path) as f:
-            data = json.load(f)
-        timestamp = data.get("timestamp", "")
-        if timestamp and (latest_timestamp is None or timestamp > latest_timestamp):
-            latest_timestamp = timestamp
-
-        for chapter_result in data.get("results", []):
-            chapter = chapter_result.get("chapter", "unknown")
-            for bench in chapter_result.get("benchmarks", []):
-                name = bench.get("example", "unknown")
-                key = (chapter, name)
-                speedup = bench.get("best_speedup", 0)
-                if key not in all_benchmarks or speedup > all_benchmarks[key].get("best_speedup", 0):
-                    all_benchmarks[key] = bench
-                    all_benchmarks[key]["_chapter"] = chapter
-
-    if data_file:
-        path = Path(data_file)
-        if path.exists():
-            try:
-                _ingest_result_file(path)
-            except Exception:
-                pass
+    """Select each target's latest qualified result and retain rejected rows separately."""
+    if data_file is not None:
+        paths = [Path(data_file)]
     else:
+        if bench_roots is None:
+            bench_roots = get_bench_roots(repo_root=CODE_ROOT)
+        paths = []
         for root in bench_roots:
-            artifacts_dir = root / "artifacts"
-            if artifacts_dir.exists():
-                for result_file in sorted(artifacts_dir.rglob("benchmark_test_results.json")):
-                    try:
-                        _ingest_result_file(result_file)
-                    except Exception:
-                        pass
-
+            paths.extend(sorted((root / "artifacts").rglob("benchmark_test_results.json")))
             default_path = root / "benchmark_test_results.json"
             if default_path.exists():
-                try:
-                    _ingest_result_file(default_path)
-                except Exception:
-                    pass
+                paths.append(default_path)
 
-    if not all_benchmarks:
-        return {
-            "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
-            "benchmarks": [],
-            "summary": {"total_benchmarks": 0, "avg_speedup": 0, "max_speedup": 0},
-        }
+    selected: Dict[tuple, tuple[float, dict]] = {}
+    diagnostics = []
+    ingest_errors = []
+    latest = (float("-inf"), "")
+    for path in dict.fromkeys(paths):
+        try:
+            data = read_benchmark_json(path)
+            timestamp = _source_timestamp(data, path)
+            rows = [
+                _normalize_benchmark(chapter, bench, source=path, run_id=data.get("run_id"))
+                for chapter, bench in iter_benchmark_rows(data, path)
+            ]
+        except (OSError, ValueError) as exc:
+            if data_file is not None:
+                raise
+            ingest_errors.append({"source_file": str(path), "error": str(exc)})
+            continue
 
-    return _transform_aggregated_data(all_benchmarks, latest_timestamp)
+        latest = max(latest, timestamp)
+        for row in rows:
+            if not is_qualified_benchmark(row):
+                diagnostics.append(row)
+                continue
+            key = (row["chapter"], row["name"], row["type"])
+            previous = selected.get(key)
+            if previous is None or timestamp[0] >= previous[0]:
+                selected[key] = (timestamp[0], row)
+
+    benchmarks = sorted((row for _, row in selected.values()), key=lambda row: row["speedup"], reverse=True)
+    speedups = [row["speedup"] for row in benchmarks]
+    memory = [row for row in benchmarks if row["optimization_goal"] == "memory"]
+    failed_regression = sum(row["status"] == "failed_regression" for row in diagnostics)
+    return {
+        "timestamp": latest[1] or time.strftime("%Y-%m-%d %H:%M:%S"),
+        "benchmarks": benchmarks,
+        "diagnostics": diagnostics,
+        "ingest_errors": ingest_errors,
+        "aggregated": True,
+        "source_count": len(benchmarks),
+        "summary": {
+            "total_benchmarks": len(benchmarks) + len(diagnostics),
+            "avg_speedup": sum(speedups) / len(speedups) if speedups else 0,
+            "max_speedup": max(speedups, default=0),
+            "min_speedup": min(speedups, default=0),
+            "successful": len(benchmarks),
+            "failed": sum(row["status"].startswith("failed") for row in diagnostics) - failed_regression,
+            "failed_regression": failed_regression,
+            "skipped": sum(row["status"].startswith("skipped") for row in diagnostics),
+            "unqualified": len(diagnostics),
+            "memory_optimizations": len(memory),
+            "speed_optimizations": len(benchmarks) - len(memory),
+            "best_memory_savings_pct": max((row["memory_savings_pct"] for row in memory), default=0),
+        },
+    }
 
 
 class PerformanceAnalyzer:
@@ -245,14 +338,13 @@ class PerformanceAnalyzer:
         self._data_loader = data_loader or load_benchmark_data
 
     def _load_data(self) -> dict:
-        try:
-            return (self._data_loader or load_benchmark_data)() or {}
-        except Exception:
-            return {}
+        return self._data_loader() or {}
+
+    def _qualified_benchmarks(self) -> List[dict]:
+        return [row for row in self._load_data().get("benchmarks", []) if is_qualified_benchmark(row)]
 
     def get_categorized_leaderboards(self) -> dict:
-        data = self._load_data()
-        benchmarks = data.get("benchmarks", [])
+        benchmarks = self._qualified_benchmarks()
 
         speed_benchmarks = [b for b in benchmarks if b.get("optimization_goal", "speed") == "speed"]
         memory_benchmarks = [b for b in benchmarks if b.get("optimization_goal") == "memory"]
@@ -320,8 +412,7 @@ class PerformanceAnalyzer:
         }
 
     def get_pareto_frontier(self) -> dict:
-        data = self._load_data()
-        benchmarks = data.get("benchmarks", [])
+        benchmarks = self._qualified_benchmarks()
 
         points = []
         for b in benchmarks:
@@ -359,8 +450,7 @@ class PerformanceAnalyzer:
         }
 
     def get_tradeoff_analysis(self) -> dict:
-        data = self._load_data()
-        benchmarks = data.get("benchmarks", [])
+        benchmarks = self._qualified_benchmarks()
 
         tradeoffs: List[Dict[str, Any]] = []
         for b in benchmarks:
@@ -405,8 +495,7 @@ class PerformanceAnalyzer:
         }
 
     def get_constraint_recommendations(self) -> dict:
-        data = self._load_data()
-        benchmarks = data.get("benchmarks", [])
+        benchmarks = self._qualified_benchmarks()
 
         scenarios: List[Dict[str, Any]] = []
 
@@ -500,8 +589,7 @@ class PerformanceAnalyzer:
         return {"scenarios": scenarios, "total_benchmarks": len(benchmarks)}
 
     def get_whatif_recommendations(self, params: dict) -> dict:
-        data = self._load_data()
-        benchmarks = data.get("benchmarks", [])
+        benchmarks = self._qualified_benchmarks()
 
         max_vram_gb = float(params.get("vram", [999999])[0])
         max_latency_ms = float(params.get("latency", [999999])[0])
@@ -607,8 +695,7 @@ class PerformanceAnalyzer:
         }
 
     def get_power_efficiency(self) -> dict:
-        data = self._load_data()
-        benchmarks = data.get("benchmarks", [])
+        benchmarks = self._qualified_benchmarks()
 
         efficiency_data: List[Dict[str, Any]] = []
         for b in benchmarks:
@@ -640,8 +727,7 @@ class PerformanceAnalyzer:
         }
 
     def get_scaling_analysis(self) -> dict:
-        data = self._load_data()
-        benchmarks = data.get("benchmarks", [])
+        benchmarks = self._qualified_benchmarks()
 
         scaling_insights = []
         categories: Dict[str, List[Dict[str, Any]]] = {
@@ -694,8 +780,7 @@ class PerformanceAnalyzer:
         }
 
     def get_cost_analysis(self, gpu: str = None, custom_rate: float = None) -> dict:
-        data = self._load_data()
-        benchmarks = data.get("benchmarks", [])
+        benchmarks = self._qualified_benchmarks()
 
         gpu_pricing = {
             "B200": {"hourly": 5.00, "name": "NVIDIA B200", "tflops": 2250},

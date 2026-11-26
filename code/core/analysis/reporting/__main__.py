@@ -16,7 +16,11 @@ def generate(
     author: str = typer.Option("AI Performance Engineering", "--author"),
 ) -> None:
     config = ReportConfig(title=title, author=author)
-    path = generate_report(input, output, format=format, config=config)
+    try:
+        path = generate_report(input, output, format=format, config=config)
+    except (OSError, ValueError) as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
     typer.echo(f"✅ Report generated: {path}")
 
 

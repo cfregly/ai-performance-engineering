@@ -12458,6 +12458,31 @@ def test_chapter(
     )
 
 
+def _markdown_observed_speedup(benchmark: Dict[str, Any]) -> Optional[float]:
+    if "optimizations" in benchmark and not any(
+        opt.get("status", "succeeded") in ("succeeded", "success", "ok")
+        and _coerce_positive_float(opt.get("time_ms")) is not None
+        for opt in (benchmark["optimizations"] or [])
+    ):
+        return None
+    return _coerce_positive_float(benchmark.get("best_speedup"))
+
+
+def _markdown_report_speedup(benchmark: Dict[str, Any]) -> Optional[float]:
+    """Return the measured speedup eligible for the Markdown report summary."""
+    status = benchmark.get("status")
+    if "status" in benchmark and status not in ("succeeded", "success", "ok"):
+        return None
+    if benchmark.get("error") or benchmark.get("skip_reason"):
+        return None
+    expectation = benchmark.get("expectation")
+    if benchmark.get("required_profiler_failures") or (
+        isinstance(expectation, dict) and expectation.get("required_profiler_failures")
+    ):
+        return None
+    return _markdown_observed_speedup(benchmark)
+
+
 def generate_markdown_report(
     results: List[Dict[str, Any]],
     output_path: Path,
@@ -12467,6 +12492,16 @@ def generate_markdown_report(
     """Generate markdown summary report."""
     report_root = _resolve_report_root(bench_root)
     report_dir = output_path.parent
+    chapter_results = []
+    for result in results:
+        speedups = []
+        if result['status'] == 'completed':
+            speedups = [
+                speedup
+                for benchmark in result.get('benchmarks', [])
+                if (speedup := _markdown_report_speedup(benchmark)) is not None
+            ]
+        chapter_results.append((result, speedups))
     has_llm_details = any(
         _benchmark_has_llm_data(bench)
         for result in results
@@ -12487,14 +12522,7 @@ def generate_markdown_report(
         total_successful = sum(r['summary']['successful'] for r in results)
         total_failed = sum(r['summary']['failed'] for r in results)
         
-        all_speedups = []
-        for r in results:
-            if r['status'] == 'completed':
-                for bench in r['benchmarks']:
-                    if bench['status'] == 'succeeded':
-                        all_speedups.append(bench['best_speedup'])
-        
-        avg_speedup = sum(all_speedups) / len(all_speedups) if all_speedups else 1.0
+        all_speedups = [speedup for _, values in chapter_results for speedup in values]
         
         f.write("## Overall Summary\n\n")
         f.write(f"- **Chapters tested:** {completed}/{total_chapters}\n")
@@ -12527,7 +12555,7 @@ def generate_markdown_report(
         if total_skipped_hw > 0:
             f.write(f"- **WARNING: Skipped (hardware/software limitations):** {total_skipped_hw}\n")
         if all_speedups:
-            f.write(f"- **Average speedup:** {avg_speedup:.2f}x\n")
+            f.write(f"- **Average speedup:** {sum(all_speedups) / len(all_speedups):.2f}x\n")
             f.write(f"- **Best speedup:** {max(all_speedups):.2f}x\n")
             f.write(f"- **Worst speedup:** {min(all_speedups):.2f}x\n")
         f.write("\n")
@@ -12577,7 +12605,7 @@ def generate_markdown_report(
         f.write("| Chapter | Status | Benchmarks | Successful | Failed | Avg Speedup | Max Speedup |\n")
         f.write("|---------|--------|------------|------------|--------|-------------|-------------|\n")
         
-        for r in sorted(results, key=lambda x: x['chapter']):
+        for r, speeds in sorted(chapter_results, key=lambda entry: entry[0]['chapter']):
             status_emoji = {
                 'completed': 'PASS',
                 'skipped': 'SKIP',
@@ -12586,12 +12614,12 @@ def generate_markdown_report(
             }.get(r['status'], 'UNKNOWN')
             
             summary = r['summary']
-            avg_sp = summary.get('average_speedup', 0.0)
-            max_sp = summary.get('max_speedup', 0.0)
+            avg_sp = _format_speedup_ratio(sum(speeds) / len(speeds) if speeds else None)
+            max_sp = _format_speedup_ratio(max(speeds) if speeds else None)
             
             f.write(f"| {r['chapter']} | {status_emoji} | {summary['total_benchmarks']} | "
                    f"{summary['successful']} | {summary['failed']} | "
-                   f"{avg_sp:.2f}x | {max_sp:.2f}x |\n")
+                   f"{avg_sp} | {max_sp} |\n")
         
         f.write("\n")
         
@@ -12639,6 +12667,7 @@ def generate_markdown_report(
                 f.write("\n")
                 
                 bench_status = bench.get('status')
+                qualified_speedup = _markdown_report_speedup(bench)
                 if bench_status == 'failed_error':
                     f.write(f"- Failed: {bench.get('error', 'Unknown error')}\n")
                 elif bench_status == 'failed_verification':
@@ -12648,12 +12677,21 @@ def generate_markdown_report(
                 elif bench_status == 'failed_no_speedup':
                     f.write(f"- No speedup: {bench.get('error', _format_failed_no_speedup(bench))}\n")
                 elif bench_status == 'failed_expectation_invalid':
-                    f.write(f"- Expectation evidence refused: {bench['error']}\n")
+                    f.write(f"- Expectation evidence refused: {bench.get('error') or 'Invalid evidence'}\n")
                 elif bench_status == 'skipped':
                     f.write(f"- WARNING: **SKIPPED**: {bench.get('skip_reason', bench.get('error', 'Hardware/software limitation'))}\n")
+                elif qualified_speedup is None:
+                    status = bench_status or "unknown"
+                    f.write(f"- Run status `{status}`.\n")
+                    reason = bench.get('error') or bench.get('skip_reason') or "No qualified optimization measurement."
+                    f.write(f"- {reason}\n")
+                    observed_speedup = _markdown_observed_speedup(bench)
+                    if observed_speedup is not None:
+                        f.write(f"- Observed speedup was {_format_speedup_ratio(observed_speedup)}.\n")
                 else:
-                    for opt in bench['optimizations']:
-                        if opt['status'] == 'succeeded':
+                    for opt in bench.get('optimizations', []):
+                        status = opt.get('status', 'succeeded')
+                        if status in ('succeeded', 'success', 'ok'):
                             f.write(f"- `{opt['file']}`: {opt['time_ms']:.2f} ms ({opt['speedup']:.2f}x speedup)")
                             profiler_links = []
                             if opt.get('optimized_nsys_rep'):
@@ -12680,13 +12718,13 @@ def generate_markdown_report(
                             if profiler_links:
                                 f.write(f" | {' | '.join(profiler_links)}")
                             f.write("\n")
-                        elif opt['status'] == 'skipped':
+                        elif status == 'skipped':
                             f.write(f"- `{opt['file']}`: WARNING: **SKIPPED** - {opt.get('skip_reason', opt.get('error', 'Hardware/software limitation'))}\n")
                         else:
                             f.write(f"- `{opt['file']}`: {opt.get('error', 'Failed')}\n")
                     
-                    if bench['best_speedup'] > 1.0:
-                        f.write(f"- Best speedup: {bench['best_speedup']:.2f}x\n")
+                    if qualified_speedup > 1.0:
+                        f.write(f"- Best speedup: {qualified_speedup:.2f}x\n")
 
                 if _benchmark_has_llm_data(bench):
                     chapter_dir = report_root / r["chapter"]
@@ -12741,7 +12779,7 @@ def generate_markdown_report(
                         f.write(f"- **Best-patch explanation:** [{explanation_path.name}]({explanation_link})\n")
 
                     best_patch = bench.get("best_llm_patch")
-                    if best_patch:
+                    if best_patch and qualified_speedup is not None:
                         best_variant = best_patch.get("variant_name", "unknown")
                         best_speedup = best_patch.get("actual_speedup")
                         best_speedup_str = f"{best_speedup:.2f}x" if isinstance(best_speedup, (int, float)) else "unknown"
@@ -12768,7 +12806,8 @@ def generate_markdown_report(
                         source_link = _format_rel_link(source_file, report_dir)
                         f.write(f"- **Patch diff base:** [{source_file.name}]({source_link})\n")
                     if patches:
-                        f.write("\n**Patch outcomes:**\n\n")
+                        heading = "Patch outcomes" if qualified_speedup is not None else "Observed patch outcomes"
+                        f.write(f"\n**{heading}:**\n\n")
                         f.write("| Variant | Expected | Actual | Median (ms) | Verified | Patch File |\n")
                         f.write("|---------|----------|--------|-------------|----------|------------|\n")
                         for patch in patches:

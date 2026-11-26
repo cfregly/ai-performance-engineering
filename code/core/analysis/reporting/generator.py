@@ -6,13 +6,21 @@ Supports multiple output formats and customizable templates.
 
 import base64
 import io
-import json
 import subprocess
 import tempfile
 from dataclasses import dataclass, field
 from datetime import datetime
+from html import escape
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
+
+from core.analysis.performance_analyzer import (
+    has_success_status,
+    is_finite_measurement,
+    is_qualified_benchmark,
+    load_benchmark_data,
+    read_benchmark_json,
+)
 
 # Try to import PDF libraries
 try:
@@ -67,17 +75,40 @@ class BenchmarkData:
     """Benchmark data for report generation."""
     name: str
     chapter: str = ""
-    baseline_time_ms: float = 0
-    optimized_time_ms: float = 0
-    speedup: float = 1.0
+    baseline_time_ms: Optional[float] = 0
+    optimized_time_ms: Optional[float] = 0
+    speedup: Optional[float] = 1.0
     techniques: List[str] = field(default_factory=list)
     memory_baseline_mb: float = 0
     memory_optimized_mb: float = 0
     status: str = "success"
     notes: str = ""
+    source_file: str = ""
+    run_id: str = ""
     pair_role: str = ""
     chapter_alignment: str = ""
     chapter_native_exemplar: Optional[bool] = None
+
+    @property
+    def qualified(self) -> bool:
+        return is_qualified_benchmark({"status": self.status, "speedup": self.speedup})
+
+
+def _speedup_label(speedup: Optional[float], precision: int = 2) -> str:
+    return f"{speedup:.{precision}f}x" if speedup is not None else "n/a"
+
+
+def _time_label(time_ms: Optional[float]) -> str:
+    return f"{time_ms:.2f}" if time_ms is not None else "n/a"
+
+
+def _report_summary(benchmarks: List[BenchmarkData]) -> tuple:
+    qualified = sorted((b for b in benchmarks if b.qualified), key=lambda b: b.speedup, reverse=True)
+    diagnostics = [b for b in benchmarks if not b.qualified]
+    average = sum(b.speedup for b in qualified) / len(qualified) if qualified else None
+    best = qualified[0].speedup if qualified else None
+    successful = sum(b.speedup > 1.0 for b in qualified)
+    return qualified, diagnostics, average, best, successful
 
 
 class ReportGenerator:
@@ -179,73 +210,86 @@ class ReportGenerator:
     def _parse_dict_data(self, data: Dict[str, Any]) -> List[BenchmarkData]:
         """Parse dictionary data into BenchmarkData objects."""
         benchmarks = []
-        
-        for item in data.get("benchmarks", []):
+        rows = data.get("benchmarks")
+        diagnostics = data.get("diagnostics", [])
+        if not isinstance(rows, list) or not isinstance(diagnostics, list):
+            raise ValueError("Expected 'benchmarks' and optional 'diagnostics' lists in report input")
+
+        for index, item in enumerate(rows + diagnostics):
+            if not isinstance(item, dict) or not isinstance(item.get("name"), str):
+                raise ValueError(f"Invalid benchmark at report row {index}")
+            for key in ("baseline_time_ms", "optimized_time_ms", "speedup"):
+                value = item.get(key)
+                if value is not None and not is_finite_measurement(value):
+                    raise ValueError(f"Invalid {key} for report row {item['name']}")
+            status = item.get("status", "success")
+            chapter = item.get("chapter", "")
+            techniques = item.get("techniques", [])
+            if not isinstance(status, str) or not isinstance(chapter, str):
+                raise ValueError(f"Invalid status or chapter for report row {item['name']}")
+            if not isinstance(techniques, list) or any(not isinstance(technique, str) for technique in techniques):
+                raise ValueError(f"Expected techniques list for report row {item['name']}")
+            if has_success_status(status) and (
+                index >= len(rows) or not is_qualified_benchmark(item)
+            ):
+                status = "unqualified"
             benchmarks.append(BenchmarkData(
-                name=item.get("name", "Unknown"),
-                chapter=item.get("chapter", ""),
-                baseline_time_ms=item.get("baseline_time_ms", 0),
-                optimized_time_ms=item.get("optimized_time_ms", 0),
-                speedup=item.get("speedup", 1.0),
-                techniques=item.get("techniques", []),
+                name=item["name"],
+                chapter=chapter,
+                baseline_time_ms=item.get("baseline_time_ms"),
+                optimized_time_ms=item.get("optimized_time_ms"),
+                speedup=item.get("speedup"),
+                techniques=techniques,
                 memory_baseline_mb=item.get("baseline_memory_mb", 0),
                 memory_optimized_mb=item.get("optimized_memory_mb", 0),
-                status=item.get("status", "success"),
-                notes=item.get("story_note") or item.get("notes", ""),
+                status=status,
+                notes=" ".join(str(value) for value in (item.get("story_note") or item.get("notes"), item.get("error")) if value),
+                source_file=str(item.get("source_file") or ""),
+                run_id=str(item.get("run_id") or ""),
                 pair_role=item.get("pair_role", ""),
                 chapter_alignment=item.get("chapter_alignment", ""),
                 chapter_native_exemplar=item.get("chapter_native_exemplar"),
             ))
-        
+
         return benchmarks
     
     def _generate_html(self, benchmarks: List[BenchmarkData], template: str) -> str:
         """Generate HTML content for the report."""
         
-        # Calculate summary stats
         total = len(benchmarks)
-        successful = sum(1 for b in benchmarks if b.speedup > 1.0)
-        avg_speedup = sum(b.speedup for b in benchmarks) / max(total, 1)
-        best_speedup = max((b.speedup for b in benchmarks), default=1.0)
-        total_time_saved = sum(b.baseline_time_ms - b.optimized_time_ms for b in benchmarks if b.speedup > 1.0)
-        
-        # Group by chapter
-        chapters = {}
-        for b in benchmarks:
-            ch = b.chapter or "Other"
-            if ch not in chapters:
-                chapters[ch] = []
-            chapters[ch].append(b)
-        
-        # Generate benchmark rows
+        qualified, diagnostics, avg_speedup, best_speedup, successful = _report_summary(benchmarks)
+
+        chapters: Dict[str, List[BenchmarkData]] = {}
+        for b in qualified:
+            chapters.setdefault(b.chapter or "Other", []).append(b)
+
         benchmark_rows = ""
-        for b in sorted(benchmarks, key=lambda x: -x.speedup)[:50]:
+        for b in qualified[:50]:
             status_color = "#22c55e" if b.speedup > 1.1 else "#f59e0b" if b.speedup > 1.0 else "#ef4444"
             techniques_str = ", ".join(b.techniques[:3]) if b.techniques else "-"
             note_html = ""
             if b.notes:
                 note_html = (
-                    f"<div style=\"margin-top: 6px; font-size: 11px; color: #94a3b8;\">{b.notes}</div>"
+                    f'<div style="margin-top: 6px; font-size: 11px; color: #94a3b8;">{escape(b.notes)}</div>'
                 )
             benchmark_rows += f"""
             <tr>
-                <td style="padding: 12px; border-bottom: 1px solid #334155;">{b.name}{note_html}</td>
-                <td style="padding: 12px; border-bottom: 1px solid #334155;">{b.chapter}</td>
-                <td style="padding: 12px; border-bottom: 1px solid #334155; text-align: right;">{b.baseline_time_ms:.2f}</td>
-                <td style="padding: 12px; border-bottom: 1px solid #334155; text-align: right;">{b.optimized_time_ms:.2f}</td>
-                <td style="padding: 12px; border-bottom: 1px solid #334155; text-align: right; color: {status_color}; font-weight: bold;">{b.speedup:.2f}x</td>
-                <td style="padding: 12px; border-bottom: 1px solid #334155; font-size: 12px;">{techniques_str}</td>
+                <td style="padding: 12px; border-bottom: 1px solid #334155;">{escape(b.name)}{note_html}</td>
+                <td style="padding: 12px; border-bottom: 1px solid #334155;">{escape(b.chapter)}</td>
+                <td style="padding: 12px; border-bottom: 1px solid #334155; text-align: right;">{_time_label(b.baseline_time_ms)}</td>
+                <td style="padding: 12px; border-bottom: 1px solid #334155; text-align: right;">{_time_label(b.optimized_time_ms)}</td>
+                <td style="padding: 12px; border-bottom: 1px solid #334155; text-align: right; color: {status_color}; font-weight: bold;">{_speedup_label(b.speedup)}</td>
+                <td style="padding: 12px; border-bottom: 1px solid #334155; font-size: 12px;">{escape(techniques_str)}</td>
             </tr>
             """
-        
-        # Generate chapter summary
+
         chapter_summary = ""
         for ch, ch_benchmarks in sorted(chapters.items()):
             ch_avg = sum(b.speedup for b in ch_benchmarks) / len(ch_benchmarks)
             ch_best = max(b.speedup for b in ch_benchmarks)
             chapter_summary += f"""
             <div style="background: rgba(255,255,255,0.05); padding: 15px; border-radius: 8px; margin-bottom: 10px;">
-                <div style="font-weight: 600; margin-bottom: 5px;">{ch}</div>
+                <div style="font-weight: 600; margin-bottom: 5px;">{escape(ch)}</div>
                 <div style="display: flex; gap: 20px; font-size: 14px; color: #94a3b8;">
                     <span>{len(ch_benchmarks)} benchmarks</span>
                     <span>Avg: {ch_avg:.2f}x</span>
@@ -253,17 +297,36 @@ class ReportGenerator:
                 </div>
             </div>
             """
-        
-        # Top performers
+
         top_performers = ""
-        for b in sorted(benchmarks, key=lambda x: -x.speedup)[:5]:
+        for b in qualified[:5]:
             top_performers += f"""
             <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #334155;">
-                <span>{b.name}</span>
-                <span style="color: #22c55e; font-weight: bold;">{b.speedup:.2f}x</span>
+                <span>{escape(b.name)}</span>
+                <span style="color: #22c55e; font-weight: bold;">{_speedup_label(b.speedup)}</span>
             </div>
             """
-        
+
+        diagnostics_section = ""
+        if diagnostics:
+            diagnostic_rows = []
+            for b in diagnostics:
+                details = " · ".join(part for part in (b.notes, b.run_id, b.source_file) if part)
+                diagnostic_rows.append(
+                    f"<tr><td>{escape(b.chapter)}:{escape(b.name)}</td>"
+                    f"<td>{escape(b.status)}</td><td>{_speedup_label(b.speedup)}</td>"
+                    f"<td>{escape(details)}</td></tr>"
+                )
+            diagnostics_section = f"""
+            <div class="section">
+                <h2 class="section-title">Run Diagnostics</h2>
+                <table>
+                    <thead><tr><th>Benchmark</th><th>Status</th><th>Recorded Speedup</th><th>Details</th></tr></thead>
+                    <tbody>{"".join(diagnostic_rows)}</tbody>
+                </table>
+            </div>
+            """
+
         # Generate full HTML
         html = f"""<!DOCTYPE html>
 <html>
@@ -432,24 +495,24 @@ class ReportGenerator:
         <div class="summary-grid">
             <div class="summary-card">
                 <div class="summary-value">{total}</div>
-                <div class="summary-label">Total Benchmarks</div>
+                <div class="summary-label">Result Rows</div>
             </div>
             <div class="summary-card">
-                <div class="summary-value" style="color: #22c55e;">{best_speedup:.1f}x</div>
+                <div class="summary-value" style="color: #22c55e;">{_speedup_label(best_speedup, 1)}</div>
                 <div class="summary-label">Best Speedup</div>
             </div>
             <div class="summary-card">
-                <div class="summary-value">{avg_speedup:.2f}x</div>
+                <div class="summary-value">{_speedup_label(avg_speedup)}</div>
                 <div class="summary-label">Average Speedup</div>
             </div>
             <div class="summary-card">
-                <div class="summary-value">{successful}/{total}</div>
+                <div class="summary-value">{successful}/{len(qualified)}</div>
                 <div class="summary-label">Optimized</div>
             </div>
         </div>
         
         <div class="section">
-            <h2 class="section-title">📊 Benchmark Results</h2>
+            <h2 class="section-title">📊 Qualified Benchmark Results</h2>
             <table>
                 <thead>
                     <tr>
@@ -480,6 +543,8 @@ class ReportGenerator:
             </div>
         </div>
         
+        {diagnostics_section}
+
         <div class="footer">
             <p>{self.config.author} • Generated with AI Performance Engineering Tools</p>
         </div>
@@ -553,13 +618,11 @@ class ReportGenerator:
         
         # Summary stats
         total = len(benchmarks)
-        avg_speedup = sum(b.speedup for b in benchmarks) / max(total, 1)
-        best_speedup = max((b.speedup for b in benchmarks), default=1.0)
-        successful = sum(1 for b in benchmarks if b.speedup > 1.0)
+        qualified, diagnostics, avg_speedup, best_speedup, successful = _report_summary(benchmarks)
         
         summary_data = [
-            ['Total Benchmarks', 'Best Speedup', 'Average Speedup', 'Optimized'],
-            [str(total), f'{best_speedup:.1f}x', f'{avg_speedup:.2f}x', f'{successful}/{total}'],
+            ['Result Rows', 'Best Speedup', 'Average Speedup', 'Optimized'],
+            [str(total), f'{_speedup_label(best_speedup, 1)}', f'{_speedup_label(avg_speedup)}', f'{successful}/{len(qualified)}'],
         ]
         
         summary_table = Table(summary_data, colWidths=[120, 100, 100, 100])
@@ -579,19 +642,19 @@ class ReportGenerator:
         story.append(Spacer(1, 30))
         
         # Benchmark table
-        story.append(Paragraph("Benchmark Results", heading_style))
+        story.append(Paragraph("Qualified Benchmark Results", heading_style))
         
         table_data = [['Benchmark', 'Baseline (ms)', 'Optimized (ms)', 'Speedup']]
         
-        for b in sorted(benchmarks, key=lambda x: -x.speedup)[:30]:
+        for b in qualified[:30]:
             display_name = b.name
             if b.pair_role == "comparison" and b.chapter_alignment == "supplementary":
                 display_name = f"{display_name} [supplementary comparison]"
             table_data.append([
                 display_name[:56],
-                f'{b.baseline_time_ms:.2f}',
-                f'{b.optimized_time_ms:.2f}',
-                f'{b.speedup:.2f}x',
+                _time_label(b.baseline_time_ms),
+                _time_label(b.optimized_time_ms),
+                _speedup_label(b.speedup),
             ])
         
         bench_table = Table(table_data, colWidths=[200, 80, 80, 70])
@@ -609,6 +672,16 @@ class ReportGenerator:
         
         story.append(bench_table)
         
+        if diagnostics:
+            story.append(Spacer(1, 20))
+            story.append(Paragraph("Run Diagnostics", heading_style))
+            for b in diagnostics:
+                details = " | ".join(part for part in (b.notes, b.run_id, b.source_file) if part)
+                story.append(Paragraph(
+                    escape(f"{b.chapter}:{b.name} | {b.status} | Recorded speedup {_speedup_label(b.speedup)} | {details}"),
+                    styles["Normal"],
+                ))
+
         # Build PDF
         doc.build(story)
 
@@ -633,20 +706,14 @@ def generate_report(
     """
     generator = ReportGenerator(config=config)
     
-    # Handle different data sources
     if isinstance(data, (str, Path)):
         data_path = Path(data)
-        if data_path.exists():
-            # It's a file
-            with open(data_path) as f:
-                data = json.load(f)
-            if isinstance(data, dict) and "results" in data and "benchmarks" not in data:
-                from core.analysis.performance_analyzer import load_benchmark_data
+        data = read_benchmark_json(data_path)
+        if "results" in data and "benchmarks" not in data:
+            data = load_benchmark_data(data_file=data_path)
+        if not isinstance(data.get("benchmarks"), list):
+            raise ValueError(f"Expected 'benchmarks' list in report input {data_path}")
 
-                data = load_benchmark_data(data_file=data_path)
-        else:
-            raise FileNotFoundError(f"Benchmark JSON file not found: {data_path}")
-    
     if format == "pdf":
         return generator.generate_pdf(data, output_path)
     else:

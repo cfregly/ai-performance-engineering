@@ -332,7 +332,7 @@ def test_aggregated_data_surfaces_story_metadata_and_story_note(tmp_path: Path) 
                             {
                                 "file": "optimized_inference_full.py",
                                 "technique": "early exit",
-                                "time_ms": 3.9,
+                                "time_ms": 12.5 / 3.2,
                                 "speedup": 3.2,
                                 "status": "succeeded",
                                 "story_metadata": {
@@ -384,7 +384,7 @@ def test_generate_report_from_raw_results_file_renders_story_note(tmp_path: Path
                             {
                                 "file": "optimized_gemm.py",
                                 "technique": "compiled matmul",
-                                "time_ms": 0.189,
+                                "time_ms": 0.548 / 2.9,
                                 "speedup": 2.9,
                                 "status": "succeeded",
                             }

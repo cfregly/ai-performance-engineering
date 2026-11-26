@@ -47,6 +47,12 @@ generator = ReportGenerator(config)
 generator.generate_pdf(data, "custom_report.pdf")
 ```
 
+Benchmark rankings and summary statistics use successful baseline and optimization
+pairs. Historical results that contain only a recorded speedup can also qualify.
+Rejected rows and baseline-only runs appear in **Run Diagnostics**, with their
+recorded status and available source details. A missing or malformed input file
+produces an error.
+
 ## Report Types
 
 ### BenchmarkReport

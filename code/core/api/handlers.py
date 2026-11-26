@@ -163,7 +163,9 @@ def _build_summary(
     min_speedup = float(raw_summary.get("min_speedup", 0) or 0)
     if not avg_speedup or not max_speedup or not min_speedup:
         speedups = [
-            float(b.get("speedup", 0) or 0) for b in benchmarks if b.get("speedup") is not None
+            float(b["speedup"])
+            for b in benchmarks
+            if b.get("speedup") is not None and _status_bucket(b.get("status")) == "succeeded"
         ]
         if speedups:
             avg_speedup = avg_speedup or sum(speedups) / len(speedups)
@@ -342,6 +344,7 @@ def _load_run_file(path: Path) -> Dict[str, Any]:
 def benchmark_data(params: Dict[str, Any]) -> Dict[str, Any]:
     data = get_engine().benchmark.data()
     benchmarks = [_normalize_benchmark_record(b) for b in data.get("benchmarks", [])]
+    diagnostics = [_normalize_benchmark_record(b) for b in data.get("diagnostics", [])]
     raw_summary = data.get("summary", {}) or {}
 
     page = _parse_int_param(params, "page", 1, minimum=1)
@@ -356,8 +359,11 @@ def benchmark_data(params: Dict[str, Any]) -> Dict[str, Any]:
     benchmark_name = _parse_str_param(params, "benchmark")
     optimization_goal = _parse_str_param(params, "optimization_goal")
 
+    include_diagnostics = any(
+        _status_bucket(status) != "succeeded" for status in status_filters or []
+    )
     filtered = _filter_benchmarks(
-        benchmarks,
+        benchmarks + diagnostics if include_diagnostics else benchmarks,
         search=search,
         status_filters=status_filters,
         chapter_filters=chapter_filters,
@@ -371,7 +377,7 @@ def benchmark_data(params: Dict[str, Any]) -> Dict[str, Any]:
     total_pages = (total + page_size - 1) // page_size if page_size else 1
     return {
         "timestamp": data.get("timestamp"),
-        "summary": _build_summary(benchmarks, raw_summary),
+        "summary": _build_summary(benchmarks + diagnostics, raw_summary),
         "benchmarks": paged,
         "pagination": {
             "page": page,
@@ -507,8 +513,9 @@ def benchmark_opportunities(params: Dict[str, Any]) -> Dict[str, Any]:
 def benchmark_overview(_: Dict[str, Any]) -> Dict[str, Any]:
     data = get_engine().benchmark.data()
     benchmarks = [_normalize_benchmark_record(b) for b in data.get("benchmarks", [])]
+    diagnostics = [_normalize_benchmark_record(b) for b in data.get("diagnostics", [])]
     raw_summary = data.get("summary", {}) or {}
-    summary = _build_summary(benchmarks, raw_summary)
+    summary = _build_summary(benchmarks + diagnostics, raw_summary)
 
     status_counts = {
         "succeeded": summary["succeeded"],
@@ -524,7 +531,7 @@ def benchmark_overview(_: Dict[str, Any]) -> Dict[str, Any]:
     )[:20]
 
     chapter_stats: Dict[str, Dict[str, Any]] = {}
-    for bench in benchmarks:
+    for bench in benchmarks + diagnostics:
         chapter = str(bench.get("chapter", "unknown"))
         entry = chapter_stats.setdefault(
             chapter,

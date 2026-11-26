@@ -48,13 +48,13 @@ class BenchmarkReport:
     def summary(self) -> Dict[str, Any]:
         """Get summary statistics."""
         total = len(self.benchmarks)
-        speedups = [b.speedup for b in self.benchmarks]
+        speedups = [b.speedup for b in self.benchmarks if b.qualified]
         
         return {
             "total_benchmarks": total,
-            "avg_speedup": sum(speedups) / max(total, 1),
-            "max_speedup": max(speedups, default=1.0),
-            "min_speedup": min(speedups, default=1.0),
+            "avg_speedup": sum(speedups) / len(speedups) if speedups else 0.0,
+            "max_speedup": max(speedups, default=0.0),
+            "min_speedup": min(speedups, default=0.0),
             "successful": sum(1 for s in speedups if s > 1.0),
             "regressed": sum(1 for s in speedups if s < 1.0),
         }
