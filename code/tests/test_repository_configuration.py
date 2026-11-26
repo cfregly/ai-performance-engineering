@@ -772,6 +772,8 @@ def test_workflow_path_filters_are_root_relative() -> None:
         paths = triggers[event_name]["paths"]
         assert {
             "code/Makefile",
+            "code/cluster/**",
+            "code/mcp/**",
             "code/requirements_latest.txt",
             "code/requirements_torch2141_linux_x86_64.lock",
             "code/scripts/build_vllm_for_torch.py",
