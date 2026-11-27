@@ -68,6 +68,7 @@ from core.harness.benchmark_harness import (
     BenchmarkMode,
     BenchmarkConfig,
     TorchrunLaunchSpec,
+    _benchmark_config_receipt,
     _lookup_target_extra_args,
 )
 from core.harness.validity_profile import (
@@ -5213,6 +5214,14 @@ def _compute_locked_fields(
         locked_fields.add("warmup")
     if reproducible:
         locked_fields.update({"seed", "deterministic"})
+    if base_config.force_synchronize:
+        locked_fields.add("force_synchronize")
+    if base_config.single_gpu:
+        locked_fields.add("single_gpu")
+    # The runner always resolves profile selection, including the explicit
+    # unprofiled value "none". Benchmarks may choose a profile only when the
+    # direct harness caller leaves this lock unset.
+    locked_fields.add("profile_type")
     if cli_ncu_replay_mode_provided:
         locked_fields.add("ncu_replay_mode")
         locked_fields.add("ncu_replay_mode_override")
@@ -5223,7 +5232,7 @@ def _compute_locked_fields(
 
     runner_locked_when_true: Set[str] = {"enable_memory_tracking", "detect_setup_precomputation"}
     if enable_profiling:
-        runner_locked_when_true.update({"enable_profiling", "enable_nsys", "enable_ncu", "enable_nvtx", "profile_type"})
+        runner_locked_when_true.update({"enable_profiling", "enable_nsys", "enable_ncu", "enable_nvtx"})
     for field_name in runner_locked_when_true:
         if getattr(base_config, field_name, None):
             locked_fields.add(field_name)
@@ -5265,6 +5274,15 @@ def _merge_benchmark_config(
 ) -> BenchmarkConfig:
     """Merge benchmark-provided config with run-level config, enforcing invariants."""
     merged = copy.deepcopy(base_config)
+    locked_fields = set(locked_fields) | set(getattr(base_config, "locked_fields", ()) or ())
+
+    # Target mode can change benchmark defaults. Resolve it before get_config()
+    # so the runner and the harness observe the same benchmark declaration.
+    BenchmarkHarness._apply_target_overrides(
+        benchmark_obj,
+        merged,
+        launcher_final=False,
+    )
 
     bench_config = getattr(benchmark_obj, "get_config", None)
     if callable(bench_config):
@@ -5274,6 +5292,8 @@ def _merge_benchmark_config(
         override = None
     if override:
         for field in fields(BenchmarkConfig):
+            if field.name == "locked_fields":
+                continue
             value = getattr(override, field.name, None)
             if value is None:
                 continue
@@ -5353,6 +5373,7 @@ def _merge_benchmark_config(
     )
     if merged.validity_profile == "portable":
         merged.lock_gpu_clocks = False
+    merged.locked_fields = sorted(locked_fields)
 
     return merged
 
@@ -5469,12 +5490,28 @@ def _timing_configuration_receipt(
     warmup: int,
     adaptive_iterations: bool,
     timing: Optional[Any],
+    configured_config: Optional[Mapping[str, Any]] = None,
+    applied_config: Optional[Mapping[str, Any]] = None,
 ) -> Dict[str, Any]:
-    """Keep applied configuration separate from retained timing sample counts."""
+    """Keep configured, worker-applied, and observed timing settings distinct."""
+
+    configured = dict(configured_config or {})
+    configured.setdefault("iterations", int(iterations))
+    configured.setdefault("warmup", int(warmup))
+    configured.setdefault("adaptive_iterations", bool(adaptive_iterations))
+    applied = dict(applied_config or configured)
+    applied.setdefault("iterations", configured["iterations"])
+    applied.setdefault("warmup", configured["warmup"])
+    applied.setdefault("adaptive_iterations", configured["adaptive_iterations"])
     return {
         "configured_iterations": int(iterations),
         "configured_warmup_iterations": int(warmup),
         "adaptive_iterations": bool(adaptive_iterations),
+        "applied_iterations": int(applied["iterations"]),
+        "applied_warmup_iterations": int(applied["warmup"]),
+        "applied_adaptive_iterations": bool(applied["adaptive_iterations"]),
+        "configured_config": configured,
+        "applied_config": applied,
         "observed_timing_samples": int(timing.iterations) if timing is not None else None,
         "observed_warmup_iterations": int(timing.warmup_iterations) if timing is not None else None,
     }
@@ -5487,8 +5524,10 @@ def _expectation_provenance_from_result(
     """Use baseline configured counts while preserving each candidate's receipt."""
     configuration = result_entry["baseline_timing_configuration"]
     return RunProvenance(
-        iterations=int(configuration["configured_iterations"]),
-        warmup_iterations=int(configuration["configured_warmup_iterations"]),
+        iterations=int(configuration.get("applied_iterations", configuration["configured_iterations"])),
+        warmup_iterations=int(
+            configuration.get("applied_warmup_iterations", configuration["configured_warmup_iterations"])
+        ),
         **identity,
     )
 
@@ -6049,8 +6088,11 @@ def _test_chapter_impl(
             return False
 
     def _run_with_config(benchmark_obj, run_id: str, target_label: Optional[str] = None):
+        configured = copy.deepcopy(base_config)
+        if target_label and getattr(configured, "target_label", None) is None:
+            configured.target_label = target_label
         merged = _merge_benchmark_config(
-            base_config=base_config,
+            base_config=configured,
             benchmark_obj=benchmark_obj,
             defaults_obj=_defaults_obj,
             locked_fields=locked_fields,
@@ -6059,8 +6101,7 @@ def _test_chapter_impl(
             required, exact = _resolve_required_world_size(benchmark_obj, merged)
             if exact and required == 1 and not _is_multi_gpu_benchmark(benchmark_obj):
                 merged.single_gpu = True
-        if target_label and getattr(merged, "target_label", None) is None:
-            merged.target_label = target_label
+                merged.locked_fields = sorted(set(merged.locked_fields) | {"single_gpu"})
         logger.info("merged config launch_via=%s execution_mode=%s", merged.launch_via, merged.execution_mode)
         local_harness = BenchmarkHarness(mode=BenchmarkMode.CUSTOM, config=merged)
         return local_harness.benchmark_with_manifest(benchmark_obj, run_id=run_id), merged
@@ -6504,6 +6545,8 @@ def _test_chapter_impl(
                     warmup=baseline_config.warmup,
                     adaptive_iterations=baseline_config.adaptive_iterations,
                     timing=baseline_timing,
+                    configured_config=_benchmark_config_receipt(baseline_config),
+                    applied_config=getattr(baseline_benchmark, "_applied_config_receipt", None),
                 )
                 baseline_memory = baseline_result.memory
                 baseline_custom_metrics = getattr(baseline_result, "custom_metrics", None) or {}
@@ -7479,6 +7522,8 @@ def _test_chapter_impl(
                         warmup=optimized_config.warmup,
                         adaptive_iterations=optimized_config.adaptive_iterations,
                         timing=optimized_timing,
+                        configured_config=_benchmark_config_receipt(optimized_config),
+                        applied_config=getattr(optimized_benchmark, "_applied_config_receipt", None),
                     )
 
                     # POST-TIMING VERIFICATION: validate workload equivalence + outputs using the timing-run artifacts.
@@ -7538,6 +7583,12 @@ def _test_chapter_impl(
                                 raise RuntimeError("Baseline verify_output/tolerance missing")
                             optimized_verify_output = _get_perf_output(optimized_benchmark)
                             optimized_verify_tolerance = _get_perf_tolerance(optimized_benchmark)
+                            verification_receipt = {
+                                "passed": False,
+                                "baseline_tolerance": baseline_verify_tolerance.to_dict(),
+                                "optimized_tolerance": optimized_verify_tolerance.to_dict(),
+                            }
+                            opt_result["verification"] = verification_receipt
                             effective_tolerance = resolve_global_output_tolerance(
                                 baseline_verify_tolerance, optimized_verify_tolerance,
                             )
@@ -7557,18 +7608,16 @@ def _test_chapter_impl(
                                 if output_tolerances is not None
                                 else (effective_tolerance.rtol, effective_tolerance.atol),
                             )
-                            opt_result["verification"] = {
+                            verification_receipt.update({
                                 "passed": comparison.passed,
                                 "max_diff": comparison.max_diff,
                                 "location": comparison.location,
                                 "rtol": effective_tolerance.rtol,
                                 "atol": effective_tolerance.atol,
-                                "baseline_tolerance": baseline_verify_tolerance.to_dict(),
-                                "optimized_tolerance": optimized_verify_tolerance.to_dict(),
                                 "output_tolerances": output_tolerances_to_dict(
                                     output_tolerances
                                 ),
-                            }
+                            })
                             if not comparison.passed:
                                 reason = "Output mismatch"
                                 if comparison.max_diff is not None:

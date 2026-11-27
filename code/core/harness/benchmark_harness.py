@@ -978,6 +978,8 @@ class BenchmarkConfig:
     required_world_size: Optional[int] = field(default_factory=lambda: _get_default_value("required_world_size", None))
     single_gpu: bool = field(default_factory=lambda: bool(_get_default_value("single_gpu", False)))
     target_label: Optional[str] = None
+    locked_fields: List[str] = field(default_factory=list)
+    """Run-level settings that benchmark-provided configs may not replace."""
     _execution_mode_overridden: bool = field(init=False, repr=False, default=False)
     
     # Per-stage timeouts (in seconds)
@@ -1196,6 +1198,7 @@ class BenchmarkConfig:
             self.env_passthrough = []
         if self.target_extra_args is None:
             self.target_extra_args = {}
+        self.locked_fields = sorted({str(name) for name in (self.locked_fields or [])})
 
         device_expectation = build_device_identity_expectation(
             self.expected_device_uuid,
@@ -1426,6 +1429,47 @@ class BenchmarkConfig:
         if changes:
             return False, f"Timing config modified during execution: {'; '.join(changes)}"
         return True, None
+
+
+_CONFIG_RECEIPT_FIELDS = (
+    "iterations",
+    "warmup",
+    "adaptive_iterations",
+    "force_synchronize",
+    "single_gpu",
+    "profile_type",
+    "enable_profiling",
+    "deterministic",
+    "seed",
+    "execution_mode",
+    "use_subprocess",
+    "launch_via",
+    "target_label",
+    "locked_fields",
+    "required_world_size",
+    "nproc_per_node",
+    "nnodes",
+)
+
+
+def _benchmark_config_receipt(config: BenchmarkConfig) -> Dict[str, Any]:
+    """Return the launch and timing settings resolved for one execution worker."""
+
+    def _serialize(value: Any) -> Any:
+        if isinstance(value, Enum):
+            return value.value
+        if isinstance(value, dict):
+            return {str(key): _serialize(item) for key, item in value.items()}
+        if isinstance(value, (list, tuple, set, frozenset)):
+            return [_serialize(item) for item in value]
+        if isinstance(value, torch.device):
+            return str(value)
+        return value
+
+    return {
+        name: _serialize(getattr(config, name, None))
+        for name in _CONFIG_RECEIPT_FIELDS
+    }
 
 @dataclass(frozen=True)
 class BenchmarkTimingView:
@@ -2579,8 +2623,8 @@ class BenchmarkHarness:
         result.multi_gpu_required = bool(requires_multi)
         result.multi_gpu = bool(resolved_world_size and resolved_world_size > 1)
 
+    @staticmethod
     def _apply_target_overrides(
-        self,
         benchmark: BaseBenchmark,
         config: BenchmarkConfig,
         *,
@@ -3226,6 +3270,7 @@ class BenchmarkHarness:
             "_subprocess_output_tolerance",
             "_subprocess_output_tolerances",
             "_subprocess_input_signature",
+            "_applied_config_receipt",
         ):
             vars(benchmark).pop(transport_attr, None)
         
@@ -3253,9 +3298,15 @@ class BenchmarkHarness:
         if bench_config:
             # Override with benchmark-specific settings
             default_bench_config = BenchmarkConfig()
+            locked_fields = set(getattr(config, "locked_fields", ()) or ())
             for key, value in bench_config.__dict__.items():
                 # Skip private/internal fields and None values.
                 if key.startswith("_") or value is None:
+                    continue
+
+                # The lock set is run-level authority. A benchmark config must
+                # neither replace it nor replace any field named by it.
+                if key == "locked_fields" or key in locked_fields:
                     continue
 
                 # Never allow benchmarks to re-enable subprocess mode when we're already
@@ -3308,6 +3359,7 @@ class BenchmarkHarness:
         # The merge can select torchrun, which passes the values to the launched
         # script. With the launcher final, fail a target whose values would be ignored.
         self._apply_target_overrides(benchmark, config)
+        benchmark._applied_config_receipt = _benchmark_config_receipt(config)  # type: ignore[attr-defined]
         
         previous_config = getattr(benchmark, "_config", None)
 
@@ -3515,6 +3567,7 @@ class BenchmarkHarness:
             )
 
         config_dict = {k: _serialize_manifest_value(v) for k, v in self.config.__dict__.items()}
+        config_dict["configured_config"] = _benchmark_config_receipt(self.config)
         manifest = RunManifest.create(
             config=config_dict, start_time=start_time, capture_execution_runtime=False,
         )
@@ -3550,6 +3603,10 @@ class BenchmarkHarness:
         
         # Run benchmark
         result = self.benchmark(benchmark)
+
+        applied_config = getattr(benchmark, "_applied_config_receipt", None)
+        if isinstance(applied_config, dict) and manifest.config is not None:
+            manifest.config["applied_config"] = copy.deepcopy(applied_config)
 
         worker_evaluation = getattr(result, "evaluation", None)
         if worker_evaluation is not None:
@@ -3768,6 +3825,8 @@ class BenchmarkHarness:
         inference_timing_data: Optional[Dict[str, List[float]]] = None
         seed_metadata = copy.deepcopy(getattr(self, "_seed_info", None))
         child_custom_metrics: Optional[Dict[str, float]] = None
+        child_story_metadata: Optional[Dict[str, Any]] = None
+        child_story_metadata_returned = False
         child_runtime_env: Optional[Dict[str, str]] = None
         child_gpu_metrics: Optional[Dict[str, Optional[float | str]]] = None
         child_evaluation: Optional[EvaluationProvenance] = None
@@ -4015,6 +4074,9 @@ class BenchmarkHarness:
                         if result_json_str
                         else None
                     )
+                    if benchmark_result is not None:
+                        child_story_metadata_returned = True
+                        child_story_metadata = copy.deepcopy(benchmark_result.story_metadata)
                     if benchmark_result is not None and benchmark_result.evaluation is not None:
                         child_evaluation = benchmark_result.evaluation.model_copy(deep=True)
                     if benchmark_result is not None and benchmark_result.runtime_provenance is not None:
@@ -4076,6 +4138,11 @@ class BenchmarkHarness:
                             str(key): str(value)
                             for key, value in dict(benchmark_result.runtime_env or {}).items()
                         }
+
+                        applied_config = result_dict.get("applied_config")
+                        if not isinstance(applied_config, dict):
+                            raise ValueError("Subprocess omitted its applied benchmark configuration")
+                        benchmark._applied_config_receipt = copy.deepcopy(applied_config)
                         
                         # Extract verify_output/tolerance/signature from subprocess and store on benchmark
                         verify_output_data = result_dict.get("verify_output")
@@ -4314,6 +4381,8 @@ class BenchmarkHarness:
                 result.evaluation = child_evaluation.model_copy(deep=True)
             if child_runtime_provenance is not None:
                 result.runtime_provenance = child_runtime_provenance.model_copy(deep=True)
+            if child_story_metadata is not None:
+                result.story_metadata = copy.deepcopy(child_story_metadata)
             result.execution_process_ids = dict(execution_process_ids)
             result.local_world_size = 1
             result.device = child_device
@@ -4345,9 +4414,13 @@ class BenchmarkHarness:
             custom_metrics = self._resolve_custom_metrics(benchmark)
             if custom_metrics:
                 result.custom_metrics = custom_metrics
-        story_metadata = self._resolve_story_metadata(benchmark)
-        if story_metadata:
-            result.story_metadata = story_metadata
+        if child_story_metadata_returned:
+            if child_story_metadata is not None:
+                result.story_metadata = copy.deepcopy(child_story_metadata)
+        else:
+            story_metadata = self._resolve_story_metadata(benchmark)
+            if story_metadata:
+                result.story_metadata = story_metadata
         if child_runtime_env is not None:
             result.runtime_env = child_runtime_env
         self._attach_throughput_metrics(result, benchmark)

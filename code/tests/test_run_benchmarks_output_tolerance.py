@@ -10,31 +10,35 @@ from tests.test_e2e_failure_isolation_resume import _write_real_cpu_pair
 
 
 @pytest.mark.parametrize(
-    ("chapter_name", "optimized_atol", "offset", "status"),
+    ("chapter_name", "optimized_tolerance", "offset", "matching_map", "status"),
     [
-        ("ch96", 0.0, 0.5, "failed_verification"),
-        ("ch97", 2.0, 0.0, "failed_verification"),
-        ("ch98", 1.0, 0.5, "succeeded"),
+        ("ch94", (0.0, 0.0), 0.5, False, "failed_verification"),
+        ("ch95", (0.0, 2.0), 0.0, False, "failed_verification"),
+        ("ch96", (1e-2, 0.0), 0.0, True, "failed_verification"),
+        ("ch97", (0.0, 1.0), 0.5, False, "succeeded"),
+        ("ch98", (0.0, 0.0), 0.5, True, "succeeded"),
     ],
-    ids=["stricter", "looser", "equal"],
+    ids=["stricter", "looser-absolute", "looser-relative-with-map", "equal", "matching-map"],
 )
 def test_chapter_applies_pair_output_tolerance(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, chapter_name: str,
-    optimized_atol: float, offset: float, status: str,
+    optimized_tolerance: tuple[float, float], offset: float, matching_map: bool, status: str,
 ) -> None:
     chapter = tmp_path / chapter_name
     chapter.mkdir()
     _write_real_cpu_pair(chapter)
     baseline = chapter / "baseline_real_cpu.py"
-    baseline.write_text(
-        baseline.read_text().replace("output_tolerance=(0.0, 0.0)", "output_tolerance=(0.0, 1.0)")
-    )
     optimized = chapter / "optimized_real_cpu.py"
-    optimized.write_text(
-        optimized.read_text()
-        .replace("(self.input + 1.0).square()", f"(self.input + 1.0).square() + {offset}")
-        .replace("output_tolerance=(0.0, 0.0)", f"output_tolerance=(0.0, {optimized_atol})")
-    )
+    per_output = ', output_tolerances={"output": (0.0, 1.0)}' if matching_map else ""
+    for path, tolerance, arm_offset in (
+        (baseline, (0.0, 1.0), 0.0),
+        (optimized, optimized_tolerance, offset),
+    ):
+        path.write_text(
+            path.read_text()
+            .replace("(self.input + 1.0).square()", f"(self.input + 1.0).square() + {arm_offset}")
+            .replace("output_tolerance=(0.0, 0.0)", f"output_tolerance={tolerance}{per_output}")
+        )
 
     # Allow the chapter control plane to reach its CPU-enabled fixture.
     monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "")
@@ -66,13 +70,15 @@ def test_chapter_applies_pair_output_tolerance(
     entry, = result["benchmarks"]
     assert entry["status"] == status, entry
     variant, = entry["optimizations"]
-    if optimized_atol > 1.0:
+    receipt = variant["verification"]
+    optimized_rtol, optimized_atol = optimized_tolerance
+    assert receipt["passed"] == (status == "succeeded")
+    assert receipt["baseline_tolerance"]["atol"] == 1.0
+    assert receipt["optimized_tolerance"]["rtol"] == optimized_rtol
+    assert receipt["optimized_tolerance"]["atol"] == optimized_atol
+    if optimized_rtol > 0.0 or optimized_atol > 1.0:
         assert "cannot be looser" in variant["error"]
     else:
-        receipt = variant["verification"]
-        assert receipt["passed"] == (status == "succeeded")
         assert receipt["atol"] == optimized_atol
-        assert receipt["baseline_tolerance"]["atol"] == 1.0
-        assert receipt["optimized_tolerance"]["atol"] == optimized_atol
         if status == "failed_verification":
             assert receipt["max_diff"] == pytest.approx(offset)

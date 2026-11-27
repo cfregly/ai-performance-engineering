@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import shlex
 import signal
 import subprocess
 import sys
@@ -19,6 +20,51 @@ from core.harness.benchmark_harness import BaseBenchmark
 from tests.protection_test_utils import make_runner, preserve_rng_state
 
 CODE = Path(__file__).resolve().parents[1]
+
+
+class _ChildStoryMetadataTransportBenchmark(VerificationPayloadMixin, BaseBenchmark):
+    """Distinguish a real isolated worker receipt from its parent declaration."""
+
+    allow_cpu = True
+    _is_deterministic = True
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.device = torch.device("cpu")
+        self.input = torch.arange(8, dtype=torch.float32)
+        self.output = None
+        self.story_metadata = {
+            "receipt_origin": "parent_initialization",
+            "process_id": os.getpid(),
+            "replay_bundle_sha256": "a" * 64,
+        }
+        self.register_workload_metadata(samples_per_iteration=8.0)
+
+    def setup(self) -> None:
+        self.output = None
+        self.story_metadata = {
+            "receipt_origin": "worker_setup",
+            "process_id": os.getpid(),
+            "replay_bundle_sha256": "b" * 64,
+        }
+
+    def benchmark_fn(self) -> None:
+        self.output = self.input.square()
+
+    def capture_verification_payload(self) -> None:
+        if self.output is None:
+            raise RuntimeError("benchmark_fn() must run before verification capture")
+        self._set_verification_payload(
+            inputs={"input": self.input},
+            output=self.output,
+            batch_size=8,
+            output_tolerance=(0.0, 0.0),
+        )
+
+    def validate_result(self):
+        if self.output is None or not torch.equal(self.output, self.input.square()):
+            return "isolated story metadata transport produced an invalid output"
+        return None
 
 
 @pytest.fixture(autouse=True)
@@ -674,15 +720,94 @@ def test_cpu_capture_loads_independent_inputs_and_replays_native_references(tmp_
             benchmark.teardown()
 
 
-def _configured_replay(bundle, event_id, *, benchmark_type=None, reference_only=True):
+def _configured_replay(
+    bundle, event_id, *, benchmark_type=None, reference_only=True, bundle_sha256=None
+):
     from labs.trace_replay.adapters import ReplayBenchmark
 
     benchmark_type = benchmark_type or ReplayBenchmark
     benchmark = benchmark_type(optimized=False, reference_only=reference_only)
     if reference_only:
         benchmark.device = torch.device("cpu")
-    benchmark.apply_target_overrides(["--bundle", str(bundle.root), "--event", event_id])
+    argv = ["--bundle", str(bundle.root), "--event", event_id]
+    if bundle_sha256 is not None:
+        argv.extend(["--bundle-sha256", bundle_sha256])
+    benchmark.apply_target_overrides(argv)
     return benchmark
+
+
+@pytest.mark.parametrize("explicit_pin", [False, True], ids=["selection-pin", "argument-pin"])
+def test_replay_adapter_rejects_valid_bundle_swap_before_setup(
+    tmp_path: Path, explicit_pin: bool
+) -> None:
+    from labs.trace_replay.runner import capture_plan
+
+    active = tmp_path / "capture"
+    first = capture_plan(
+        _plan(tmp_path / "plan-a.json", ("prefix_scan",)), active, device="cpu"
+    )
+    benchmark = _configured_replay(
+        first,
+        "event-0",
+        bundle_sha256=first.sha256 if explicit_pin else None,
+    )
+    assert benchmark.selected_bundle_sha256 == first.sha256
+    first.root.rename(tmp_path / "capture-a")
+    second_plan = _plan(tmp_path / "plan-b.json", ("prefix_scan",))
+    second_payload = json.loads(second_plan.read_text())
+    second_payload["events"][0]["seed"] = 9001
+    second_plan.write_text(json.dumps(second_payload) + "\n")
+    second = capture_plan(second_plan, active, device="cpu")
+    assert second.sha256 != first.sha256
+
+    with pytest.raises(ValueError, match="replay bundle SHA-256"):
+        benchmark.setup()
+
+    assert benchmark.inputs is None
+    assert benchmark.executed is False
+
+
+def test_replay_adapter_rejects_wrong_argument_digest_at_selection(tmp_path: Path) -> None:
+    from labs.trace_replay.runner import capture_plan
+
+    bundle = capture_plan(
+        _plan(tmp_path / "plan.json", ("prefix_scan",)), tmp_path / "capture", device="cpu"
+    )
+
+    with pytest.raises(ValueError, match="differs from --bundle-sha256"):
+        _configured_replay(bundle, "event-0", bundle_sha256="0" * 64)
+
+
+@pytest.mark.parametrize("digest", ["a" * 63, "A" * 64, "g" * 64])
+def test_replay_adapter_rejects_invalid_argument_digest(tmp_path: Path, digest: str) -> None:
+    from labs.trace_replay.runner import capture_plan
+
+    bundle = capture_plan(
+        _plan(tmp_path / "plan.json", ("prefix_scan",)), tmp_path / "capture", device="cpu"
+    )
+
+    with pytest.raises(ValueError, match="64 lowercase hex digits"):
+        _configured_replay(bundle, "event-0", bundle_sha256=digest)
+
+
+def test_replay_adapter_rejects_corrupted_selected_tensor_during_setup(tmp_path: Path) -> None:
+    from labs.trace_replay.runner import capture_plan
+
+    bundle = capture_plan(
+        _plan(tmp_path / "plan.json", ("prefix_scan",)), tmp_path / "capture", device="cpu"
+    )
+    benchmark = _configured_replay(bundle, "event-0", bundle_sha256=bundle.sha256)
+    descriptor = bundle.event("event-0")["inputs"]["x"]
+    tensor_path = bundle.root / descriptor["path"]
+    contents = bytearray(tensor_path.read_bytes())
+    contents[0] ^= 1
+    tensor_path.write_bytes(contents)
+
+    with pytest.raises(ValueError, match="retained tensor hash or byte count mismatch"):
+        benchmark.setup()
+
+    assert benchmark.inputs is None
+    assert benchmark.executed is False
 
 
 def test_actual_cpu_replay_adapter_passes_default_verification(tmp_path: Path) -> None:
@@ -697,6 +822,14 @@ def test_actual_cpu_replay_adapter_passes_default_verification(tmp_path: Path) -
     for event in bundle.events:
         baseline = _configured_replay(bundle, event["event_id"])
         candidate = _configured_replay(bundle, event["event_id"])
+        assert baseline.expected_bundle_sha256 is None
+        assert baseline.selected_bundle_sha256 == bundle.sha256
+        assert baseline.story_metadata == {
+            "replay_bundle_sha256": bundle.sha256,
+            "replay_bundle_pin_sha256": bundle.sha256,
+            "replay_bundle_pin_source": "selection",
+            "replay_event_id": event["event_id"],
+        }
         with preserve_rng_state():
             result = make_runner(tmp_path / event["event_id"]).verify_pair(
                 baseline, candidate, VerifyConfig()
@@ -739,6 +872,160 @@ def test_actual_replay_adapter_cached_output_fails_live_jitter(tmp_path: Path) -
     assert result.reason == "jitter_fail", result.details
 
 
+def test_real_isolated_worker_story_metadata_is_authoritative() -> None:
+    from core.harness.benchmark_harness import BenchmarkConfig, BenchmarkHarness
+
+    benchmark = _ChildStoryMetadataTransportBenchmark()
+    parent_process_id = os.getpid()
+    assert benchmark.story_metadata == {
+        "receipt_origin": "parent_initialization",
+        "process_id": parent_process_id,
+        "replay_bundle_sha256": "a" * 64,
+    }
+    config = BenchmarkConfig(
+        device=torch.device("cpu"),
+        iterations=1,
+        warmup=5,
+        use_subprocess=False,
+        adaptive_iterations=False,
+        min_run_time_ms=0.0,
+        min_total_duration_ms=0.0,
+        enable_profiling=False,
+        enable_memory_tracking=False,
+        enforce_environment_validation=False,
+    )
+    harness = BenchmarkHarness(config=config)
+    harness._ensure_runtime_initialized()
+
+    result = harness._benchmark_with_subprocess(benchmark, config)
+
+    assert not result.errors, result.errors
+    assert result.runtime_provenance is not None
+    assert result.story_metadata == {
+        "receipt_origin": "worker_setup",
+        "process_id": result.runtime_provenance.process_id,
+        "replay_bundle_sha256": "b" * 64,
+    }
+    assert result.story_metadata["process_id"] != parent_process_id
+    assert benchmark.story_metadata["replay_bundle_sha256"] == "a" * 64
+
+
+def _identity_outcome(bundle_sha256, event_id):
+    metadata = {
+        "replay_bundle_sha256": bundle_sha256,
+        "replay_bundle_pin_sha256": bundle_sha256,
+        "replay_bundle_pin_source": "argument",
+        "replay_event_id": event_id,
+    }
+    return {
+        "baseline_story_metadata": dict(metadata),
+        "optimizations": [
+            {
+                "story_metadata": dict(metadata),
+                "input_verification": {
+                    "equivalence": {
+                        "group": f"retained-operator:{bundle_sha256}:{event_id}",
+                        "ignore_fields": [],
+                    }
+                },
+            }
+        ],
+    }
+
+
+def test_replay_identity_receipts_match_coordinator_pin() -> None:
+    from labs.trace_replay.runner import replay_identity_receipts
+
+    digest = "a" * 64
+    receipts, issues = replay_identity_receipts(
+        [_identity_outcome(digest, "event-0")], "event-0", digest
+    )
+
+    assert issues == []
+    assert receipts == [
+        {
+            "arm": "baseline",
+            "bundle_sha256": digest,
+            "bundle_pin_sha256": digest,
+            "bundle_pin_source": "argument",
+            "event_id": "event-0",
+        },
+        {
+            "arm": "optimized",
+            "bundle_sha256": digest,
+            "bundle_pin_sha256": digest,
+            "bundle_pin_source": "argument",
+            "event_id": "event-0",
+        },
+    ]
+
+
+@pytest.mark.parametrize(
+    "change",
+    ["equivalence", "baseline-digest", "optimized-pin", "event"],
+)
+def test_replay_identity_receipts_reject_mismatches(change: str) -> None:
+    from labs.trace_replay.runner import replay_identity_receipts
+
+    digest = "a" * 64
+    outcome = _identity_outcome(digest, "event-0")
+    if change == "equivalence":
+        outcome["optimizations"][0]["input_verification"]["equivalence"]["group"] = (
+            f"retained-operator:{'b' * 64}:event-0"
+        )
+    elif change == "baseline-digest":
+        outcome["baseline_story_metadata"]["replay_bundle_sha256"] = "b" * 64
+    elif change == "optimized-pin":
+        outcome["optimizations"][0]["story_metadata"]["replay_bundle_pin_sha256"] = "b" * 64
+    else:
+        outcome["optimizations"][0]["story_metadata"]["replay_event_id"] = "event-1"
+
+    _, issues = replay_identity_receipts([outcome], "event-0", digest)
+
+    assert issues
+
+
+@pytest.mark.skipif(torch.cuda.is_available(), reason="CPU coordinator path requires no CUDA")
+def test_real_cpu_replay_cli_writes_bundle_pin_before_cuda_skip(tmp_path: Path) -> None:
+    from labs.trace_replay.runner import capture_plan
+
+    bundle = capture_plan(
+        _plan(tmp_path / "plan.json", ("prefix_scan",)), tmp_path / "capture", device="cpu"
+    )
+    env = {**os.environ, "PYTHONPATH": str(CODE)}
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "labs.trace_replay.trace_replay_tool",
+            "replay",
+            "--bundle",
+            str(bundle.root),
+            "--output-dir",
+            str(tmp_path / "replay"),
+        ],
+        cwd=CODE,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert completed.returncode == 1, completed.stdout + completed.stderr
+    result = json.loads(completed.stdout)
+
+    assert result["status"] == "failed"
+    assert result["bundle_sha256"] == bundle.sha256
+    assert result["events"][0]["status"] == "skipped"
+    command = json.loads((tmp_path / "replay" / "event-0" / "command.json").read_text())
+    assert command["bundle_sha256"] == bundle.sha256
+    target_override = command["argv"][command["argv"].index("--target-extra-arg") + 1]
+    label, override = target_override.split("=", 1)
+    assert label == "labs/trace_replay:trace_replay"
+    worker_argv = shlex.split(override)
+    pin_index = worker_argv.index("--bundle-sha256")
+    assert worker_argv[pin_index + 1] == bundle.sha256
+
+
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="real NVIDIA CUDA GPU required")
 @pytest.mark.parametrize(
     "operation",
@@ -766,6 +1053,30 @@ def test_cuda_capture_replays_actual_native_pair_with_default_verification(
 
     assert result.passed, (operation, result.reason, result.details)
     assert not (result.details or {}).get("warnings")
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="real NVIDIA CUDA GPU required")
+def test_cuda_coordinator_reconciles_worker_bundle_receipts(tmp_path: Path) -> None:
+    pytest.importorskip("triton")
+    from labs.trace_replay.runner import capture_plan, replay_bundle
+
+    bundle = capture_plan(
+        _plan(tmp_path / "plan.json", ("prefix_scan",)), tmp_path / "capture", device="cpu"
+    )
+    result = replay_bundle(bundle.root, tmp_path / "replay")
+
+    assert result["status"] == "completed", result
+    row = result["events"][0]
+    assert row["status"] == "completed"
+    assert row.get("bundle_identity_issues") is None
+    assert [receipt["bundle_sha256"] for receipt in row["bundle_identity_receipts"]] == [
+        bundle.sha256,
+        bundle.sha256,
+    ]
+    assert [receipt["bundle_pin_sha256"] for receipt in row["bundle_identity_receipts"]] == [
+        bundle.sha256,
+        bundle.sha256,
+    ]
 
 
 def test_real_cli_capture_and_validate_retains_reference_bundle(tmp_path: Path) -> None:

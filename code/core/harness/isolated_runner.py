@@ -475,6 +475,7 @@ def run_benchmark(input_data: Dict[str, Any]) -> Dict[str, Any]:
             result_payload: Dict[str, Any] = {
                 "success": True,
                 "result_json": bench_result.model_dump_json(),
+                "applied_config": getattr(benchmark, "_applied_config_receipt", None),
                 "verify_output": verify_output_data,
                 "output_tolerance": {"rtol": float(output_tol[0]), "atol": float(output_tol[1])},
                 "output_tolerances": (
