@@ -23,7 +23,7 @@ from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig
 from core.benchmark.verification_mixin import VerificationPayloadMixin
 from ch01.performance_common import (
     build_training_mlp,
-    capture_tf32_state,
+    TF32State,
     get_environment_custom_metrics,
     preallocate_fused_microbatches,
     restore_tf32_state,
@@ -61,15 +61,14 @@ class OptimizedPerformanceBatchBenchmark(VerificationPayloadMixin, BaseBenchmark
         self.parameter_count = 0
         self._model_dtype = torch.float32
         self._fused_pairs = None
-        self._tf32_state: tuple[bool, bool | None] | None = None
+        self._tf32_state: TF32State | None = None
         samples = float(self.batch_size * self.workload.performance_microbatches)
         self.register_workload_metadata(samples_per_iteration=samples)
     
     def setup(self) -> None:
         """Setup: initialize model, fixed inputs, and verification output."""
         seed_chapter1()
-        self._tf32_state = capture_tf32_state()
-        set_tf32_state(False)
+        self._tf32_state = set_tf32_state(False)
         
         self.model = build_training_mlp(self.hidden_dim)
         if self.device.type == "cuda":

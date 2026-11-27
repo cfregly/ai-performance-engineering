@@ -22,7 +22,7 @@ from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig
 from ch01.performance_common import (
     build_training_mlp,
-    capture_tf32_state,
+    TF32State,
     get_environment_custom_metrics,
     preallocate_fused_microbatches,
     restore_tf32_state,
@@ -56,15 +56,14 @@ class OptimizedPerformanceFusionBenchmark(VerificationPayloadMixin, BaseBenchmar
         self._fused_batches = None
         self._fused_targets = None
         self._fused_pairs = None
-        self._tf32_state: tuple[bool, bool | None] | None = None
+        self._tf32_state: TF32State | None = None
 
         samples = float(self.batch_size * self.num_microbatches)
         self.register_workload_metadata(samples_per_iteration=samples)
 
     def setup(self) -> None:
         seed_chapter1()
-        self._tf32_state = capture_tf32_state()
-        set_tf32_state(False)
+        self._tf32_state = set_tf32_state(False)
 
         self.model = build_training_mlp(self.hidden_dim).to(self.device).eval()
         self.parameter_count = sum(p.numel() for p in self.model.parameters())
