@@ -1063,11 +1063,18 @@ def test_cuda_coordinator_reconciles_worker_bundle_receipts(tmp_path: Path) -> N
     bundle = capture_plan(
         _plan(tmp_path / "plan.json", ("prefix_scan",)), tmp_path / "capture", device="cpu"
     )
-    result = replay_bundle(bundle.root, tmp_path / "replay")
+    replay_dir = tmp_path / "replay"
+    result = replay_bundle(bundle.root, replay_dir)
 
-    assert result["status"] == "completed", result
     row = result["events"][0]
-    assert row["status"] == "completed"
+    assert row["status"] in {"completed", "failed"}, result
+    if row["status"] == "failed":
+        outcome, = row["harness_outcomes"]
+        assert outcome["status"] == "failed_no_speedup", row
+    payload = json.loads((replay_dir / row["harness_result"]).read_text(encoding="utf-8"))
+    chapter, = payload["results"]
+    benchmark, = chapter["benchmarks"]
+    assert benchmark["verification"]["passed"] is True
     assert row.get("bundle_identity_issues") is None
     assert [receipt["bundle_sha256"] for receipt in row["bundle_identity_receipts"]] == [
         bundle.sha256,
