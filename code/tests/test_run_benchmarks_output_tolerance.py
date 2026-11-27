@@ -43,6 +43,13 @@ def test_chapter_applies_pair_output_tolerance(
             .replace("    def setup(self):", "    def setup(self):\n        self.story_metadata = None")
             .replace("(self.input + 1.0).square()", f"(self.input + 1.0).square() + {arm_offset}")
             .replace("output_tolerance=(0.0, 0.0)", f"output_tolerance={tolerance}{per_output}")
+            .replace(
+                "            enable_memory_tracking=False,",
+                "            enable_memory_tracking=False,\n"
+                "            pm_sampling_interval=20000,\n"
+                "            graph_capture_cheat_ratio_threshold=12.0,\n"
+                "            graph_capture_memory_threshold_mb=90.0,",
+            )
         )
 
     # Allow the chapter control plane to reach its CPU-enabled fixture.
@@ -68,6 +75,9 @@ def test_chapter_applies_pair_output_tolerance(
         only_examples=["real_cpu"],
         iterations=1,
         warmup=5,
+        pm_sampling_interval=40000,
+        graph_capture_ratio_threshold=15.0,
+        graph_capture_memory_threshold_mb=120.0,
         enforce_environment_validation=False,
         validity_profile="portable",
     )
@@ -77,6 +87,10 @@ def test_chapter_applies_pair_output_tolerance(
     variant, = entry["optimizations"]
     assert "baseline_story_metadata" not in entry
     assert "story_metadata" not in variant
+    for timing in (entry["baseline_timing_configuration"], variant["timing_configuration"]):
+        assert timing["applied_config"]["pm_sampling_interval"] == 40000
+        assert timing["applied_config"]["graph_capture_cheat_ratio_threshold"] == 15.0
+        assert timing["applied_config"]["graph_capture_memory_threshold_mb"] == 120.0
     receipt = variant["verification"]
     optimized_rtol, optimized_atol = optimized_tolerance
     assert receipt["passed"] == (status == "succeeded")
@@ -85,6 +99,9 @@ def test_chapter_applies_pair_output_tolerance(
     assert receipt["optimized_tolerance"]["atol"] == optimized_atol
     if optimized_rtol > 0.0 or optimized_atol > 1.0:
         assert "cannot be looser" in variant["error"]
+    elif matching_map:
+        assert "rtol" not in receipt and "atol" not in receipt
+        assert receipt["output_tolerances"] == {"output": {"rtol": 0.0, "atol": 1.0}}
     else:
         assert receipt["atol"] == optimized_atol
         if status == "failed_verification":

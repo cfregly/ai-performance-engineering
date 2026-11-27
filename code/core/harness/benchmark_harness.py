@@ -840,7 +840,7 @@ def _is_chapter_or_labs_benchmark(benchmark: Any) -> bool:
     except Exception:
         return False
     normalized = str(Path(file_path)).replace("\\", "/")
-    return "/labs/" in normalized or "/ch" in normalized
+    return re.search(r"(?:^|/)(?:ch[0-9]{2}|labs)/", normalized) is not None
 
 
 _configure_quick_wins()
@@ -1439,6 +1439,9 @@ _CONFIG_RECEIPT_FIELDS = (
     "single_gpu",
     "profile_type",
     "enable_profiling",
+    "pm_sampling_interval",
+    "graph_capture_cheat_ratio_threshold",
+    "graph_capture_memory_threshold_mb",
     "deterministic",
     "seed",
     "execution_mode",

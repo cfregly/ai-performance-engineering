@@ -6081,19 +6081,20 @@ def _test_chapter_impl(
     if ncu_replay_mode is not None:
         config_kwargs["ncu_replay_mode"] = ncu_replay_mode
         config_kwargs["ncu_replay_mode_override"] = True
-    if pm_sampling_interval is not None:
-        config_kwargs["pm_sampling_interval"] = pm_sampling_interval
-    elif _defaults_obj is not None:
+    if _defaults_obj is not None:
         config_kwargs["pm_sampling_interval"] = getattr(_defaults_obj, "pm_sampling_interval", None)
-    if graph_capture_ratio_threshold is not None:
-        config_kwargs["graph_capture_cheat_ratio_threshold"] = graph_capture_ratio_threshold
-    if graph_capture_memory_threshold_mb is not None:
-        config_kwargs["graph_capture_memory_threshold_mb"] = graph_capture_memory_threshold_mb
-    elif _defaults_obj is not None:
         config_kwargs["graph_capture_memory_threshold_mb"] = getattr(_defaults_obj, "graph_capture_memory_threshold_mb", None)
-    # Note: graph_capture thresholds use BenchmarkDefaults values
-    # To customize, add graph_capture_ratio_threshold/graph_capture_memory_threshold_mb
-    # as parameters to _test_chapter_impl and pass from CLI
+    explicit_settings = {
+        name: value
+        for name, value in {
+            "pm_sampling_interval": pm_sampling_interval,
+            "graph_capture_cheat_ratio_threshold": graph_capture_ratio_threshold,
+            "graph_capture_memory_threshold_mb": graph_capture_memory_threshold_mb,
+        }.items()
+        if value is not None
+    }
+    config_kwargs.update(explicit_settings)
+    config_kwargs["locked_fields"] = sorted(explicit_settings)
     base_config = BenchmarkConfig(**config_kwargs)
     logger.info("base_config launch_via=%s", base_config.launch_via)
     if profiling_output_dir:
@@ -7649,12 +7650,13 @@ def _test_chapter_impl(
                                 "passed": comparison.passed,
                                 "max_diff": comparison.max_diff,
                                 "location": comparison.location,
-                                "rtol": effective_tolerance.rtol,
-                                "atol": effective_tolerance.atol,
                                 "output_tolerances": output_tolerances_to_dict(
                                     output_tolerances
                                 ),
                             })
+                            if comparison.tolerance_used is not None:
+                                verification_receipt["rtol"] = comparison.tolerance_used.rtol
+                                verification_receipt["atol"] = comparison.tolerance_used.atol
                             if not comparison.passed:
                                 reason = "Output mismatch"
                                 if comparison.max_diff is not None:

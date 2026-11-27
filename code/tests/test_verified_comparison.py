@@ -27,11 +27,13 @@ class _CpuComparisonBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def __init__(
         self, *, output_offset: float = 0.0, fail: bool = False,
         output_tolerance: tuple[float, float] = (0.0, 0.0),
+        output_tolerances: dict[str, tuple[float, float]] | None = None,
     ) -> None:
         super().__init__()
         self.device = torch.device("cpu")
         self.output_offset = output_offset
         self.output_tolerance = output_tolerance
+        self.output_tolerances = output_tolerances
         self.fail = fail
         self.benchmark_calls = 0
         self.input_tensor: torch.Tensor | None = None
@@ -58,6 +60,7 @@ class _CpuComparisonBenchmark(VerificationPayloadMixin, BaseBenchmark):
             batch_size=32,
             parameter_count=0,
             output_tolerance=self.output_tolerance,
+            output_tolerances=self.output_tolerances,
         )
 
     def validate_result(self) -> None:
@@ -149,6 +152,20 @@ def test_public_compare_benchmarks_records_stricter_output_tolerance() -> None:
     assert evidence["atol"] == 0.0
     assert evidence["baseline_tolerance"]["atol"] == 1.0
     assert evidence["optimized_tolerance"]["atol"] == 0.0
+
+
+def test_public_compare_benchmarks_reports_only_the_applied_output_map() -> None:
+    output_tolerances = {"output": (0.0, 1.0)}
+    baseline = _CpuComparisonBenchmark(output_tolerances=output_tolerances)
+    optimized = _CpuComparisonBenchmark(output_offset=0.5, output_tolerances=output_tolerances)
+
+    comparison = compare_benchmarks(baseline, optimized, harness=_cpu_harness())
+
+    receipt = comparison["verification"]
+    assert receipt["passed"] is True
+    assert "rtol" not in receipt and "atol" not in receipt
+    assert "tolerance_used" not in receipt
+    assert receipt["output_tolerances"] == {"output": {"rtol": 0.0, "atol": 1.0}}
 
 
 def test_slowdown_percentage_uses_elapsed_time_ratio() -> None:

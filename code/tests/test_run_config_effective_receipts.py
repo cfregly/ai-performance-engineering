@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import inspect
 import textwrap
 from pathlib import Path
 
@@ -19,6 +20,7 @@ from core.harness.benchmark_harness import (
     ExecutionMode,
     LaunchVia,
     _benchmark_config_receipt,
+    _is_chapter_or_labs_benchmark,
 )
 from core.harness.run_benchmarks import (
     _expectation_provenance_from_result,
@@ -210,6 +212,21 @@ def test_unlocked_mode_dependent_defaults_apply_after_target_override() -> None:
     assert result.custom_metrics["probe.iterations"] == 10.0
     assert benchmark._applied_config_receipt["receipt_source"] == "worker"
     assert benchmark._applied_config_receipt["iterations"] == 10
+
+
+@pytest.mark.parametrize(
+    ("source", "is_chapter_or_lab"),
+    [
+        ("/checkout/code/tests/benchmark.py", False),
+        ("/checkout/code/ch12/benchmark.py", True),
+        ("/checkout/code/labs/top_k_kernel/benchmark.py", True),
+    ],
+)
+def test_chapter_policy_matches_benchmark_directories(
+    monkeypatch: pytest.MonkeyPatch, source: str, is_chapter_or_lab: bool,
+) -> None:
+    monkeypatch.setattr(inspect, "getfile", lambda _type: source)
+    assert _is_chapter_or_labs_benchmark(_ConfigReceiptBenchmark()) is is_chapter_or_lab
 
 
 def test_timing_and_expectation_receipts_use_worker_applied_counts() -> None:

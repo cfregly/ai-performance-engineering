@@ -109,7 +109,7 @@ profiler workers. Each operation uses its existing native benchmark function.
 The replay coordinator adds `--bundle-sha256` with the digest it validated. Every
 worker checks that pin during selection and setup. A direct harness run can omit
 the option as shown above. In that case, the adapter pins the digest selected by
-that process and rejects a different bundle before setup starts.
+that process and checks the digest at the start of setup, before loading inputs.
 The standard harness supplies timing, clocks, environment checks, complete paired
 verification, live input jitter, profiler artifacts and rejection reasons. The
 adapter checks every timed output against the reference after timing. The paired
