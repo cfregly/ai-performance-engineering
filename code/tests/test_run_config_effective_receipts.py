@@ -217,13 +217,29 @@ def test_failed_isolated_worker_has_no_applied_config_receipt() -> None:
 
 
 def test_subprocess_fallback_attests_the_thread_that_ran(tmp_path: Path) -> None:
-    benchmark = _ConfigReceiptBenchmark()
+    class PolicyProbe(_ConfigReceiptBenchmark):
+        def get_custom_metrics(self) -> dict[str, float]:
+            return {
+                **super().get_custom_metrics(),
+                "probe.actual_deterministic": float(torch.are_deterministic_algorithms_enabled()),
+            }
+
+    benchmark = PolicyProbe()
     benchmark._module_file_override = str(tmp_path / "missing_benchmark_module.py")
     config = _cpu_config(use_subprocess=True, locked_fields=[])
-    run = BenchmarkHarness(mode=BenchmarkMode.CUSTOM, config=config).benchmark_with_manifest(
-        benchmark, run_id="subprocess-fallback-thread",
-    )
+    previous_enabled = torch.are_deterministic_algorithms_enabled()
+    previous_warn_only = torch.is_deterministic_algorithms_warn_only_enabled()
+    torch.use_deterministic_algorithms(False)
+    try:
+        run = BenchmarkHarness(mode=BenchmarkMode.CUSTOM, config=config).benchmark_with_manifest(
+            benchmark, run_id="subprocess-fallback-thread",
+        )
+        assert not torch.are_deterministic_algorithms_enabled()
+    finally:
+        torch.use_deterministic_algorithms(previous_enabled, warn_only=previous_warn_only)
+
     assert not run.result.errors
+    assert run.result.custom_metrics["probe.actual_deterministic"] == 1.0
     configured = run.manifest.config["configured_config"]
     applied = run.manifest.config["applied_config"]
     assert configured["execution_mode"] == "subprocess"

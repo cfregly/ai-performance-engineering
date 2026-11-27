@@ -655,7 +655,7 @@ def _validate_benchmark_result_evidence(
 ) -> Optional[str]:
     if not isinstance(evidence, dict):
         return "benchmark result evidence is legacy unbound; rerun this attempt before reuse"
-    binding_status = str(evidence.get("binding_status") or "").strip()
+    binding_status = evidence.get("binding_status")
     if binding_status == "legacy_unbound":
         return "benchmark result evidence is legacy unbound; rerun this attempt before reuse"
     if binding_status != "bound":
@@ -1057,20 +1057,19 @@ def _successful_targets_from_attempts(
             not canonical_requested
             or any(not target for target in canonical_requested)
             or len(canonical_requested) != len(set(canonical_requested))
-            or any(target not in frozen_lookup for target in canonical_requested)
         ):
             continue
         requested_lookup = set(canonical_requested)
+        outside_frozen_plan = not requested_lookup <= frozen_lookup
         frozen_order = [
             target for target in canonical_frozen_targets if target in requested_lookup
         ]
-        if canonical_requested != frozen_order:
+        if not outside_frozen_plan and canonical_requested != frozen_order:
             continue
 
-        # A newer verified attempt supersedes an older result for every target
-        # it requested. Malformed or missing outcomes therefore fail closed.
+        # The newer attempt supersedes every frozen target it touched.
         successful_lookup.difference_update(requested_lookup)
-        if not isinstance(benchmark_summary, dict):
+        if outside_frozen_plan or not isinstance(benchmark_summary, dict):
             continue
         successful_lookup.update(
             _successful_targets_from_target_outcomes(
@@ -1199,10 +1198,8 @@ def _verified_full_sweep_attempts(
             repo_root=repo_root,
             artifacts_dir=artifacts_dir,
         )
-        result_evidence = attempt.get("result_evidence")
-        bound = isinstance(result_evidence, dict) and result_evidence.get("binding_status") == "bound"
         stored_verified_targets = attempt.get("verified_targets")
-        if not evidence_error and bound and (
+        if not evidence_error and (
             attempt_scope is None
             or (
                 stored_verified_targets is not None
@@ -1223,15 +1220,12 @@ def _verified_full_sweep_attempts(
                     "invalidated_targets": attempt_scope,
                 })
             continue
-        if bound and attempt_scope is not None:
-            attempt["verified_targets"] = attempt_scope
-            benchmark_summary = _benchmark_stage_details_from_payload(validated_output)
-            if benchmark_summary is None:
-                attempt.pop("benchmark_summary", None)
-            else:
-                attempt["benchmark_summary"] = benchmark_summary
+        attempt["verified_targets"] = attempt_scope
+        benchmark_summary = _benchmark_stage_details_from_payload(validated_output)
+        if benchmark_summary is None:
+            attempt.pop("benchmark_summary", None)
         else:
-            benchmark_summary = attempt.get("benchmark_summary")
+            attempt["benchmark_summary"] = benchmark_summary
         verified.append(attempt)
         if not isinstance(benchmark_summary, dict):
             issues.append(

@@ -91,23 +91,27 @@ def test_newer_verified_attempt_without_summary_invalidates_older_success(
 ) -> None:
     frozen = ["ch01:a", "ch01:b"]
     attempts = [
-        {
-            "run_id": "initial",
-            "verified_targets": frozen,
-            "benchmark_summary": _summary(
-                ("ch01:a", "succeeded"),
-                ("ch01:b", "succeeded"),
-            ),
-        },
-        {
-            "run_id": "retry",
-            "verified_targets": ["ch01:a"],
-        },
+        {"run_id": "initial", "targets": frozen, "verified_targets": frozen},
+        {"run_id": "retry", "targets": ["ch01:a"], "verified_targets": ["ch01:a"]},
     ]
+    targets_by_run = {attempt["run_id"]: attempt["targets"] for attempt in attempts}
+
+    def validate_output(*, expected_run_id, validated_output, **_kwargs):
+        if expected_run_id == "initial":
+            validated_output["results"] = [{
+                "chapter": "ch01",
+                "benchmarks": [
+                    {"example": "a", "status": "succeeded"},
+                    {"example": "b", "status": "succeeded"},
+                ],
+            }]
+        return None
+
+    monkeypatch.setattr(e2e_sweep, "_validate_benchmark_run_manifest", validate_output)
     monkeypatch.setattr(
         e2e_sweep,
-        "_validate_benchmark_run_manifest",
-        lambda **_kwargs: None,
+        "_load_benchmark_run_start",
+        lambda run_id, **_kwargs: {"targets": targets_by_run[run_id]},
     )
 
     verified, issues = e2e_sweep._verified_full_sweep_attempts(

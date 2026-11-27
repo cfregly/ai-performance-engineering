@@ -178,15 +178,16 @@ def test_public_compare_benchmarks_reports_only_the_applied_output_map(offset: f
 
 
 def test_output_comparison_records_global_policy_for_mismatched_output_shapes() -> None:
-    baseline = _CpuComparisonBenchmark()
-    optimized = _CpuComparisonBenchmark(reshape_output=True)
+    baseline = _CpuComparisonBenchmark(output_tolerance=(0.01, 0.25))
+    optimized = _CpuComparisonBenchmark(output_tolerance=(0.01, 0.25), reshape_output=True)
     assert not _cpu_harness().benchmark(baseline).errors
     assert not _cpu_harness().benchmark(optimized).errors
 
     with pytest.raises(VerifiedComparisonError, match="output_mismatch") as exc_info:
         _compare_outputs(baseline, optimized)
 
-    assert exc_info.value.evidence["rtol"] == exc_info.value.evidence["atol"] == 0.0
+    assert exc_info.value.evidence["rtol"] == 0.01
+    assert exc_info.value.evidence["atol"] == 0.25
 
 
 def test_slowdown_percentage_uses_elapsed_time_ratio() -> None:

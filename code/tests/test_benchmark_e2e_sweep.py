@@ -973,7 +973,7 @@ def test_full_sweep_crash_finalization_rejects_mismatched_checkpoint_targets(
     assert "binding_failed" in " ".join(issues)
 
 
-@pytest.mark.parametrize("drift", ["output_bytes", "verified_targets", "out_of_plan"])
+@pytest.mark.parametrize("drift", ["output_bytes", "verified_targets", "out_of_plan", "binding_status", "valid_out_of_plan"])
 def test_newer_drifted_attempt_invalidates_only_targets_it_touched(
     tmp_path: Path, drift: str,
 ) -> None:
@@ -1009,7 +1009,7 @@ def test_newer_drifted_attempt_invalidates_only_targets_it_touched(
     )
 
     second_run_id = "full_sweep_newer_failure"
-    second_targets = ["ch01:a", "ch01:c"] if drift == "out_of_plan" else ["ch01:a"]
+    second_targets = ["ch01:a", "ch01:c"] if drift.endswith("out_of_plan") else ["ch01:a"]
     second_output = _write_benchmark_attempt_artifacts(
         repo_root=tmp_path,
         artifacts_dir=None,
@@ -1039,6 +1039,12 @@ def test_newer_drifted_attempt_invalidates_only_targets_it_touched(
     if drift == "verified_targets":
         second_attempt["verified_targets"] = ["ch01:b"]
         expected_issue = "identity no longer matches"
+    elif drift == "binding_status":
+        second_attempt["result_evidence"]["binding_status"] = " bound "
+        second_attempt["benchmark_summary"] = first_attempt["benchmark_summary"]
+        expected_issue = "binding did not complete"
+    elif drift == "valid_out_of_plan":
+        expected_issue = None
     else:
         expected_issue = "bytes do not match"
         second_output.write_text(
@@ -1068,7 +1074,10 @@ def test_newer_drifted_attempt_invalidates_only_targets_it_touched(
     )
 
     assert successful_targets == ["ch01:b"]
-    assert expected_issue in " ".join(issues)
+    if expected_issue is None:
+        assert not issues
+    else:
+        assert expected_issue in " ".join(issues)
     stage = {
         "name": "full_sweep",
         "enabled": True,
@@ -1084,8 +1093,9 @@ def test_newer_drifted_attempt_invalidates_only_targets_it_touched(
     )
 
     assert stage["status"] == "aborted"
-    assert expected_issue in " ".join(stage["issues"])
-    assert expected_issue in " ".join(second_attempt["issues"])
+    if expected_issue is not None:
+        assert expected_issue in " ".join(stage["issues"])
+        assert expected_issue in " ".join(second_attempt["issues"])
 
 
 def test_full_sweep_binding_rejects_malformed_result_summary(tmp_path: Path) -> None:

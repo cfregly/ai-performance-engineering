@@ -3506,18 +3506,6 @@ class BenchmarkHarness:
             else:
                 gpu_mem_logger = None
 
-        backend_state = None
-        if config.launch_via != LaunchVia.TORCHRUN and config.execution_mode != ExecutionMode.SUBPROCESS:
-            policy_name = normalize_backend_policy(getattr(config, "backend_policy", None))
-            backend_state = apply_backend_policy(policy_name, bool(config.deterministic))
-            if self._seed_info is not None:
-                self._seed_info["deterministic_mode"] = bool(config.deterministic)
-            if config.deterministic and LOGGER_AVAILABLE:
-                logger.info(
-                    "Deterministic mode enabled (may impact performance by 5-20%). "
-                    "This ensures bitwise reproducibility, but forces slower fallback kernels and ops without deterministic support may raise."
-                )
-
         try:
             if config.launch_via == LaunchVia.TORCHRUN:
                 benchmark._applied_config_receipt = _benchmark_config_receipt(
@@ -3538,11 +3526,9 @@ class BenchmarkHarness:
                     )
                 return self._benchmark_with_subprocess(benchmark, config)
             print("[harness] dispatch threading (direct)", flush=True)
-            return self._benchmark_with_threading(benchmark, config)
+            return self._run_threaded_with_backend_policy(benchmark, config)
         finally:
             benchmark._config = previous_config  # type: ignore[attr-defined]
-            if backend_state is not None:
-                restore_backend_policy(backend_state)
             if gpu_mem_logger is not None:
                 log_file = gpu_mem_logger.stop()
                 if LOGGER_AVAILABLE:
@@ -3889,7 +3875,7 @@ class BenchmarkHarness:
         
         if benchmark_module is None:
             # Fallback to threading if we can't determine module
-            return self._benchmark_with_threading(benchmark, config)
+            return self._run_threaded_with_backend_policy(benchmark, config)
         
         module_file = module_override or getattr(benchmark_module, "__file__", None)
         if module_file is None:
@@ -3899,12 +3885,12 @@ class BenchmarkHarness:
         
         if module_file is None:
             # Fallback to threading if we can't determine module file
-            return self._benchmark_with_threading(benchmark, config)
+            return self._run_threaded_with_backend_policy(benchmark, config)
         
         module_path = Path(module_file).resolve()
         if not module_path.exists():
             # Fallback to threading if module file doesn't exist
-            return self._benchmark_with_threading(benchmark, config)
+            return self._run_threaded_with_backend_policy(benchmark, config)
         
         def _is_simple(value: Any) -> bool:
             """Return True for JSON-serializable scalar/collection values."""
@@ -4540,6 +4526,23 @@ class BenchmarkHarness:
         self._annotate_launch_metadata(result, config)
         return result
     
+    def _run_threaded_with_backend_policy(
+        self, benchmark: BaseBenchmark, config: BenchmarkConfig,
+    ) -> PydanticBenchmarkResult:
+        policy_name = normalize_backend_policy(getattr(config, "backend_policy", None))
+        backend_state = apply_backend_policy(policy_name, bool(config.deterministic))
+        try:
+            if self._seed_info is not None:
+                self._seed_info["deterministic_mode"] = bool(config.deterministic)
+            if config.deterministic and LOGGER_AVAILABLE:
+                logger.info(
+                    "Deterministic algorithms enabled. Unsupported operations can fail "
+                    "and some kernels can run more slowly."
+                )
+            return self._benchmark_with_threading(benchmark, config)
+        finally:
+            restore_backend_policy(backend_state)
+
     def _benchmark_with_threading(self, benchmark: BaseBenchmark, config: BenchmarkConfig) -> PydanticBenchmarkResult:
         """Run benchmark using threading (alternative to subprocess method)."""
         threading_receipt = _benchmark_config_receipt(config, source="worker")
