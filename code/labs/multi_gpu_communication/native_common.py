@@ -14,6 +14,18 @@ from typing import Any
 
 LAB_DIR = Path(__file__).resolve().parent
 SCHEMA = "multi_gpu_communication.v1"
+NATIVE_METRIC_FIELDS = (
+    "setup_ms",
+    "allocation_ms",
+    "registration_ms",
+    "capture_ms",
+    "warmup_ms",
+    "graph_warmup_ms",
+    "steady_ms",
+    "verification_ms",
+    "cleanup_ms",
+    "max_abs_error",
+)
 
 
 class NativeUnavailable(RuntimeError):
@@ -101,8 +113,7 @@ def validate_result(result: dict[str, Any], workload: NativeWorkload) -> None:
                 raise RuntimeError(
                     f"Native result field {name!r} must contain {components} numeric version components"
                 )
-    for name in ("setup_ms", "allocation_registration_ms", "capture_ms", "warmup_ms",
-                 "steady_ms", "time_per_iteration_ms", "verification_ms", "cleanup_ms", "max_abs_error"):
+    for name in (*NATIVE_METRIC_FIELDS, "allocation_registration_ms", "time_per_iteration_ms"):
         value = result.get(name)
         if not isinstance(value, (int, float)) or isinstance(value, bool) or not math.isfinite(value) or value < 0:
             raise RuntimeError(f"Native result field {name!r} must be finite and nonnegative")

@@ -16,7 +16,12 @@ from core.benchmark.cuda_binary_benchmark import BinaryRunResult, CudaBinaryBenc
 from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import BenchmarkConfig
 from labs.multi_gpu_communication.native_common import (
-    LAB_DIR, NativeUnavailable, NativeWorkload, invoke_native, require_unprofiled_native_config,
+    LAB_DIR,
+    NATIVE_METRIC_FIELDS,
+    NativeUnavailable,
+    NativeWorkload,
+    invoke_native,
+    require_unprofiled_native_config,
 )
 
 
@@ -130,10 +135,10 @@ class NativeJacobiBenchmark(CudaBinaryBenchmark):
     def get_custom_metrics(self) -> dict[str, float] | None:
         if self._native_result is None:
             return None
-        return {f"native.{name}": float(self._native_result[name]) for name in (
-            "setup_ms", "allocation_ms", "registration_ms", "capture_ms", "warmup_ms",
-            "graph_warmup_ms", "steady_ms", "verification_ms", "cleanup_ms", "max_abs_error",
-        )}
+        return {
+            f"native.{name}": float(self._native_result[name])
+            for name in NATIVE_METRIC_FIELDS
+        }
 
     def apply_target_overrides(self, argv: list[str]) -> None:
         parser = argparse.ArgumentParser(add_help=False)

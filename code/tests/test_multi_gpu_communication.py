@@ -20,6 +20,19 @@ import pytest
 CODE_ROOT = Path(__file__).resolve().parents[1]
 LAB_ROOT = CODE_ROOT / "labs" / "multi_gpu_communication"
 
+_NATIVE_ADAPTER_METRIC_FIELDS = (
+    "setup_ms",
+    "allocation_ms",
+    "registration_ms",
+    "capture_ms",
+    "warmup_ms",
+    "graph_warmup_ms",
+    "steady_ms",
+    "verification_ms",
+    "cleanup_ms",
+    "max_abs_error",
+)
+
 _CPP_DRIVER = r"""
 #include "jacobi_contract.hpp"
 
@@ -472,8 +485,10 @@ def _result_metadata(workload) -> dict:
         "iterations": workload.iterations, "warmup": workload.warmup, "ranks": workload.ranks,
         "checked_owned_elements": workload.nx * (workload.ny - 2),
         "checked_halo_elements": 2 * workload.ranks * workload.nx,
-        "setup_ms": 1.0, "allocation_registration_ms": 0.1, "capture_ms": 0.0,
-        "warmup_ms": 0.2, "steady_ms": float(workload.iterations),
+        "setup_ms": 1.0, "allocation_registration_ms": 0.1,
+        "allocation_ms": 0.08, "registration_ms": 0.07, "capture_ms": 0.0,
+        "warmup_ms": 0.2, "graph_warmup_ms": 0.0,
+        "steady_ms": float(workload.iterations),
         "time_per_iteration_ms": 1.0, "verification_ms": 0.2, "cleanup_ms": 0.1,
         "max_abs_error": 0.0,
         "rank_mapping": [{"rank": rank, "owned_rows": rows + int(rank < remainder)}
@@ -481,6 +496,52 @@ def _result_metadata(workload) -> dict:
         **{name: value if workload.backend == "nvshmem" else None
            for name, value in versions.items()},
     }
+
+
+def test_native_adapter_uses_the_validated_metric_field_authority(native_controls) -> None:
+    from labs.multi_gpu_communication.native_benchmark import NativeJacobiBenchmark
+
+    assert native_controls.NATIVE_METRIC_FIELDS == _NATIVE_ADAPTER_METRIC_FIELDS
+    benchmark = object.__new__(NativeJacobiBenchmark)
+    benchmark._native_result = {
+        field: index + 0.25 for index, field in enumerate(_NATIVE_ADAPTER_METRIC_FIELDS)
+    }
+    assert benchmark.get_custom_metrics() == {
+        f"native.{field}": index + 0.25
+        for index, field in enumerate(_NATIVE_ADAPTER_METRIC_FIELDS)
+    }
+
+
+@pytest.mark.parametrize("field", _NATIVE_ADAPTER_METRIC_FIELDS)
+def test_result_rejects_missing_adapter_metric_fields(native_controls, field: str) -> None:
+    workload = native_controls.NativeWorkload()
+    result = _result_metadata(workload)
+    del result[field]
+    with pytest.raises(RuntimeError, match=field):
+        native_controls.validate_result(result, workload)
+
+
+@pytest.mark.parametrize("field", _NATIVE_ADAPTER_METRIC_FIELDS)
+@pytest.mark.parametrize(
+    "value",
+    [True, "1.0", -1.0, math.inf, math.nan],
+    ids=["boolean", "string", "negative", "infinite", "nan"],
+)
+def test_result_rejects_invalid_adapter_metric_values(
+    native_controls, field: str, value: object
+) -> None:
+    workload = native_controls.NativeWorkload()
+    result = _result_metadata(workload)
+    result[field] = value
+    with pytest.raises(RuntimeError, match=field):
+        native_controls.validate_result(result, workload)
+
+
+def test_result_preserves_per_rank_allocation_registration_sum_semantics(native_controls) -> None:
+    workload = native_controls.NativeWorkload(nx=9, ny=10, ranks=3)
+    result = _result_metadata(workload)
+    assert result["allocation_ms"] + result["registration_ms"] != result["allocation_registration_ms"]
+    native_controls.validate_result(result, workload)
 
 
 @pytest.mark.parametrize("field", ["nvshmem_version", "nvshmem_header_version", "openshmem_api_version"])
