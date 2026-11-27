@@ -544,6 +544,435 @@ def test_full_sweep_stored_success_is_downgraded_without_exact_output(tmp_path: 
     assert "lacks exact frozen-target evidence" in " ".join(stage["issues"])
 
 
+def test_full_sweep_checkpoint_binding_rejects_overwritten_result_bytes(
+    tmp_path: Path,
+) -> None:
+    run_id = "full_sweep_overwritten_result"
+    output_path = _write_benchmark_attempt_artifacts(
+        repo_root=tmp_path,
+        artifacts_dir=None,
+        run_id=run_id,
+        targets=["ch01:a"],
+        results=[
+            {
+                "chapter": "ch01",
+                "benchmarks": [
+                    {"example": "a", "status": "succeeded", "marker": "original"}
+                ],
+            }
+        ],
+    )
+    attempt = {
+        "run_id": run_id,
+        "bucket": "single_gpu",
+        "status": "succeeded",
+        "targets": ["ch01:a"],
+    }
+    e2e_sweep._attach_benchmark_attempt_state(
+        "full_sweep",
+        attempt,
+        repo_root=tmp_path,
+        artifacts_dir=None,
+        bind_result=True,
+        expected_git_commit=TEST_GIT_COMMIT,
+    )
+    original_sha256 = hashlib.sha256(output_path.read_bytes()).hexdigest()
+    assert attempt["result_evidence"] == {
+        "schema_version": "1.0",
+        "binding_status": "bound",
+        "run_id": run_id,
+        "path": "results/benchmark_test_results.json",
+        "size_bytes": output_path.stat().st_size,
+        "sha256": original_sha256,
+    }
+
+    output_path.write_text(
+        json.dumps(
+            {
+                "run_id": run_id,
+                "results": [
+                    {
+                        "chapter": "ch01",
+                        "benchmarks": [
+                            {
+                                "example": "a",
+                                "status": "succeeded",
+                                "marker": "modified",
+                            }
+                        ],
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    assert output_path.stat().st_size == attempt["result_evidence"]["size_bytes"]
+    assert hashlib.sha256(output_path.read_bytes()).hexdigest() != original_sha256
+    stage = {
+        "name": "full_sweep",
+        "enabled": True,
+        "status": "succeeded",
+        "attempts": [attempt],
+    }
+
+    e2e_sweep._normalize_incomplete_attempts_for_resume(
+        [stage],
+        repo_root=tmp_path,
+        artifacts_dir=None,
+        reason="resume superseded unfinished attempt",
+    )
+    e2e_sweep._revalidate_full_sweep_stage_from_frozen_plan(
+        stage,
+        {"single_gpu_targets": ["ch01:a"], "multi_gpu_targets": []},
+        repo_root=tmp_path,
+        artifacts_dir=None,
+        expected_git_commit=TEST_GIT_COMMIT,
+    )
+
+    assert stage["status"] == "aborted"
+    assert attempt["result_evidence"]["sha256"] == original_sha256
+    assert "bytes do not match" in " ".join(stage["issues"])
+
+
+def test_full_sweep_resume_labels_legacy_terminal_result_unbound(tmp_path: Path) -> None:
+    run_id = "full_sweep_legacy_unbound"
+    _write_benchmark_attempt_artifacts(
+        repo_root=tmp_path,
+        artifacts_dir=None,
+        run_id=run_id,
+        targets=["ch01:a"],
+        results=[
+            {
+                "chapter": "ch01",
+                "benchmarks": [{"example": "a", "status": "succeeded"}],
+            }
+        ],
+    )
+    attempt = {
+        "run_id": run_id,
+        "bucket": "single_gpu",
+        "status": "succeeded",
+        "verified_targets": ["ch01:a"],
+        "benchmark_summary": {
+            "target_outcomes": [{"target": "ch01:a", "status": "succeeded"}]
+        },
+    }
+    stage = {
+        "name": "full_sweep",
+        "enabled": True,
+        "status": "succeeded",
+        "attempts": [attempt],
+    }
+
+    e2e_sweep._normalize_incomplete_attempts_for_resume(
+        [stage],
+        repo_root=tmp_path,
+        artifacts_dir=None,
+        reason="resume superseded unfinished attempt",
+    )
+    e2e_sweep._revalidate_full_sweep_stage_from_frozen_plan(
+        stage,
+        {"single_gpu_targets": ["ch01:a"], "multi_gpu_targets": []},
+        repo_root=tmp_path,
+        artifacts_dir=None,
+        expected_git_commit=TEST_GIT_COMMIT,
+    )
+
+    assert stage["status"] == "aborted"
+    assert attempt["result_evidence"] == {
+        "schema_version": "1.0",
+        "binding_status": "legacy_unbound",
+        "run_id": run_id,
+        "path": "results/benchmark_test_results.json",
+        "reason": "completed attempt predates E2E result-byte binding",
+    }
+    assert "legacy unbound" in " ".join(stage["issues"])
+
+
+def test_full_sweep_resume_rebuilds_summary_from_bound_result_bytes(tmp_path: Path) -> None:
+    run_id = "full_sweep_bound_summary"
+    _write_benchmark_attempt_artifacts(
+        repo_root=tmp_path,
+        artifacts_dir=None,
+        run_id=run_id,
+        targets=["ch01:a"],
+        results=[
+            {
+                "chapter": "ch01",
+                "benchmarks": [{"example": "a", "status": "failed_verification"}],
+            }
+        ],
+    )
+    attempt = {
+        "run_id": run_id,
+        "bucket": "single_gpu",
+        "status": "failed",
+        "targets": ["ch01:a"],
+    }
+    e2e_sweep._attach_benchmark_attempt_state(
+        "full_sweep",
+        attempt,
+        repo_root=tmp_path,
+        artifacts_dir=None,
+        bind_result=True,
+        expected_git_commit=TEST_GIT_COMMIT,
+    )
+    attempt["benchmark_summary"] = {
+        "target_outcomes": [{"target": "ch01:a", "status": "succeeded"}]
+    }
+    attempt.pop("verified_targets")
+
+    verified, issues = e2e_sweep._verified_full_sweep_attempts(
+        [attempt],
+        repo_root=tmp_path,
+        artifacts_dir=None,
+        expected_git_commit=TEST_GIT_COMMIT,
+    )
+
+    assert verified == [attempt]
+    assert issues == []
+    assert attempt["verified_targets"] == ["ch01:a"]
+    assert attempt["benchmark_summary"]["target_outcomes"] == [
+        {"target": "ch01:a", "status": "failed_verification"}
+    ]
+    assert (
+        e2e_sweep._successful_targets_from_attempts(
+            verified,
+            frozen_targets=["ch01:a"],
+        )
+        == []
+    )
+
+
+def test_full_sweep_resume_uses_validated_bytes_when_path_swaps_after_read(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run_id = "full_sweep_swap_after_read"
+    output_path = _write_benchmark_attempt_artifacts(
+        repo_root=tmp_path,
+        artifacts_dir=None,
+        run_id=run_id,
+        targets=["ch01:a"],
+        results=[
+            {
+                "chapter": "ch01",
+                "benchmarks": [{"example": "a", "status": "failed_verification"}],
+            }
+        ],
+    )
+    attempt = {
+        "run_id": run_id,
+        "bucket": "single_gpu",
+        "status": "failed",
+        "targets": ["ch01:a"],
+    }
+    e2e_sweep._attach_benchmark_attempt_state(
+        "full_sweep",
+        attempt,
+        repo_root=tmp_path,
+        artifacts_dir=None,
+        bind_result=True,
+        expected_git_commit=TEST_GIT_COMMIT,
+    )
+    real_read = e2e_sweep._read_stable_json_object_artifact
+    swapped = {"done": False}
+
+    def _swap_after_validated_read(path: Path, *, artifact_name: str):
+        payload, identity, error = real_read(path, artifact_name=artifact_name)
+        if Path(path) == output_path and error is None and not swapped["done"]:
+            swapped["done"] = True
+            output_path.write_text(
+                json.dumps(
+                    {
+                        "run_id": run_id,
+                        "results": [
+                            {
+                                "chapter": "ch01",
+                                "benchmarks": [
+                                    {"example": "a", "status": "succeeded"}
+                                ],
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+        return payload, identity, error
+
+    monkeypatch.setattr(
+        e2e_sweep,
+        "_read_stable_json_object_artifact",
+        _swap_after_validated_read,
+    )
+
+    verified, issues = e2e_sweep._verified_full_sweep_attempts(
+        [attempt],
+        repo_root=tmp_path,
+        artifacts_dir=None,
+        expected_git_commit=TEST_GIT_COMMIT,
+    )
+
+    assert swapped["done"] is True
+    assert json.loads(output_path.read_text(encoding="utf-8"))["results"][0]["benchmarks"][
+        0
+    ]["status"] == "succeeded"
+    assert verified == [attempt]
+    assert issues == []
+    assert attempt["benchmark_summary"]["target_outcomes"] == [
+        {"target": "ch01:a", "status": "failed_verification"}
+    ]
+    assert (
+        e2e_sweep._successful_targets_from_attempts(
+            verified,
+            frozen_targets=["ch01:a"],
+        )
+        == []
+    )
+
+
+def test_full_sweep_resume_rejects_bound_checkpoint_target_drift(tmp_path: Path) -> None:
+    run_id = "full_sweep_target_drift"
+    _write_benchmark_attempt_artifacts(
+        repo_root=tmp_path,
+        artifacts_dir=None,
+        run_id=run_id,
+        targets=["ch01:a"],
+        results=[
+            {
+                "chapter": "ch01",
+                "benchmarks": [{"example": "a", "status": "succeeded"}],
+            }
+        ],
+    )
+    attempt = {
+        "run_id": run_id,
+        "bucket": "single_gpu",
+        "status": "succeeded",
+        "targets": ["ch01:a"],
+    }
+    e2e_sweep._attach_benchmark_attempt_state(
+        "full_sweep",
+        attempt,
+        repo_root=tmp_path,
+        artifacts_dir=None,
+        bind_result=True,
+        expected_git_commit=TEST_GIT_COMMIT,
+    )
+    attempt["verified_targets"] = ["ch01:b"]
+
+    verified, issues = e2e_sweep._verified_full_sweep_attempts(
+        [attempt],
+        repo_root=tmp_path,
+        artifacts_dir=None,
+        expected_git_commit=TEST_GIT_COMMIT,
+    )
+
+    assert verified == []
+    assert "target identity no longer matches" in " ".join(issues)
+
+
+def test_full_sweep_crash_finalization_binds_owned_partial_result_for_retry(
+    tmp_path: Path,
+) -> None:
+    run_id = "full_sweep_owned_crash"
+    _write_benchmark_attempt_artifacts(
+        repo_root=tmp_path,
+        artifacts_dir=None,
+        run_id=run_id,
+        targets=["ch01:a", "ch01:b"],
+        results=[
+            {
+                "chapter": "ch01",
+                "benchmarks": [
+                    {"example": "a", "status": "succeeded"},
+                    {"example": "b", "status": "failed_verification"},
+                ],
+            }
+        ],
+    )
+    attempt = {
+        "run_id": run_id,
+        "bucket": "single_gpu",
+        "status": "running",
+        "targets": ["ch01:a", "ch01:b"],
+    }
+
+    e2e_sweep._mark_attempt_aborted(
+        "full_sweep",
+        attempt,
+        reason="orchestrator exited",
+        repo_root=tmp_path,
+        artifacts_dir=None,
+        expected_git_commit=TEST_GIT_COMMIT,
+    )
+    verified, issues = e2e_sweep._verified_full_sweep_attempts(
+        [attempt],
+        repo_root=tmp_path,
+        artifacts_dir=None,
+        expected_git_commit=TEST_GIT_COMMIT,
+    )
+
+    assert attempt["result_evidence"]["binding_status"] == "bound"
+    assert attempt["verified_targets"] == ["ch01:a", "ch01:b"]
+    assert verified == [attempt]
+    assert issues == []
+    successful_targets = e2e_sweep._successful_targets_from_attempts(
+        verified,
+        frozen_targets=["ch01:a", "ch01:b"],
+    )
+    assert successful_targets == ["ch01:a"]
+    assert e2e_sweep._remaining_targets_after_successful_targets(
+        ["ch01:a", "ch01:b"],
+        successful_targets=successful_targets,
+    ) == ["ch01:b"]
+
+
+def test_full_sweep_crash_finalization_rejects_mismatched_checkpoint_targets(
+    tmp_path: Path,
+) -> None:
+    run_id = "full_sweep_unowned_crash"
+    _write_benchmark_attempt_artifacts(
+        repo_root=tmp_path,
+        artifacts_dir=None,
+        run_id=run_id,
+        targets=["ch01:a"],
+        results=[
+            {
+                "chapter": "ch01",
+                "benchmarks": [{"example": "a", "status": "succeeded"}],
+            }
+        ],
+    )
+    attempt = {
+        "run_id": run_id,
+        "bucket": "single_gpu",
+        "status": "running",
+        "targets": ["ch01:b"],
+    }
+
+    e2e_sweep._mark_attempt_aborted(
+        "full_sweep",
+        attempt,
+        reason="orchestrator exited",
+        repo_root=tmp_path,
+        artifacts_dir=None,
+        expected_git_commit=TEST_GIT_COMMIT,
+    )
+    verified, issues = e2e_sweep._verified_full_sweep_attempts(
+        [attempt],
+        repo_root=tmp_path,
+        artifacts_dir=None,
+        expected_git_commit=TEST_GIT_COMMIT,
+    )
+
+    assert attempt["result_evidence"]["binding_status"] == "binding_failed"
+    assert "run_start targets do not match" in attempt["result_evidence"]["reason"]
+    assert "sha256" not in attempt["result_evidence"]
+    assert verified == []
+    assert "binding_failed" in " ".join(issues)
+
+
 def test_resume_provenance_rejects_changed_git_or_hardware(tmp_path: Path) -> None:
     current = _resume_provenance(tmp_path, gpu_count=1)
     stored = json.loads(json.dumps(current))
@@ -1576,6 +2005,21 @@ def test_full_sweep_revalidation_rejects_tampered_bucket_manifest(
         ],
     )
     manifest_path = output_path.parents[1] / "manifest.json"
+    attempt = {
+        "run_id": run_id,
+        "bucket": "single_gpu",
+        "status": "succeeded",
+        "targets": ["ch01:a"],
+    }
+    e2e_sweep._attach_benchmark_attempt_state(
+        "full_sweep",
+        attempt,
+        repo_root=tmp_path,
+        artifacts_dir=None,
+        bind_result=True,
+        expected_git_commit=TEST_GIT_COMMIT,
+    )
+    assert attempt["result_evidence"]["binding_status"] == "bound"
     if tamper == "output_run_id":
         payload = json.loads(output_path.read_text(encoding="utf-8"))
         payload["run_id"] = "other_run"
@@ -1593,17 +2037,7 @@ def test_full_sweep_revalidation_rejects_tampered_bucket_manifest(
         "name": "full_sweep",
         "enabled": True,
         "status": "succeeded",
-        "attempts": [
-            {
-                "run_id": run_id,
-                "bucket": "single_gpu",
-                "status": "succeeded",
-                "verified_targets": ["ch01:a"],
-                "benchmark_summary": {
-                    "target_outcomes": [{"target": "ch01:a", "status": "succeeded"}]
-                },
-            }
-        ],
+        "attempts": [attempt],
     }
 
     e2e_sweep._revalidate_full_sweep_stage_from_frozen_plan(
@@ -3389,6 +3823,28 @@ def test_run_benchmark_e2e_sweep_resume_reruns_partial_unit_with_resume_attempt_
             }
         ],
     )
+    prior_full_sweep_attempt = {
+        "run_id": "e2e_resume__full_sweep__single",
+        "bucket": "single_gpu",
+        "status": "aborted",
+        "targets": [
+            "ch12:done",
+            "ch13:torchao_quantization",
+            "ch13:training_speed",
+            "ch14:after",
+        ],
+        "units": ["ch12", "ch13", "ch14"],
+        "completed_units": ["ch12"],
+        "active_unit": "ch13",
+    }
+    e2e_sweep._attach_benchmark_attempt_state(
+        "full_sweep",
+        prior_full_sweep_attempt,
+        repo_root=tmp_path,
+        artifacts_dir=str(runs_root),
+        bind_result=True,
+        expected_git_commit=TEST_GIT_COMMIT,
+    )
 
     run_dir = e2e_sweep.e2e_run_dir("e2e_resume", tmp_path)
     run_dir.mkdir(parents=True, exist_ok=True)
@@ -3429,22 +3885,7 @@ def test_run_benchmark_e2e_sweep_resume_reruns_partial_unit_with_resume_attempt_
                         "enabled": True,
                         "status": "aborted",
                         "run_id": "e2e_resume__full_sweep",
-                        "attempts": [
-                            {
-                                "run_id": "e2e_resume__full_sweep__single",
-                                "bucket": "single_gpu",
-                                "status": "aborted",
-                                "targets": [
-                                    "ch12:done",
-                                    "ch13:torchao_quantization",
-                                    "ch13:training_speed",
-                                    "ch14:after",
-                                ],
-                                "units": ["ch12", "ch13", "ch14"],
-                                "completed_units": ["ch12"],
-                                "active_unit": "ch13",
-                            }
-                        ],
+                        "attempts": [prior_full_sweep_attempt],
                     },
                     {
                         "name": "cluster",
@@ -3505,10 +3946,18 @@ def test_run_benchmark_e2e_sweep_resume_reruns_partial_unit_with_resume_attempt_
     assert full_stage["attempts"][0]["run_id"] == "e2e_resume__full_sweep__single"
     assert full_stage["attempts"][1]["run_id"] == "e2e_resume__full_sweep__single__resume1"
     assert full_stage["attempts"][1]["completed_units"] == ["ch13", "ch14"]
+    assert full_stage["attempts"][1]["result_evidence"]["binding_status"] == "bound"
     assert (
         full_stage["result"]["buckets"]["single_gpu"]["latest_attempt_run_id"]
         == "e2e_resume__full_sweep__single__resume1"
     )
+    checkpoint = json.loads((run_dir / "checkpoint.json").read_text(encoding="utf-8"))
+    checkpoint_full_stage = next(
+        stage for stage in checkpoint["stages"] if stage["name"] == "full_sweep"
+    )
+    assert checkpoint_full_stage["attempts"][1]["result_evidence"] == full_stage["attempts"][1][
+        "result_evidence"
+    ]
     assert result["overall_status"] == "succeeded"
 
 

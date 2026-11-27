@@ -46,6 +46,8 @@ _E2E_WATCHER_POLL_SECONDS = 15
 _E2E_WATCHER_MAX_AUTO_RESUMES = 3
 _E2E_WATCHER_SUPERVISED_ENV = "AISP_E2E_WATCHER_SUPERVISED"
 _E2E_CONTRACT_SCHEMA_VERSION = "1.0"
+_E2E_RESULT_EVIDENCE_SCHEMA_VERSION = "1.0"
+_BENCHMARK_RESULT_RELATIVE_PATH = "results/benchmark_test_results.json"
 _REPO_ROOT_LOCATOR = "<repo-root>"
 _BENCH_ROOT_LOCATOR = "<bench-root>"
 _ARTIFACTS_DIR_LOCATOR = "<artifacts-dir>"
@@ -565,6 +567,126 @@ def _sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _stable_file_bytes(
+    path: Path,
+) -> Tuple[Optional[bytes], Optional[Dict[str, Any]], Optional[str]]:
+    candidate = Path(path)
+    if candidate.is_symlink():
+        return None, None, "artifact path may not be a symlink"
+    try:
+        before = candidate.stat()
+        if not candidate.is_file() or before.st_size <= 0:
+            return None, None, "artifact is missing, empty, or not a regular file"
+        content = candidate.read_bytes()
+        after = candidate.stat()
+    except OSError as exc:
+        return None, None, f"artifact could not be read: {type(exc).__name__}"
+    before_identity = (
+        before.st_dev,
+        before.st_ino,
+        before.st_size,
+        before.st_mtime_ns,
+    )
+    after_identity = (
+        after.st_dev,
+        after.st_ino,
+        after.st_size,
+        after.st_mtime_ns,
+    )
+    if before_identity != after_identity or len(content) != after.st_size:
+        return None, None, "artifact changed while its content identity was captured"
+    return content, {
+        "size_bytes": len(content),
+        "sha256": hashlib.sha256(content).hexdigest(),
+    }, None
+
+
+def _stable_file_identity(path: Path) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
+    _content, identity, error = _stable_file_bytes(path)
+    return identity, error
+
+
+def _read_stable_json_object_artifact(
+    path: Path,
+    *,
+    artifact_name: str,
+) -> Tuple[Optional[Dict[str, Any]], Optional[Dict[str, Any]], Optional[str]]:
+    content, identity, error = _stable_file_bytes(path)
+    if error:
+        return None, None, f"invalid {artifact_name}: {error}"
+    if content is None or identity is None:
+        return None, None, f"invalid {artifact_name}: stable read returned no content identity"
+    try:
+        payload = json.loads(content.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        return None, None, f"failed to parse {artifact_name}: {exc}"
+    if not isinstance(payload, dict):
+        return None, None, f"invalid {artifact_name}: expected a JSON object"
+    return payload, identity, None
+
+
+def _result_evidence_record(
+    *,
+    run_id: str,
+    binding_status: str,
+    identity: Optional[Dict[str, Any]] = None,
+    reason: Optional[str] = None,
+) -> Dict[str, Any]:
+    payload: Dict[str, Any] = {
+        "schema_version": _E2E_RESULT_EVIDENCE_SCHEMA_VERSION,
+        "binding_status": binding_status,
+        "run_id": run_id,
+        "path": _BENCHMARK_RESULT_RELATIVE_PATH,
+    }
+    if identity is not None:
+        payload["size_bytes"] = identity.get("size_bytes")
+        payload["sha256"] = identity.get("sha256")
+    if reason:
+        payload["reason"] = reason
+    return payload
+
+
+def _validate_benchmark_result_evidence(
+    evidence: Any,
+    *,
+    expected_run_id: str,
+    output_path: Path,
+    current_identity: Optional[Dict[str, Any]] = None,
+) -> Optional[str]:
+    if not isinstance(evidence, dict):
+        return "benchmark result evidence is legacy unbound; rerun this attempt before reuse"
+    binding_status = str(evidence.get("binding_status") or "").strip()
+    if binding_status == "legacy_unbound":
+        return "benchmark result evidence is legacy unbound; rerun this attempt before reuse"
+    if binding_status != "bound":
+        reason = str(evidence.get("reason") or "binding did not complete")
+        return f"benchmark result evidence is {binding_status or 'invalid'}: {reason}"
+    if evidence.get("schema_version") != _E2E_RESULT_EVIDENCE_SCHEMA_VERSION:
+        return "benchmark result evidence has an unsupported schema version"
+    if evidence.get("run_id") != expected_run_id:
+        return "benchmark result evidence run_id does not match the owning attempt"
+    if evidence.get("path") != _BENCHMARK_RESULT_RELATIVE_PATH:
+        return "benchmark result evidence path does not match the final output"
+    expected_size = evidence.get("size_bytes")
+    if not isinstance(expected_size, int) or isinstance(expected_size, bool) or expected_size <= 0:
+        return "benchmark result evidence has an invalid byte count"
+    expected_sha256 = str(evidence.get("sha256") or "").lower()
+    if re.fullmatch(r"[0-9a-f]{64}", expected_sha256) is None:
+        return "benchmark result evidence has an invalid SHA-256 digest"
+    if current_identity is None:
+        current_identity, identity_error = _stable_file_identity(output_path)
+        if identity_error:
+            return f"benchmark output identity is unavailable: {identity_error}"
+    if current_identity is None:
+        return "benchmark output identity is unavailable: stable read returned no identity"
+    if (
+        current_identity.get("size_bytes") != expected_size
+        or current_identity.get("sha256") != expected_sha256
+    ):
+        return "benchmark output bytes do not match the completed attempt binding"
+    return None
+
+
 def _benchmark_manifest_identity_error(
     manifest: Dict[str, Any],
     *,
@@ -602,6 +724,10 @@ def _validate_benchmark_run_manifest(
     repo_root: Path,
     artifacts_dir: Optional[str],
     expected_git_commit: str,
+    expected_result_evidence: Any = None,
+    require_result_binding: bool = False,
+    validated_output: Optional[Dict[str, Any]] = None,
+    validated_identity: Optional[Dict[str, Any]] = None,
 ) -> Optional[str]:
     expected_run_dir = _benchmark_run_dir(
         expected_run_id,
@@ -630,14 +756,31 @@ def _validate_benchmark_run_manifest(
     if identity_error:
         return identity_error
     output_path = expected_run_dir / "results" / "benchmark_test_results.json"
-    output, output_error = _read_json_object_artifact(
+    output, output_identity, output_error = _read_stable_json_object_artifact(
         output_path,
         artifact_name="benchmark output JSON",
     )
     if output_error:
         return output_error
+    if output is None or output_identity is None:
+        return "invalid benchmark output JSON: stable read returned no payload identity"
     if output.get("run_id") != expected_run_id:
         return "benchmark output run_id does not match the owning attempt"
+    if require_result_binding:
+        evidence_error = _validate_benchmark_result_evidence(
+            expected_result_evidence,
+            expected_run_id=expected_run_id,
+            output_path=output_path,
+            current_identity=output_identity,
+        )
+        if evidence_error:
+            return evidence_error
+    if validated_output is not None:
+        validated_output.clear()
+        validated_output.update(output)
+    if validated_identity is not None:
+        validated_identity.clear()
+        validated_identity.update(output_identity)
     return None
 
 
@@ -1018,7 +1161,9 @@ def _verified_full_sweep_attempts(
     verified: List[Dict[str, Any]] = []
     issues: List[str] = []
     for attempt in attempts:
-        if not isinstance(attempt.get("verified_targets"), list):
+        if not isinstance(attempt.get("verified_targets"), list) and not isinstance(
+            attempt.get("result_evidence"), dict
+        ):
             continue
         attempt_run_id = str(attempt.get("run_id") or "").strip()
         try:
@@ -1026,17 +1171,52 @@ def _verified_full_sweep_attempts(
         except ValueError:
             issues.append("full-sweep attempt has an unsafe run_id")
             continue
+        validated_output: Dict[str, Any] = {}
         evidence_error = _validate_benchmark_run_manifest(
             expected_run_id=validated_attempt_run_id,
             repo_root=repo_root,
             artifacts_dir=artifacts_dir,
             expected_git_commit=expected_git_commit,
+            expected_result_evidence=attempt.get("result_evidence"),
+            require_result_binding=True,
+            validated_output=validated_output,
         )
         if evidence_error:
             issues.append(f"{validated_attempt_run_id}: {evidence_error}")
             continue
+        result_evidence = attempt.get("result_evidence")
+        if isinstance(result_evidence, dict) and result_evidence.get("binding_status") == "bound":
+            run_start = _load_benchmark_run_start(
+                validated_attempt_run_id,
+                repo_root=repo_root,
+                artifacts_dir=artifacts_dir,
+            )
+            started_targets = _canonical_target_sequence(
+                run_start.get("targets") if isinstance(run_start, dict) else None
+            )
+            checkpoint_targets = _canonical_target_sequence(attempt.get("targets"))
+            verified_targets = _canonical_target_sequence(attempt.get("verified_targets"))
+            if (
+                started_targets is None
+                or checkpoint_targets != started_targets
+                or (verified_targets is not None and verified_targets != started_targets)
+            ):
+                issues.append(
+                    f"{validated_attempt_run_id}: completed attempt target identity no longer "
+                    "matches run_start and checkpoint evidence"
+                )
+                continue
+            attempt["verified_targets"] = list(started_targets)
+        if isinstance(result_evidence, dict) and result_evidence.get("binding_status") == "bound":
+            benchmark_summary = _benchmark_stage_details_from_payload(validated_output)
+            if benchmark_summary is None:
+                attempt.pop("benchmark_summary", None)
+            else:
+                attempt["benchmark_summary"] = benchmark_summary
+        else:
+            benchmark_summary = attempt.get("benchmark_summary")
         verified.append(attempt)
-        if not isinstance(attempt.get("benchmark_summary"), dict):
+        if not isinstance(benchmark_summary, dict):
             issues.append(
                 f"{validated_attempt_run_id}: benchmark output lacks a valid summary"
             )
@@ -1139,6 +1319,10 @@ def _benchmark_stage_details_from_output(
         payload = json.loads(Path(output_json_path).read_text(encoding="utf-8"))
     except Exception:
         return None
+    return _benchmark_stage_details_from_payload(payload)
+
+
+def _benchmark_stage_details_from_payload(payload: Any) -> Optional[Dict[str, Any]]:
     if not isinstance(payload, dict):
         return None
 
@@ -4136,6 +4320,70 @@ def _load_benchmark_run_start(
     return None
 
 
+def _canonical_target_sequence(value: Any) -> Optional[List[str]]:
+    if not isinstance(value, list) or not value:
+        return None
+    targets = [_canonical_target_name(target) for target in value]
+    if any(not target for target in targets) or len(targets) != len(set(targets)):
+        return None
+    return targets
+
+
+def _bind_benchmark_attempt_result(
+    attempt: Dict[str, Any],
+    *,
+    repo_root: Path,
+    artifacts_dir: Optional[str],
+    expected_git_commit: Optional[str],
+) -> Optional[str]:
+    run_id = str(attempt.get("run_id") or "").strip()
+    try:
+        run_id = validate_run_id(run_id)
+    except ValueError:
+        return "attempt has an unsafe run_id"
+    expected_commit = str(expected_git_commit or "").strip()
+    if _GIT_COMMIT_RE.fullmatch(expected_commit) is None:
+        return "E2E checkpoint is missing a valid Git commit"
+
+    checkpoint_targets = _canonical_target_sequence(attempt.get("targets"))
+    if checkpoint_targets is None:
+        return "E2E checkpoint attempt has no exact target identity"
+    run_start = _load_benchmark_run_start(
+        run_id,
+        repo_root=repo_root,
+        artifacts_dir=artifacts_dir,
+    )
+    if not isinstance(run_start, dict):
+        return "benchmark run_start evidence is missing"
+    started_targets = _canonical_target_sequence(run_start.get("targets"))
+    if started_targets is None or started_targets != checkpoint_targets:
+        return "benchmark run_start targets do not match the E2E checkpoint attempt"
+
+    validated_output: Dict[str, Any] = {}
+    validated_identity: Dict[str, Any] = {}
+    manifest_error = _validate_benchmark_run_manifest(
+        expected_run_id=run_id,
+        repo_root=repo_root,
+        artifacts_dir=artifacts_dir,
+        expected_git_commit=expected_commit,
+        validated_output=validated_output,
+        validated_identity=validated_identity,
+    )
+    if manifest_error:
+        return manifest_error
+    result_evidence = _result_evidence_record(
+        run_id=run_id,
+        binding_status="bound",
+        identity=validated_identity,
+    )
+    benchmark_summary = _benchmark_stage_details_from_payload(validated_output)
+    if benchmark_summary is None:
+        return "final benchmark output does not contain a valid summary"
+    attempt["result_evidence"] = result_evidence
+    attempt["benchmark_summary"] = benchmark_summary
+    return None
+
+
 def _load_benchmark_unit_progress(
     run_id: str,
     *,
@@ -4191,6 +4439,8 @@ def _attach_benchmark_attempt_state(
     *,
     repo_root: Path,
     artifacts_dir: Optional[str],
+    bind_result: bool = False,
+    expected_git_commit: Optional[str] = None,
 ) -> None:
     run_id = str(attempt.get("run_id") or "").strip()
     if not run_id:
@@ -4207,7 +4457,72 @@ def _attach_benchmark_attempt_state(
         "output_json": str(benchmark_paths["output_json"]),
         "progress_path": str(benchmark_paths["progress"]),
     }
-    attempt.pop("benchmark_summary", None)
+    if stage_name == "full_sweep":
+        terminal = str(attempt.get("status") or "") != "running"
+        evidence = attempt.get("result_evidence")
+        if bind_result and isinstance(evidence, dict):
+            validated_output: Dict[str, Any] = {}
+            evidence_error = _validate_benchmark_run_manifest(
+                expected_run_id=run_id,
+                repo_root=repo_root,
+                artifacts_dir=artifacts_dir,
+                expected_git_commit=str(expected_git_commit or ""),
+                expected_result_evidence=evidence,
+                require_result_binding=True,
+                validated_output=validated_output,
+            )
+            if evidence_error:
+                attempt_issues = list(attempt.get("issues") or [])
+                binding_issue = f"result evidence binding failed: {evidence_error}"
+                if binding_issue not in attempt_issues:
+                    attempt_issues.append(binding_issue)
+                attempt["issues"] = attempt_issues
+                return
+            benchmark_summary = _benchmark_stage_details_from_payload(validated_output)
+            if benchmark_summary is None:
+                attempt_issues = list(attempt.get("issues") or [])
+                binding_issue = "result evidence binding failed: validated output has no summary"
+                if binding_issue not in attempt_issues:
+                    attempt_issues.append(binding_issue)
+                attempt["issues"] = attempt_issues
+                return
+            attempt["benchmark_summary"] = benchmark_summary
+        elif bind_result:
+            binding_error = _bind_benchmark_attempt_result(
+                attempt,
+                repo_root=repo_root,
+                artifacts_dir=artifacts_dir,
+                expected_git_commit=expected_git_commit,
+            )
+            if binding_error:
+                attempt["result_evidence"] = _result_evidence_record(
+                    run_id=run_id,
+                    binding_status="binding_failed",
+                    reason=binding_error,
+                )
+                attempt_issues = list(attempt.get("issues") or [])
+                binding_issue = f"result evidence binding failed: {binding_error}"
+                if binding_issue not in attempt_issues:
+                    attempt_issues.append(binding_issue)
+                attempt["issues"] = attempt_issues
+                return
+        elif terminal:
+            has_reusable_state = (
+                isinstance(attempt.get("verified_targets"), list)
+                or isinstance(attempt.get("benchmark_summary"), dict)
+                or benchmark_paths["output_json"].is_file()
+            )
+            if not isinstance(evidence, dict) and has_reusable_state:
+                attempt["result_evidence"] = _result_evidence_record(
+                    run_id=run_id,
+                    binding_status="legacy_unbound",
+                    reason="completed attempt predates E2E result-byte binding",
+                )
+            return
+
+    preserve_bound_summary = stage_name == "full_sweep" and bind_result
+    if not preserve_bound_summary:
+        attempt.pop("benchmark_summary", None)
     attempt.pop("verified_targets", None)
     attempt.pop("successful_targets", None)
     run_start = _load_benchmark_run_start(
@@ -4221,9 +4536,12 @@ def _attach_benchmark_attempt_state(
             isinstance(target, str) and target.strip() for target in requested_targets
         ):
             attempt["verified_targets"] = list(requested_targets)
-    benchmark_summary = _benchmark_stage_details_from_output(str(benchmark_paths["output_json"]))
-    if benchmark_summary is not None:
-        attempt["benchmark_summary"] = benchmark_summary
+    if preserve_bound_summary:
+        benchmark_summary = attempt.get("benchmark_summary")
+    else:
+        benchmark_summary = _benchmark_stage_details_from_output(str(benchmark_paths["output_json"]))
+        if benchmark_summary is not None:
+            attempt["benchmark_summary"] = benchmark_summary
     if stage_name == "full_sweep":
         unit_progress = _load_benchmark_unit_progress(
             run_id,
@@ -4260,6 +4578,7 @@ def _mark_attempt_aborted(
     reason: str,
     repo_root: Path,
     artifacts_dir: Optional[str],
+    expected_git_commit: Optional[str] = None,
     ended_at: Optional[str] = None,
 ) -> None:
     attempt["status"] = "aborted"
@@ -4273,6 +4592,8 @@ def _mark_attempt_aborted(
         attempt,
         repo_root=repo_root,
         artifacts_dir=artifacts_dir,
+        bind_result=stage_name == "full_sweep",
+        expected_git_commit=expected_git_commit,
     )
 
 
@@ -4282,6 +4603,7 @@ def _normalize_incomplete_attempts_for_resume(
     repo_root: Path,
     artifacts_dir: Optional[str],
     reason: str,
+    expected_git_commit: Optional[str] = None,
 ) -> None:
     for stage in stages:
         if not stage.get("enabled"):
@@ -4304,6 +4626,7 @@ def _normalize_incomplete_attempts_for_resume(
                 reason=reason,
                 repo_root=repo_root,
                 artifacts_dir=artifacts_dir,
+                expected_git_commit=expected_git_commit,
             )
             changed = True
         if changed and str(stage.get("status") or "") == "running":
@@ -4667,11 +4990,16 @@ def _normalize_stale_running_resume_state(
     for stage in stages:
         if isinstance(stage, dict):
             stage.setdefault("attempts", [])
+    stored_git = (resume_state.get("provenance") or {}).get("git")
+    expected_git_commit = (
+        str(stored_git.get("commit") or "").strip() if isinstance(stored_git, dict) else None
+    )
     _normalize_incomplete_attempts_for_resume(
         stages,
         repo_root=repo_root,
         artifacts_dir=artifacts_dir,
         reason=stale_reason,
+        expected_git_commit=expected_git_commit,
     )
     for stage in stages:
         if str(stage.get("status") or "") == "running":
@@ -5370,6 +5698,7 @@ def run_benchmark_e2e_sweep(
             repo_root=repo_root,
             artifacts_dir=artifacts_dir,
             reason="resume superseded unfinished attempt",
+            expected_git_commit=str(validated_git_commit),
         )
         if run_full_sweep and not dry_run:
             _revalidate_full_sweep_stage_from_frozen_plan(
@@ -5644,6 +5973,7 @@ def run_benchmark_e2e_sweep(
                     reason=message,
                     repo_root=repo_root,
                     artifacts_dir=artifacts_dir,
+                    expected_git_commit=str(validated_git_commit),
                     ended_at=_utc_now(),
                 )
         issues = list(stage.get("issues") or [])
@@ -6119,6 +6449,8 @@ def run_benchmark_e2e_sweep(
                             bucket_attempt,
                             repo_root=repo_root,
                             artifacts_dir=artifacts_dir,
+                            bind_result=True,
+                            expected_git_commit=str(validated_git_commit),
                         )
                         verified_bucket_attempts, evidence_issues = _verified_full_sweep_attempts(
                             _bucket_attempts(full_stage, bucket_name),
