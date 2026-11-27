@@ -21,6 +21,7 @@ from core.benchmark.verification import (
     get_output_tolerances,
     get_signature_equivalence_spec,
     output_tolerances_to_dict,
+    resolve_global_output_tolerance,
     resolve_output_tolerances,
     signature_workload_dict,
 )
@@ -263,22 +264,13 @@ def _output_names(output: torch.Tensor | dict[str, torch.Tensor]) -> set[str]:
 def _compare_outputs(baseline: Any, optimized: Any) -> dict[str, Any]:
     baseline_tolerance = _require_tolerance(baseline, side="baseline")
     optimized_tolerance = _require_tolerance(optimized, side="optimized")
-    if (
-        optimized_tolerance.rtol > baseline_tolerance.rtol
-        or optimized_tolerance.atol > baseline_tolerance.atol
-    ):
+    try:
+        effective_tolerance = resolve_global_output_tolerance(baseline_tolerance, optimized_tolerance)
+    except ValueError as exc:
         raise VerifiedComparisonError(
-            "optimized_output_tolerance_looser",
-            "Optimized output tolerance cannot be looser than the baseline tolerance: "
-            f"baseline=({baseline_tolerance.rtol}, {baseline_tolerance.atol}), "
-            f"optimized=({optimized_tolerance.rtol}, {optimized_tolerance.atol}).",
-        )
+            "optimized_output_tolerance_looser", str(exc),
+        ) from exc
 
-    effective_tolerance = ToleranceSpec(
-        rtol=min(baseline_tolerance.rtol, optimized_tolerance.rtol),
-        atol=min(baseline_tolerance.atol, optimized_tolerance.atol),
-        justification=optimized_tolerance.justification or baseline_tolerance.justification,
-    )
     baseline_output = _require_captured_output(baseline, side="baseline")
     optimized_output = _require_captured_output(optimized, side="optimized")
     baseline_output_tolerances = _require_output_tolerances(baseline, side="baseline")

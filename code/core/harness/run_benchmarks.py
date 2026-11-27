@@ -144,6 +144,7 @@ try:
         get_output_tolerance,
         get_output_tolerances,
         output_tolerances_to_dict,
+        resolve_global_output_tolerance,
         resolve_output_tolerances,
         signature_workload_dict,
     )
@@ -6077,11 +6078,11 @@ def _test_chapter_impl(
             return out
         return bench.get_verify_output()
 
-    def _get_perf_tolerance(bench: Any) -> tuple[float, float]:
+    def _get_perf_tolerance(bench: Any) -> ToleranceSpec:
         tolerance = get_output_tolerance(bench)
         if tolerance is None:
             raise RuntimeError("Missing output_tolerance")
-        return (tolerance.rtol, tolerance.atol)
+        return tolerance
 
     def _get_perf_output_tolerances(bench: Any):
         return get_output_tolerances(bench)
@@ -7536,6 +7537,10 @@ def _test_chapter_impl(
                             if baseline_verify_output is None or baseline_verify_tolerance is None:
                                 raise RuntimeError("Baseline verify_output/tolerance missing")
                             optimized_verify_output = _get_perf_output(optimized_benchmark)
+                            optimized_verify_tolerance = _get_perf_tolerance(optimized_benchmark)
+                            effective_tolerance = resolve_global_output_tolerance(
+                                baseline_verify_tolerance, optimized_verify_tolerance,
+                            )
                             optimized_verify_output_tolerances = _get_perf_output_tolerances(
                                 optimized_benchmark
                             )
@@ -7550,14 +7555,16 @@ def _test_chapter_impl(
                                 optimized_verify_output,
                                 output_tolerances
                                 if output_tolerances is not None
-                                else baseline_verify_tolerance,
+                                else (effective_tolerance.rtol, effective_tolerance.atol),
                             )
                             opt_result["verification"] = {
                                 "passed": comparison.passed,
                                 "max_diff": comparison.max_diff,
                                 "location": comparison.location,
-                                "rtol": baseline_verify_tolerance[0],
-                                "atol": baseline_verify_tolerance[1],
+                                "rtol": effective_tolerance.rtol,
+                                "atol": effective_tolerance.atol,
+                                "baseline_tolerance": baseline_verify_tolerance.to_dict(),
+                                "optimized_tolerance": optimized_verify_tolerance.to_dict(),
                                 "output_tolerances": output_tolerances_to_dict(
                                     output_tolerances
                                 ),
