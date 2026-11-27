@@ -1045,7 +1045,6 @@ def _successful_targets_from_attempts(
                 canonical_invalidated
                 and all(canonical_invalidated)
                 and len(canonical_invalidated) == len(set(canonical_invalidated))
-                and all(target in frozen_lookup for target in canonical_invalidated)
             ):
                 successful_lookup.difference_update(canonical_invalidated)
             continue
@@ -1194,6 +1193,23 @@ def _verified_full_sweep_attempts(
             require_result_binding=True,
             validated_output=validated_output,
         )
+        attempt_scope = _attempt_target_scope_from_start_checkpoint(
+            attempt,
+            expected_run_id=validated_attempt_run_id,
+            repo_root=repo_root,
+            artifacts_dir=artifacts_dir,
+        )
+        result_evidence = attempt.get("result_evidence")
+        bound = isinstance(result_evidence, dict) and result_evidence.get("binding_status") == "bound"
+        stored_verified_targets = attempt.get("verified_targets")
+        if not evidence_error and bound and (
+            attempt_scope is None
+            or (
+                stored_verified_targets is not None
+                and _canonical_target_sequence(stored_verified_targets) != attempt_scope
+            )
+        ):
+            evidence_error = "completed attempt target identity no longer matches run_start and checkpoint evidence"
         if evidence_error:
             evidence_issue = f"{validated_attempt_run_id}: {evidence_error}"
             issues.append(evidence_issue)
@@ -1201,43 +1217,14 @@ def _verified_full_sweep_attempts(
             if evidence_issue not in attempt_issues:
                 attempt_issues.append(evidence_issue)
             attempt["issues"] = attempt_issues
-            invalidated_targets = _attempt_target_scope_from_start_checkpoint(
-                attempt,
-                expected_run_id=validated_attempt_run_id,
-                repo_root=repo_root,
-                artifacts_dir=artifacts_dir,
-            )
-            if invalidated_targets is not None:
-                invalidated_attempt = dict(attempt)
-                invalidated_attempt.pop("benchmark_summary", None)
-                invalidated_attempt.pop("successful_targets", None)
-                invalidated_attempt["invalidated_targets"] = invalidated_targets
-                verified.append(invalidated_attempt)
+            if attempt_scope is not None:
+                verified.append({
+                    "run_id": validated_attempt_run_id,
+                    "invalidated_targets": attempt_scope,
+                })
             continue
-        result_evidence = attempt.get("result_evidence")
-        if isinstance(result_evidence, dict) and result_evidence.get("binding_status") == "bound":
-            run_start = _load_benchmark_run_start(
-                validated_attempt_run_id,
-                repo_root=repo_root,
-                artifacts_dir=artifacts_dir,
-            )
-            started_targets = _canonical_target_sequence(
-                run_start.get("targets") if isinstance(run_start, dict) else None
-            )
-            checkpoint_targets = _canonical_target_sequence(attempt.get("targets"))
-            verified_targets = _canonical_target_sequence(attempt.get("verified_targets"))
-            if (
-                started_targets is None
-                or checkpoint_targets != started_targets
-                or (verified_targets is not None and verified_targets != started_targets)
-            ):
-                issues.append(
-                    f"{validated_attempt_run_id}: completed attempt target identity no longer "
-                    "matches run_start and checkpoint evidence"
-                )
-                continue
-            attempt["verified_targets"] = list(started_targets)
-        if isinstance(result_evidence, dict) and result_evidence.get("binding_status") == "bound":
+        if bound and attempt_scope is not None:
+            attempt["verified_targets"] = attempt_scope
             benchmark_summary = _benchmark_stage_details_from_payload(validated_output)
             if benchmark_summary is None:
                 attempt.pop("benchmark_summary", None)
@@ -4376,7 +4363,6 @@ def _attempt_target_scope_from_start_checkpoint(
     artifacts_dir: Optional[str],
 ) -> Optional[List[str]]:
     checkpoint_targets = _canonical_target_sequence(attempt.get("targets"))
-    verified_targets = _canonical_target_sequence(attempt.get("verified_targets"))
     run_start = _load_benchmark_run_start(
         expected_run_id,
         repo_root=repo_root,
@@ -4385,11 +4371,7 @@ def _attempt_target_scope_from_start_checkpoint(
     started_targets = _canonical_target_sequence(
         run_start.get("targets") if isinstance(run_start, dict) else None
     )
-    if (
-        checkpoint_targets is None
-        or started_targets != checkpoint_targets
-        or (verified_targets is not None and verified_targets != checkpoint_targets)
-    ):
+    if checkpoint_targets is None or started_targets != checkpoint_targets:
         return None
     return list(checkpoint_targets)
 

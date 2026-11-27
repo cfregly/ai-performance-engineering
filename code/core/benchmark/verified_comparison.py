@@ -311,9 +311,11 @@ def _compare_outputs(baseline: Any, optimized: Any) -> dict[str, Any]:
             "output_tolerances": output_tolerances_to_dict(output_tolerances),
         }
     )
-    if comparison.tolerance_used is not None:
-        comparison_receipt["rtol"] = comparison.tolerance_used.rtol
-        comparison_receipt["atol"] = comparison.tolerance_used.atol
+    if output_tolerances is None:
+        comparison_receipt["rtol"] = effective_tolerance.rtol
+        comparison_receipt["atol"] = effective_tolerance.atol
+    else:
+        comparison_receipt.pop("tolerance_used", None)
     if not comparison.passed:
         detail = "Captured full timed outputs do not match"
         if comparison.max_diff is not None:

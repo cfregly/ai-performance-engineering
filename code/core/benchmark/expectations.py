@@ -115,7 +115,7 @@ class RunProvenance:
     profile_name: str
     timestamp: str  # ISO format
     iterations: int
-    warmup_iterations: int
+    warmup_iterations: Optional[int]
     execution_environment: str = "unknown"
     validity_profile: Optional[str] = None
     dmi_product_name: Optional[str] = None

@@ -11,6 +11,7 @@ import pytest
 import torch
 
 from core.benchmark.models import BenchmarkResult, TimingStats
+from core.harness import benchmark_harness as harness_module
 from core.harness import run_benchmarks as run_benchmarks_module
 from core.harness.benchmark_harness import (
     BaseBenchmark,
@@ -196,6 +197,39 @@ def test_explicit_run_settings_survive_worker_merge_and_receipts(use_subprocess:
     assert timing_receipt["applied_warmup_iterations"] == 5
 
 
+class _WorkerSetupFailure(_ConfigReceiptBenchmark):
+    def setup(self) -> None:
+        raise RuntimeError("isolated worker setup failed")
+
+
+def test_failed_isolated_worker_has_no_applied_config_receipt() -> None:
+    benchmark = _WorkerSetupFailure()
+    config = _cpu_config(use_subprocess=True, locked_fields=[])
+    run = BenchmarkHarness(mode=BenchmarkMode.CUSTOM, config=config).benchmark_with_manifest(
+        benchmark, run_id="missing-worker-receipt",
+    )
+    assert any("isolated worker setup failed" in failure for failure in run.result.errors)
+    assert getattr(benchmark, "_applied_config_receipt", None) is None
+    assert "applied_config" not in run.manifest.config
+    assert run.manifest.config["configured_config"]["execution_mode"] == "subprocess"
+
+
+def test_subprocess_fallback_attests_the_thread_that_ran(tmp_path: Path) -> None:
+    benchmark = _ConfigReceiptBenchmark()
+    benchmark._module_file_override = str(tmp_path / "missing_benchmark_module.py")
+    config = _cpu_config(use_subprocess=True, locked_fields=[])
+    run = BenchmarkHarness(mode=BenchmarkMode.CUSTOM, config=config).benchmark_with_manifest(
+        benchmark, run_id="subprocess-fallback-thread",
+    )
+    assert not run.result.errors
+    configured = run.manifest.config["configured_config"]
+    applied = run.manifest.config["applied_config"]
+    assert configured["execution_mode"] == "subprocess"
+    assert applied["receipt_source"] == "worker"
+    assert applied["execution_mode"] == "thread"
+    assert applied["use_subprocess"] is False
+
+
 def test_unlocked_mode_dependent_defaults_apply_after_target_override() -> None:
     benchmark = _ConfigReceiptBenchmark()
     config = _cpu_config(use_subprocess=False, locked_fields=["profile_type"])
@@ -217,15 +251,18 @@ def test_unlocked_mode_dependent_defaults_apply_after_target_override() -> None:
 @pytest.mark.parametrize(
     ("source", "is_chapter_or_lab"),
     [
-        ("/checkout/code/tests/benchmark.py", False),
-        ("/checkout/code/ch12/benchmark.py", True),
-        ("/checkout/code/labs/top_k_kernel/benchmark.py", True),
+        ("tests/benchmark.py", False),
+        ("ch12/benchmark.py", True),
+        ("ch120/benchmark.py", True),
+        ("labs/top_k_kernel/benchmark.py", True),
     ],
 )
 def test_chapter_policy_matches_benchmark_directories(
     monkeypatch: pytest.MonkeyPatch, source: str, is_chapter_or_lab: bool,
 ) -> None:
-    monkeypatch.setattr(inspect, "getfile", lambda _type: source)
+    code_root = Path("/dev/labs/checkout/code")
+    monkeypatch.setattr(harness_module, "__file__", str(code_root / "core/harness/benchmark_harness.py"))
+    monkeypatch.setattr(inspect, "getfile", lambda _type: str(code_root / source))
     assert _is_chapter_or_labs_benchmark(_ConfigReceiptBenchmark()) is is_chapter_or_lab
 
 

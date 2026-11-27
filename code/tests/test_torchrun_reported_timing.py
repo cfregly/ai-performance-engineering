@@ -6,12 +6,18 @@ from pathlib import Path
 import pytest
 import torch
 
+from core.benchmark.expectations import RunProvenance
 from core.benchmark.models import BenchmarkResult
 from core.harness.benchmark_harness import (
     BenchmarkConfig,
     BenchmarkHarness,
     BenchmarkMode,
     TorchrunLaunchSpec,
+    _benchmark_config_receipt,
+)
+from core.harness.run_benchmarks import (
+    _expectation_provenance_from_result,
+    _timing_configuration_receipt,
 )
 
 
@@ -116,6 +122,51 @@ print(f"rank0 time_per_iter_ms: {encoded}", flush=True)
     restored = BenchmarkResult.model_validate_json(result.model_dump_json())
     assert restored.timing.sample_scope == "rank0_iteration_mean"
     assert restored.timing.iterations_per_sample == config.iterations
+
+
+def test_real_torchrun_leaves_unreported_warmup_unknown(tmp_path: Path) -> None:
+    script_path = tmp_path / "cpu_worker_reports_only_timing.py"
+    script_path.write_text('print("rank0 time_per_iter_ms: 1.0", flush=True)\n')
+
+    class TimingOnlyTarget(_CpuTorchrunTarget):
+        def get_torchrun_spec(self, config: BenchmarkConfig) -> TorchrunLaunchSpec:
+            return TorchrunLaunchSpec(
+                script_path=self.script_path,
+                timing_source="rank0_time_per_iter_ms",
+                timing_iterations_per_sample=self.timing_iterations_per_sample,
+            )
+
+    harness, config = _cpu_harness(iterations=6)
+    config.warmup = 7
+    run = harness._benchmark_with_torchrun(
+        TimingOnlyTarget(script_path, timing_iterations_per_sample=6),
+        config,
+    )
+    assert not run.errors
+    assert run.timing.sample_scope == "rank0_iteration_mean"
+    assert run.timing.warmup_iterations is None
+    restored = BenchmarkResult.model_validate_json(run.model_dump_json())
+    assert restored.timing.warmup_iterations is None
+
+    receipt = _timing_configuration_receipt(
+        iterations=config.iterations,
+        warmup=config.warmup,
+        adaptive_iterations=config.adaptive_iterations,
+        timing=run.timing,
+        applied_config=_benchmark_config_receipt(config, source="launcher"),
+    )
+    assert receipt["launcher_config"]["warmup"] == 7
+    assert receipt["observed_warmup_iterations"] is None
+    provenance = _expectation_provenance_from_result(
+        {"baseline_timing_configuration": receipt},
+        git_commit="a" * 40,
+        hardware_key="cpu",
+        profile_name="none",
+        timestamp="2026-11-27T00:00:00+00:00",
+    )
+    assert provenance.iterations == 1
+    assert provenance.warmup_iterations is None
+    assert RunProvenance.from_dict(provenance.to_dict()) == provenance
 
 
 def test_real_torchrun_rejects_missing_declared_worker_timing(tmp_path: Path) -> None:

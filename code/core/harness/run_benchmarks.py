@@ -5540,6 +5540,10 @@ def _timing_configuration_receipt(
             raise TypeError(f"{field_name} in a config receipt must be a boolean")
         return value
 
+    observed_warmup = None
+    if timing is not None and getattr(timing, "sample_scope", None) != "rank0_iteration_mean":
+        observed_warmup = timing.warmup_iterations
+
     return {
         "configured_iterations": int(iterations),
         "configured_warmup_iterations": int(warmup),
@@ -5553,7 +5557,7 @@ def _timing_configuration_receipt(
         "launcher_config": launcher_config,
         "unattributed_config_receipt": unattributed_config,
         "observed_timing_samples": int(timing.iterations) if timing is not None else None,
-        "observed_warmup_iterations": int(timing.warmup_iterations) if timing is not None else None,
+        "observed_warmup_iterations": int(observed_warmup) if observed_warmup is not None else None,
     }
 
 
@@ -5570,12 +5574,10 @@ def _expectation_provenance_from_result(
     ):
         iterations = int(configuration["applied_iterations"])
         warmup_iterations = int(configuration["applied_warmup_iterations"])
-    elif (
-        configuration.get("observed_timing_samples") is not None
-        and configuration.get("observed_warmup_iterations") is not None
-    ):
+    elif configuration.get("observed_timing_samples") is not None:
         iterations = int(configuration["observed_timing_samples"])
-        warmup_iterations = int(configuration["observed_warmup_iterations"])
+        observed_warmup = configuration.get("observed_warmup_iterations")
+        warmup_iterations = int(observed_warmup) if observed_warmup is not None else None
     else:
         raise ValueError(
             "Expectation provenance requires a worker config receipt or observed timing counts"
@@ -7654,9 +7656,9 @@ def _test_chapter_impl(
                                     output_tolerances
                                 ),
                             })
-                            if comparison.tolerance_used is not None:
-                                verification_receipt["rtol"] = comparison.tolerance_used.rtol
-                                verification_receipt["atol"] = comparison.tolerance_used.atol
+                            if output_tolerances is None:
+                                verification_receipt["rtol"] = effective_tolerance.rtol
+                                verification_receipt["atol"] = effective_tolerance.atol
                             if not comparison.passed:
                                 reason = "Output mismatch"
                                 if comparison.max_diff is not None:

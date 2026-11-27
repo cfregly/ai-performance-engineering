@@ -12,13 +12,14 @@ from tests.test_e2e_failure_isolation_resume import _write_real_cpu_pair
 @pytest.mark.parametrize(
     ("chapter_name", "optimized_tolerance", "offset", "matching_map", "status"),
     [
+        ("ch93", (0.0, 0.0), 2.0, True, "failed_verification"),
         ("ch94", (0.0, 0.0), 0.5, False, "failed_verification"),
         ("ch95", (0.0, 2.0), 0.0, False, "failed_verification"),
         ("ch96", (1e-2, 0.0), 0.0, True, "failed_verification"),
         ("ch97", (0.0, 1.0), 0.5, False, "succeeded"),
         ("ch98", (0.0, 0.0), 0.5, True, "succeeded"),
     ],
-    ids=["stricter", "looser-absolute", "looser-relative-with-map", "equal", "matching-map"],
+    ids=["map-mismatch", "stricter", "looser-absolute", "looser-relative-with-map", "equal", "matching-map"],
 )
 def test_chapter_applies_pair_output_tolerance(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, chapter_name: str,

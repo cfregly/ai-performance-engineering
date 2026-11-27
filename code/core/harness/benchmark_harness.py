@@ -839,8 +839,12 @@ def _is_chapter_or_labs_benchmark(benchmark: Any) -> bool:
         file_path = inspect.getfile(benchmark.__class__)
     except Exception:
         return False
-    normalized = str(Path(file_path)).replace("\\", "/")
-    return re.search(r"(?:^|/)(?:ch[0-9]{2}|labs)/", normalized) is not None
+    source_path = Path(file_path).resolve()
+    code_root = Path(__file__).resolve().parents[2]
+    if source_path.is_relative_to(code_root):
+        source_path = source_path.relative_to(code_root)
+    normalized = str(source_path).replace("\\", "/")
+    return re.search(r"(?:^|/)(?:ch[0-9]+|labs)/", normalized) is not None
 
 
 _configure_quick_wins()
@@ -3375,13 +3379,6 @@ class BenchmarkHarness:
         # The merge can select torchrun, which passes the values to the launched
         # script. With the launcher final, fail a target whose values would be ignored.
         self._apply_target_overrides(benchmark, config)
-        config_receipt_source = (
-            "launcher" if config.launch_via == LaunchVia.TORCHRUN else "worker"
-        )
-        benchmark._applied_config_receipt = _benchmark_config_receipt(  # type: ignore[attr-defined]
-            config,
-            source=config_receipt_source,
-        )
         
         previous_config = getattr(benchmark, "_config", None)
 
@@ -3521,6 +3518,9 @@ class BenchmarkHarness:
 
         try:
             if config.launch_via == LaunchVia.TORCHRUN:
+                benchmark._applied_config_receipt = _benchmark_config_receipt(
+                    config, source="launcher",
+                )
                 print("[harness] dispatch torchrun", flush=True)
                 result = self._benchmark_with_torchrun(benchmark, config)
                 if result.story_metadata is None:
@@ -4174,8 +4174,8 @@ class BenchmarkHarness:
                         }
 
                         applied_config = result_dict.get("applied_config")
-                        if not isinstance(applied_config, dict):
-                            raise ValueError("Subprocess omitted its applied benchmark configuration")
+                        if not isinstance(applied_config, dict) or applied_config.get("receipt_source") != "worker":
+                            raise ValueError("Subprocess omitted its worker-applied benchmark configuration")
                         benchmark._applied_config_receipt = copy.deepcopy(applied_config)
                         
                         # Extract verify_output/tolerance/signature from subprocess and store on benchmark
@@ -4541,6 +4541,9 @@ class BenchmarkHarness:
     
     def _benchmark_with_threading(self, benchmark: BaseBenchmark, config: BenchmarkConfig) -> PydanticBenchmarkResult:
         """Run benchmark using threading (alternative to subprocess method)."""
+        threading_receipt = _benchmark_config_receipt(config, source="worker")
+        threading_receipt.update(execution_mode=ExecutionMode.THREAD.value, use_subprocess=False)
+        benchmark._applied_config_receipt = threading_receipt
         self._ensure_runtime_initialized()
         import inspect
         from core.benchmark.run_manifest import RuntimeProvenance, capture_runtime_provenance
@@ -6608,7 +6611,11 @@ class BenchmarkHarness:
         n = len(sorted_times)
         
         # Compute percentiles - ensure percentiles is a list
-        process_wall = getattr(times_ms, "sample_scope", None) == "process_wall"
+        sample_scope = getattr(times_ms, "sample_scope", None)
+        process_wall = sample_scope == "process_wall"
+        warmup_iterations = 0 if process_wall else config.warmup
+        if sample_scope == "rank0_iteration_mean":
+            warmup_iterations = None
         percentiles = [] if process_wall else (config.percentiles if config.percentiles is not None else [25, 50, 75, 99])
         percentiles_dict = {}
         for p in percentiles:
@@ -6634,9 +6641,9 @@ class BenchmarkHarness:
             p99_ms=p99,
             percentiles=percentiles_dict,
             iterations=n,
-            warmup_iterations=0 if process_wall else config.warmup,
+            warmup_iterations=warmup_iterations,
             raw_times_ms=valid_times_ms,  # Store cleaned data, not original
-            sample_scope=getattr(times_ms, "sample_scope", None),
+            sample_scope=sample_scope,
             iterations_per_sample=getattr(times_ms, "iterations_per_sample", None),
             schemaVersion="1.0",
         )
@@ -6676,7 +6683,8 @@ class BenchmarkHarness:
     @staticmethod
     def _validate_timing_summary(timing: TimingStats) -> None:
         """Reject unusable summary-only child results without inventing samples."""
-        if timing.iterations <= 0 or timing.warmup_iterations < 0:
+        warmup_iterations = timing.warmup_iterations
+        if timing.iterations <= 0 or (warmup_iterations is not None and warmup_iterations < 0):
             raise ValueError("Invalid timing summary: iteration counts must describe an executed run")
         for name in ("mean_ms", "median_ms", "std_ms", "min_ms", "max_ms"):
             value = getattr(timing, name)

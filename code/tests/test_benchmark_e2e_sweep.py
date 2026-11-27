@@ -868,7 +868,7 @@ def test_full_sweep_resume_rejects_bound_checkpoint_target_drift(tmp_path: Path)
         expected_git_commit=TEST_GIT_COMMIT,
     )
 
-    assert verified == []
+    assert verified == [{"run_id": run_id, "invalidated_targets": ["ch01:a"]}]
     assert "target identity no longer matches" in " ".join(issues)
 
 
@@ -973,7 +973,10 @@ def test_full_sweep_crash_finalization_rejects_mismatched_checkpoint_targets(
     assert "binding_failed" in " ".join(issues)
 
 
-def test_newer_drifted_attempt_invalidates_only_targets_it_touched(tmp_path: Path) -> None:
+@pytest.mark.parametrize("drift", ["output_bytes", "verified_targets", "out_of_plan"])
+def test_newer_drifted_attempt_invalidates_only_targets_it_touched(
+    tmp_path: Path, drift: str,
+) -> None:
     first_run_id = "full_sweep_first_success"
     _write_benchmark_attempt_artifacts(
         repo_root=tmp_path,
@@ -1006,11 +1009,12 @@ def test_newer_drifted_attempt_invalidates_only_targets_it_touched(tmp_path: Pat
     )
 
     second_run_id = "full_sweep_newer_failure"
+    second_targets = ["ch01:a", "ch01:c"] if drift == "out_of_plan" else ["ch01:a"]
     second_output = _write_benchmark_attempt_artifacts(
         repo_root=tmp_path,
         artifacts_dir=None,
         run_id=second_run_id,
-        targets=["ch01:a"],
+        targets=second_targets,
         results=[
             {
                 "chapter": "ch01",
@@ -1022,7 +1026,7 @@ def test_newer_drifted_attempt_invalidates_only_targets_it_touched(tmp_path: Pat
         "run_id": second_run_id,
         "bucket": "single_gpu",
         "status": "failed",
-        "targets": ["ch01:a"],
+        "targets": second_targets,
     }
     e2e_sweep._attach_benchmark_attempt_state(
         "full_sweep",
@@ -1032,20 +1036,25 @@ def test_newer_drifted_attempt_invalidates_only_targets_it_touched(tmp_path: Pat
         bind_result=True,
         expected_git_commit=TEST_GIT_COMMIT,
     )
-    second_output.write_text(
-        json.dumps(
-            {
-                "run_id": second_run_id,
-                "results": [
-                    {
-                        "chapter": "ch01",
-                        "benchmarks": [{"example": "a", "status": "succeeded"}],
-                    }
-                ],
-            }
-        ),
-        encoding="utf-8",
-    )
+    if drift == "verified_targets":
+        second_attempt["verified_targets"] = ["ch01:b"]
+        expected_issue = "identity no longer matches"
+    else:
+        expected_issue = "bytes do not match"
+        second_output.write_text(
+            json.dumps(
+                {
+                    "run_id": second_run_id,
+                    "results": [
+                        {
+                            "chapter": "ch01",
+                            "benchmarks": [{"example": "a", "status": "succeeded"}],
+                        }
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
 
     reconciled, issues = e2e_sweep._verified_full_sweep_attempts(
         [first_attempt, second_attempt],
@@ -1059,7 +1068,7 @@ def test_newer_drifted_attempt_invalidates_only_targets_it_touched(tmp_path: Pat
     )
 
     assert successful_targets == ["ch01:b"]
-    assert "bytes do not match" in " ".join(issues)
+    assert expected_issue in " ".join(issues)
     stage = {
         "name": "full_sweep",
         "enabled": True,
@@ -1075,8 +1084,8 @@ def test_newer_drifted_attempt_invalidates_only_targets_it_touched(tmp_path: Pat
     )
 
     assert stage["status"] == "aborted"
-    assert "bytes do not match" in " ".join(stage["issues"])
-    assert "bytes do not match" in " ".join(second_attempt["issues"])
+    assert expected_issue in " ".join(stage["issues"])
+    assert expected_issue in " ".join(second_attempt["issues"])
 
 
 def test_full_sweep_binding_rejects_malformed_result_summary(tmp_path: Path) -> None:
