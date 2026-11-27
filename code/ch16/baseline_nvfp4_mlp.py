@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from core.benchmark.nvfp4_mlp import NVFP4MLPBenchmark, NVFP4MLPConfig
+from core.benchmark.wrapper_utils import attach_benchmark_metadata
 from core.harness.benchmark_harness import BaseBenchmark
 
 
@@ -16,4 +17,4 @@ def get_benchmark() -> BaseBenchmark:
         warmup=10,
         name="ch16_nvfp4_mlp",
     )
-    return NVFP4MLPBenchmark(config, use_nvfp4=False)
+    return attach_benchmark_metadata(NVFP4MLPBenchmark(config, use_nvfp4=False), __file__)

@@ -28,6 +28,7 @@ from core.utils.warning_filters import suppress_known_cuda_capability_warnings
 with suppress_known_cuda_capability_warnings(context="chapter_compare_template torch import"):
     import torch
 
+from core.benchmark.wrapper_utils import attach_benchmark_metadata
 from core.harness.benchmark_harness import (
     BaseBenchmark,
     BenchmarkHarness,
@@ -114,7 +115,14 @@ def load_benchmark(module_path: Path, timeout_seconds: int = 120) -> Optional[Ba
                 spec.loader.exec_module(module)
 
                 if hasattr(module, 'get_benchmark'):
-                    result["benchmark"] = module.get_benchmark()
+                    benchmark = module.get_benchmark()
+                    if (
+                        benchmark is not None
+                        and benchmark.__class__.__module__ != module.__name__
+                        and not getattr(benchmark, "_module_file_override", None)
+                    ):
+                        attach_benchmark_metadata(benchmark, str(module_path.resolve()))
+                    result["benchmark"] = benchmark
                 else:
                     result["error"] = "Module does not have get_benchmark() function"
         except Exception as e:

@@ -835,10 +835,12 @@ def _configure_matmul_reduction() -> None:
 
 def _is_chapter_or_labs_benchmark(benchmark: Any) -> bool:
     """Return True if the benchmark originates from any chapter directory (chXX/) or labs/."""
-    try:
-        file_path = inspect.getfile(benchmark.__class__)
-    except Exception:
-        return False
+    file_path = getattr(benchmark, "_module_file_override", None)
+    if not file_path:
+        try:
+            file_path = inspect.getfile(benchmark.__class__)
+        except (TypeError, OSError):
+            return False
     source_path = Path(file_path).resolve()
     code_root = Path(__file__).resolve().parents[2]
     if source_path.is_relative_to(code_root):

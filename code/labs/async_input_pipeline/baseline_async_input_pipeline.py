@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from core.benchmark.wrapper_utils import attach_benchmark_metadata
 from core.common.async_input_pipeline import AsyncInputPipelineBenchmark, PipelineConfig
 
 
@@ -16,6 +17,7 @@ def get_benchmark() -> AsyncInputPipelineBenchmark:
         non_blocking=False,
         use_copy_stream=False,
     )
-    return AsyncInputPipelineBenchmark(cfg, label="baseline_async_input_pipeline")
+    benchmark = AsyncInputPipelineBenchmark(cfg, label="baseline_async_input_pipeline")
+    return attach_benchmark_metadata(benchmark, __file__)
 
 

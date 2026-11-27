@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import importlib
 import inspect
 import textwrap
 from pathlib import Path
@@ -27,6 +28,7 @@ from core.harness.run_benchmarks import (
     _expectation_provenance_from_result,
     _timing_configuration_receipt,
 )
+from core.utils.chapter_compare_template import load_benchmark
 
 
 class _ConfigReceiptBenchmark(BaseBenchmark):
@@ -264,6 +266,42 @@ def test_chapter_policy_matches_benchmark_directories(
     monkeypatch.setattr(harness_module, "__file__", str(code_root / "core/harness/benchmark_harness.py"))
     monkeypatch.setattr(inspect, "getfile", lambda _type: str(code_root / source))
     assert _is_chapter_or_labs_benchmark(_ConfigReceiptBenchmark()) is is_chapter_or_lab
+
+
+@pytest.mark.parametrize(
+    "target_module",
+    [
+        "ch12.baseline_nvfp4_mlp",
+        "labs.async_input_pipeline.optimized_async_input_pipeline",
+    ],
+)
+def test_direct_factories_preserve_the_target_directory(target_module: str) -> None:
+    module = importlib.import_module(target_module)
+    benchmark = module.get_benchmark()
+    assert benchmark.__class__.__module__.startswith("core.")
+    assert Path(benchmark._module_file_override).samefile(module.__file__)
+    assert _is_chapter_or_labs_benchmark(benchmark)
+
+
+def test_shared_class_keeps_chapter_policy_in_the_isolated_worker(tmp_path: Path) -> None:
+    module = tmp_path / "ch99" / "baseline_wrapper.py"
+    module.parent.mkdir()
+    module.write_text(
+        "from tests.test_run_config_effective_receipts import _ConfigReceiptBenchmark\n"
+        "\ndef get_benchmark():\n    return _ConfigReceiptBenchmark()\n",
+    )
+    benchmark = load_benchmark(module)
+    assert benchmark is not None and _is_chapter_or_labs_benchmark(benchmark)
+    config = _cpu_config(use_subprocess=True, locked_fields=["profile_type"])
+    config.iterations = BenchmarkConfig().iterations
+    config.min_run_time_ms = 0.0
+    config.min_total_duration_ms = 0.0
+
+    result = BenchmarkHarness(mode=BenchmarkMode.CUSTOM, config=config).benchmark(benchmark)
+
+    assert not result.errors
+    assert result.custom_metrics["probe.mode_fwd_bwd"] == 1.0
+    assert result.custom_metrics["probe.iterations"] == config.iterations
 
 
 def test_timing_and_expectation_receipts_use_worker_applied_counts() -> None:
