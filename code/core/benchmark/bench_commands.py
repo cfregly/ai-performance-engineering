@@ -3030,6 +3030,9 @@ if TYPER_AVAILABLE:
 
                         # Run verification (baseline golden output already cached)
                         result = verify_runner.verify_optimized(optimized, config=verify_config)
+                        comparison_fields = {}
+                        if result.comparison_details is not None:
+                            comparison_fields["comparison_details"] = result.comparison_details.to_dict()
 
                         if result.passed:
                             quarantine_mgr.clear_quarantine(str(optimized_path))
@@ -3040,6 +3043,7 @@ if TYPER_AVAILABLE:
                                     "chapter": chapter_slug_name,
                                     "pair": pair_name,
                                     "status": "passed",
+                                    **comparison_fields,
                                 }
                             )
                         else:
@@ -3060,6 +3064,7 @@ if TYPER_AVAILABLE:
                                     "status": "skipped" if is_skipped else "failed",
                                     "reason": reason_str,
                                     "details": result.details,
+                                    **comparison_fields,
                                 }
                             )
 
