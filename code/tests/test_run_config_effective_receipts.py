@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 import torch
 
+from core.benchmark.models import BenchmarkResult, TimingStats
 from core.harness import run_benchmarks as run_benchmarks_module
 from core.harness.benchmark_harness import (
     BaseBenchmark,
@@ -16,6 +17,7 @@ from core.harness.benchmark_harness import (
     BenchmarkHarness,
     BenchmarkMode,
     ExecutionMode,
+    LaunchVia,
     _benchmark_config_receipt,
 )
 from core.harness.run_benchmarks import (
@@ -155,6 +157,7 @@ def test_explicit_run_settings_survive_worker_merge_and_receipts(use_subprocess:
         "probe.seed": 42.0,
     }
     applied = benchmark._applied_config_receipt
+    assert applied["receipt_source"] == "worker"
     assert set(locked_fields) <= set(applied["locked_fields"])
     assert applied["iterations"] == 3
     assert applied["warmup"] == 5
@@ -168,6 +171,7 @@ def test_explicit_run_settings_survive_worker_merge_and_receipts(use_subprocess:
 
     assert run.manifest is not None and run.manifest.config is not None
     configured = run.manifest.config["configured_config"]
+    assert configured["receipt_source"] == "configured"
     assert configured["execution_mode"] == ("subprocess" if use_subprocess else "thread")
     assert configured["use_subprocess"] is use_subprocess
     assert run.manifest.config["applied_config"] == applied
@@ -183,7 +187,9 @@ def test_explicit_run_settings_survive_worker_merge_and_receipts(use_subprocess:
     assert timing_receipt["configured_config"]["execution_mode"] == (
         "subprocess" if use_subprocess else "thread"
     )
+    assert timing_receipt["config_receipt_source"] == "worker"
     assert timing_receipt["applied_config"]["execution_mode"] == "thread"
+    assert timing_receipt["launcher_config"] is None
     assert timing_receipt["applied_iterations"] == 3
     assert timing_receipt["applied_warmup_iterations"] == 5
 
@@ -202,6 +208,7 @@ def test_unlocked_mode_dependent_defaults_apply_after_target_override() -> None:
     assert result.errors == []
     assert result.custom_metrics["probe.mode_fwd_bwd"] == 1.0
     assert result.custom_metrics["probe.iterations"] == 10.0
+    assert benchmark._applied_config_receipt["receipt_source"] == "worker"
     assert benchmark._applied_config_receipt["iterations"] == 10
 
 
@@ -212,7 +219,12 @@ def test_timing_and_expectation_receipts_use_worker_applied_counts() -> None:
         adaptive_iterations=False,
         timing=None,
         configured_config={"iterations": 20, "warmup": 5, "adaptive_iterations": False},
-        applied_config={"iterations": 10, "warmup": 7, "adaptive_iterations": False},
+        applied_config={
+            "receipt_source": "worker",
+            "iterations": 10,
+            "warmup": 7,
+            "adaptive_iterations": False,
+        },
     )
 
     provenance = _expectation_provenance_from_result(
@@ -228,10 +240,77 @@ def test_timing_and_expectation_receipts_use_worker_applied_counts() -> None:
 
     assert receipt["configured_iterations"] == 20
     assert receipt["configured_warmup_iterations"] == 5
+    assert receipt["config_receipt_source"] == "worker"
     assert receipt["applied_iterations"] == 10
     assert receipt["applied_warmup_iterations"] == 7
     assert provenance.iterations == 10
     assert provenance.warmup_iterations == 7
+
+
+def test_torchrun_config_receipt_is_labeled_launcher_only(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    benchmark = _ConfigReceiptBenchmark()
+    config = _cpu_config(use_subprocess=False, locked_fields=[])
+    config.launch_via = LaunchVia.TORCHRUN
+    config.target_label = None
+    config.target_extra_args = {}
+    harness = BenchmarkHarness(mode=BenchmarkMode.CUSTOM, config=config)
+
+    def _torchrun_result(
+        _benchmark: BaseBenchmark,
+        resolved_config: BenchmarkConfig,
+    ) -> BenchmarkResult:
+        assert resolved_config.launch_via == LaunchVia.TORCHRUN
+        return BenchmarkResult(
+            timing=TimingStats(
+                mean_ms=1.0,
+                median_ms=1.0,
+                std_ms=0.0,
+                min_ms=1.0,
+                max_ms=1.0,
+                iterations=4,
+                warmup_iterations=2,
+                raw_times_ms=[1.0] * 4,
+            ),
+            device="cpu",
+        )
+
+    monkeypatch.setattr(harness, "_benchmark_with_torchrun", _torchrun_result)
+
+    run = harness.benchmark_with_manifest(benchmark, run_id="launcher-receipt")
+
+    launcher_receipt = benchmark._applied_config_receipt
+    assert launcher_receipt["receipt_source"] == "launcher"
+    assert launcher_receipt["launch_via"] == "torchrun"
+    assert run.manifest is not None and run.manifest.config is not None
+    assert run.manifest.config["launcher_config"] == launcher_receipt
+    assert "applied_config" not in run.manifest.config
+
+    timing_receipt = _timing_configuration_receipt(
+        iterations=config.iterations,
+        warmup=config.warmup,
+        adaptive_iterations=config.adaptive_iterations,
+        timing=run.result.timing,
+        configured_config=_benchmark_config_receipt(config, source="configured"),
+        applied_config=launcher_receipt,
+    )
+    assert timing_receipt["config_receipt_source"] == "launcher"
+    assert timing_receipt["launcher_config"] == launcher_receipt
+    assert timing_receipt["applied_config"] is None
+    assert timing_receipt["applied_iterations"] is None
+    provenance = _expectation_provenance_from_result(
+        {"baseline_timing_configuration": timing_receipt},
+        git_commit="a" * 40,
+        hardware_key="cpu-launcher-receipt",
+        profile_name="none",
+        timestamp="2026-11-27T00:00:00+00:00",
+        execution_environment="unknown",
+        validity_profile="strict",
+        dmi_product_name=None,
+    )
+    assert provenance.iterations == 4
+    assert provenance.warmup_iterations == 2
 
 
 def _write_chapter_pair(chapter_dir: Path, *, use_subprocess: bool) -> None:
@@ -370,6 +449,7 @@ def _open_cpu_control_gate(monkeypatch: pytest.MonkeyPatch) -> None:
         lambda _path: None,
     )
 
+
 @pytest.mark.parametrize("use_subprocess", [False, True], ids=["thread", "subprocess"])
 def test_chapter_runner_preserves_explicit_settings_and_effective_receipts(
     tmp_path: Path,
@@ -421,6 +501,9 @@ def test_chapter_runner_preserves_explicit_settings_and_effective_receipts(
     receipt = benchmark_result["baseline_timing_configuration"]
     configured = receipt["configured_config"]
     applied = receipt["applied_config"]
+    assert receipt["config_receipt_source"] == "worker"
+    assert configured["receipt_source"] == "configured"
+    assert applied["receipt_source"] == "worker"
     expected_locks = {
         "iterations",
         "warmup",

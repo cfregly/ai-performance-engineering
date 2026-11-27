@@ -1450,10 +1450,21 @@ _CONFIG_RECEIPT_FIELDS = (
     "nproc_per_node",
     "nnodes",
 )
+_CONFIG_RECEIPT_SOURCES = frozenset({"configured", "worker", "launcher"})
 
 
-def _benchmark_config_receipt(config: BenchmarkConfig) -> Dict[str, Any]:
-    """Return the launch and timing settings resolved for one execution worker."""
+def _benchmark_config_receipt(
+    config: BenchmarkConfig,
+    *,
+    source: Literal["configured", "worker", "launcher"] = "configured",
+) -> Dict[str, Any]:
+    """Serialize launch and timing settings with their evidence source."""
+
+    if source not in _CONFIG_RECEIPT_SOURCES:
+        allowed = ", ".join(sorted(_CONFIG_RECEIPT_SOURCES))
+        raise ValueError(
+            f"Unsupported config receipt source {source!r}. Expected one of: {allowed}"
+        )
 
     def _serialize(value: Any) -> Any:
         if isinstance(value, Enum):
@@ -1466,10 +1477,12 @@ def _benchmark_config_receipt(config: BenchmarkConfig) -> Dict[str, Any]:
             return str(value)
         return value
 
-    return {
+    receipt = {
         name: _serialize(getattr(config, name, None))
         for name in _CONFIG_RECEIPT_FIELDS
     }
+    receipt["receipt_source"] = source
+    return receipt
 
 @dataclass(frozen=True)
 class BenchmarkTimingView:
@@ -3359,7 +3372,13 @@ class BenchmarkHarness:
         # The merge can select torchrun, which passes the values to the launched
         # script. With the launcher final, fail a target whose values would be ignored.
         self._apply_target_overrides(benchmark, config)
-        benchmark._applied_config_receipt = _benchmark_config_receipt(config)  # type: ignore[attr-defined]
+        config_receipt_source = (
+            "launcher" if config.launch_via == LaunchVia.TORCHRUN else "worker"
+        )
+        benchmark._applied_config_receipt = _benchmark_config_receipt(  # type: ignore[attr-defined]
+            config,
+            source=config_receipt_source,
+        )
         
         previous_config = getattr(benchmark, "_config", None)
 
@@ -3500,7 +3519,10 @@ class BenchmarkHarness:
         try:
             if config.launch_via == LaunchVia.TORCHRUN:
                 print("[harness] dispatch torchrun", flush=True)
-                return self._benchmark_with_torchrun(benchmark, config)
+                result = self._benchmark_with_torchrun(benchmark, config)
+                if result.story_metadata is None:
+                    result.story_metadata = self._resolve_story_metadata(benchmark)
+                return result
             if config.execution_mode == ExecutionMode.SUBPROCESS:
                 print("[harness] dispatch subprocess", flush=True)
                 if declared_output_tolerances is not None:
@@ -3567,7 +3589,10 @@ class BenchmarkHarness:
             )
 
         config_dict = {k: _serialize_manifest_value(v) for k, v in self.config.__dict__.items()}
-        config_dict["configured_config"] = _benchmark_config_receipt(self.config)
+        config_dict["configured_config"] = _benchmark_config_receipt(
+            self.config,
+            source="configured",
+        )
         manifest = RunManifest.create(
             config=config_dict, start_time=start_time, capture_execution_runtime=False,
         )
@@ -3604,9 +3629,17 @@ class BenchmarkHarness:
         # Run benchmark
         result = self.benchmark(benchmark)
 
-        applied_config = getattr(benchmark, "_applied_config_receipt", None)
-        if isinstance(applied_config, dict) and manifest.config is not None:
-            manifest.config["applied_config"] = copy.deepcopy(applied_config)
+        execution_config_receipt = getattr(benchmark, "_applied_config_receipt", None)
+        if isinstance(execution_config_receipt, dict) and manifest.config is not None:
+            receipt_source = execution_config_receipt.get("receipt_source")
+            if receipt_source == "worker":
+                manifest.config["applied_config"] = copy.deepcopy(execution_config_receipt)
+            elif receipt_source == "launcher":
+                manifest.config["launcher_config"] = copy.deepcopy(execution_config_receipt)
+            else:
+                manifest.config["unattributed_config_receipt"] = copy.deepcopy(
+                    execution_config_receipt
+                )
 
         worker_evaluation = getattr(result, "evaluation", None)
         if worker_evaluation is not None:
@@ -3826,7 +3859,6 @@ class BenchmarkHarness:
         seed_metadata = copy.deepcopy(getattr(self, "_seed_info", None))
         child_custom_metrics: Optional[Dict[str, float]] = None
         child_story_metadata: Optional[Dict[str, Any]] = None
-        child_story_metadata_returned = False
         child_runtime_env: Optional[Dict[str, str]] = None
         child_gpu_metrics: Optional[Dict[str, Optional[float | str]]] = None
         child_evaluation: Optional[EvaluationProvenance] = None
@@ -4075,7 +4107,6 @@ class BenchmarkHarness:
                         else None
                     )
                     if benchmark_result is not None:
-                        child_story_metadata_returned = True
                         child_story_metadata = copy.deepcopy(benchmark_result.story_metadata)
                     if benchmark_result is not None and benchmark_result.evaluation is not None:
                         child_evaluation = benchmark_result.evaluation.model_copy(deep=True)
@@ -4414,13 +4445,8 @@ class BenchmarkHarness:
             custom_metrics = self._resolve_custom_metrics(benchmark)
             if custom_metrics:
                 result.custom_metrics = custom_metrics
-        if child_story_metadata_returned:
-            if child_story_metadata is not None:
-                result.story_metadata = copy.deepcopy(child_story_metadata)
-        else:
-            story_metadata = self._resolve_story_metadata(benchmark)
-            if story_metadata:
-                result.story_metadata = story_metadata
+        if child_story_metadata is not None:
+            result.story_metadata = copy.deepcopy(child_story_metadata)
         if child_runtime_env is not None:
             result.runtime_env = child_runtime_env
         self._attach_throughput_metrics(result, benchmark)

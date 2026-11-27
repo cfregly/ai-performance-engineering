@@ -5493,25 +5493,65 @@ def _timing_configuration_receipt(
     configured_config: Optional[Mapping[str, Any]] = None,
     applied_config: Optional[Mapping[str, Any]] = None,
 ) -> Dict[str, Any]:
-    """Keep configured, worker-applied, and observed timing settings distinct."""
+    """Keep configured, worker, launcher, and observed timing settings distinct."""
 
     configured = dict(configured_config or {})
     configured.setdefault("iterations", int(iterations))
     configured.setdefault("warmup", int(warmup))
     configured.setdefault("adaptive_iterations", bool(adaptive_iterations))
-    applied = dict(applied_config or configured)
-    applied.setdefault("iterations", configured["iterations"])
-    applied.setdefault("warmup", configured["warmup"])
-    applied.setdefault("adaptive_iterations", configured["adaptive_iterations"])
+    configured["receipt_source"] = "configured"
+
+    execution_receipt = dict(applied_config) if applied_config is not None else None
+    raw_receipt_source = (
+        execution_receipt.get("receipt_source")
+        if execution_receipt is not None
+        else None
+    )
+    if execution_receipt is None:
+        receipt_source = "unavailable"
+    elif raw_receipt_source in {"worker", "launcher"}:
+        receipt_source = str(raw_receipt_source)
+    else:
+        receipt_source = "unattributed"
+
+    worker_config = execution_receipt if receipt_source == "worker" else None
+    launcher_config = execution_receipt if receipt_source == "launcher" else None
+    unattributed_config = execution_receipt if receipt_source == "unattributed" else None
+
+    def _optional_count(
+        receipt: Optional[Mapping[str, Any]],
+        field_name: str,
+    ) -> Optional[int]:
+        if receipt is None or receipt.get(field_name) is None:
+            return None
+        value = receipt[field_name]
+        if isinstance(value, bool) or not isinstance(value, int):
+            raise TypeError(f"{field_name} in a config receipt must be an integer")
+        return value
+
+    def _optional_bool(
+        receipt: Optional[Mapping[str, Any]],
+        field_name: str,
+    ) -> Optional[bool]:
+        if receipt is None or receipt.get(field_name) is None:
+            return None
+        value = receipt[field_name]
+        if not isinstance(value, bool):
+            raise TypeError(f"{field_name} in a config receipt must be a boolean")
+        return value
+
     return {
         "configured_iterations": int(iterations),
         "configured_warmup_iterations": int(warmup),
         "adaptive_iterations": bool(adaptive_iterations),
-        "applied_iterations": int(applied["iterations"]),
-        "applied_warmup_iterations": int(applied["warmup"]),
-        "applied_adaptive_iterations": bool(applied["adaptive_iterations"]),
+        "config_receipt_source": receipt_source,
+        "applied_iterations": _optional_count(worker_config, "iterations"),
+        "applied_warmup_iterations": _optional_count(worker_config, "warmup"),
+        "applied_adaptive_iterations": _optional_bool(worker_config, "adaptive_iterations"),
         "configured_config": configured,
-        "applied_config": applied,
+        "applied_config": worker_config,
+        "launcher_config": launcher_config,
+        "unattributed_config_receipt": unattributed_config,
         "observed_timing_samples": int(timing.iterations) if timing is not None else None,
         "observed_warmup_iterations": int(timing.warmup_iterations) if timing is not None else None,
     }
@@ -5521,13 +5561,28 @@ def _expectation_provenance_from_result(
     result_entry: Dict[str, Any],
     **identity: Any,
 ) -> RunProvenance:
-    """Use baseline configured counts while preserving each candidate's receipt."""
+    """Use worker config counts or independently observed timing counts."""
     configuration = result_entry["baseline_timing_configuration"]
+    if (
+        configuration.get("config_receipt_source") == "worker"
+        and configuration.get("applied_iterations") is not None
+        and configuration.get("applied_warmup_iterations") is not None
+    ):
+        iterations = int(configuration["applied_iterations"])
+        warmup_iterations = int(configuration["applied_warmup_iterations"])
+    elif (
+        configuration.get("observed_timing_samples") is not None
+        and configuration.get("observed_warmup_iterations") is not None
+    ):
+        iterations = int(configuration["observed_timing_samples"])
+        warmup_iterations = int(configuration["observed_warmup_iterations"])
+    else:
+        raise ValueError(
+            "Expectation provenance requires a worker config receipt or observed timing counts"
+        )
     return RunProvenance(
-        iterations=int(configuration.get("applied_iterations", configuration["configured_iterations"])),
-        warmup_iterations=int(
-            configuration.get("applied_warmup_iterations", configuration["configured_warmup_iterations"])
-        ),
+        iterations=iterations,
+        warmup_iterations=warmup_iterations,
         **identity,
     )
 
@@ -6560,15 +6615,6 @@ def _test_chapter_impl(
                                 baseline_custom_metrics = metrics
                         except Exception:
                             baseline_custom_metrics = {}
-                if not baseline_story_metadata:
-                    getter = getattr(baseline_benchmark, "get_story_metadata", None)
-                    if callable(getter):
-                        try:
-                            payload = getter()
-                            if isinstance(payload, dict):
-                                baseline_story_metadata = payload
-                        except Exception:
-                            baseline_story_metadata = {}
                 baseline_time = baseline_timing.mean_ms if baseline_timing else 0.0
                 result_entry['baseline_time_ms'] = baseline_time
                 if baseline_custom_metrics:
@@ -7398,15 +7444,6 @@ def _test_chapter_impl(
                                     optimized_custom_metrics = metrics
                             except Exception:
                                 optimized_custom_metrics = {}
-                    if not optimized_story_metadata:
-                        getter = getattr(optimized_benchmark, "get_story_metadata", None)
-                        if callable(getter):
-                            try:
-                                payload = getter()
-                                if isinstance(payload, dict):
-                                    optimized_story_metadata = payload
-                            except Exception:
-                                optimized_story_metadata = {}
                     optimized_time = optimized_timing.mean_ms if optimized_timing else 0.0
                     # Speedup is always derived from timing values (schema v2 integrity)
                     speedup = baseline_time / optimized_time if optimized_time > 0 else 1.0

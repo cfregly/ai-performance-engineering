@@ -36,6 +36,11 @@ def test_chapter_applies_pair_output_tolerance(
     ):
         path.write_text(
             path.read_text()
+            .replace(
+                "        super().__init__()",
+                '        super().__init__()\n        self.story_metadata = {"source": "parent"}',
+            )
+            .replace("    def setup(self):", "    def setup(self):\n        self.story_metadata = None")
             .replace("(self.input + 1.0).square()", f"(self.input + 1.0).square() + {arm_offset}")
             .replace("output_tolerance=(0.0, 0.0)", f"output_tolerance={tolerance}{per_output}")
         )
@@ -70,6 +75,8 @@ def test_chapter_applies_pair_output_tolerance(
     entry, = result["benchmarks"]
     assert entry["status"] == status, entry
     variant, = entry["optimizations"]
+    assert "baseline_story_metadata" not in entry
+    assert "story_metadata" not in variant
     receipt = variant["verification"]
     optimized_rtol, optimized_atol = optimized_tolerance
     assert receipt["passed"] == (status == "succeeded")

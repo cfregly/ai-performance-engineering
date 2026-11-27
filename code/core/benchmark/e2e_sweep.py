@@ -1036,6 +1036,19 @@ def _successful_targets_from_attempts(
     frozen_lookup = set(canonical_frozen_targets)
     successful_lookup: set[str] = set()
     for attempt in attempts:
+        invalidated = attempt.get("invalidated_targets")
+        if isinstance(invalidated, list):
+            canonical_invalidated = [
+                _canonical_target_name(target) for target in invalidated
+            ]
+            if (
+                canonical_invalidated
+                and all(canonical_invalidated)
+                and len(canonical_invalidated) == len(set(canonical_invalidated))
+                and all(target in frozen_lookup for target in canonical_invalidated)
+            ):
+                successful_lookup.difference_update(canonical_invalidated)
+            continue
         requested = attempt.get("verified_targets")
         benchmark_summary = attempt.get("benchmark_summary")
         if not isinstance(requested, list):
@@ -1182,7 +1195,24 @@ def _verified_full_sweep_attempts(
             validated_output=validated_output,
         )
         if evidence_error:
-            issues.append(f"{validated_attempt_run_id}: {evidence_error}")
+            evidence_issue = f"{validated_attempt_run_id}: {evidence_error}"
+            issues.append(evidence_issue)
+            attempt_issues = list(attempt.get("issues") or [])
+            if evidence_issue not in attempt_issues:
+                attempt_issues.append(evidence_issue)
+            attempt["issues"] = attempt_issues
+            invalidated_targets = _attempt_target_scope_from_start_checkpoint(
+                attempt,
+                expected_run_id=validated_attempt_run_id,
+                repo_root=repo_root,
+                artifacts_dir=artifacts_dir,
+            )
+            if invalidated_targets is not None:
+                invalidated_attempt = dict(attempt)
+                invalidated_attempt.pop("benchmark_summary", None)
+                invalidated_attempt.pop("successful_targets", None)
+                invalidated_attempt["invalidated_targets"] = invalidated_targets
+                verified.append(invalidated_attempt)
             continue
         result_evidence = attempt.get("result_evidence")
         if isinstance(result_evidence, dict) and result_evidence.get("binding_status") == "bound":
@@ -1330,13 +1360,22 @@ def _benchmark_stage_details_from_payload(payload: Any) -> Optional[Dict[str, An
     failed_benchmarks: List[Dict[str, Any]] = []
     skipped_benchmarks: List[Dict[str, Any]] = []
     target_outcomes: List[Dict[str, Any]] = []
-    results = payload.get("results") or []
+    results = payload.get("results")
+    if not isinstance(results, list):
+        return None
     for chapter_entry in results:
-        chapter_name = _canonical_unit_name((chapter_entry or {}).get("chapter")) or None
-        for benchmark in (chapter_entry or {}).get("benchmarks", []) or []:
-            status = str((benchmark or {}).get("status") or "unknown").strip() or "unknown"
+        if not isinstance(chapter_entry, dict):
+            return None
+        chapter_name = _canonical_unit_name(chapter_entry.get("chapter")) or None
+        benchmarks = chapter_entry.get("benchmarks")
+        if not isinstance(benchmarks, list):
+            return None
+        for benchmark in benchmarks:
+            if not isinstance(benchmark, dict):
+                return None
+            status = str(benchmark.get("status") or "unknown").strip() or "unknown"
             status_counts[status] = status_counts.get(status, 0) + 1
-            example = str((benchmark or {}).get("example") or "").strip()
+            example = str(benchmark.get("example") or "").strip()
             target = (
                 f"{chapter_name}:{example}"
                 if chapter_name and example
@@ -1345,8 +1384,8 @@ def _benchmark_stage_details_from_payload(payload: Any) -> Optional[Dict[str, An
             target_outcomes.append({"target": target, "status": status})
             if status.startswith("failed"):
                 error_detail = str(
-                    (benchmark or {}).get("error")
-                    or (benchmark or {}).get("failure_reason")
+                    benchmark.get("error")
+                    or benchmark.get("failure_reason")
                     or "benchmark target failed"
                 )
                 failure_entry = {
@@ -1360,14 +1399,14 @@ def _benchmark_stage_details_from_payload(payload: Any) -> Optional[Dict[str, An
                     "optimization_goal",
                     "minimum_required_speedup",
                 ):
-                    value = (benchmark or {}).get(key)
+                    value = benchmark.get(key)
                     if value is not None:
                         failure_entry[key] = value
                 failed_benchmarks.append(failure_entry)
             elif status == "skipped":
                 skip_reason = str(
-                    (benchmark or {}).get("error")
-                    or (benchmark or {}).get("skip_reason")
+                    benchmark.get("error")
+                    or benchmark.get("skip_reason")
                     or "benchmark target skipped"
                 )
                 skipped_benchmarks.append(
@@ -4329,6 +4368,32 @@ def _canonical_target_sequence(value: Any) -> Optional[List[str]]:
     return targets
 
 
+def _attempt_target_scope_from_start_checkpoint(
+    attempt: Dict[str, Any],
+    *,
+    expected_run_id: str,
+    repo_root: Path,
+    artifacts_dir: Optional[str],
+) -> Optional[List[str]]:
+    checkpoint_targets = _canonical_target_sequence(attempt.get("targets"))
+    verified_targets = _canonical_target_sequence(attempt.get("verified_targets"))
+    run_start = _load_benchmark_run_start(
+        expected_run_id,
+        repo_root=repo_root,
+        artifacts_dir=artifacts_dir,
+    )
+    started_targets = _canonical_target_sequence(
+        run_start.get("targets") if isinstance(run_start, dict) else None
+    )
+    if (
+        checkpoint_targets is None
+        or started_targets != checkpoint_targets
+        or (verified_targets is not None and verified_targets != checkpoint_targets)
+    ):
+        return None
+    return list(checkpoint_targets)
+
+
 def _bind_benchmark_attempt_result(
     attempt: Dict[str, Any],
     *,
@@ -6222,7 +6287,7 @@ def run_benchmark_e2e_sweep(
                             or [entry["name"] for entry in _group_targets_by_unit(all_targets)]
                         )
                         bucket_attempts = _bucket_attempts(full_stage, bucket_name)
-                        verified_bucket_attempts, _prior_evidence_issues = (
+                        verified_bucket_attempts, prior_evidence_issues = (
                             _verified_full_sweep_attempts(
                                 bucket_attempts,
                                 repo_root=repo_root,
@@ -6230,6 +6295,9 @@ def run_benchmark_e2e_sweep(
                                 expected_git_commit=str(validated_git_commit),
                             )
                         )
+                        for evidence_issue in prior_evidence_issues:
+                            if evidence_issue not in full_stage_issues:
+                                full_stage_issues.append(evidence_issue)
                         successful_targets = _successful_targets_from_attempts(
                             verified_bucket_attempts,
                             frozen_targets=all_targets,

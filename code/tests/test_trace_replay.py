@@ -1067,10 +1067,16 @@ def test_cuda_coordinator_reconciles_worker_bundle_receipts(tmp_path: Path) -> N
     result = replay_bundle(bundle.root, replay_dir)
 
     row = result["events"][0]
-    assert row["status"] in {"completed", "failed"}, result
-    if row["status"] == "failed":
-        outcome, = row["harness_outcomes"]
-        assert outcome["status"] == "failed_no_speedup", row
+    outcome, = row["harness_outcomes"]
+    assert "error" not in result, result
+    assert not row.get("profiler_issues"), row
+    if outcome["status"] == "failed_no_speedup":
+        assert result["status"] == row["status"] == "failed", result
+        assert row["returncode"] == 1, row
+    else:
+        assert outcome["status"] == "succeeded", outcome
+        assert result["status"] == row["status"] == "completed", result
+        assert row["returncode"] == 0, row
     payload = json.loads((replay_dir / row["harness_result"]).read_text(encoding="utf-8"))
     chapter, = payload["results"]
     benchmark, = chapter["benchmarks"]

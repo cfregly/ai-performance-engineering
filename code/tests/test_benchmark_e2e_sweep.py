@@ -973,6 +973,153 @@ def test_full_sweep_crash_finalization_rejects_mismatched_checkpoint_targets(
     assert "binding_failed" in " ".join(issues)
 
 
+def test_newer_drifted_attempt_invalidates_only_targets_it_touched(tmp_path: Path) -> None:
+    first_run_id = "full_sweep_first_success"
+    _write_benchmark_attempt_artifacts(
+        repo_root=tmp_path,
+        artifacts_dir=None,
+        run_id=first_run_id,
+        targets=["ch01:a", "ch01:b"],
+        results=[
+            {
+                "chapter": "ch01",
+                "benchmarks": [
+                    {"example": "a", "status": "succeeded"},
+                    {"example": "b", "status": "succeeded"},
+                ],
+            }
+        ],
+    )
+    first_attempt = {
+        "run_id": first_run_id,
+        "bucket": "single_gpu",
+        "status": "succeeded",
+        "targets": ["ch01:a", "ch01:b"],
+    }
+    e2e_sweep._attach_benchmark_attempt_state(
+        "full_sweep",
+        first_attempt,
+        repo_root=tmp_path,
+        artifacts_dir=None,
+        bind_result=True,
+        expected_git_commit=TEST_GIT_COMMIT,
+    )
+
+    second_run_id = "full_sweep_newer_failure"
+    second_output = _write_benchmark_attempt_artifacts(
+        repo_root=tmp_path,
+        artifacts_dir=None,
+        run_id=second_run_id,
+        targets=["ch01:a"],
+        results=[
+            {
+                "chapter": "ch01",
+                "benchmarks": [{"example": "a", "status": "failed_verification"}],
+            }
+        ],
+    )
+    second_attempt = {
+        "run_id": second_run_id,
+        "bucket": "single_gpu",
+        "status": "failed",
+        "targets": ["ch01:a"],
+    }
+    e2e_sweep._attach_benchmark_attempt_state(
+        "full_sweep",
+        second_attempt,
+        repo_root=tmp_path,
+        artifacts_dir=None,
+        bind_result=True,
+        expected_git_commit=TEST_GIT_COMMIT,
+    )
+    second_output.write_text(
+        json.dumps(
+            {
+                "run_id": second_run_id,
+                "results": [
+                    {
+                        "chapter": "ch01",
+                        "benchmarks": [{"example": "a", "status": "succeeded"}],
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    reconciled, issues = e2e_sweep._verified_full_sweep_attempts(
+        [first_attempt, second_attempt],
+        repo_root=tmp_path,
+        artifacts_dir=None,
+        expected_git_commit=TEST_GIT_COMMIT,
+    )
+    successful_targets = e2e_sweep._successful_targets_from_attempts(
+        reconciled,
+        frozen_targets=["ch01:a", "ch01:b"],
+    )
+
+    assert successful_targets == ["ch01:b"]
+    assert "bytes do not match" in " ".join(issues)
+    stage = {
+        "name": "full_sweep",
+        "enabled": True,
+        "status": "succeeded",
+        "attempts": [first_attempt, second_attempt],
+    }
+    e2e_sweep._revalidate_full_sweep_stage_from_frozen_plan(
+        stage,
+        {"single_gpu_targets": ["ch01:a", "ch01:b"], "multi_gpu_targets": []},
+        repo_root=tmp_path,
+        artifacts_dir=None,
+        expected_git_commit=TEST_GIT_COMMIT,
+    )
+
+    assert stage["status"] == "aborted"
+    assert "bytes do not match" in " ".join(stage["issues"])
+    assert "bytes do not match" in " ".join(second_attempt["issues"])
+
+
+def test_full_sweep_binding_rejects_malformed_result_summary(tmp_path: Path) -> None:
+    run_id = "full_sweep_malformed_summary"
+    output_path = _write_benchmark_attempt_artifacts(
+        repo_root=tmp_path,
+        artifacts_dir=None,
+        run_id=run_id,
+        targets=["ch01:a"],
+        results=[
+            {
+                "chapter": "ch01",
+                "benchmarks": [{"example": "a", "status": "succeeded"}],
+            }
+        ],
+    )
+    output_path.write_text(
+        json.dumps({"run_id": run_id, "results": ["not a chapter result"]}),
+        encoding="utf-8",
+    )
+    attempt = {
+        "run_id": run_id,
+        "bucket": "single_gpu",
+        "status": "failed",
+        "targets": ["ch01:a"],
+    }
+
+    e2e_sweep._attach_benchmark_attempt_state(
+        "full_sweep",
+        attempt,
+        repo_root=tmp_path,
+        artifacts_dir=None,
+        bind_result=True,
+        expected_git_commit=TEST_GIT_COMMIT,
+    )
+
+    evidence = attempt["result_evidence"]
+    assert evidence["binding_status"] == "binding_failed"
+    assert evidence["reason"] == "final benchmark output does not contain a valid summary"
+    assert "benchmark_summary" not in attempt
+    assert evidence["reason"] in " ".join(attempt["issues"])
+
+
 def test_resume_provenance_rejects_changed_git_or_hardware(tmp_path: Path) -> None:
     current = _resume_provenance(tmp_path, gpu_count=1)
     stored = json.loads(json.dumps(current))
