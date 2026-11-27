@@ -252,6 +252,46 @@ def capture_event(operation, parameters, inputs, *, event_id, source, output_dir
     }], output_dir, device)
 
 
+def replay_identity_receipts(outcomes, event_id, expected_sha256):
+    """Reconcile the pair's reported bundle identity with the coordinator pin."""
+    receipts, issues = [], []
+    if len(outcomes) != 1:
+        return receipts, ["paired replay must contain exactly one benchmark outcome"]
+    baseline = outcomes[0]
+    optimized = baseline.get("optimizations", [])
+    if not isinstance(optimized, list) or len(optimized) != 1:
+        return receipts, ["paired replay must contain exactly one optimized outcome"]
+    optimized = optimized[0]
+    expected_group = f"retained-operator:{expected_sha256}:{event_id}"
+    equivalence = (optimized.get("input_verification") or {}).get("equivalence")
+    if not isinstance(equivalence, dict) or equivalence.get("group") != expected_group:
+        issues.append("paired replay equivalence receipt does not match the coordinator bundle pin")
+    for arm, metadata in (
+        ("baseline", baseline.get("baseline_story_metadata")),
+        ("optimized", optimized.get("story_metadata")),
+    ):
+        if not isinstance(metadata, dict):
+            issues.append(f"{arm}: replay bundle identity receipt is missing")
+            continue
+        receipt = {
+            "arm": arm,
+            "bundle_sha256": metadata.get("replay_bundle_sha256"),
+            "bundle_pin_sha256": metadata.get("replay_bundle_pin_sha256"),
+            "bundle_pin_source": metadata.get("replay_bundle_pin_source"),
+            "event_id": metadata.get("replay_event_id"),
+        }
+        receipts.append(receipt)
+        if receipt != {
+            "arm": arm,
+            "bundle_sha256": expected_sha256,
+            "bundle_pin_sha256": expected_sha256,
+            "bundle_pin_source": "argument",
+            "event_id": event_id,
+        }:
+            issues.append(f"{arm}: replay bundle identity receipt does not match the coordinator pin")
+    return receipts, issues
+
+
 def profiler_receipts(outcomes, event_root):
     """Validate explicit per-arm native reports and retain their content hashes."""
     event_root = Path(event_root).absolute()
@@ -354,7 +394,16 @@ def replay_bundle(bundle_path, output_dir, validity_profile="strict"):
                 raise KeyboardInterrupt("replay cancelled before this event started")
             if event["status"] != "completed":
                 raise _ReplayDispositionError(f"captured event is {event['status']}: {event['error']}", event["status"])
-            override = shlex.join(["--bundle", str(bundle.root), "--event", event_id])
+            override = shlex.join(
+                [
+                    "--bundle",
+                    str(bundle.root),
+                    "--event",
+                    event_id,
+                    "--bundle-sha256",
+                    bundle.sha256,
+                ]
+            )
             command = [
                 sys.executable, "-m", "cli.aisp", "bench", "run",
                 "--targets", "labs/trace_replay:trace_replay",
@@ -400,10 +449,18 @@ def replay_bundle(bundle_path, output_dir, validity_profile="strict"):
             row["profiler_artifacts"] = reports
             if profiler_issues:
                 row["profiler_issues"] = profiler_issues
+            bundle_receipts, identity_issues = replay_identity_receipts(
+                outcomes, event_id, bundle.sha256
+            )
+            row["bundle_identity_receipts"] = bundle_receipts
+            if identity_issues:
+                row["bundle_identity_issues"] = identity_issues
             if process.returncode or successful != 1 or failed or skipped:
                 raise RuntimeError(f"paired harness rejected the event: returncode={process.returncode}, successful={successful}, failed={failed}, skipped={skipped}")
             if profiler_issues:
                 raise RuntimeError("native profiler evidence is incomplete: " + " | ".join(profiler_issues))
+            if identity_issues:
+                raise RuntimeError("replay bundle identity is incomplete: " + " | ".join(identity_issues))
             row["status"] = "completed"
         except (Exception, KeyboardInterrupt) as exc:
             cancelled = cancelled or isinstance(exc, KeyboardInterrupt)

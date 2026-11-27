@@ -30,6 +30,22 @@ class _DummyBenchmark:
         return self.override
 
 
+class _ModeAwareBenchmark:
+    def __init__(self) -> None:
+        self.mode = "forward"
+
+    def apply_target_overrides(self, argv: list[str]) -> None:
+        assert argv == ["--mode", "fwd_bwd"]
+        self.mode = "fwd_bwd"
+
+    def get_config(self) -> BenchmarkConfig:
+        return BenchmarkConfig(
+            iterations=20 if self.mode == "forward" else 10,
+            warmup=5,
+            timeout_multiplier=1.0,
+        )
+
+
 def _base_config(**overrides) -> BenchmarkConfig:
     # Keep defaults explicit for fields that interact with locking/merging.
     kwargs = dict(
@@ -64,6 +80,114 @@ def test_merge_respects_cli_iterations_and_warmup_locks() -> None:
 
     assert merged.iterations == base.iterations
     assert merged.warmup == base.warmup
+
+
+def test_merge_carries_explicit_launch_and_reproducibility_locks() -> None:
+    base = _base_config(
+        iterations=20,
+        warmup=5,
+        force_synchronize=True,
+        single_gpu=True,
+        profile_type="none",
+        seed=42,
+        deterministic=True,
+    )
+    locked = _compute_locked_fields(
+        base_config=base,
+        cli_iterations_provided=True,
+        cli_warmup_provided=True,
+        enable_profiling=False,
+        reproducible=True,
+    )
+    override = BenchmarkConfig(
+        iterations=99,
+        warmup=10,
+        force_synchronize=False,
+        single_gpu=False,
+        profile_type="minimal",
+        seed=7,
+        deterministic=False,
+        timeout_multiplier=1.0,
+    )
+
+    merged = _merge_benchmark_config(
+        base_config=base,
+        benchmark_obj=_DummyBenchmark(override),
+        defaults_obj=BenchmarkDefaults(),
+        locked_fields=locked,
+    )
+
+    expected_locks = {
+        "iterations",
+        "warmup",
+        "force_synchronize",
+        "single_gpu",
+        "profile_type",
+        "seed",
+        "deterministic",
+    }
+    assert expected_locks <= locked
+    assert expected_locks <= set(merged.locked_fields)
+    assert merged.iterations == 20
+    assert merged.warmup == 5
+    assert merged.force_synchronize is True
+    assert merged.single_gpu is True
+    assert merged.profile_type == "none"
+    assert merged.seed == 42
+    assert merged.deterministic is True
+
+
+def test_merge_preserves_unselected_force_sync_and_single_gpu_benchmark_defaults() -> None:
+    base = _base_config(force_synchronize=False, single_gpu=False)
+    locked = _compute_locked_fields(
+        base_config=base,
+        cli_iterations_provided=False,
+        cli_warmup_provided=False,
+        enable_profiling=False,
+    )
+    override = BenchmarkConfig(
+        force_synchronize=True,
+        single_gpu=True,
+        timeout_multiplier=1.0,
+    )
+
+    merged = _merge_benchmark_config(
+        base_config=base,
+        benchmark_obj=_DummyBenchmark(override),
+        defaults_obj=BenchmarkDefaults(),
+        locked_fields=locked,
+    )
+
+    assert "force_synchronize" not in locked
+    assert "single_gpu" not in locked
+    assert merged.force_synchronize is True
+    assert merged.single_gpu is True
+
+
+def test_merge_applies_target_mode_before_reading_mode_dependent_defaults() -> None:
+    benchmark = _ModeAwareBenchmark()
+    base = _base_config(
+        target_label="labs/top_k_kernel:top_k",
+        target_extra_args={
+            "labs/top_k_kernel:top_k": ["--mode", "fwd_bwd"],
+        },
+    )
+    locked = _compute_locked_fields(
+        base_config=base,
+        cli_iterations_provided=False,
+        cli_warmup_provided=False,
+        enable_profiling=False,
+    )
+
+    merged = _merge_benchmark_config(
+        base_config=base,
+        benchmark_obj=benchmark,
+        defaults_obj=BenchmarkDefaults(),
+        locked_fields=locked,
+    )
+
+    assert benchmark.mode == "fwd_bwd"
+    assert merged.iterations == 10
 
 
 def test_merge_locks_runner_protections_when_enabled() -> None:

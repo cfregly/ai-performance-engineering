@@ -14,6 +14,7 @@ from labs.ozaki_scheme.lab_utils import (
 
 
 def test_ozaki_reference_exposes_declared_secondary_pair_budget(monkeypatch: pytest.MonkeyPatch) -> None:
+    from core.benchmark.verification import ToleranceSpec, resolve_global_output_tolerance
     from labs.ozaki_scheme.accuracy_policy import (
         DEFAULT_POLICY_PATH,
         configured_accuracy,
@@ -40,6 +41,8 @@ def test_ozaki_reference_exposes_declared_secondary_pair_budget(monkeypatch: pyt
         native_gate_args, tolerance = configured_accuracy(variant)
         assert candidate.get_output_tolerance() == tolerance
         assert tolerance[1] <= reference.get_output_tolerance()[1]
+        accepted = resolve_global_output_tolerance(ToleranceSpec(*expected), ToleranceSpec(*tolerance))
+        assert (accepted.rtol, accepted.atol) == tolerance
         for index in range(0, len(native_gate_args), 2):
             flag, value = native_gate_args[index:index + 2]
             assert candidate._run_args[candidate._run_args.index(flag) + 1] == value

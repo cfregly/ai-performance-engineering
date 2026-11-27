@@ -8,7 +8,7 @@ import pytest
 from core.benchmark.defaults import BenchmarkDefaults
 from core.benchmark.expectations import select_best_optimization
 from core.benchmark.models import TimingStats
-from core.harness.benchmark_harness import BenchmarkConfig
+from core.harness.benchmark_harness import BenchmarkConfig, _benchmark_config_receipt
 from core.harness.run_benchmarks import (
     CudaBenchmarkResult,
     _compute_locked_fields,
@@ -45,6 +45,8 @@ def _receipt(config, timing=None):
     return _timing_configuration_receipt(
         iterations=config.iterations, warmup=config.warmup,
         adaptive_iterations=config.adaptive_iterations, timing=timing,
+        configured_config=_benchmark_config_receipt(config, source="configured"),
+        applied_config=_benchmark_config_receipt(config, source="worker"),
     )
 
 
@@ -119,13 +121,93 @@ def test_cuda_provenance_uses_dispatched_counts_instead_of_run_defaults():
         percentiles={}, iterations=3, warmup_iterations=0,
     )
     receipt = _timing_configuration_receipt(
-        iterations=3, warmup=0, adaptive_iterations=False, timing=timing,
+        iterations=20, warmup=5, adaptive_iterations=False, timing=timing,
     )
     provenance = _provenance({"baseline_timing_configuration": receipt})
 
     assert provenance.iterations == receipt["observed_timing_samples"] == 3
     assert provenance.warmup_iterations == receipt["observed_warmup_iterations"] == 0
+    assert receipt["config_receipt_source"] == "unavailable"
+    assert receipt["applied_config"] is None
+    assert receipt["applied_iterations"] is None
+    assert receipt["applied_warmup_iterations"] is None
     assert receipt["adaptive_iterations"] is False
+
+
+def test_launcher_config_is_separate_and_expectations_use_observed_counts():
+    timing = TimingStats(
+        mean_ms=1.0, median_ms=1.0, std_ms=0.0, min_ms=1.0, max_ms=1.0,
+        iterations=4, warmup_iterations=2, raw_times_ms=[1.0] * 4,
+    )
+    launcher_config = {
+        "receipt_source": "launcher",
+        "iterations": 20,
+        "warmup": 5,
+        "adaptive_iterations": False,
+        "launch_via": "torchrun",
+    }
+    receipt = _timing_configuration_receipt(
+        iterations=20,
+        warmup=5,
+        adaptive_iterations=False,
+        timing=timing,
+        applied_config=launcher_config,
+    )
+    provenance = _provenance({"baseline_timing_configuration": receipt})
+
+    assert receipt["config_receipt_source"] == "launcher"
+    assert receipt["launcher_config"] == launcher_config
+    assert receipt["applied_config"] is None
+    assert receipt["applied_iterations"] is None
+    assert provenance.iterations == 4
+    assert provenance.warmup_iterations == 2
+
+
+def test_missing_config_receipt_is_not_backfilled_as_worker_applied():
+    receipt = _timing_configuration_receipt(
+        iterations=20,
+        warmup=5,
+        adaptive_iterations=False,
+        timing=None,
+    )
+
+    assert receipt["config_receipt_source"] == "unavailable"
+    assert receipt["configured_config"]["iterations"] == 20
+    assert receipt["applied_config"] is None
+    assert receipt["applied_iterations"] is None
+    assert receipt["applied_warmup_iterations"] is None
+    with pytest.raises(
+        ValueError,
+        match="worker config receipt or observed timing counts",
+    ):
+        _provenance({"baseline_timing_configuration": receipt})
+
+
+def test_unattributed_config_receipt_is_not_treated_as_worker_evidence():
+    timing = TimingStats(
+        mean_ms=1.0, median_ms=1.0, std_ms=0.0, min_ms=1.0, max_ms=1.0,
+        iterations=4, warmup_iterations=2, raw_times_ms=[1.0] * 4,
+    )
+    unattributed = {
+        "iterations": 20,
+        "warmup": 5,
+        "adaptive_iterations": False,
+    }
+    receipt = _timing_configuration_receipt(
+        iterations=20,
+        warmup=5,
+        adaptive_iterations=False,
+        timing=timing,
+        applied_config=unattributed,
+    )
+    provenance = _provenance({"baseline_timing_configuration": receipt})
+
+    assert receipt["config_receipt_source"] == "unattributed"
+    assert receipt["unattributed_config_receipt"] == unattributed
+    assert receipt["applied_config"] is None
+    assert receipt["applied_iterations"] is None
+    assert provenance.iterations == 4
+    assert provenance.warmup_iterations == 2
 
 
 def test_missing_applied_configuration_cannot_create_provenance():

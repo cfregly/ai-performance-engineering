@@ -156,8 +156,21 @@ def get_benchmark() -> BaseBenchmark:
     assert proc.returncode != 0, proc.stdout + proc.stderr
 
     # With --skip-workload, it should pass.
-    proc = subprocess.run(base_cmd + ["--skip-workload"], cwd=repo_code_root, capture_output=True, text=True)
+    proc = subprocess.run(
+        base_cmd + ["--skip-workload", "--json"],
+        cwd=repo_code_root,
+        capture_output=True,
+        text=True,
+    )
     assert proc.returncode == 0, proc.stdout + proc.stderr
+    marker = '\n{\n  "summary"'
+    start = proc.stdout.rfind(marker)
+    assert start != -1, proc.stdout + proc.stderr
+    payload = json.loads(proc.stdout[start + 1 :])
+    result, = payload["results"]
+    receipt = result["comparison_details"]
+    assert receipt["passed"] is True
+    assert receipt["baseline_tolerance"] == receipt["optimized_tolerance"] == receipt["tolerance_used"]
 
 
 def test_bench_verify_cli_treats_skipped_runtime_error_as_skipped(tmp_path: Path) -> None:

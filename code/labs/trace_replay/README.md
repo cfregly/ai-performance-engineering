@@ -106,6 +106,10 @@ PYTHONPATH=code python -m cli.aisp bench run \
 The pair requires an explicit bundle and event. It does not silently generate a
 default trace. The same selection reaches baseline, optimized, verification and
 profiler workers. Each operation uses its existing native benchmark function.
+The replay coordinator adds `--bundle-sha256` with the digest it validated. Every
+worker checks that pin during selection and setup. A direct harness run can omit
+the option as shown above. In that case, the adapter pins the digest selected by
+that process and checks the digest at the start of setup, before materializing the selected inputs on the target device.
 The standard harness supplies timing, clocks, environment checks, complete paired
 verification, live input jitter, profiler artifacts and rejection reasons. The
 adapter checks every timed output against the reference after timing. The paired
@@ -130,11 +134,14 @@ kill only the CLI while a detached capture continues running.
 ## Evidence and limits
 
 `replay.json` joins the immutable bundle digest to separate per-event harness
-results, source hashes, commands, logs and receipts. Failed and cancelled capture
-events retain their source state and error. They cannot become successful replay
-events. Each replay failure gets a distinct retained receipt. One failed, skipped
-or rejected event makes the aggregate replay fail. A measured result below the
-repository speedup threshold remains the harness's failed result.
+results, source hashes, commands, logs and receipts. Each completed event includes
+the baseline and optimized bundle identity receipts. The coordinator rejects a
+receipt whose selected digest, argument pin or event differs from its validated
+bundle. Failed and cancelled capture events retain their source state and error.
+They cannot become successful replay events. Each replay failure gets a distinct
+retained receipt. One failed, skipped or rejected event makes the aggregate replay
+fail. A measured result below the repository speedup threshold remains the
+harness's failed result.
 
 The tool dispatches independent operations in recorded order and keeps one event
 resident at a time. It does not recreate stream overlap, dependencies between

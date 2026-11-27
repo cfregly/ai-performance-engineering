@@ -56,7 +56,7 @@ def _make_base_env(root: Path, *, governor: str = "performance") -> None:
 
 
 def _load_ch_fake_benchmark(module_dir: Path) -> object:
-    """Load a benchmark class from a file path containing '/ch' so the harness enforces."""
+    """Load a CPU fixture to exercise the environment validation gate."""
     module_path = module_dir / "ch_fake_env_bench.py"
     module_path.write_text(
         textwrap.dedent(

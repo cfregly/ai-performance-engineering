@@ -836,13 +836,12 @@ The harness uses **POST-TIMING VERIFICATION** - verification happens AFTER timin
 
 ### How Verification Works
 
-After timing runs complete for both baseline and optimized:
-```python
-baseline_output = baseline_benchmark.get_verify_output()
-optimized_output = optimized_benchmark.get_verify_output()
-rtol, atol = baseline_benchmark.get_output_tolerance()
-torch.allclose(baseline_output, optimized_output, rtol=rtol, atol=atol)
-```
+The chapter runner, verified comparison, and `bench verify` reject an
+optimized global tolerance if either bound exceeds the baseline's. If both
+benchmarks declare matching per-output tolerances that cover every captured
+output, use those tolerances. A one-sided, incomplete, or mismatched map
+fails verification. When neither benchmark declares a map, use the accepted
+optimized global tolerance.
 
 ### `_verify_patched_benchmark` - FOR LLM PATCHES ONLY
 

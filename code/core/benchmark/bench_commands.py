@@ -2033,6 +2033,7 @@ if TYPER_AVAILABLE:
                 "gpu_mem_clock_mhz": gpu_mem_clock_mhz,
                 "nsys_timeout_seconds": nsys_timeout_seconds,
                 "ncu_timeout_seconds": ncu_timeout_seconds,
+                "pm_sampling_interval": pm_sampling_interval,
             }
             typer.echo(json.dumps(plan, indent=2))
             raise typer.Exit(code=0)
@@ -2064,6 +2065,7 @@ if TYPER_AVAILABLE:
             allow_mixed_provenance=allow_mixed_provenance,
             ncu_metric_set=ncu_metric_set,
             ncu_replay_mode=ncu_replay_mode,
+            pm_sampling_interval=pm_sampling_interval,
             nsys_timeout_seconds=nsys_timeout_seconds,
             ncu_timeout_seconds=ncu_timeout_seconds,
             only_cuda=only_cuda,
@@ -3030,6 +3032,9 @@ if TYPER_AVAILABLE:
 
                         # Run verification (baseline golden output already cached)
                         result = verify_runner.verify_optimized(optimized, config=verify_config)
+                        comparison_fields = {}
+                        if result.comparison_details is not None:
+                            comparison_fields["comparison_details"] = result.comparison_details.to_dict()
 
                         if result.passed:
                             quarantine_mgr.clear_quarantine(str(optimized_path))
@@ -3040,6 +3045,7 @@ if TYPER_AVAILABLE:
                                     "chapter": chapter_slug_name,
                                     "pair": pair_name,
                                     "status": "passed",
+                                    **comparison_fields,
                                 }
                             )
                         else:
@@ -3060,6 +3066,7 @@ if TYPER_AVAILABLE:
                                     "status": "skipped" if is_skipped else "failed",
                                     "reason": reason_str,
                                     "details": result.details,
+                                    **comparison_fields,
                                 }
                             )
 

@@ -236,6 +236,7 @@ def _reap_descendant_processes(grace_seconds: float = 5.0) -> None:
 def run_benchmark(input_data: Dict[str, Any]) -> Dict[str, Any]:
     """Run benchmark and return results in harness-expected format."""
     import importlib.util
+    from core.benchmark.wrapper_utils import attach_benchmark_metadata
     from core.harness.verify_output_codec import serialize_verify_tensor
     
     def _execute() -> Dict[str, Any]:
@@ -289,6 +290,12 @@ def run_benchmark(input_data: Dict[str, Any]) -> Dict[str, Any]:
                     errors.append(f"Module {module_path} has no get_benchmark() function")
                     return _make_error_response(errors)
                 benchmark = module.get_benchmark()
+                if (
+                    benchmark is not None
+                    and benchmark.__class__.__module__ != module.__name__
+                    and not getattr(benchmark, "_module_file_override", None)
+                ):
+                    attach_benchmark_metadata(benchmark, str(module_path))
                 benchmark_name = getattr(benchmark, "name", None) or benchmark.__class__.__name__
             else:
                 if not hasattr(module, class_name):
@@ -475,6 +482,7 @@ def run_benchmark(input_data: Dict[str, Any]) -> Dict[str, Any]:
             result_payload: Dict[str, Any] = {
                 "success": True,
                 "result_json": bench_result.model_dump_json(),
+                "applied_config": getattr(benchmark, "_applied_config_receipt", None),
                 "verify_output": verify_output_data,
                 "output_tolerance": {"rtol": float(output_tol[0]), "atol": float(output_tol[1])},
                 "output_tolerances": (

@@ -835,12 +835,18 @@ def _configure_matmul_reduction() -> None:
 
 def _is_chapter_or_labs_benchmark(benchmark: Any) -> bool:
     """Return True if the benchmark originates from any chapter directory (chXX/) or labs/."""
-    try:
-        file_path = inspect.getfile(benchmark.__class__)
-    except Exception:
-        return False
-    normalized = str(Path(file_path)).replace("\\", "/")
-    return "/labs/" in normalized or "/ch" in normalized
+    file_path = getattr(benchmark, "_module_file_override", None)
+    if not file_path:
+        try:
+            file_path = inspect.getfile(benchmark.__class__)
+        except (TypeError, OSError):
+            return False
+    source_path = Path(file_path).resolve()
+    code_root = Path(__file__).resolve().parents[2]
+    if source_path.is_relative_to(code_root):
+        source_path = source_path.relative_to(code_root)
+    normalized = str(source_path).replace("\\", "/")
+    return re.search(r"(?:^|/)(?:ch[0-9]+|labs)/", normalized) is not None
 
 
 _configure_quick_wins()
@@ -978,6 +984,8 @@ class BenchmarkConfig:
     required_world_size: Optional[int] = field(default_factory=lambda: _get_default_value("required_world_size", None))
     single_gpu: bool = field(default_factory=lambda: bool(_get_default_value("single_gpu", False)))
     target_label: Optional[str] = None
+    locked_fields: List[str] = field(default_factory=list)
+    """Run-level settings that benchmark-provided configs may not replace."""
     _execution_mode_overridden: bool = field(init=False, repr=False, default=False)
     
     # Per-stage timeouts (in seconds)
@@ -1196,6 +1204,7 @@ class BenchmarkConfig:
             self.env_passthrough = []
         if self.target_extra_args is None:
             self.target_extra_args = {}
+        self.locked_fields = sorted({str(name) for name in (self.locked_fields or [])})
 
         device_expectation = build_device_identity_expectation(
             self.expected_device_uuid,
@@ -1426,6 +1435,63 @@ class BenchmarkConfig:
         if changes:
             return False, f"Timing config modified during execution: {'; '.join(changes)}"
         return True, None
+
+
+_CONFIG_RECEIPT_FIELDS = (
+    "iterations",
+    "warmup",
+    "adaptive_iterations",
+    "force_synchronize",
+    "single_gpu",
+    "profile_type",
+    "enable_profiling",
+    "pm_sampling_interval",
+    "graph_capture_cheat_ratio_threshold",
+    "graph_capture_memory_threshold_mb",
+    "deterministic",
+    "seed",
+    "execution_mode",
+    "use_subprocess",
+    "launch_via",
+    "target_label",
+    "locked_fields",
+    "required_world_size",
+    "nproc_per_node",
+    "nnodes",
+)
+_CONFIG_RECEIPT_SOURCES = frozenset({"configured", "worker", "launcher"})
+
+
+def _benchmark_config_receipt(
+    config: BenchmarkConfig,
+    *,
+    source: Literal["configured", "worker", "launcher"] = "configured",
+) -> Dict[str, Any]:
+    """Serialize launch and timing settings with their evidence source."""
+
+    if source not in _CONFIG_RECEIPT_SOURCES:
+        allowed = ", ".join(sorted(_CONFIG_RECEIPT_SOURCES))
+        raise ValueError(
+            f"Unsupported config receipt source {source!r}. Expected one of: {allowed}"
+        )
+
+    def _serialize(value: Any) -> Any:
+        if isinstance(value, Enum):
+            return value.value
+        if isinstance(value, dict):
+            return {str(key): _serialize(item) for key, item in value.items()}
+        if isinstance(value, (list, tuple, set, frozenset)):
+            return [_serialize(item) for item in value]
+        if isinstance(value, torch.device):
+            return str(value)
+        return value
+
+    receipt = {
+        name: _serialize(getattr(config, name, None))
+        for name in _CONFIG_RECEIPT_FIELDS
+    }
+    receipt["receipt_source"] = source
+    return receipt
 
 @dataclass(frozen=True)
 class BenchmarkTimingView:
@@ -2579,8 +2645,8 @@ class BenchmarkHarness:
         result.multi_gpu_required = bool(requires_multi)
         result.multi_gpu = bool(resolved_world_size and resolved_world_size > 1)
 
+    @staticmethod
     def _apply_target_overrides(
-        self,
         benchmark: BaseBenchmark,
         config: BenchmarkConfig,
         *,
@@ -3226,6 +3292,7 @@ class BenchmarkHarness:
             "_subprocess_output_tolerance",
             "_subprocess_output_tolerances",
             "_subprocess_input_signature",
+            "_applied_config_receipt",
         ):
             vars(benchmark).pop(transport_attr, None)
         
@@ -3253,9 +3320,15 @@ class BenchmarkHarness:
         if bench_config:
             # Override with benchmark-specific settings
             default_bench_config = BenchmarkConfig()
+            locked_fields = set(getattr(config, "locked_fields", ()) or ())
             for key, value in bench_config.__dict__.items():
                 # Skip private/internal fields and None values.
                 if key.startswith("_") or value is None:
+                    continue
+
+                # The lock set is run-level authority. A benchmark config must
+                # neither replace it nor replace any field named by it.
+                if key == "locked_fields" or key in locked_fields:
                     continue
 
                 # Never allow benchmarks to re-enable subprocess mode when we're already
@@ -3433,22 +3506,16 @@ class BenchmarkHarness:
             else:
                 gpu_mem_logger = None
 
-        backend_state = None
-        if config.launch_via != LaunchVia.TORCHRUN and config.execution_mode != ExecutionMode.SUBPROCESS:
-            policy_name = normalize_backend_policy(getattr(config, "backend_policy", None))
-            backend_state = apply_backend_policy(policy_name, bool(config.deterministic))
-            if self._seed_info is not None:
-                self._seed_info["deterministic_mode"] = bool(config.deterministic)
-            if config.deterministic and LOGGER_AVAILABLE:
-                logger.info(
-                    "Deterministic mode enabled (may impact performance by 5-20%). "
-                    "This ensures bitwise reproducibility, but forces slower fallback kernels and ops without deterministic support may raise."
-                )
-
         try:
             if config.launch_via == LaunchVia.TORCHRUN:
+                benchmark._applied_config_receipt = _benchmark_config_receipt(
+                    config, source="launcher",
+                )
                 print("[harness] dispatch torchrun", flush=True)
-                return self._benchmark_with_torchrun(benchmark, config)
+                result = self._benchmark_with_torchrun(benchmark, config)
+                if result.story_metadata is None:
+                    result.story_metadata = self._resolve_story_metadata(benchmark)
+                return result
             if config.execution_mode == ExecutionMode.SUBPROCESS:
                 print("[harness] dispatch subprocess", flush=True)
                 if declared_output_tolerances is not None:
@@ -3459,11 +3526,9 @@ class BenchmarkHarness:
                     )
                 return self._benchmark_with_subprocess(benchmark, config)
             print("[harness] dispatch threading (direct)", flush=True)
-            return self._benchmark_with_threading(benchmark, config)
+            return self._run_threaded_with_backend_policy(benchmark, config)
         finally:
             benchmark._config = previous_config  # type: ignore[attr-defined]
-            if backend_state is not None:
-                restore_backend_policy(backend_state)
             if gpu_mem_logger is not None:
                 log_file = gpu_mem_logger.stop()
                 if LOGGER_AVAILABLE:
@@ -3515,6 +3580,10 @@ class BenchmarkHarness:
             )
 
         config_dict = {k: _serialize_manifest_value(v) for k, v in self.config.__dict__.items()}
+        config_dict["configured_config"] = _benchmark_config_receipt(
+            self.config,
+            source="configured",
+        )
         manifest = RunManifest.create(
             config=config_dict, start_time=start_time, capture_execution_runtime=False,
         )
@@ -3550,6 +3619,18 @@ class BenchmarkHarness:
         
         # Run benchmark
         result = self.benchmark(benchmark)
+
+        execution_config_receipt = getattr(benchmark, "_applied_config_receipt", None)
+        if isinstance(execution_config_receipt, dict) and manifest.config is not None:
+            receipt_source = execution_config_receipt.get("receipt_source")
+            if receipt_source == "worker":
+                manifest.config["applied_config"] = copy.deepcopy(execution_config_receipt)
+            elif receipt_source == "launcher":
+                manifest.config["launcher_config"] = copy.deepcopy(execution_config_receipt)
+            else:
+                manifest.config["unattributed_config_receipt"] = copy.deepcopy(
+                    execution_config_receipt
+                )
 
         worker_evaluation = getattr(result, "evaluation", None)
         if worker_evaluation is not None:
@@ -3768,6 +3849,7 @@ class BenchmarkHarness:
         inference_timing_data: Optional[Dict[str, List[float]]] = None
         seed_metadata = copy.deepcopy(getattr(self, "_seed_info", None))
         child_custom_metrics: Optional[Dict[str, float]] = None
+        child_story_metadata: Optional[Dict[str, Any]] = None
         child_runtime_env: Optional[Dict[str, str]] = None
         child_gpu_metrics: Optional[Dict[str, Optional[float | str]]] = None
         child_evaluation: Optional[EvaluationProvenance] = None
@@ -3793,7 +3875,7 @@ class BenchmarkHarness:
         
         if benchmark_module is None:
             # Fallback to threading if we can't determine module
-            return self._benchmark_with_threading(benchmark, config)
+            return self._run_threaded_with_backend_policy(benchmark, config)
         
         module_file = module_override or getattr(benchmark_module, "__file__", None)
         if module_file is None:
@@ -3803,12 +3885,12 @@ class BenchmarkHarness:
         
         if module_file is None:
             # Fallback to threading if we can't determine module file
-            return self._benchmark_with_threading(benchmark, config)
+            return self._run_threaded_with_backend_policy(benchmark, config)
         
         module_path = Path(module_file).resolve()
         if not module_path.exists():
             # Fallback to threading if module file doesn't exist
-            return self._benchmark_with_threading(benchmark, config)
+            return self._run_threaded_with_backend_policy(benchmark, config)
         
         def _is_simple(value: Any) -> bool:
             """Return True for JSON-serializable scalar/collection values."""
@@ -4015,6 +4097,8 @@ class BenchmarkHarness:
                         if result_json_str
                         else None
                     )
+                    if benchmark_result is not None:
+                        child_story_metadata = copy.deepcopy(benchmark_result.story_metadata)
                     if benchmark_result is not None and benchmark_result.evaluation is not None:
                         child_evaluation = benchmark_result.evaluation.model_copy(deep=True)
                     if benchmark_result is not None and benchmark_result.runtime_provenance is not None:
@@ -4076,6 +4160,10 @@ class BenchmarkHarness:
                             str(key): str(value)
                             for key, value in dict(benchmark_result.runtime_env or {}).items()
                         }
+
+                        applied_config = result_dict.get("applied_config")
+                        if isinstance(applied_config, dict) and applied_config.get("receipt_source") == "worker":
+                            benchmark._applied_config_receipt = copy.deepcopy(applied_config)
                         
                         # Extract verify_output/tolerance/signature from subprocess and store on benchmark
                         verify_output_data = result_dict.get("verify_output")
@@ -4314,6 +4402,8 @@ class BenchmarkHarness:
                 result.evaluation = child_evaluation.model_copy(deep=True)
             if child_runtime_provenance is not None:
                 result.runtime_provenance = child_runtime_provenance.model_copy(deep=True)
+            if child_story_metadata is not None:
+                result.story_metadata = copy.deepcopy(child_story_metadata)
             result.execution_process_ids = dict(execution_process_ids)
             result.local_world_size = 1
             result.device = child_device
@@ -4345,9 +4435,8 @@ class BenchmarkHarness:
             custom_metrics = self._resolve_custom_metrics(benchmark)
             if custom_metrics:
                 result.custom_metrics = custom_metrics
-        story_metadata = self._resolve_story_metadata(benchmark)
-        if story_metadata:
-            result.story_metadata = story_metadata
+        if child_story_metadata is not None:
+            result.story_metadata = copy.deepcopy(child_story_metadata)
         if child_runtime_env is not None:
             result.runtime_env = child_runtime_env
         self._attach_throughput_metrics(result, benchmark)
@@ -4437,8 +4526,28 @@ class BenchmarkHarness:
         self._annotate_launch_metadata(result, config)
         return result
     
+    def _run_threaded_with_backend_policy(
+        self, benchmark: BaseBenchmark, config: BenchmarkConfig,
+    ) -> PydanticBenchmarkResult:
+        policy_name = normalize_backend_policy(getattr(config, "backend_policy", None))
+        backend_state = apply_backend_policy(policy_name, bool(config.deterministic))
+        try:
+            if self._seed_info is not None:
+                self._seed_info["deterministic_mode"] = bool(config.deterministic)
+            if config.deterministic and LOGGER_AVAILABLE:
+                logger.info(
+                    "Deterministic algorithms enabled. Unsupported operations can fail "
+                    "and some kernels can run more slowly."
+                )
+            return self._benchmark_with_threading(benchmark, config)
+        finally:
+            restore_backend_policy(backend_state)
+
     def _benchmark_with_threading(self, benchmark: BaseBenchmark, config: BenchmarkConfig) -> PydanticBenchmarkResult:
         """Run benchmark using threading (alternative to subprocess method)."""
+        threading_receipt = _benchmark_config_receipt(config, source="worker")
+        threading_receipt.update(execution_mode=ExecutionMode.THREAD.value, use_subprocess=False)
+        benchmark._applied_config_receipt = threading_receipt
         self._ensure_runtime_initialized()
         import inspect
         from core.benchmark.run_manifest import RuntimeProvenance, capture_runtime_provenance
@@ -6506,7 +6615,11 @@ class BenchmarkHarness:
         n = len(sorted_times)
         
         # Compute percentiles - ensure percentiles is a list
-        process_wall = getattr(times_ms, "sample_scope", None) == "process_wall"
+        sample_scope = getattr(times_ms, "sample_scope", None)
+        process_wall = sample_scope == "process_wall"
+        warmup_iterations = 0 if process_wall else config.warmup
+        if sample_scope == "rank0_iteration_mean":
+            warmup_iterations = None
         percentiles = [] if process_wall else (config.percentiles if config.percentiles is not None else [25, 50, 75, 99])
         percentiles_dict = {}
         for p in percentiles:
@@ -6532,9 +6645,9 @@ class BenchmarkHarness:
             p99_ms=p99,
             percentiles=percentiles_dict,
             iterations=n,
-            warmup_iterations=0 if process_wall else config.warmup,
+            warmup_iterations=warmup_iterations,
             raw_times_ms=valid_times_ms,  # Store cleaned data, not original
-            sample_scope=getattr(times_ms, "sample_scope", None),
+            sample_scope=sample_scope,
             iterations_per_sample=getattr(times_ms, "iterations_per_sample", None),
             schemaVersion="1.0",
         )
@@ -6574,7 +6687,8 @@ class BenchmarkHarness:
     @staticmethod
     def _validate_timing_summary(timing: TimingStats) -> None:
         """Reject unusable summary-only child results without inventing samples."""
-        if timing.iterations <= 0 or timing.warmup_iterations < 0:
+        warmup_iterations = timing.warmup_iterations
+        if timing.iterations <= 0 or (warmup_iterations is not None and warmup_iterations < 0):
             raise ValueError("Invalid timing summary: iteration counts must describe an executed run")
         for name in ("mean_ms", "median_ms", "std_ms", "min_ms", "max_ms"):
             value = getattr(timing, name)

@@ -494,7 +494,7 @@ class OptimizedFP4WeightQuantizationBenchmark(VerificationPayloadMixin, BaseBenc
             output=self.output.float() if self.output is not None else None,
             batch_size=self.batch_size,
             parameter_count=self._payload_parameter_count,
-            output_tolerance=(1.0, 10.0),
+            output_tolerance=(0.5, 5.0),
             precision_flags=precision_flags,
         )
     

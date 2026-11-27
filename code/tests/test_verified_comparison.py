@@ -9,6 +9,7 @@ from core.benchmark.runtime_comparison import ExecutedRuntimeComparisonError
 from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.benchmark.verified_comparison import (
     VerifiedComparisonError,
+    _compare_outputs,
     calculate_speed_metrics,
 )
 from core.harness.benchmark_harness import (
@@ -24,10 +25,18 @@ from core.harness.benchmark_harness import (
 class _CpuComparisonBenchmark(VerificationPayloadMixin, BaseBenchmark):
     allow_cpu = True
 
-    def __init__(self, *, output_offset: float = 0.0, fail: bool = False) -> None:
+    def __init__(
+        self, *, output_offset: float = 0.0, fail: bool = False,
+        output_tolerance: tuple[float, float] = (0.0, 0.0),
+        output_tolerances: dict[str, tuple[float, float]] | None = None,
+        reshape_output: bool = False,
+    ) -> None:
         super().__init__()
         self.device = torch.device("cpu")
         self.output_offset = output_offset
+        self.output_tolerance = output_tolerance
+        self.output_tolerances = output_tolerances
+        self.reshape_output = reshape_output
         self.fail = fail
         self.benchmark_calls = 0
         self.input_tensor: torch.Tensor | None = None
@@ -43,6 +52,8 @@ class _CpuComparisonBenchmark(VerificationPayloadMixin, BaseBenchmark):
         if self.input_tensor is None:  # pragma: no cover - lifecycle guard
             raise RuntimeError("setup() must initialize input_tensor")
         self.output = self.input_tensor * 2.0 + self.output_offset
+        if self.reshape_output:
+            self.output = self.output.reshape(4, 8)
         return self.output
 
     def capture_verification_payload(self) -> None:
@@ -53,7 +64,8 @@ class _CpuComparisonBenchmark(VerificationPayloadMixin, BaseBenchmark):
             output=self.output,
             batch_size=32,
             parameter_count=0,
-            output_tolerance=(0.0, 0.0),
+            output_tolerance=self.output_tolerance,
+            output_tolerances=self.output_tolerances,
         )
 
     def validate_result(self) -> None:
@@ -132,6 +144,50 @@ def test_public_compare_benchmarks_rejects_incorrect_full_output() -> None:
     assert exc_info.value.code == "output_mismatch"
     assert exc_info.value.evidence["passed"] is False
     assert exc_info.value.evidence["max_diff"] == pytest.approx(1.0)
+
+
+def test_public_compare_benchmarks_records_stricter_output_tolerance() -> None:
+    baseline = _CpuComparisonBenchmark(output_tolerance=(0.0, 1.0))
+    optimized = _CpuComparisonBenchmark(output_offset=0.5)
+
+    with pytest.raises(VerifiedComparisonError, match="output_mismatch") as exc_info:
+        compare_benchmarks(baseline, optimized, harness=_cpu_harness())
+
+    evidence = exc_info.value.evidence
+    assert evidence["atol"] == 0.0
+    assert evidence["baseline_tolerance"]["atol"] == 1.0
+    assert evidence["optimized_tolerance"]["atol"] == 0.0
+
+
+@pytest.mark.parametrize("offset", [0.5, 2.0], ids=["match", "mismatch"])
+def test_public_compare_benchmarks_reports_only_the_applied_output_map(offset: float) -> None:
+    output_tolerances = {"output": (0.0, 1.0)}
+    baseline = _CpuComparisonBenchmark(output_tolerances=output_tolerances)
+    optimized = _CpuComparisonBenchmark(output_offset=offset, output_tolerances=output_tolerances)
+
+    if offset > 1.0:
+        with pytest.raises(VerifiedComparisonError, match="output_mismatch") as exc_info:
+            compare_benchmarks(baseline, optimized, harness=_cpu_harness())
+        receipt = exc_info.value.evidence
+    else:
+        receipt = compare_benchmarks(baseline, optimized, harness=_cpu_harness())["verification"]
+    assert receipt["passed"] is (offset <= 1.0)
+    assert "rtol" not in receipt and "atol" not in receipt
+    assert "tolerance_used" not in receipt
+    assert receipt["output_tolerances"] == {"output": {"rtol": 0.0, "atol": 1.0}}
+
+
+def test_output_comparison_records_global_policy_for_mismatched_output_shapes() -> None:
+    baseline = _CpuComparisonBenchmark(output_tolerance=(0.01, 0.25))
+    optimized = _CpuComparisonBenchmark(output_tolerance=(0.01, 0.25), reshape_output=True)
+    assert not _cpu_harness().benchmark(baseline).errors
+    assert not _cpu_harness().benchmark(optimized).errors
+
+    with pytest.raises(VerifiedComparisonError, match="output_mismatch") as exc_info:
+        _compare_outputs(baseline, optimized)
+
+    assert exc_info.value.evidence["rtol"] == 0.01
+    assert exc_info.value.evidence["atol"] == 0.25
 
 
 def test_slowdown_percentage_uses_elapsed_time_ratio() -> None:

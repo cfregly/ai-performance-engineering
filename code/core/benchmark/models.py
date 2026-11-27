@@ -50,7 +50,9 @@ class TimingStats(BaseModel):
     p99_ms: Optional[float] = Field(None, description="99th percentile in milliseconds")
     percentiles: Dict[float, float] = Field(default_factory=dict, description="Percentile values as dict")
     iterations: int = Field(..., description="Number of iterations executed")
-    warmup_iterations: int = Field(..., description="Number of warmup iterations")
+    warmup_iterations: Optional[int] = Field(
+        ..., description="Number of warmup iterations, or null when the run did not report them",
+    )
     raw_times_ms: Optional[List[float]] = Field(default=None, description="Raw timing measurements")
     sample_scope: Optional[str] = Field(
         default=None,

@@ -1312,7 +1312,8 @@ class TestDistributedProtectionsExtended:
         from core.harness.benchmark_harness import BenchmarkConfig, BenchmarkHarness
 
         with tempfile.TemporaryDirectory() as tempdir:
-            module_path = Path(tempdir) / "ch_fake_pipeline_bubble.py"
+            module_path = Path(tempdir) / "ch99" / "pipeline_bubble.py"
+            module_path.parent.mkdir()
             module_path.write_text(
                 textwrap.dedent(
                     """

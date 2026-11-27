@@ -132,9 +132,10 @@ def configured_accuracy(variant: str) -> tuple[list[str], tuple[float, float]]:
 def configured_reference_tolerance() -> tuple[float, float]:
     """Expose the declared candidate envelope on the shared native reference.
 
-    The ordinary pair runner uses the baseline's secondary checksum tolerance.
-    Each candidate still gates its complete array against its own, potentially
-    stricter, native-FP64 error limits before emitting an accepted checksum.
+    The reference advertises the upper bound for candidate checksum tolerances.
+    The runner compares each candidate at its declared bound. Each candidate
+    gates its complete array against its native FP64 error limits before
+    emitting an accepted checksum.
     """
     path = os.environ.get("AISP_OZAKI_ACCURACY_POLICY")
     if not path:

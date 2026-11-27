@@ -19,6 +19,7 @@ import math
 import os
 import random
 from collections.abc import Iterable
+from contextvars import ContextVar
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from enum import Enum
@@ -659,6 +660,25 @@ def is_tolerance_looser(custom: ToleranceSpec, default: ToleranceSpec) -> bool:
     return custom.rtol > default.rtol or custom.atol > default.atol
 
 
+def resolve_global_output_tolerance(
+    baseline: ToleranceSpec, optimized: ToleranceSpec,
+) -> ToleranceSpec:
+    """Apply the optimized numeric tolerance when neither bound exceeds the baseline."""
+    if baseline.comparator_fn is not None or optimized.comparator_fn is not None:
+        raise ValueError("Output verification requires explicit numeric rtol and atol.")
+    if is_tolerance_looser(optimized, baseline):
+        raise ValueError(
+            "Optimized output tolerance cannot be looser than the baseline tolerance: "
+            f"baseline=({baseline.rtol}, {baseline.atol}), "
+            f"optimized=({optimized.rtol}, {optimized.atol})."
+        )
+    return ToleranceSpec(
+        rtol=optimized.rtol,
+        atol=optimized.atol,
+        justification=optimized.justification or baseline.justification,
+    )
+
+
 def _normalize_dtype_str(dtype: Union[str, torch.dtype]) -> str:
     """Normalize dtype representation to a lowercase torch-style string."""
     dtype_str = str(dtype)
@@ -939,12 +959,18 @@ class ComparisonDetails:
     actual_sample: Optional[float] = None
     tolerance_used: Optional[ToleranceSpec] = None
     output_tolerances: Optional[OutputToleranceMap] = None
+    baseline_tolerance: Optional[ToleranceSpec] = None
+    optimized_tolerance: Optional[ToleranceSpec] = None
     
     def to_dict(self) -> Dict[str, Any]:
         """Serialize to dictionary."""
         result: Dict[str, Any] = {
             "passed": self.passed,
         }
+        if self.baseline_tolerance is not None:
+            result["baseline_tolerance"] = self.baseline_tolerance.to_dict()
+        if self.optimized_tolerance is not None:
+            result["optimized_tolerance"] = self.optimized_tolerance.to_dict()
         if self.max_diff is not None:
             result["max_diff"] = self.max_diff
         if self.location is not None:
@@ -1026,6 +1052,9 @@ class VerifyResult:
 # =============================================================================
 # Seed Management for Deterministic Verification
 # =============================================================================
+
+
+verification_input_seed: ContextVar[int | None] = ContextVar("verification_input_seed", default=None)
 
 
 def set_deterministic_seeds(seed: int = 42) -> Dict[str, int]:

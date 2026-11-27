@@ -9,6 +9,7 @@ from typing import Optional
 
 import torch
 
+from core.benchmark.verification import verification_input_seed
 from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.common.device_utils import require_cuda_device
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig, WorkloadMetadata
@@ -164,7 +165,8 @@ def apply_workload_overrides(
 
 def build_inputs(workload: TopKKernelWorkload, device: torch.device) -> TopKKernelInputs:
     generator = torch.Generator(device="cpu")
-    generator.manual_seed(4242)
+    seed = verification_input_seed.get()
+    generator.manual_seed(4242 if seed is None else seed)
 
     q = torch.randn(
         workload.batch_size,
@@ -971,11 +973,6 @@ class TopKKernelBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def capture_verification_payload(self) -> None:
         if self.inputs is None or self.outputs is None:
             raise RuntimeError("setup() and benchmark_fn() must run before verification capture")
-        output_tolerance = (
-            (2e-2, 2e-2)
-            if self.backend == "cuda" and self.workload.mode == "fwd_bwd"
-            else (1e-2, 1e-2)
-        )
         self._set_verification_payload(
             inputs={
                 "q": self.inputs.q.detach(),
@@ -989,7 +986,7 @@ class TopKKernelBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 "bf16": self.workload.dtype == torch.bfloat16,
                 "tf32": torch.backends.cuda.matmul.allow_tf32,
             },
-            output_tolerance=output_tolerance,
+            output_tolerance=(1e-2, 1e-2),
         )
 
     def teardown(self) -> None:

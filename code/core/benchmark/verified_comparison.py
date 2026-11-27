@@ -21,6 +21,7 @@ from core.benchmark.verification import (
     get_output_tolerances,
     get_signature_equivalence_spec,
     output_tolerances_to_dict,
+    resolve_global_output_tolerance,
     resolve_output_tolerances,
     signature_workload_dict,
 )
@@ -263,22 +264,18 @@ def _output_names(output: torch.Tensor | dict[str, torch.Tensor]) -> set[str]:
 def _compare_outputs(baseline: Any, optimized: Any) -> dict[str, Any]:
     baseline_tolerance = _require_tolerance(baseline, side="baseline")
     optimized_tolerance = _require_tolerance(optimized, side="optimized")
-    if (
-        optimized_tolerance.rtol > baseline_tolerance.rtol
-        or optimized_tolerance.atol > baseline_tolerance.atol
-    ):
+    try:
+        effective_tolerance = resolve_global_output_tolerance(baseline_tolerance, optimized_tolerance)
+    except ValueError as exc:
         raise VerifiedComparisonError(
             "optimized_output_tolerance_looser",
-            "Optimized output tolerance cannot be looser than the baseline tolerance: "
-            f"baseline=({baseline_tolerance.rtol}, {baseline_tolerance.atol}), "
-            f"optimized=({optimized_tolerance.rtol}, {optimized_tolerance.atol}).",
-        )
+            str(exc),
+            evidence={
+                "baseline_tolerance": baseline_tolerance.to_dict(),
+                "optimized_tolerance": optimized_tolerance.to_dict(),
+            },
+        ) from exc
 
-    effective_tolerance = ToleranceSpec(
-        rtol=min(baseline_tolerance.rtol, optimized_tolerance.rtol),
-        atol=min(baseline_tolerance.atol, optimized_tolerance.atol),
-        justification=optimized_tolerance.justification or baseline_tolerance.justification,
-    )
     baseline_output = _require_captured_output(baseline, side="baseline")
     optimized_output = _require_captured_output(optimized, side="optimized")
     baseline_output_tolerances = _require_output_tolerances(baseline, side="baseline")
@@ -309,13 +306,16 @@ def _compare_outputs(baseline: Any, optimized: Any) -> dict[str, Any]:
     comparison_receipt = comparison.to_dict()
     comparison_receipt.update(
         {
-            "rtol": effective_tolerance.rtol,
-            "atol": effective_tolerance.atol,
             "baseline_tolerance": baseline_tolerance.to_dict(),
             "optimized_tolerance": optimized_tolerance.to_dict(),
             "output_tolerances": output_tolerances_to_dict(output_tolerances),
         }
     )
+    if output_tolerances is None:
+        comparison_receipt["rtol"] = effective_tolerance.rtol
+        comparison_receipt["atol"] = effective_tolerance.atol
+    else:
+        comparison_receipt.pop("tolerance_used", None)
     if not comparison.passed:
         detail = "Captured full timed outputs do not match"
         if comparison.max_diff is not None:

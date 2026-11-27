@@ -59,11 +59,13 @@ from core.benchmark.verification import (
     normalize_output_tolerances,
     output_tolerances_from_dict,
     output_tolerances_to_dict,
+    resolve_global_output_tolerance,
     resolve_output_tolerances,
     select_jitter_dimension,
     signature_cache_key,
     signature_workload_dict,
     set_deterministic_seeds,
+    verification_input_seed,
 )
 from core.benchmark.quarantine import (
     QuarantineManager,
@@ -931,8 +933,12 @@ class VerifyRunner:
                 self._last_evaluation_provenance = start_evaluation(evaluation_contract)
                 self._last_evaluation_provenance.raise_for_failures()
 
-            # Setup creates model and fixed inputs deterministically
-            benchmark.setup()
+            # Make the verification seed available to setup routines that use a local generator.
+            seed_token = verification_input_seed.set(seed)
+            try:
+                benchmark.setup()
+            finally:
+                verification_input_seed.reset(seed_token)
 
             # Block CUDA graphs in verification to prevent capture/replay cheating
             cfg = getattr(benchmark, "_config", None) or getattr(benchmark, "config", None) or cfg
@@ -1809,30 +1815,28 @@ class VerifyRunner:
                         timestamp=datetime.now(),
                     )
             baseline_tol = golden.tolerance
-            if baseline_tol is None and tolerance is not None:
+            if baseline_tol is None:
                 return VerifyResult.fail(
                     "Baseline tolerance missing from cache. Re-run verify_baseline with force_recache=True."
                 )
-            if baseline_tol is not None:
-                if getattr(baseline_tol, "_cached_has_comparator", False) or baseline_tol.comparator_fn is not None:
-                    return VerifyResult.fail(
-                        "Comparator-based tolerances are not supported in verification cache. Use numeric rtol/atol."
-                    )
-                if tolerance.comparator_fn is not None:
-                    return VerifyResult.fail(
-                        "Comparator-based tolerances are not supported for optimized benchmarks. Use numeric rtol/atol."
-                    )
-                # Disallow looser tolerances on optimized path
-                if tolerance.rtol > baseline_tol.rtol or tolerance.atol > baseline_tol.atol:
-                    return VerifyResult.fail(
-                        f"Optimized tolerance ({tolerance.rtol}, {tolerance.atol}) exceeds baseline tolerance "
-                        f"({baseline_tol.rtol}, {baseline_tol.atol})."
-                    )
-                # Use the stricter tolerance between baseline/optimized
-                tolerance = ToleranceSpec(
-                    rtol=min(tolerance.rtol, baseline_tol.rtol),
-                    atol=min(tolerance.atol, baseline_tol.atol),
-                    justification=tolerance.justification or baseline_tol.justification,
+            if getattr(baseline_tol, "_cached_has_comparator", False) or baseline_tol.comparator_fn is not None:
+                return VerifyResult.fail(
+                    "Comparator-based tolerances are not supported in verification cache. Use numeric rtol/atol."
+                )
+            if tolerance.comparator_fn is not None:
+                return VerifyResult.fail(
+                    "Comparator-based tolerances are not supported for optimized benchmarks. Use numeric rtol/atol."
+                )
+            optimized_tol = tolerance
+            try:
+                tolerance = resolve_global_output_tolerance(baseline_tol, optimized_tol)
+            except ValueError as exc:
+                return VerifyResult.fail(
+                    str(exc),
+                    details={
+                        "baseline_tolerance": baseline_tol.to_dict(),
+                        "optimized_tolerance": optimized_tol.to_dict(),
+                    },
                 )
 
             try:
@@ -1858,6 +1862,8 @@ class VerifyRunner:
                 tolerance,
                 output_tolerances=output_tolerances,
             )
+            comparison.baseline_tolerance = baseline_tol
+            comparison.optimized_tolerance = optimized_tol
             
             if not comparison.passed:
                 return VerifyResult(

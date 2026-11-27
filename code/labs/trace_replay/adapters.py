@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import re
 import time
 from pathlib import Path
 
@@ -19,6 +20,7 @@ from labs.trace_replay.schema import load_bundle, validate_parameters
 from labs.trace_replay.storage import load_event_inputs, read_tensor, sha256_file
 
 CODE_ROOT = Path(__file__).resolve().parents[2]
+_SHA256 = re.compile(r"[0-9a-f]{64}\Z")
 
 
 def source_paths(operations):
@@ -137,6 +139,8 @@ class ReplayBenchmark(BaseBenchmark):
         self.reference_only = bool(reference_only)
         self.bundle_path = ""
         self.event_id = ""
+        self.expected_bundle_sha256 = None
+        self.selected_bundle_sha256 = None
         self.inputs = None
         self.output = None
         self.operation = None
@@ -154,6 +158,14 @@ class ReplayBenchmark(BaseBenchmark):
         self.parameters = event["parameters"]
         self.signature_equivalence_group = f"retained-operator:{bundle.sha256}:{self.event_id}"
         self.signature_equivalence_ignore_fields = ()
+        self.story_metadata = {
+            "replay_bundle_sha256": bundle.sha256,
+            "replay_bundle_pin_sha256": self.expected_bundle_sha256 or self.selected_bundle_sha256,
+            "replay_bundle_pin_source": (
+                "argument" if self.expected_bundle_sha256 is not None else "selection"
+            ),
+            "replay_event_id": self.event_id,
+        }
         units = self.parameters["numel"] if self.operation == "prefix_scan" else (
             self.parameters["rows"] * self.parameters["cols"] * self.parameters.get("batch", 1)
         )
@@ -168,17 +180,36 @@ class ReplayBenchmark(BaseBenchmark):
         parser = argparse.ArgumentParser(prog="trace_replay", add_help=False, allow_abbrev=False)
         parser.add_argument("--bundle", required=True)
         parser.add_argument("--event", required=True)
+        parser.add_argument("--bundle-sha256")
         args = parser.parse_args(argv)
         if self.inputs is not None:
             parser.error("trace selection must happen before setup")
-        self.bundle_path = str(Path(args.bundle).absolute())
+        if args.bundle_sha256 is not None and not _SHA256.fullmatch(args.bundle_sha256):
+            raise ValueError("--bundle-sha256 must contain 64 lowercase hex digits")
+        bundle_path = str(Path(args.bundle).absolute())
+        if (bundle_path, args.event) != (self.bundle_path, self.event_id):
+            self.selected_bundle_sha256 = None
+        self.bundle_path = bundle_path
         self.event_id = args.event
+        self.expected_bundle_sha256 = args.bundle_sha256
         self._declare_event(*self._event())
 
     def _event(self):
         if not self.bundle_path or not self.event_id:
             raise ValueError("trace replay requires --bundle and --event")
         bundle = load_bundle(Path(self.bundle_path))
+        if self.expected_bundle_sha256 is not None and bundle.sha256 != self.expected_bundle_sha256:
+            raise ValueError(
+                "replay bundle SHA-256 differs from --bundle-sha256: "
+                f"expected {self.expected_bundle_sha256}, found {bundle.sha256}"
+            )
+        if self.selected_bundle_sha256 is None:
+            self.selected_bundle_sha256 = bundle.sha256
+        elif bundle.sha256 != self.selected_bundle_sha256:
+            raise ValueError(
+                "replay bundle SHA-256 changed after selection: "
+                f"expected {self.selected_bundle_sha256}, found {bundle.sha256}"
+            )
         return bundle, bundle.event(self.event_id)
 
     def setup(self):
