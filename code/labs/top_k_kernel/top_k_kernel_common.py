@@ -9,6 +9,7 @@ from typing import Optional
 
 import torch
 
+from core.benchmark.verification import verification_input_seed
 from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.common.device_utils import require_cuda_device
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig, WorkloadMetadata
@@ -164,7 +165,8 @@ def apply_workload_overrides(
 
 def build_inputs(workload: TopKKernelWorkload, device: torch.device) -> TopKKernelInputs:
     generator = torch.Generator(device="cpu")
-    generator.manual_seed(4242)
+    seed = verification_input_seed.get()
+    generator.manual_seed(4242 if seed is None else seed)
 
     q = torch.randn(
         workload.batch_size,

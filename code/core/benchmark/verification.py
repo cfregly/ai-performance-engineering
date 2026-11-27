@@ -19,6 +19,7 @@ import math
 import os
 import random
 from collections.abc import Iterable
+from contextvars import ContextVar
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from enum import Enum
@@ -1051,6 +1052,9 @@ class VerifyResult:
 # =============================================================================
 # Seed Management for Deterministic Verification
 # =============================================================================
+
+
+verification_input_seed: ContextVar[int | None] = ContextVar("verification_input_seed", default=None)
 
 
 def set_deterministic_seeds(seed: int = 42) -> Dict[str, int]:

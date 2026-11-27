@@ -6,10 +6,27 @@ import pytest
 import torch
 
 import labs.top_k_kernel.top_k_kernel_common as topk_common
+from core.benchmark.verify_runner import VerifyRunner
 from labs.top_k_kernel.top_k_kernel_common import TopKKernelBenchmark, TopKKernelWorkload
 
 CUDA_REQUIRED = pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
 REPO_ROOT = Path(__file__).resolve().parents[1]
+
+
+def test_top_k_verification_varies_the_input_seed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(topk_common, "resolve_device", lambda: torch.device("cpu"))
+    args = (
+        "--mode fwd_bwd --batch-size 1 --heads 2 --kv-heads 1 --q-len 8 "
+        "--compressed-k-len 32 --head-dim 32 --top-k 2 --selection-block-size 8"
+    ).split()
+    baseline = TopKKernelBenchmark(backend="baseline", label="reference")
+    optimized = TopKKernelBenchmark(backend="baseline", label="comparison")
+    baseline.apply_target_overrides(args)
+    optimized.apply_target_overrides(args)
+
+    result = VerifyRunner(cache_dir=tmp_path / "cache").verify_pair(baseline, optimized)
+
+    assert result.passed, result.to_dict()
 
 
 def test_softmax_topk_backward_reuses_grad_probs_cast() -> None:

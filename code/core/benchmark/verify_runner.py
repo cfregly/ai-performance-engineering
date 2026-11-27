@@ -65,6 +65,7 @@ from core.benchmark.verification import (
     signature_cache_key,
     signature_workload_dict,
     set_deterministic_seeds,
+    verification_input_seed,
 )
 from core.benchmark.quarantine import (
     QuarantineManager,
@@ -932,8 +933,12 @@ class VerifyRunner:
                 self._last_evaluation_provenance = start_evaluation(evaluation_contract)
                 self._last_evaluation_provenance.raise_for_failures()
 
-            # Setup creates model and fixed inputs deterministically
-            benchmark.setup()
+            # Make the verification seed available to setup routines that use a local generator.
+            seed_token = verification_input_seed.set(seed)
+            try:
+                benchmark.setup()
+            finally:
+                verification_input_seed.reset(seed_token)
 
             # Block CUDA graphs in verification to prevent capture/replay cheating
             cfg = getattr(benchmark, "_config", None) or getattr(benchmark, "config", None) or cfg
