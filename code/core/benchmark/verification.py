@@ -663,6 +663,8 @@ def resolve_global_output_tolerance(
     baseline: ToleranceSpec, optimized: ToleranceSpec,
 ) -> ToleranceSpec:
     """Apply the optimized numeric tolerance when neither bound exceeds the baseline."""
+    if baseline.comparator_fn is not None or optimized.comparator_fn is not None:
+        raise ValueError("Output verification requires explicit numeric rtol and atol.")
     if is_tolerance_looser(optimized, baseline):
         raise ValueError(
             "Optimized output tolerance cannot be looser than the baseline tolerance: "

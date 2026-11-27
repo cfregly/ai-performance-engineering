@@ -839,8 +839,9 @@ The harness uses **POST-TIMING VERIFICATION** - verification happens AFTER timin
 The chapter runner, verified comparison, and `bench verify` reject an
 optimized global tolerance if either bound exceeds the baseline's. If both
 benchmarks declare matching per-output tolerances that cover every captured
-output, use those tolerances. Otherwise use the accepted optimized global
-tolerance when neither benchmark declares a per-output map.
+output, use those tolerances. A one-sided, incomplete, or mismatched map
+fails verification. When neither benchmark declares a map, use the accepted
+optimized global tolerance.
 
 ### `_verify_patched_benchmark` - FOR LLM PATCHES ONLY
 

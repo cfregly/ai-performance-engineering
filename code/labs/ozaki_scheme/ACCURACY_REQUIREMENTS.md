@@ -29,11 +29,10 @@ The checksum tolerances are secondary harness bounds. They follow from the full-
 relative-L2 ceiling, Cauchy-Schwarz, and the declared uniform input bound:
 `atol = relative_l2 * m * n * k * input_scale^2`; `rtol` is zero. Candidate results
 cannot pass on the checksum alone because the executable first gates the complete array.
-The ordinary pair runner reads its secondary envelope from the native-FP64 baseline.
-That baseline exposes the largest declared candidate checksum envelope so either
-variant can be compared. Each executable still enforces its own full-array limits;
-the fixed variant retains its stricter requirements. Without an explicit policy,
-the baseline keeps an exact-zero comparison envelope.
+The native FP64 baseline exposes the largest declared candidate checksum tolerance.
+The runner checks each candidate against its declared tolerance within that bound.
+Each executable also enforces its own full-array limits, including the stricter
+fixed variant limits. Without an explicit policy, the baseline uses exact comparison.
 
 These limits were fixed before new candidate execution. Prior measurement-only logs
 remain diagnostics and were not used to widen a bound. `load_accuracy_policy()` rejects

@@ -24,10 +24,14 @@ from core.harness.benchmark_harness import (
 class _CpuComparisonBenchmark(VerificationPayloadMixin, BaseBenchmark):
     allow_cpu = True
 
-    def __init__(self, *, output_offset: float = 0.0, fail: bool = False) -> None:
+    def __init__(
+        self, *, output_offset: float = 0.0, fail: bool = False,
+        output_tolerance: tuple[float, float] = (0.0, 0.0),
+    ) -> None:
         super().__init__()
         self.device = torch.device("cpu")
         self.output_offset = output_offset
+        self.output_tolerance = output_tolerance
         self.fail = fail
         self.benchmark_calls = 0
         self.input_tensor: torch.Tensor | None = None
@@ -53,7 +57,7 @@ class _CpuComparisonBenchmark(VerificationPayloadMixin, BaseBenchmark):
             output=self.output,
             batch_size=32,
             parameter_count=0,
-            output_tolerance=(0.0, 0.0),
+            output_tolerance=self.output_tolerance,
         )
 
     def validate_result(self) -> None:
@@ -132,6 +136,19 @@ def test_public_compare_benchmarks_rejects_incorrect_full_output() -> None:
     assert exc_info.value.code == "output_mismatch"
     assert exc_info.value.evidence["passed"] is False
     assert exc_info.value.evidence["max_diff"] == pytest.approx(1.0)
+
+
+def test_public_compare_benchmarks_records_stricter_output_tolerance() -> None:
+    baseline = _CpuComparisonBenchmark(output_tolerance=(0.0, 1.0))
+    optimized = _CpuComparisonBenchmark(output_offset=0.5)
+
+    with pytest.raises(VerifiedComparisonError, match="output_mismatch") as exc_info:
+        compare_benchmarks(baseline, optimized, harness=_cpu_harness())
+
+    evidence = exc_info.value.evidence
+    assert evidence["atol"] == 0.0
+    assert evidence["baseline_tolerance"]["atol"] == 1.0
+    assert evidence["optimized_tolerance"]["atol"] == 0.0
 
 
 def test_slowdown_percentage_uses_elapsed_time_ratio() -> None:

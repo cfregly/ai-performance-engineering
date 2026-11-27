@@ -1826,7 +1826,13 @@ class VerifyRunner:
             try:
                 tolerance = resolve_global_output_tolerance(baseline_tol, optimized_tol)
             except ValueError as exc:
-                return VerifyResult.fail(str(exc))
+                return VerifyResult.fail(
+                    str(exc),
+                    details={
+                        "baseline_tolerance": baseline_tol.to_dict(),
+                        "optimized_tolerance": optimized_tol.to_dict(),
+                    },
+                )
 
             try:
                 output_tolerances = resolve_output_tolerances(

@@ -971,11 +971,6 @@ class TopKKernelBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def capture_verification_payload(self) -> None:
         if self.inputs is None or self.outputs is None:
             raise RuntimeError("setup() and benchmark_fn() must run before verification capture")
-        output_tolerance = (
-            (2e-2, 2e-2)
-            if self.backend == "cuda" and self.workload.mode == "fwd_bwd"
-            else (1e-2, 1e-2)
-        )
         self._set_verification_payload(
             inputs={
                 "q": self.inputs.q.detach(),
@@ -989,7 +984,7 @@ class TopKKernelBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 "bf16": self.workload.dtype == torch.bfloat16,
                 "tf32": torch.backends.cuda.matmul.allow_tf32,
             },
-            output_tolerance=output_tolerance,
+            output_tolerance=(1e-2, 1e-2),
         )
 
     def teardown(self) -> None:

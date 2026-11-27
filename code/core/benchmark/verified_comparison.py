@@ -268,7 +268,12 @@ def _compare_outputs(baseline: Any, optimized: Any) -> dict[str, Any]:
         effective_tolerance = resolve_global_output_tolerance(baseline_tolerance, optimized_tolerance)
     except ValueError as exc:
         raise VerifiedComparisonError(
-            "optimized_output_tolerance_looser", str(exc),
+            "optimized_output_tolerance_looser",
+            str(exc),
+            evidence={
+                "baseline_tolerance": baseline_tolerance.to_dict(),
+                "optimized_tolerance": optimized_tolerance.to_dict(),
+            },
         ) from exc
 
     baseline_output = _require_captured_output(baseline, side="baseline")
