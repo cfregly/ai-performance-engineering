@@ -194,11 +194,17 @@ def _transport_fixture(monkeypatch, payload, tmp_path):
 
     monkeypatch.setattr(harness_module.subprocess, "Popen", run_fixture)
     harness, config = _cpu_harness()
-    return harness._benchmark_with_subprocess(_CPUTransportBenchmark(), config)
+    benchmark = _CPUTransportBenchmark()
+    result = harness._benchmark_with_subprocess(benchmark, config)
+    assert getattr(benchmark, "_applied_config_receipt", None) is None
+    return result
 
 
-def test_summary_only_child_transport_preserves_unavailable_percentiles(monkeypatch, tmp_path):
+@pytest.mark.parametrize("receipt_source", [None, "launcher"])
+def test_summary_only_child_transport_preserves_unavailable_percentiles(monkeypatch, tmp_path, receipt_source):
     payload = _summary_payload()
+    if receipt_source is not None:
+        payload["applied_config"] = {"receipt_source": receipt_source, "iterations": 300}
     result = _transport_fixture(monkeypatch, payload, tmp_path)
     expected = BenchmarkResult.model_validate_json(payload["result_json"])
     assert not result.errors

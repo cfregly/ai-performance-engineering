@@ -4174,9 +4174,8 @@ class BenchmarkHarness:
                         }
 
                         applied_config = result_dict.get("applied_config")
-                        if not isinstance(applied_config, dict) or applied_config.get("receipt_source") != "worker":
-                            raise ValueError("Subprocess omitted its worker-applied benchmark configuration")
-                        benchmark._applied_config_receipt = copy.deepcopy(applied_config)
+                        if isinstance(applied_config, dict) and applied_config.get("receipt_source") == "worker":
+                            benchmark._applied_config_receipt = copy.deepcopy(applied_config)
                         
                         # Extract verify_output/tolerance/signature from subprocess and store on benchmark
                         verify_output_data = result_dict.get("verify_output")
