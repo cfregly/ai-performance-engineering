@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 
 import pytest
+from typer.testing import CliRunner
 
 from core.benchmark import bench_commands
 from core.benchmark.e2e_sweep import _benchmark_stage_details_from_output, _E2EAbort
@@ -75,6 +76,44 @@ def test_portable_run_start_reports_effective_clock_control_disabled(
     assert len(run_start_payloads) == 1
     assert run_start_payloads[0]["validity_profile"] == "portable"
     assert run_start_payloads[0]["gpu_clock_lock_enabled"] is False
+
+
+def test_bench_run_forwards_explicit_pm_sampling_interval(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from cli.aisp import app
+
+    bench_root = tmp_path / "bench"
+    _write_pair(bench_root / "ch01", "sampling")
+    _prepare_cuda_hidden_control(monkeypatch)
+    monkeypatch.setenv("VERIFY_ENFORCEMENT_PHASE", "gate")
+    intervals = []
+
+    def capture_sampling_interval(**kwargs):
+        intervals.append(kwargs["pm_sampling_interval"])
+        return {
+            "chapter": "ch01",
+            "benchmarks": [],
+            "manifests": [],
+            "summary": {"successful": 0, "failed": 0, "total_skipped": 0},
+        }
+
+    monkeypatch.setattr(bench_commands, "test_chapter", capture_sampling_interval)
+    arguments = [
+        "bench", "run", "--bench-root", str(bench_root), "--targets", "ch01:sampling",
+        "--profile", "none", "--validity-profile", "portable",
+        "--pm-sampling-interval", "40000", "--format", "json",
+        "--artifacts-dir", str(tmp_path / "artifacts"),
+    ]
+    runner = CliRunner()
+    plan = runner.invoke(app, [*arguments, "--dry-run"])
+    assert plan.exit_code == 0, plan.output
+    assert json.loads(plan.output)["pm_sampling_interval"] == 40000
+
+    invocation = runner.invoke(app, arguments)
+    assert invocation.exit_code == 0, invocation.output
+    assert intervals == [40000]
 
 
 def test_continuation_records_one_target_preflight_and_attempts_the_next(

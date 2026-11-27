@@ -2033,6 +2033,7 @@ if TYPER_AVAILABLE:
                 "gpu_mem_clock_mhz": gpu_mem_clock_mhz,
                 "nsys_timeout_seconds": nsys_timeout_seconds,
                 "ncu_timeout_seconds": ncu_timeout_seconds,
+                "pm_sampling_interval": pm_sampling_interval,
             }
             typer.echo(json.dumps(plan, indent=2))
             raise typer.Exit(code=0)
@@ -2064,6 +2065,7 @@ if TYPER_AVAILABLE:
             allow_mixed_provenance=allow_mixed_provenance,
             ncu_metric_set=ncu_metric_set,
             ncu_replay_mode=ncu_replay_mode,
+            pm_sampling_interval=pm_sampling_interval,
             nsys_timeout_seconds=nsys_timeout_seconds,
             ncu_timeout_seconds=ncu_timeout_seconds,
             only_cuda=only_cuda,
